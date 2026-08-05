@@ -1,0 +1,3962 @@
+/**
+ * @file Tree-sitter grammar for POSIX sh
+ * @author konomanoasa
+ * @license MIT
+ */
+
+/// <reference types="tree-sitter-cli/dsl" />
+// @ts-check
+
+// biome-ignore lint/complexity/useRegexLiterals: Tree-sitter's ERE parser requires the opening bracket escape.
+const LITERAL_TOKEN_PATTERN = new RegExp(
+  "[^ \\t\\n;&|<>()\\\\'\"$`*?\\[\\]~:#=]+",
+);
+
+// biome-ignore lint/complexity/useRegexLiterals: Tree-sitter's ERE parser requires the opening bracket escape.
+const PARAMETER_PATTERN_TEXT_PATTERN = new RegExp("[^}\\n'\"$`\\\\*?\\[\\]~]+");
+
+const PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN = /[^ \t\n;&|<>()\\'"$`:.=\]-]/;
+
+const PARAMETER_DEFERRED_EXTRA_CHARACTER_PATTERN = /[ \t\n;&|<>()]/;
+
+const IO_LOCATION_CONTENT_PATTERN = /[^ \t\n;&|<>()}\\'"`]+/;
+
+// POSIX requires a complete arithmetic interpretation of `$((...))` to win
+// over the otherwise valid `$( (...) )` command-substitution interpretation.
+// `compound_list` contributes dynamic precedence at each nested subshell, so
+// the arithmetic expansion and each arithmetic grouping must do the same.
+const ARITHMETIC_AMBIGUITY_PRECEDENCE = 100;
+const ARITHMETIC_SOURCE_PRECEDENCE = 1;
+const ASSIGNMENT_WORD_PRECEDENCE = 3;
+
+const PATTERN_PRECEDENCE = {
+  literalFallback: -2,
+  negation: 1,
+  expression: 2,
+  range: 3,
+  specialElement: 4,
+};
+
+const incompleteBracketLiteral = ($, start, part, end) =>
+  prec.dynamic(
+    PATTERN_PRECEDENCE.literalFallback,
+    prec.right(1, seq(alias(start, $.literal), repeat(part), end)),
+  );
+
+const wordIncompleteBracketLiteralAtom = ($) =>
+  choice(
+    "$",
+    $._name_token,
+    $._literal_token,
+    $._literal_right_bracket,
+    $._literal_tilde,
+    $._literal_colon,
+    $._literal_equals,
+    $._literal_hash,
+  );
+
+const parameterIncompleteBracketLiteralAtom = ($) =>
+  choice(
+    "$",
+    $._parameter_pattern_text_token,
+    $._literal_tilde,
+    $._literal_right_bracket,
+    $._newline,
+  );
+
+const incompleteBracketLiteralPart = (
+  $,
+  bracketSource,
+  bracketLiteralRun,
+  literalSource,
+  continuation,
+) =>
+  choice(
+    bracketSource,
+    prec.dynamic(
+      PATTERN_PRECEDENCE.literalFallback,
+      alias(bracketLiteralRun, $.literal),
+    ),
+    ...literalSource,
+    $.pattern_star_source,
+    $.pattern_question_source,
+    continuation,
+    $.escaped_character,
+    $.single_quoted,
+    $.double_quoted,
+    $.dollar_single_quoted,
+    $.parameter_expansion,
+    $.command_substitution,
+    $.arithmetic_expansion,
+    $.backquote_substitution,
+  );
+
+const continuedToken = (
+  $,
+  value,
+  { immediate = false, continuedStart = null } = {},
+) => {
+  const characters = Array.from(value);
+  const variants = [immediate ? token.immediate(value) : value];
+  const boundaryCount = characters.length - 1;
+
+  for (let mask = 1; mask < 1 << boundaryCount; mask += 1) {
+    const parts = [];
+    let chunkStart = 0;
+    for (let index = 0; index < boundaryCount; index += 1) {
+      if ((mask & (1 << index)) !== 0) {
+        const chunk = characters.slice(chunkStart, index + 1).join("");
+        parts.push(
+          parts.length === 0 && !immediate ? chunk : token.immediate(chunk),
+        );
+        parts.push(repeat1($.line_continuation));
+        chunkStart = index + 1;
+      }
+    }
+    parts.push(token.immediate(characters.slice(chunkStart).join("")));
+    const continuedVariant = seq(...parts);
+    variants.push(
+      continuedStart === null
+        ? continuedVariant
+        : seq(continuedStart, continuedVariant),
+    );
+  }
+
+  return choice(...variants);
+};
+
+const lineJoined = ($, value, continuedStart = null) =>
+  continuedToken($, value, { continuedStart });
+
+const reservedWord = ($, marker, value) => seq(marker, lineJoined($, value));
+
+const continuationRun = (start, continuation) =>
+  prec.right(
+    1,
+    choice(start, prec.right(2, seq(start, repeat1(continuation)))),
+  );
+
+const tightContinuationRun = ($, start) =>
+  continuationRun(
+    start,
+    alias($._continued_line_continuation, $.line_continuation),
+  );
+
+const lineContinuationRun = ($, classifiedContinuation) =>
+  tightContinuationRun($, alias(classifiedContinuation, $.line_continuation));
+
+const layoutLineContinuation = ($) =>
+  choice(
+    $.line_continuation,
+    alias($._spaced_line_continuation, $.line_continuation),
+    alias($._layout_line_continuation, $.line_continuation),
+  );
+
+const arithmeticBinaryExpression = ($, left, right, operatorSegment) =>
+  prec.left(
+    seq(
+      field("left", left),
+      operatorSegment,
+      arithmeticOperandLayout($),
+      field("right", right),
+    ),
+  );
+
+const arithmeticContinuedOperatorLayout = ($, continuedBoundary) =>
+  seq(
+    alias(continuedBoundary, $.line_continuation),
+    optional($._arithmetic_layout),
+  );
+
+const arithmeticOperatorLayout = ($, boundary, continuedBoundary) =>
+  choice(
+    seq(boundary, optional($._arithmetic_layout)),
+    arithmeticContinuedOperatorLayout($, continuedBoundary),
+  );
+
+const arithmeticOperatorSegment = ($, boundary, continuedBoundary, operator) =>
+  prec.dynamic(
+    ARITHMETIC_SOURCE_PRECEDENCE,
+    seq(
+      arithmeticOperatorLayout($, boundary, continuedBoundary),
+      field("operator", alias(operator, $.arithmetic_operator)),
+    ),
+  );
+
+const arithmeticOperandLayout = (
+  $,
+  boundary = $._arithmetic_operand_boundary,
+  continuedBoundary = $._arithmetic_operand_line_continuation,
+) =>
+  choice(
+    seq(boundary, optional($._arithmetic_layout)),
+    seq(
+      alias(continuedBoundary, $.line_continuation),
+      optional($._arithmetic_layout),
+    ),
+  );
+
+const arithmeticUnaryExpression = (
+  $,
+  operator,
+  boundary = $._arithmetic_operand_boundary,
+  continuedBoundary = $._arithmetic_operand_line_continuation,
+) =>
+  prec.right(
+    seq(
+      field("operator", alias(operator, $.arithmetic_operator)),
+      arithmeticOperandLayout($, boundary, continuedBoundary),
+      field("operand", $._arithmetic_unary_expression),
+    ),
+  );
+
+const arithmeticLayoutUnit = ($) =>
+  choice(layoutLineContinuation($), $._blank, $._newline);
+
+const arithmeticClosingLayout = ($) => optional($._arithmetic_closing_layout);
+
+const horizontalContinuationRun = ($, start) =>
+  continuationRun(
+    start,
+    choice(
+      alias($._continued_line_continuation, $.line_continuation),
+      alias($._layout_line_continuation, $.line_continuation),
+    ),
+  );
+
+const continuedBlankLineLayout = ($) =>
+  seq(
+    horizontalContinuationRun(
+      $,
+      alias($._blank_line_start_line_continuation, $.line_continuation),
+    ),
+    optional($._blank),
+  );
+
+const bracketContinuationRun = ($, marker) =>
+  seq(marker, tightContinuationRun($, $.line_continuation));
+
+const arithmeticExpansionEnd = ($) =>
+  choice(
+    seq(")", $._arithmetic_second_right_parenthesis),
+    alias($._here_document_boundary, $.here_document_end_recovery),
+  );
+
+const linebreakLayout = ($) =>
+  seq(optional($.linebreak), optional($._horizontal_layout));
+
+const continuedLinebreakLayout = ($) =>
+  seq(
+    optional($._horizontal_layout),
+    optional(seq($.linebreak, optional($._horizontal_layout))),
+  );
+
+const classifiedWordSeparator = ($, continuedStart) =>
+  choice(
+    $._word_separator,
+    seq(lineContinuationRun($, continuedStart), optional($._horizontal_layout)),
+  );
+
+const reservedWordSeparator = ($) =>
+  classifiedWordSeparator($, $._reserved_word_separator_line_continuation);
+
+const wordlistSeparator = ($) =>
+  classifiedWordSeparator($, $._word_separator_line_continuation);
+
+const reservedWordLinebreak = ($) =>
+  choice(
+    seq($.linebreak, optional($._horizontal_layout)),
+    reservedWordSeparator($),
+  );
+
+const continuationBoundaryLayout = ($, marker, continuedStart) =>
+  seq(
+    choice(marker, alias(continuedStart, $.line_continuation)),
+    optional($._horizontal_layout),
+  );
+
+const commandBoundaryLayout = ($) =>
+  continuationBoundaryLayout(
+    $,
+    $._command_continuation,
+    $._command_boundary_line_continuation,
+  );
+
+const patternBoundaryLayout = ($) =>
+  continuationBoundaryLayout(
+    $,
+    $._pattern_continuation,
+    $._pattern_continuation_line_continuation,
+  );
+
+const patternClosingLayout = ($) =>
+  continuationBoundaryLayout(
+    $,
+    $._pattern_end,
+    $._pattern_end_line_continuation,
+  );
+
+const caseItemEndLayout = ($) =>
+  choice(
+    $._horizontal_layout,
+    seq(
+      lineContinuationRun($, $._case_item_end_line_continuation),
+      optional($._horizontal_layout),
+    ),
+  );
+
+const lineComment = ($, comment) =>
+  choice(
+    comment,
+    prec.dynamic(
+      1,
+      seq(
+        choice(
+          $.line_continuation,
+          alias($._spaced_line_continuation, $.line_continuation),
+        ),
+        optional($._horizontal_layout),
+        $._comment_boundary,
+        comment,
+      ),
+    ),
+  );
+
+const completeCommandsBody = ($, leading) =>
+  seq(
+    leading,
+    $.complete_commands,
+    optional($.linebreak),
+    optional($._free_trailing_layout),
+  );
+
+const commandSequenceBody = ($) =>
+  choice(
+    completeCommandsBody(
+      $,
+      seq(optional($.linebreak), optional($._horizontal_layout)),
+    ),
+    seq($.linebreak, optional($._free_trailing_layout)),
+    $._free_trailing_layout,
+  );
+
+const continuedParenthesizedCommandBody = ($) =>
+  completeCommandsBody($, $._second_left_parenthesis_layout);
+
+const backquoteDollar = ($) =>
+  seq(alias($._backquote_dollar_prefix, "\\"), token.immediate("$"));
+
+const backquoteDelimiter = (plain, prefix) =>
+  choice(alias(plain, "`"), seq(alias(prefix, "\\"), token.immediate("`")));
+
+const substitutionDelimiter = ($, continuation, delimiter) =>
+  choice(
+    delimiter,
+    prec.dynamic(
+      1,
+      seq(
+        alias(continuation, $.line_continuation),
+        optional($._horizontal_layout),
+        delimiter,
+      ),
+    ),
+  );
+
+const commandSubstitutionEnd = ($) =>
+  choice(
+    substitutionDelimiter(
+      $,
+      $._command_substitution_end_line_continuation,
+      ")",
+    ),
+    alias($._here_document_boundary, $.here_document_end_recovery),
+  );
+
+const patternSpecialStart = ($, marker) =>
+  seq(
+    alias($._pattern_special_left_bracket, "["),
+    repeat($.line_continuation),
+    marker,
+  );
+
+const patternSpecialEnd = ($, marker) =>
+  seq(marker, repeat($.line_continuation), $._literal_right_bracket);
+
+const patternCharacterClassStructuredContent = ($) =>
+  choice(
+    $.line_continuation,
+    $.escaped_character,
+    $.single_quoted,
+    $.double_quoted,
+    $.dollar_single_quoted,
+    $.parameter_expansion,
+    $.command_substitution,
+    $.arithmetic_expansion,
+    $.backquote_substitution,
+  );
+
+const patternCharacterClassBody = ($) =>
+  choice(
+    field("content", $.pattern_character_class_content_source),
+    seq(
+      optional(field("content", $.pattern_character_class_content_source)),
+      repeat1(
+        seq(
+          field("content", patternCharacterClassStructuredContent($)),
+          optional(field("content", $.pattern_character_class_content_source)),
+        ),
+      ),
+    ),
+  );
+
+const patternSpecialInitialRange = ($, endpoint) =>
+  prec.dynamic(
+    PATTERN_PRECEDENCE.range,
+    seq(
+      field(
+        "start",
+        alias(
+          $._pattern_special_marker_character,
+          $.pattern_bracket_character_source,
+        ),
+      ),
+      repeat($.line_continuation),
+      field("operator", $.pattern_bracket_range_operator_source),
+      repeat($.line_continuation),
+      field("end", endpoint),
+    ),
+  );
+
+const patternSpecialPrefixedList = ($, member, initialRange) =>
+  choice(
+    seq(
+      field("member", alias(initialRange, $.pattern_bracket_range_source)),
+      repeat(seq(repeat($.line_continuation), field("member", member))),
+    ),
+    seq(
+      field(
+        "member",
+        alias(
+          $._pattern_special_marker_character,
+          $.pattern_bracket_character_source,
+        ),
+      ),
+      repeat(seq(repeat($.line_continuation), field("member", member))),
+    ),
+  );
+
+const patternSpecialPrefixedExpression = ($, list) =>
+  prec.dynamic(
+    PATTERN_PRECEDENCE.expression,
+    seq(
+      alias($._pattern_special_left_bracket, "["),
+      repeat($.line_continuation),
+      field("members", alias(list, $.pattern_bracket_members_source)),
+      optional(
+        lineContinuationRun($, $._pattern_bracket_closing_line_continuation),
+      ),
+      $._literal_right_bracket,
+    ),
+  );
+
+const patternDeferredBracketRangeEndpoint = ($, character) =>
+  choice(
+    alias(character, $.pattern_bracket_character_source),
+    $.pattern_collating_symbol_source,
+    $.pattern_bracket_hyphen_source,
+    $.escaped_character,
+    $.single_quoted,
+    $.double_quoted,
+    $.dollar_single_quoted,
+    $.parameter_expansion,
+    $.command_substitution,
+    $.arithmetic_expansion,
+    $.backquote_substitution,
+  );
+
+const patternDeferredBracketMember = ($, character, range) =>
+  choice(
+    $.pattern_character_class_source,
+    $.pattern_collating_symbol_source,
+    $.pattern_equivalence_class_source,
+    alias(range, $.pattern_bracket_range_source),
+    alias(character, $.pattern_bracket_character_source),
+    $.pattern_bracket_hyphen_source,
+    $.escaped_character,
+    $.single_quoted,
+    $.double_quoted,
+    $.dollar_single_quoted,
+    $.parameter_expansion,
+    $.command_substitution,
+    $.arithmetic_expansion,
+    $.backquote_substitution,
+  );
+
+const bracedParameterStart = ($) =>
+  choice(
+    lineJoined($, "${", $._continued_dollar_construct_start),
+    seq(backquoteDollar($), repeat($.line_continuation), "{"),
+  );
+
+const parameterExpansion = ($, bracedExpansion) =>
+  prec(
+    1,
+    choice(
+      seq(
+        choice(seq($._unbraced_parameter_start, "$"), backquoteDollar($)),
+        repeat($.line_continuation),
+        field("parameter", $._unbraced_parameter),
+      ),
+      seq(
+        bracedParameterStart($),
+        $._line_continuation_boundary,
+        repeat($.line_continuation),
+        choice(
+          alias($._here_document_boundary, $.here_document_end_recovery),
+          bracedExpansion,
+        ),
+      ),
+    ),
+  );
+
+const bracedParameterExpansion = ($, tail) =>
+  choice(
+    seq(
+      field("parameter", $._braced_parameter),
+      repeat($.line_continuation),
+      tail,
+    ),
+    prec.dynamic(
+      2,
+      seq(
+        field(
+          "parameter",
+          alias($._special_parameter_hash, $.special_parameter),
+        ),
+        repeat($.line_continuation),
+        tail,
+      ),
+    ),
+    prec.dynamic(
+      3,
+      seq(
+        field("operator", $.parameter_length_operator),
+        repeat($.line_continuation),
+        field("parameter", $._length_parameter),
+        repeat($.line_continuation),
+        choice(
+          "}",
+          alias($._here_document_boundary, $.here_document_end_recovery),
+        ),
+      ),
+    ),
+  );
+
+const parameterExpansionTail = ($, word) =>
+  choice(
+    choice("}", alias($._here_document_boundary, $.here_document_end_recovery)),
+    seq(
+      field("operator", $.parameter_value_operator),
+      optional(field("word", word)),
+      choice(
+        "}",
+        alias($._here_document_boundary, $.here_document_end_recovery),
+      ),
+    ),
+    seq(
+      field("operator", $.parameter_pattern_operator),
+      $._line_continuation_boundary,
+      repeat($.line_continuation),
+      optional(field("pattern", $.parameter_pattern)),
+      choice(
+        "}",
+        alias($._here_document_boundary, $.here_document_end_recovery),
+      ),
+    ),
+  );
+
+const redirectList = ($) =>
+  seq(
+    field("redirect", $.io_redirect),
+    repeat(
+      choice(
+        field(
+          "redirect",
+          alias($._io_redirect_without_descriptor, $.io_redirect),
+        ),
+        prec.dynamic(
+          3,
+          seq(
+            repeat1($.line_continuation),
+            field(
+              "redirect",
+              alias($._io_redirect_without_descriptor, $.io_redirect),
+            ),
+          ),
+        ),
+        seq($._word_separator, field("redirect", $.io_redirect)),
+      ),
+    ),
+  );
+
+const patternBracketExpression = ($, list, opener = $._literal_left_bracket) =>
+  prec.dynamic(
+    PATTERN_PRECEDENCE.expression,
+    prec.right(
+      2,
+      seq(
+        opener,
+        repeat($.line_continuation),
+        choice(
+          seq(
+            field("negation", $.pattern_bracket_negation_source),
+            repeat($.line_continuation),
+            field("members", list),
+          ),
+          field("members", list),
+        ),
+        optional(
+          lineContinuationRun($, $._pattern_bracket_closing_line_continuation),
+        ),
+        $._literal_right_bracket,
+      ),
+    ),
+  );
+
+const patternBracketList = ($, member, initialRange) =>
+  choice(
+    seq(
+      field(
+        "member",
+        choice(
+          alias(
+            $._pattern_initial_right_bracket,
+            $.pattern_bracket_character_source,
+          ),
+          initialRange,
+        ),
+      ),
+      repeat(seq(repeat($.line_continuation), field("member", member))),
+    ),
+    seq(
+      field("member", member),
+      repeat(seq(repeat($.line_continuation), field("member", member))),
+    ),
+  );
+
+const patternBracketRange = ($, endpoint) =>
+  prec.dynamic(
+    PATTERN_PRECEDENCE.range,
+    seq(
+      field("start", endpoint),
+      repeat($.line_continuation),
+      field("operator", $.pattern_bracket_range_operator_source),
+      repeat($.line_continuation),
+      field("end", endpoint),
+    ),
+  );
+
+const patternInitialBracketRange = ($, endpoint) =>
+  prec.dynamic(
+    PATTERN_PRECEDENCE.range,
+    seq(
+      field(
+        "start",
+        alias(
+          $._pattern_initial_right_bracket,
+          $.pattern_bracket_character_source,
+        ),
+      ),
+      repeat($.line_continuation),
+      field("operator", $.pattern_bracket_range_operator_source),
+      repeat($.line_continuation),
+      field("end", endpoint),
+    ),
+  );
+
+module.exports = grammar({
+  name: "posix_sh",
+
+  externals: ($) => [
+    $._left_brace,
+    $._right_brace,
+    $._io_number_token,
+    $._io_location_start,
+    $._bang_token,
+    $._if_keyword,
+    $._then_keyword,
+    $._elif_keyword,
+    $._else_keyword,
+    $._fi_keyword,
+    $._for_keyword,
+    $._in_keyword,
+    $._do_keyword,
+    $._done_keyword,
+    $._case_keyword,
+    $._esac_keyword,
+    $._while_keyword,
+    $._until_keyword,
+    $._dless_commit,
+    $._dlessdash_commit,
+    $._here_end_begin,
+    $._here_end_commit,
+    $._missing_here_document_delimiter,
+    $.here_document_line_end,
+    $._here_document_body_start,
+    $._quoted_here_document_body_start,
+    $._quoted_here_document_end,
+    $._here_document_end_begin,
+    $._here_document_end_commit,
+    $._here_document_sequence_end,
+    $._here_document_content_line_start,
+    $._newline,
+    $.line_continuation,
+    $._continued_line_continuation,
+    $._blank_line_start_line_continuation,
+    $._spaced_line_continuation,
+    $._layout_line_continuation,
+    $._command_boundary_line_continuation,
+    $._pattern_continuation_line_continuation,
+    $._pattern_end_line_continuation,
+    $._pattern_bracket_closing_line_continuation,
+    $._case_item_end_line_continuation,
+    $._reserved_word_separator_line_continuation,
+    $._separator_boundary_line_continuation,
+    $._word_separator_line_continuation,
+    $._source_line_continuation,
+    $._command_substitution_end_line_continuation,
+    $._backquote_end_line_continuation,
+    $._name_line_continuation,
+    $._tilde_user_line_continuation,
+    $._digit_line_continuation,
+    $._second_left_parenthesis_start_line_continuation,
+    $._arithmetic_closing_line_continuation,
+    $._arithmetic_assignment_operator_line_continuation,
+    $._arithmetic_question_operator_line_continuation,
+    $._arithmetic_colon_operator_line_continuation,
+    $._arithmetic_logical_or_operator_line_continuation,
+    $._arithmetic_logical_and_operator_line_continuation,
+    $._arithmetic_bitwise_or_operator_line_continuation,
+    $._arithmetic_bitwise_xor_operator_line_continuation,
+    $._arithmetic_bitwise_and_operator_line_continuation,
+    $._arithmetic_equality_operator_line_continuation,
+    $._arithmetic_relational_operator_line_continuation,
+    $._arithmetic_shift_operator_line_continuation,
+    $._arithmetic_additive_operator_line_continuation,
+    $._arithmetic_multiplicative_operator_line_continuation,
+    $._arithmetic_plus_operand_line_continuation,
+    $._arithmetic_minus_operand_line_continuation,
+    $._arithmetic_operand_line_continuation,
+    $._assignment_name_end_line_continuation,
+    $._continued_decimal_arithmetic_number_start,
+    $._continued_octal_arithmetic_number_start,
+    $._continued_hexadecimal_arithmetic_number_start,
+    $._arithmetic_assignment_operator_boundary,
+    $._arithmetic_question_operator_boundary,
+    $._arithmetic_colon_operator_boundary,
+    $._arithmetic_logical_or_operator_boundary,
+    $._arithmetic_logical_and_operator_boundary,
+    $._arithmetic_bitwise_or_operator_boundary,
+    $._arithmetic_bitwise_xor_operator_boundary,
+    $._arithmetic_bitwise_and_operator_boundary,
+    $._arithmetic_equality_operator_boundary,
+    $._arithmetic_relational_operator_boundary,
+    $._arithmetic_shift_operator_boundary,
+    $._arithmetic_additive_operator_boundary,
+    $._arithmetic_multiplicative_operator_boundary,
+    $._arithmetic_plus_operand_boundary,
+    $._arithmetic_minus_operand_boundary,
+    $._arithmetic_operand_boundary,
+    $._source_word_continuation_boundary,
+    $._assignment_value_end_line_continuation,
+    $._line_continuation_boundary,
+    $._continued_parameter_pattern_operator_start,
+    $._continued_redirection_operator_start,
+    $._continued_dlessdash_start,
+    $._continued_dollar_construct_start,
+    $._pattern_special_left_bracket,
+    $._literal_hash,
+    $._comment_boundary,
+    $._blank_line_boundary,
+    $.comment,
+    $._spaced_comment,
+    $._blank_line,
+    $._here_document_boundary,
+    $._unbraced_parameter_start,
+    $._braced_parameter_number_start,
+    $._braced_positional_parameter_start,
+    $._backquote_start,
+    $._backquote_start_prefix,
+    $._backquote_dollar_prefix,
+    $._backquote_end,
+    $._backquote_end_prefix,
+    $._pattern_continuation,
+    $._pattern_end,
+    $._command_continuation,
+    $._separator_begin,
+    $._closed_command_end,
+    $._case_item_end,
+    $._boundary_command_recovery,
+    $.command_recovery,
+    $.separator_recovery,
+    $.redirection_target_recovery,
+    $.here_document_end_recovery,
+    $.backquote_end_recovery,
+    $._invalid_command_start,
+    $._word_bracket_literal_start,
+    $._parameter_bracket_literal_start,
+    $._word_bracket_fallback_end,
+    $._parameter_bracket_fallback_end,
+    $._word_bracket_continuation,
+    $._parameter_bracket_continuation,
+    $._pattern_bracket_character_token,
+    $._parameter_pattern_bracket_character_token,
+    $._pattern_bracket_hyphen_token,
+  ],
+
+  extras: ($) => [$._here_document_content_line_start],
+
+  conflicts: ($) => [
+    [$.simple_command],
+    [$.command],
+    [$.cmd_prefix],
+    [$.cmd_suffix],
+    [$.variable_name, $.literal],
+    [$._horizontal_layout, $._word_separator],
+    [$.here_document_sequence, $._word_separator, $._free_comment],
+    [$.pipe_sequence],
+    [$.pipe_sequence, $._closed_pipe_sequence],
+    [$.pipe_sequence, $._closed_pipe_sequence, $._recoverable_pipe_sequence],
+    [$.and_or, $._closed_and_or],
+    [
+      $.and_or,
+      $._closed_and_or,
+      $._recoverable_and_or,
+      $._boundary_recovered_and_or,
+    ],
+    [$.and_or, $._boundary_recovered_and_or],
+    [$.complete_commands],
+    [$.complete_command],
+    [$.newline_list],
+    [$.list],
+    [$._terminated_term],
+    [$.term, $._terminated_term],
+    [$.term, $._closed_term, $._terminated_term],
+    [
+      $._terminated_term,
+      $._closed_term,
+      $._recoverable_term,
+      $._boundary_recovered_term,
+    ],
+    [$.separator],
+    [$.sequential_sep],
+    [$.sequential_sep, $.linebreak],
+    [$.function_body],
+    [$.case_list],
+    [$.case_item_ns],
+    [$.case_item_ns, $.case_item],
+    [$.compound_list, $.case_item_ns],
+    [$.compound_list, $.case_item_ns, $.case_item],
+    [$.else_part],
+    [$.wordlist],
+    [$.redirect_list],
+    [$.io_redirect, $._io_redirect_without_descriptor],
+    [$.name, $.literal],
+    [$._assignment_tilde_part, $._assignment_word_part],
+    [$._pattern_bracket_member, $._pattern_bracket_range_endpoint],
+    [$._pattern_deferred_member, $._pattern_deferred_range_endpoint],
+    [
+      $._parameter_pattern_deferred_member,
+      $._parameter_pattern_deferred_range_endpoint,
+    ],
+    [
+      $._word_bracket_literal_fallback_part,
+      $._pattern_operator_bracket_character,
+    ],
+    [
+      $._parameter_bracket_literal_fallback_part,
+      $._pattern_operator_bracket_character,
+    ],
+    [$.pattern_character_class_source, $._pattern_special_marker_character],
+    [$.pattern_collating_symbol_source, $._pattern_special_marker_character],
+    [$.pattern_equivalence_class_source, $._pattern_special_marker_character],
+    [$._word_special_prefixed_bracket_source, $._pattern_special_literal_left],
+    [
+      $._parameter_special_prefixed_bracket_source,
+      $._pattern_special_literal_left,
+    ],
+    [
+      $._word_special_prefixed_bracket_source,
+      $.pattern_character_class_source,
+      $._pattern_special_literal_left,
+    ],
+    [
+      $._word_special_prefixed_bracket_source,
+      $.pattern_collating_symbol_source,
+      $._pattern_special_literal_left,
+    ],
+    [
+      $._word_special_prefixed_bracket_source,
+      $.pattern_equivalence_class_source,
+      $._pattern_special_literal_left,
+    ],
+    [
+      $._parameter_special_prefixed_bracket_source,
+      $.pattern_character_class_source,
+      $._pattern_special_literal_left,
+    ],
+    [
+      $._parameter_special_prefixed_bracket_source,
+      $.pattern_collating_symbol_source,
+      $._pattern_special_literal_left,
+    ],
+    [
+      $._parameter_special_prefixed_bracket_source,
+      $.pattern_equivalence_class_source,
+      $._pattern_special_literal_left,
+    ],
+    [
+      $._word_special_prefixed_bracket_source,
+      $.pattern_character_class_source,
+      $.pattern_collating_symbol_source,
+      $.pattern_equivalence_class_source,
+      $._pattern_special_literal_left,
+    ],
+    [
+      $._parameter_special_prefixed_bracket_source,
+      $.pattern_character_class_source,
+      $.pattern_collating_symbol_source,
+      $.pattern_equivalence_class_source,
+      $._pattern_special_literal_left,
+    ],
+    [$._word_bracket_literal_fallback_part, $.pattern_bracket_source],
+    [$._word_bracket_literal_fallback_part, $.pattern_bracket_character_source],
+    [$._word_bracket_literal_fallback_part, $.pattern_bracket_hyphen_source],
+    [
+      $._word_bracket_literal_fallback_part,
+      $.pattern_bracket_range_operator_source,
+      $.pattern_bracket_hyphen_source,
+    ],
+    [$._word_bracket_literal_fallback_part, $._pattern_bracket_member],
+    [$._word_bracket_literal_fallback_part, $._pattern_initial_bracket_range],
+    [
+      $._word_bracket_literal_fallback_part,
+      $._pattern_bracket_member,
+      $._pattern_bracket_range_endpoint,
+    ],
+    [
+      $._parameter_pattern_bracket_member,
+      $._parameter_pattern_bracket_range_endpoint,
+    ],
+    [
+      $._parameter_bracket_literal_fallback_part,
+      $._parameter_pattern_bracket_expression,
+    ],
+    [
+      $._parameter_bracket_literal_fallback_part,
+      $._parameter_pattern_bracket_character,
+    ],
+    [
+      $._parameter_bracket_literal_fallback_part,
+      $.pattern_bracket_hyphen_source,
+    ],
+    [
+      $._parameter_bracket_literal_fallback_part,
+      $.pattern_bracket_range_operator_source,
+      $.pattern_bracket_hyphen_source,
+    ],
+    [
+      $._parameter_bracket_literal_fallback_part,
+      $._parameter_pattern_bracket_member,
+    ],
+    [
+      $._parameter_bracket_literal_fallback_part,
+      $._parameter_pattern_initial_bracket_range,
+    ],
+    [
+      $._parameter_bracket_literal_fallback_part,
+      $._parameter_pattern_bracket_member,
+      $._parameter_pattern_bracket_range_endpoint,
+    ],
+    [$.pattern_bracket_negation_source, $.pattern_bracket_character_source],
+    [
+      $._word_bracket_literal_fallback_part,
+      $.pattern_bracket_negation_source,
+      $.pattern_bracket_character_source,
+    ],
+    [$.pattern_bracket_negation_source, $._parameter_pattern_bracket_character],
+    [
+      $._parameter_bracket_literal_fallback_part,
+      $.pattern_bracket_negation_source,
+      $._parameter_pattern_bracket_character,
+    ],
+    [$.pattern_bracket_range_operator_source, $.pattern_bracket_hyphen_source],
+    [$.subshell, $._arithmetic_second_left_parenthesis],
+    [$._special_parameter_hash, $.parameter_length_operator],
+    [
+      $._arithmetic_assignment_operator,
+      $._arithmetic_logical_or_operator,
+      $._arithmetic_bitwise_or_operator,
+    ],
+    [
+      $._arithmetic_assignment_operator,
+      $._arithmetic_logical_and_operator,
+      $._arithmetic_bitwise_and_operator,
+    ],
+    [$._arithmetic_assignment_operator, $._arithmetic_shift_operator],
+    [$._arithmetic_assignment_operator, $._arithmetic_equality_operator],
+    [$._arithmetic_assignment_operator, $._arithmetic_multiplicative_operator],
+    [$._arithmetic_assignment_operator, $._arithmetic_bitwise_xor_operator],
+    [$._arithmetic_assignment_operator, $._arithmetic_additive_operator],
+    [$._arithmetic_source_operator, $._arithmetic_equality_operator],
+    [$.arithmetic_dynamic_expression],
+    [$._arithmetic_source_part, $._arithmetic_primary_expression],
+    [$._arithmetic_source_part, $.arithmetic_assignment_expression],
+    [$._arithmetic_runtime_fragment, $._arithmetic_primary_expression],
+  ],
+
+  rules: {
+    program: ($) =>
+      choice(
+        seq(
+          optional(field("leading", $.linebreak)),
+          optional($._horizontal_layout),
+          field("commands", $.complete_commands),
+          optional(field("trailing", $.linebreak)),
+          optional($._free_trailing_layout),
+        ),
+        seq(
+          optional(field("leading", $.linebreak)),
+          optional($._free_trailing_layout),
+        ),
+      ),
+
+    complete_commands: ($) =>
+      seq(
+        field("command", $.complete_command),
+        repeat(
+          seq(
+            field("separator", $.newline_list),
+            optional($._horizontal_layout),
+            field("command", $.complete_command),
+          ),
+        ),
+      ),
+
+    complete_command: ($) =>
+      seq(
+        field("body", $.list),
+        optional(
+          seq(
+            optional($._separator_boundary_layout),
+            field("terminator", $.separator_op),
+          ),
+        ),
+      ),
+
+    list: ($) =>
+      seq(
+        field("and_or", $.and_or),
+        repeat(
+          seq(
+            optional($._separator_boundary_layout),
+            field("separator", $.separator_op),
+            optional($._horizontal_layout),
+            field("and_or", $.and_or),
+          ),
+        ),
+      ),
+
+    and_or: ($) =>
+      seq(
+        field("pipeline", $.pipeline),
+        repeat(
+          seq(
+            commandBoundaryLayout($),
+            field("operator", choice($.and_if, $.or_if)),
+            continuedLinebreakLayout($),
+            field(
+              "pipeline",
+              choice($.pipeline, alias($._recovering_pipeline, $.pipeline)),
+            ),
+          ),
+        ),
+      ),
+
+    pipeline: ($) =>
+      seq(
+        optional(
+          seq(field("negation", $.bang), optional($._horizontal_layout)),
+        ),
+        field("sequence", $.pipe_sequence),
+      ),
+
+    pipe_sequence: ($) =>
+      seq(
+        field("command", $.command),
+        repeat(
+          seq(
+            commandBoundaryLayout($),
+            "|",
+            continuedLinebreakLayout($),
+            field(
+              "command",
+              choice($.command, alias($._recovering_command, $.command)),
+            ),
+          ),
+        ),
+      ),
+
+    command: ($) =>
+      choice(
+        field("body", $.simple_command),
+        field("body", $.compound_command),
+        seq(
+          field("body", $.compound_command),
+          field("redirects", $.redirect_list),
+        ),
+        seq(
+          field("body", $.compound_command),
+          $._horizontal_layout,
+          field("redirects", $.redirect_list),
+        ),
+        field("body", $.function_definition),
+      ),
+
+    _recovering_pipeline: ($) =>
+      field("sequence", alias($._recovering_pipe_sequence, $.pipe_sequence)),
+
+    _recovering_pipe_sequence: ($) =>
+      field("command", alias($._recovering_command, $.command)),
+
+    _recovering_command: ($) => field("recovery", $.command_recovery),
+
+    _boundary_recovering_pipeline: ($) =>
+      field(
+        "sequence",
+        alias($._boundary_recovering_pipe_sequence, $.pipe_sequence),
+      ),
+
+    _boundary_recovering_pipe_sequence: ($) =>
+      field("command", alias($._boundary_recovering_command, $.command)),
+
+    _boundary_recovering_command: ($) =>
+      field(
+        "recovery",
+        alias($._boundary_command_recovery, $.command_recovery),
+      ),
+
+    separator_op: (_) => choice("&", ";"),
+
+    _separator_boundary_layout: ($) =>
+      prec.right(
+        1,
+        choice(
+          $._horizontal_layout,
+          seq(
+            alias($._separator_boundary_line_continuation, $.line_continuation),
+            optional($._horizontal_layout),
+          ),
+        ),
+      ),
+
+    separator: ($) =>
+      choice(
+        seq(
+          field("operator", $.separator_op),
+          optional(
+            seq(
+              optional($._horizontal_layout),
+              field("linebreak", $.linebreak),
+            ),
+          ),
+        ),
+        field("newlines", $.newline_list),
+      ),
+
+    sequential_sep: ($) =>
+      choice(
+        seq(
+          ";",
+          optional(
+            seq(
+              optional($._horizontal_layout),
+              field("linebreak", $.linebreak),
+            ),
+          ),
+        ),
+        field("newlines", $.newline_list),
+      ),
+
+    term: ($) =>
+      seq(
+        field("and_or", $.and_or),
+        repeat(
+          seq(
+            optional($._separator_boundary_layout),
+            field("separator", $.separator),
+            optional($._horizontal_layout),
+            field("and_or", $.and_or),
+          ),
+        ),
+      ),
+
+    compound_list: ($) =>
+      choice(
+        prec.dynamic(
+          50,
+          seq(
+            field("leading", $.linebreak),
+            optional($._horizontal_layout),
+            field("body", alias($._terminated_term, $.term)),
+            optional($._separator_begin),
+            optional($._separator_boundary_layout),
+            field("terminator", $.separator),
+          ),
+        ),
+        seq(
+          field("leading", $.linebreak),
+          optional($._horizontal_layout),
+          field("body", $.term),
+        ),
+        prec.dynamic(
+          50,
+          seq(
+            optional($._horizontal_layout),
+            field("body", alias($._terminated_term, $.term)),
+            optional($._separator_begin),
+            optional($._separator_boundary_layout),
+            field("terminator", $.separator),
+          ),
+        ),
+        seq(optional($._horizontal_layout), field("body", $.term)),
+        prec.dynamic(
+          10,
+          seq(
+            field("leading", $.linebreak),
+            optional($._horizontal_layout),
+            field("body", alias($._closed_term, $.term)),
+          ),
+        ),
+        prec.dynamic(
+          10,
+          seq(
+            optional($._horizontal_layout),
+            field("body", alias($._closed_term, $.term)),
+          ),
+        ),
+      ),
+
+    _reserved_compound_list: ($) =>
+      prec.dynamic(
+        20,
+        seq(
+          optional(field("leading", $.linebreak)),
+          optional($._horizontal_layout),
+          choice(
+            seq(
+              field("body", alias($._terminated_term, $.term)),
+              optional($._separator_begin),
+              optional($._separator_boundary_layout),
+              field("terminator", $.separator),
+            ),
+            prec.dynamic(300, field("body", alias($._closed_term, $.term))),
+            prec.dynamic(
+              200,
+              field("body", alias($._boundary_recovered_term, $.term)),
+            ),
+            prec.dynamic(
+              100,
+              seq(
+                field("body", alias($._recoverable_term, $.term)),
+                optional($._horizontal_layout),
+                field("terminator", prec(100, $.separator_recovery)),
+              ),
+            ),
+          ),
+        ),
+      ),
+
+    _closed_term: ($) =>
+      seq(
+        repeat(
+          seq(
+            field("and_or", $.and_or),
+            optional($._separator_boundary_layout),
+            field("separator", $.separator),
+            optional($._horizontal_layout),
+          ),
+        ),
+        field("and_or", alias($._closed_and_or, $.and_or)),
+      ),
+
+    _terminated_term: ($) =>
+      seq(
+        field("and_or", $.and_or),
+        repeat(
+          seq(
+            optional($._separator_boundary_layout),
+            field("separator", $.separator),
+            optional($._horizontal_layout),
+            field("and_or", $.and_or),
+          ),
+        ),
+      ),
+
+    _recoverable_term: ($) =>
+      seq(
+        repeat(
+          seq(
+            field("and_or", $.and_or),
+            optional($._separator_boundary_layout),
+            field("separator", $.separator),
+            optional($._horizontal_layout),
+          ),
+        ),
+        field("and_or", alias($._recoverable_and_or, $.and_or)),
+      ),
+
+    _boundary_recovered_term: ($) =>
+      seq(
+        repeat(
+          seq(
+            field("and_or", $.and_or),
+            optional($._separator_boundary_layout),
+            field("separator", $.separator),
+            optional($._horizontal_layout),
+          ),
+        ),
+        field("and_or", alias($._boundary_recovered_and_or, $.and_or)),
+      ),
+
+    _closed_and_or: ($) =>
+      seq(
+        repeat(
+          seq(
+            field("pipeline", $.pipeline),
+            commandBoundaryLayout($),
+            field("operator", choice($.and_if, $.or_if)),
+            continuedLinebreakLayout($),
+          ),
+        ),
+        field("pipeline", alias($._closed_pipeline, $.pipeline)),
+      ),
+
+    _recoverable_and_or: ($) =>
+      seq(
+        repeat(
+          seq(
+            field("pipeline", $.pipeline),
+            commandBoundaryLayout($),
+            field("operator", choice($.and_if, $.or_if)),
+            continuedLinebreakLayout($),
+          ),
+        ),
+        field("pipeline", alias($._recoverable_pipeline, $.pipeline)),
+      ),
+
+    _boundary_recovered_and_or: ($) =>
+      seq(
+        field("pipeline", $.pipeline),
+        repeat(
+          seq(
+            commandBoundaryLayout($),
+            field("operator", choice($.and_if, $.or_if)),
+            continuedLinebreakLayout($),
+            field("pipeline", $.pipeline),
+          ),
+        ),
+        commandBoundaryLayout($),
+        field("operator", choice($.and_if, $.or_if)),
+        continuedLinebreakLayout($),
+        field("pipeline", alias($._boundary_recovering_pipeline, $.pipeline)),
+      ),
+
+    _closed_pipeline: ($) =>
+      seq(
+        optional(
+          seq(field("negation", $.bang), optional($._horizontal_layout)),
+        ),
+        field("sequence", alias($._closed_pipe_sequence, $.pipe_sequence)),
+      ),
+
+    _recoverable_pipeline: ($) =>
+      seq(
+        optional(
+          seq(field("negation", $.bang), optional($._horizontal_layout)),
+        ),
+        field("sequence", alias($._recoverable_pipe_sequence, $.pipe_sequence)),
+      ),
+
+    _closed_pipe_sequence: ($) =>
+      seq(
+        repeat(
+          seq(
+            field("command", $.command),
+            commandBoundaryLayout($),
+            "|",
+            continuedLinebreakLayout($),
+          ),
+        ),
+        field("command", alias($._closed_command, $.command)),
+      ),
+
+    _recoverable_pipe_sequence: ($) =>
+      seq(
+        repeat(
+          seq(
+            field("command", $.command),
+            commandBoundaryLayout($),
+            "|",
+            continuedLinebreakLayout($),
+          ),
+        ),
+        field("command", alias($._recoverable_command, $.command)),
+      ),
+
+    _closed_command: ($) =>
+      prec.dynamic(
+        5,
+        seq(
+          choice(
+            field("body", $.compound_command),
+            field(
+              "body",
+              alias($._closed_function_definition, $.function_definition),
+            ),
+          ),
+          $._closed_command_end,
+        ),
+      ),
+
+    _recoverable_command: ($) =>
+      prec(
+        100,
+        choice(
+          field("body", $.simple_command),
+          seq(
+            field("body", $.compound_command),
+            optional($._horizontal_layout),
+            field("redirects", $.redirect_list),
+          ),
+          field("body", $.function_definition),
+        ),
+      ),
+
+    and_if: ($) => lineJoined($, "&&"),
+
+    or_if: ($) => lineJoined($, "||"),
+
+    bang: ($) => $._bang_token,
+
+    if_keyword: ($) => reservedWord($, $._if_keyword, "if"),
+
+    then_keyword: ($) => reservedWord($, $._then_keyword, "then"),
+
+    elif_keyword: ($) => reservedWord($, $._elif_keyword, "elif"),
+
+    else_keyword: ($) => reservedWord($, $._else_keyword, "else"),
+
+    fi_keyword: ($) => reservedWord($, $._fi_keyword, "fi"),
+
+    for_keyword: ($) => reservedWord($, $._for_keyword, "for"),
+
+    in_keyword: ($) => reservedWord($, $._in_keyword, "in"),
+
+    do_keyword: ($) => reservedWord($, $._do_keyword, "do"),
+
+    done_keyword: ($) => reservedWord($, $._done_keyword, "done"),
+
+    case_keyword: ($) => reservedWord($, $._case_keyword, "case"),
+
+    esac_keyword: ($) => reservedWord($, $._esac_keyword, "esac"),
+
+    while_keyword: ($) => reservedWord($, $._while_keyword, "while"),
+
+    until_keyword: ($) => reservedWord($, $._until_keyword, "until"),
+
+    function_definition: ($) =>
+      seq(
+        field("name", $.fname),
+        optional($._horizontal_layout),
+        "(",
+        optional($._horizontal_layout),
+        ")",
+        optional(field("linebreak", $.linebreak)),
+        optional($._horizontal_layout),
+        field("body", $.function_body),
+      ),
+
+    _closed_function_definition: ($) =>
+      seq(
+        field("name", $.fname),
+        optional($._horizontal_layout),
+        "(",
+        optional($._horizontal_layout),
+        ")",
+        optional(field("linebreak", $.linebreak)),
+        optional($._horizontal_layout),
+        field("body", alias($._closed_function_body, $.function_body)),
+      ),
+
+    function_body: ($) =>
+      choice(
+        field("body", $.compound_command),
+        seq(
+          field("body", $.compound_command),
+          field("redirects", $.redirect_list),
+        ),
+        seq(
+          field("body", $.compound_command),
+          $._horizontal_layout,
+          field("redirects", $.redirect_list),
+        ),
+      ),
+
+    _closed_function_body: ($) => field("body", $.compound_command),
+
+    fname: ($) => $.name,
+
+    name: ($) =>
+      seq(
+        $._name_token,
+        repeat(
+          seq(
+            lineContinuationRun($, $._name_line_continuation),
+            $._name_continue_token,
+          ),
+        ),
+      ),
+
+    compound_command: ($) =>
+      choice(
+        $.brace_group,
+        $.subshell,
+        $.for_clause,
+        $.case_clause,
+        $.if_clause,
+        $.while_clause,
+        $.until_clause,
+      ),
+
+    redirect_list: ($) => redirectList($),
+
+    brace_group: ($) =>
+      seq(
+        alias($._left_brace, "{"),
+        field("body", alias($._reserved_compound_list, $.compound_list)),
+        optional($._horizontal_layout),
+        alias($._right_brace, "}"),
+      ),
+
+    subshell: ($) =>
+      seq(
+        "(",
+        field("body", $.compound_list),
+        optional($._horizontal_layout),
+        ")",
+      ),
+
+    for_clause: ($) =>
+      seq(
+        $.for_keyword,
+        $._word_separator,
+        field("name", $.name),
+        choice($._for_direct_tail, $._for_sequential_tail, $._for_in_tail),
+      ),
+
+    _for_direct_tail: ($) =>
+      seq(reservedWordSeparator($), field("body", $.do_group)),
+
+    _for_sequential_tail: ($) =>
+      seq(
+        optional($._separator_boundary_layout),
+        field("separator", $.sequential_sep),
+        optional($._horizontal_layout),
+        field("body", $.do_group),
+      ),
+
+    _for_in_tail: ($) =>
+      seq(
+        reservedWordLinebreak($),
+        field("in", $.in),
+        optional(seq(wordlistSeparator($), field("words", $.wordlist))),
+        optional($._separator_boundary_layout),
+        field("separator", $.sequential_sep),
+        optional($._horizontal_layout),
+        field("body", $.do_group),
+      ),
+
+    in: ($) => $.in_keyword,
+
+    wordlist: ($) =>
+      seq(
+        field("word", $.word),
+        repeat(seq($._word_separator, field("word", $.word))),
+      ),
+
+    do_group: ($) =>
+      seq(
+        $.do_keyword,
+        field("body", alias($._reserved_compound_list, $.compound_list)),
+        optional($._horizontal_layout),
+        $.done_keyword,
+      ),
+
+    if_clause: ($) =>
+      seq(
+        $.if_keyword,
+        field("condition", alias($._reserved_compound_list, $.compound_list)),
+        optional($._horizontal_layout),
+        $.then_keyword,
+        field("consequence", alias($._reserved_compound_list, $.compound_list)),
+        optional($._horizontal_layout),
+        optional(
+          seq(
+            field("alternative", $.else_part),
+            optional($._horizontal_layout),
+          ),
+        ),
+        $.fi_keyword,
+      ),
+
+    else_part: ($) =>
+      prec.dynamic(
+        20,
+        choice(
+          seq(
+            $.elif_keyword,
+            field(
+              "condition",
+              alias($._reserved_compound_list, $.compound_list),
+            ),
+            optional($._horizontal_layout),
+            $.then_keyword,
+            field(
+              "consequence",
+              alias($._reserved_compound_list, $.compound_list),
+            ),
+          ),
+          seq(
+            $.elif_keyword,
+            field(
+              "condition",
+              alias($._reserved_compound_list, $.compound_list),
+            ),
+            optional($._horizontal_layout),
+            $.then_keyword,
+            field(
+              "consequence",
+              alias($._reserved_compound_list, $.compound_list),
+            ),
+            optional($._horizontal_layout),
+            field("alternative", $.else_part),
+          ),
+          seq(
+            $.else_keyword,
+            field("body", alias($._reserved_compound_list, $.compound_list)),
+          ),
+        ),
+      ),
+
+    while_clause: ($) =>
+      seq(
+        $.while_keyword,
+        field("condition", alias($._reserved_compound_list, $.compound_list)),
+        optional($._horizontal_layout),
+        field("body", $.do_group),
+      ),
+
+    until_clause: ($) =>
+      seq(
+        $.until_keyword,
+        field("condition", alias($._reserved_compound_list, $.compound_list)),
+        optional($._horizontal_layout),
+        field("body", $.do_group),
+      ),
+
+    case_clause: ($) =>
+      seq(
+        $.case_keyword,
+        $._word_separator,
+        field("word", $.word),
+        reservedWordLinebreak($),
+        field("in", $.in),
+        linebreakLayout($),
+        optional(
+          choice(
+            field("items", $.case_list),
+            seq(field("items", $.case_list_ns), optional($._horizontal_layout)),
+          ),
+        ),
+        $.esac_keyword,
+      ),
+
+    case_list_ns: ($) =>
+      choice(
+        field("item", $.case_item_ns),
+        seq(field("terminated", $.case_list), field("item", $.case_item_ns)),
+      ),
+
+    case_list: ($) => repeat1(field("item", $.case_item)),
+
+    case_item_ns: ($) =>
+      seq(
+        field("patterns", $.pattern_list),
+        patternClosingLayout($),
+        ")",
+        choice(
+          optional(seq(optional($._horizontal_layout), $.linebreak)),
+          prec.dynamic(10, field("body", $.compound_list)),
+        ),
+      ),
+
+    case_item: ($) =>
+      seq(
+        field("patterns", $.pattern_list),
+        patternClosingLayout($),
+        ")",
+        choice(
+          linebreakLayout($),
+          prec.dynamic(
+            10,
+            seq(
+              field("body", $.compound_list),
+              optional(caseItemEndLayout($)),
+              $._case_item_end,
+            ),
+          ),
+        ),
+        field("terminator", choice($.dsemi, $.semi_and)),
+        linebreakLayout($),
+      ),
+
+    pattern_list: ($) =>
+      prec.dynamic(
+        2,
+        prec.right(
+          1,
+          seq(
+            optional(seq("(", optional($._horizontal_layout))),
+            field("word", $.word),
+            repeat(
+              seq(
+                patternBoundaryLayout($),
+                "|",
+                optional($._horizontal_layout),
+                field("word", $.word),
+              ),
+            ),
+          ),
+        ),
+      ),
+
+    dsemi: ($) => prec(10, lineJoined($, ";;")),
+
+    semi_and: ($) => prec(10, lineJoined($, ";&")),
+
+    simple_command: ($) =>
+      choice(
+        seq(
+          field("prefix", $.cmd_prefix),
+          optional(
+            seq(
+              $._word_separator,
+              field("word", $.cmd_word),
+              optional(field("suffix", $.cmd_suffix)),
+            ),
+          ),
+        ),
+        seq(field("name", $.cmd_name), optional(field("suffix", $.cmd_suffix))),
+      ),
+
+    cmd_prefix: ($) =>
+      choice(
+        seq(
+          field("redirect", $.io_redirect),
+          repeat(
+            choice(
+              field("redirect", $.io_redirect),
+              seq($._word_separator, field("redirect", $.io_redirect)),
+            ),
+          ),
+        ),
+        seq(
+          choice(
+            field("assignment", $.assignment_word),
+            field("redirect", $.io_redirect),
+          ),
+          repeat(
+            choice(
+              seq($._word_separator, field("assignment", $.assignment_word)),
+              field(
+                "redirect",
+                alias($._io_redirect_without_descriptor, $.io_redirect),
+              ),
+              seq(
+                repeat1($.line_continuation),
+                field(
+                  "redirect",
+                  alias($._io_redirect_without_descriptor, $.io_redirect),
+                ),
+              ),
+              seq($._word_separator, field("redirect", $.io_redirect)),
+            ),
+          ),
+        ),
+      ),
+
+    cmd_name: ($) => choice($.word, $._invalid_reserved_command_word),
+
+    cmd_word: ($) => choice($.word, $._invalid_reserved_command_word),
+
+    _invalid_reserved_command_word: ($) =>
+      seq($._invalid_command_start, $._invalid_command_end),
+
+    _invalid_command_end: (_) => token.immediate("\0"),
+
+    cmd_suffix: ($) =>
+      repeat1(
+        choice(
+          seq($._word_separator, field("word", $.word)),
+          field(
+            "redirect",
+            alias($._io_redirect_without_descriptor, $.io_redirect),
+          ),
+          seq(
+            repeat1($.line_continuation),
+            field(
+              "redirect",
+              alias($._io_redirect_without_descriptor, $.io_redirect),
+            ),
+          ),
+          seq($._word_separator, field("redirect", $.io_redirect)),
+        ),
+      ),
+
+    io_redirect: ($) =>
+      choice(
+        prec.dynamic(
+          2,
+          seq(
+            choice(
+              field("number", $.io_number),
+              field("location", $.io_location),
+            ),
+            repeat($.line_continuation),
+            field("body", choice($.io_file, $.io_here)),
+          ),
+        ),
+        field("body", choice($.io_file, $.io_here)),
+      ),
+
+    _io_redirect_without_descriptor: ($) =>
+      field("body", choice($.io_file, $.io_here)),
+
+    io_number: ($) =>
+      seq(
+        $._io_number_token,
+        /[0-9]+/,
+        repeat(
+          seq(
+            lineContinuationRun($, $._digit_line_continuation),
+            token.immediate(/[0-9]+/),
+          ),
+        ),
+      ),
+
+    io_location: ($) =>
+      prec.right(
+        1,
+        seq(
+          alias($._io_location_start, "{"),
+          repeat($.line_continuation),
+          choice($._io_location_content, $._io_location_right_brace),
+          repeat(
+            choice(
+              $._io_location_content,
+              $._io_location_right_brace,
+              $.line_continuation,
+            ),
+          ),
+          "}",
+        ),
+      ),
+
+    _io_location_content: (_) => token.immediate(IO_LOCATION_CONTENT_PATTERN),
+
+    _io_location_right_brace: (_) => token.immediate(prec(-1, "}")),
+
+    io_file: ($) =>
+      seq(
+        field(
+          "operator",
+          choice(
+            "<",
+            ">",
+            $.lessand,
+            $.greatand,
+            $.dgreat,
+            $.lessgreat,
+            $.clobber,
+          ),
+        ),
+        optional($._horizontal_layout),
+        optional($.comment),
+        field("filename", $.filename),
+      ),
+
+    filename: ($) =>
+      choice(
+        field("word", $.word),
+        field("recovery", $.redirection_target_recovery),
+      ),
+
+    lessand: ($) =>
+      lineJoined($, "<&", $._continued_redirection_operator_start),
+
+    greatand: ($) =>
+      lineJoined($, ">&", $._continued_redirection_operator_start),
+
+    dgreat: ($) => lineJoined($, ">>", $._continued_redirection_operator_start),
+
+    lessgreat: ($) =>
+      lineJoined($, "<>", $._continued_redirection_operator_start),
+
+    clobber: ($) =>
+      lineJoined($, ">|", $._continued_redirection_operator_start),
+
+    io_here: ($) =>
+      seq(
+        field("operator", choice($.dless, $.dlessdash)),
+        optional($._horizontal_layout),
+        field("end", $.here_end),
+      ),
+
+    dless: ($) =>
+      seq(
+        lineJoined($, "<<", $._continued_redirection_operator_start),
+        $._dless_commit,
+      ),
+
+    dlessdash: ($) =>
+      seq(
+        lineJoined($, "<<-", $._continued_dlessdash_start),
+        $._dlessdash_commit,
+      ),
+
+    here_end: ($) =>
+      choice(
+        seq(
+          $._here_end_begin,
+          field("word", alias($._here_end_source_word, $.word)),
+          $._here_end_commit,
+        ),
+        field("recovery", $.missing_here_end),
+      ),
+
+    _here_end_source_word: ($) =>
+      prec(
+        1,
+        seq(
+          $._word_part,
+          repeat(choice(alias($._literal_hash, $.literal), $._word_part)),
+          optional($._continued_source_word),
+          optional(
+            choice(
+              lineContinuationRun($, $._source_line_continuation),
+              repeat1($.line_continuation),
+            ),
+          ),
+        ),
+      ),
+
+    missing_here_end: ($) =>
+      choice($._missing_here_document_delimiter, $._missing_here_end_sentinel),
+
+    _missing_here_end_sentinel: (_) => token.immediate("\0"),
+
+    here_document_sequence: ($) =>
+      seq(
+        optional(
+          choice(
+            lineComment($, field("comment", $._comment_token)),
+            continuedBlankLineLayout($),
+          ),
+        ),
+        field("line_end", $.here_document_line_end),
+        repeat1(field("document", $.here_document)),
+        $._here_document_sequence_end,
+      ),
+
+    here_document: ($) =>
+      choice(
+        seq(
+          $._here_document_body_start,
+          optional(field("body", $.here_document_body)),
+          field(
+            "end",
+            choice($.here_document_end, $.here_document_end_recovery),
+          ),
+        ),
+        seq(
+          $._quoted_here_document_body_start,
+          optional(field("body", $.quoted_here_document_body)),
+          field(
+            "end",
+            choice($.here_document_end, $.here_document_end_recovery),
+          ),
+        ),
+      ),
+
+    here_document_end: ($) =>
+      choice(
+        $._quoted_here_document_end,
+        seq(
+          $._here_document_end_begin,
+          repeat1(choice($._here_document_end_text, $.line_continuation)),
+          $._here_document_end_commit,
+        ),
+      ),
+
+    _here_document_end_text: (_) => token.immediate(/[^\\\n]+/),
+
+    here_document_body: ($) =>
+      repeat1(
+        choice(
+          $.here_document_text,
+          alias($._here_document_dollar, $.here_document_text),
+          alias($._here_document_backslash, $.here_document_text),
+          $.here_document_escape,
+          $.line_continuation,
+          $.parameter_expansion,
+          $.command_substitution,
+          $.arithmetic_expansion,
+          $.backquote_substitution,
+          $._newline,
+        ),
+      ),
+
+    here_document_text: (_) => token.immediate(prec(-1, /[^$`\\\n]+/)),
+
+    _here_document_dollar: (_) => token.immediate(prec(-2, "$")),
+
+    _here_document_backslash: (_) => token.immediate(prec(-2, "\\")),
+
+    here_document_escape: (_) =>
+      token.immediate(seq("\\", choice("$", "`", "\\"))),
+
+    quoted_here_document_body: ($) =>
+      repeat1(choice($.quoted_here_document_text, $._newline)),
+
+    quoted_here_document_text: (_) => token.immediate(prec(-1, /[^\n]+/)),
+
+    assignment_word: ($) =>
+      prec.dynamic(
+        ASSIGNMENT_WORD_PRECEDENCE,
+        choice(
+          prec.right(
+            3,
+            seq(
+              field("name", $.variable_name),
+              optional(
+                lineContinuationRun(
+                  $,
+                  $._assignment_name_end_line_continuation,
+                ),
+              ),
+              "=",
+              field(
+                "value",
+                alias($._continued_assignment_value, $.assignment_value),
+              ),
+            ),
+          ),
+          seq(
+            field("name", $.variable_name),
+            optional(
+              lineContinuationRun($, $._assignment_name_end_line_continuation),
+            ),
+            "=",
+            optional(field("value", $.assignment_value)),
+          ),
+        ),
+      ),
+
+    variable_name: ($) =>
+      seq(
+        $._name_token,
+        repeat(
+          seq(
+            lineContinuationRun($, $._name_line_continuation),
+            $._name_continue_token,
+          ),
+        ),
+      ),
+
+    assignment_value: ($) =>
+      prec.right(
+        seq(
+          $._assignment_source_word,
+          optional(
+            lineContinuationRun($, $._assignment_value_end_line_continuation),
+          ),
+        ),
+      ),
+
+    _continued_assignment_value: ($) =>
+      prec.right(
+        choice(
+          seq(
+            lineContinuationRun($, $._source_line_continuation),
+            $._source_word_continuation_boundary,
+            $._assignment_source_word,
+          ),
+          repeat1($.line_continuation),
+        ),
+      ),
+
+    _assignment_source_word: ($) =>
+      prec.right(
+        choice(
+          prec.dynamic(
+            2,
+            seq(
+              $._assignment_source_start,
+              repeat($._assignment_source_continuation_part),
+              repeat1(
+                seq(
+                  lineContinuationRun($, $._source_line_continuation),
+                  $._source_word_continuation_boundary,
+                  repeat1($._assignment_source_continuation_part),
+                ),
+              ),
+            ),
+          ),
+          seq(
+            $._assignment_source_start,
+            repeat($._assignment_source_continuation_part),
+          ),
+        ),
+      ),
+
+    _assignment_source_start: ($) =>
+      choice(
+        $.tilde_expansion,
+        $._assignment_tilde_part,
+        $._assignment_word_part,
+      ),
+
+    _assignment_source_continuation_part: ($) =>
+      choice($._assignment_tilde_part, $._assignment_word_part),
+
+    _assignment_word_part: ($) =>
+      choice(
+        $._word_bracket_part,
+        alias($._literal_hash, $.literal),
+        alias($._assignment_literal, $.literal),
+        alias($._literal_tilde, $.literal),
+        alias($._literal_colon, $.literal),
+        $.pattern_star_source,
+        $.pattern_question_source,
+        $.escaped_character,
+        $.single_quoted,
+        $.double_quoted,
+        $.dollar_single_quoted,
+        $.parameter_expansion,
+        $.command_substitution,
+        $.arithmetic_expansion,
+        $.backquote_substitution,
+      ),
+
+    _assignment_literal: ($) =>
+      choice(
+        "$",
+        seq(
+          $._name_token,
+          repeat1(
+            seq(
+              lineContinuationRun($, $._name_line_continuation),
+              $._name_continue_token,
+            ),
+          ),
+        ),
+        prec.right(
+          repeat1(
+            choice(
+              $._name_token,
+              $._literal_token,
+              $._literal_right_bracket,
+              $._literal_equals,
+            ),
+          ),
+        ),
+      ),
+
+    _assignment_tilde_part: ($) =>
+      prec.dynamic(
+        3,
+        seq(
+          alias($._literal_colon, $.literal),
+          optional(lineContinuationRun($, $._source_line_continuation)),
+          $.tilde_expansion,
+        ),
+      ),
+
+    word: ($) => $._source_word,
+
+    _source_word: ($) =>
+      prec(
+        1,
+        seq(
+          choice($.tilde_expansion, $._word_part),
+          repeat(choice(alias($._literal_hash, $.literal), $._word_part)),
+          optional($._continued_source_word),
+        ),
+      ),
+
+    _continued_source_word: ($) =>
+      prec.right(
+        2,
+        seq(
+          $._source_line_continuation_run,
+          $._source_word_continuation_boundary,
+          repeat1(choice(alias($._literal_hash, $.literal), $._word_part)),
+          optional($._continued_source_word),
+        ),
+      ),
+
+    _source_line_continuation_run: ($) =>
+      lineContinuationRun($, $._source_line_continuation),
+
+    tilde_expansion: ($) =>
+      choice(
+        prec.dynamic(
+          2,
+          prec.right(
+            3,
+            seq(
+              "~",
+              optional(lineContinuationRun($, $._tilde_user_line_continuation)),
+              field("user", $.tilde_user),
+            ),
+          ),
+        ),
+        prec(2, "~"),
+      ),
+
+    tilde_user: ($) =>
+      prec.right(
+        seq(
+          $._tilde_user_token,
+          repeat(
+            seq(
+              lineContinuationRun($, $._tilde_user_line_continuation),
+              $._tilde_user_continue_token,
+            ),
+          ),
+        ),
+      ),
+
+    _word_part: ($) =>
+      choice(
+        $._word_bracket_part,
+        $.literal,
+        $.pattern_star_source,
+        $.pattern_question_source,
+        $.escaped_character,
+        $.single_quoted,
+        $.double_quoted,
+        $.dollar_single_quoted,
+        $.parameter_expansion,
+        $.command_substitution,
+        $.arithmetic_expansion,
+        $.backquote_substitution,
+      ),
+
+    literal: ($) =>
+      prec.right(
+        choice(
+          "$",
+          seq(
+            $._name_token,
+            repeat1(
+              seq(
+                lineContinuationRun($, $._name_line_continuation),
+                $._name_continue_token,
+              ),
+            ),
+          ),
+          repeat1(
+            choice(
+              $._name_token,
+              $._literal_token,
+              $._literal_right_bracket,
+              $._literal_tilde,
+              $._literal_colon,
+              $._literal_equals,
+            ),
+          ),
+        ),
+      ),
+
+    _word_bracket_part: ($) =>
+      choice(
+        $.pattern_bracket_source,
+        $._word_bracket_literal_fallback,
+        $._word_incomplete_bracket_literal,
+      ),
+
+    _word_incomplete_bracket_literal: ($) =>
+      incompleteBracketLiteral(
+        $,
+        $._word_bracket_literal_start,
+        $._word_incomplete_bracket_literal_part,
+        $._word_bracket_fallback_end,
+      ),
+
+    _word_incomplete_bracket_literal_part: ($) =>
+      incompleteBracketLiteralPart(
+        $,
+        choice(
+          $.pattern_bracket_source,
+          alias(
+            $._word_special_prefixed_bracket_source,
+            $.pattern_bracket_source,
+          ),
+        ),
+        $._word_incomplete_bracket_literal_run,
+        [
+          $._pattern_special_literal_start,
+          alias($._word_incomplete_bracket_literal_text, $.literal),
+        ],
+        bracketContinuationRun($, $._word_bracket_continuation),
+      ),
+
+    _word_special_prefixed_bracket_source: ($) =>
+      patternSpecialPrefixedExpression($, $._pattern_special_prefixed_members),
+
+    _word_incomplete_bracket_literal_text: ($) =>
+      prec.right(1, repeat1(wordIncompleteBracketLiteralAtom($))),
+
+    _word_incomplete_bracket_literal_run: ($) =>
+      prec.dynamic(
+        PATTERN_PRECEDENCE.literalFallback,
+        prec.right(
+          1,
+          seq(
+            $._pattern_bracket_left,
+            repeat(
+              choice(
+                $._pattern_bracket_left,
+                wordIncompleteBracketLiteralAtom($),
+              ),
+            ),
+          ),
+        ),
+      ),
+
+    pattern_star_source: (_) => token(prec(-1, "*")),
+
+    pattern_question_source: (_) => token(prec(-1, "?")),
+
+    _word_bracket_literal_fallback: ($) =>
+      prec.dynamic(
+        PATTERN_PRECEDENCE.literalFallback,
+        prec.right(
+          1,
+          seq(
+            alias($._literal_left_bracket, $.literal),
+            optional(alias($._pattern_initial_right_bracket, $.literal)),
+            repeat1($._word_bracket_literal_fallback_part),
+            choice(
+              $._word_bracket_fallback_end,
+              alias($._literal_right_bracket, $.literal),
+            ),
+          ),
+        ),
+      ),
+
+    _word_bracket_literal_fallback_part: ($) =>
+      prec.right(
+        incompleteBracketLiteralPart(
+          $,
+          choice(
+            $.pattern_bracket_source,
+            alias(
+              $._word_special_prefixed_bracket_source,
+              $.pattern_bracket_source,
+            ),
+          ),
+          $._word_bracket_literal_run,
+          [$._pattern_special_literal_start],
+          $.line_continuation,
+        ),
+      ),
+
+    _word_bracket_literal_run: ($) =>
+      repeat1(
+        choice(
+          $._pattern_bracket_character_token,
+          $._pattern_bracket_hyphen_token,
+          $._pattern_bracket_left,
+          $._pattern_bracket_exclamation,
+          $._pattern_character_class_colon,
+          $._pattern_collating_dot,
+          $._pattern_equivalence_equals,
+        ),
+      ),
+
+    pattern_bracket_source: ($) =>
+      patternBracketExpression($, $.pattern_bracket_members_source),
+
+    _parameter_pattern_bracket_expression: ($) =>
+      patternBracketExpression(
+        $,
+        alias(
+          $._parameter_pattern_bracket_list,
+          $.pattern_bracket_members_source,
+        ),
+      ),
+
+    pattern_bracket_negation_source: ($) =>
+      prec.dynamic(PATTERN_PRECEDENCE.negation, $._pattern_bracket_exclamation),
+
+    pattern_bracket_members_source: ($) =>
+      patternBracketList(
+        $,
+        $._pattern_bracket_member,
+        alias($._pattern_initial_bracket_range, $.pattern_bracket_range_source),
+      ),
+
+    _parameter_pattern_bracket_list: ($) =>
+      patternBracketList(
+        $,
+        $._parameter_pattern_bracket_member,
+        alias(
+          $._parameter_pattern_initial_bracket_range,
+          $.pattern_bracket_range_source,
+        ),
+      ),
+
+    _pattern_bracket_member: ($) =>
+      choice(
+        $.pattern_character_class_source,
+        $.pattern_collating_symbol_source,
+        $.pattern_equivalence_class_source,
+        $.pattern_bracket_range_source,
+        $.pattern_bracket_character_source,
+        $._pattern_operator_bracket_character,
+        $.pattern_bracket_hyphen_source,
+        $.escaped_character,
+        $.single_quoted,
+        $.double_quoted,
+        $.dollar_single_quoted,
+        $.parameter_expansion,
+        $.command_substitution,
+        $.arithmetic_expansion,
+        $.backquote_substitution,
+      ),
+
+    _parameter_pattern_bracket_member: ($) =>
+      choice(
+        $.pattern_character_class_source,
+        $.pattern_collating_symbol_source,
+        $.pattern_equivalence_class_source,
+        alias(
+          $._parameter_pattern_bracket_range,
+          $.pattern_bracket_range_source,
+        ),
+        alias(
+          $._parameter_pattern_bracket_character,
+          $.pattern_bracket_character_source,
+        ),
+        $._pattern_operator_bracket_character,
+        $.pattern_bracket_hyphen_source,
+        $.escaped_character,
+        $.single_quoted,
+        $.double_quoted,
+        $.dollar_single_quoted,
+        $.parameter_expansion,
+        $.command_substitution,
+        $.arithmetic_expansion,
+        $.backquote_substitution,
+      ),
+
+    pattern_bracket_range_source: ($) =>
+      patternBracketRange($, $._pattern_bracket_range_endpoint),
+
+    _parameter_pattern_bracket_range: ($) =>
+      patternBracketRange($, $._parameter_pattern_bracket_range_endpoint),
+
+    _pattern_initial_bracket_range: ($) =>
+      patternInitialBracketRange($, $._pattern_bracket_range_endpoint),
+
+    _parameter_pattern_initial_bracket_range: ($) =>
+      patternInitialBracketRange(
+        $,
+        $._parameter_pattern_bracket_range_endpoint,
+      ),
+
+    _pattern_bracket_range_endpoint: ($) =>
+      choice(
+        $.pattern_bracket_character_source,
+        $._pattern_operator_bracket_character,
+        $.pattern_collating_symbol_source,
+        $.pattern_bracket_hyphen_source,
+        $.escaped_character,
+        $.single_quoted,
+        $.double_quoted,
+        $.dollar_single_quoted,
+        $.parameter_expansion,
+        $.command_substitution,
+        $.arithmetic_expansion,
+        $.backquote_substitution,
+      ),
+
+    _parameter_pattern_bracket_range_endpoint: ($) =>
+      choice(
+        alias(
+          $._parameter_pattern_bracket_character,
+          $.pattern_bracket_character_source,
+        ),
+        $._pattern_operator_bracket_character,
+        $.pattern_collating_symbol_source,
+        $.pattern_bracket_hyphen_source,
+        $.escaped_character,
+        $.single_quoted,
+        $.double_quoted,
+        $.dollar_single_quoted,
+        $.parameter_expansion,
+        $.command_substitution,
+        $.arithmetic_expansion,
+        $.backquote_substitution,
+      ),
+
+    pattern_bracket_character_source: ($) =>
+      choice(
+        $._pattern_bracket_character_token,
+        $._pattern_bracket_left,
+        $._pattern_bracket_exclamation,
+        $._pattern_character_class_colon,
+        $._pattern_collating_dot,
+        $._pattern_equivalence_equals,
+      ),
+
+    _parameter_pattern_bracket_character: ($) =>
+      choice(
+        $._parameter_pattern_bracket_character_token,
+        $._pattern_bracket_left,
+        $._pattern_bracket_exclamation,
+        $._pattern_character_class_colon,
+        $._pattern_collating_dot,
+        $._pattern_equivalence_equals,
+      ),
+
+    _pattern_operator_bracket_character: ($) =>
+      choice(
+        alias($.pattern_star_source, $.pattern_bracket_character_source),
+        alias($.pattern_question_source, $.pattern_bracket_character_source),
+      ),
+
+    _pattern_deferred_bracket_character: ($) =>
+      choice(
+        $._pattern_special_plain_character,
+        $._pattern_special_marker_character,
+      ),
+
+    _pattern_deferred_range_endpoint: ($) =>
+      patternDeferredBracketRangeEndpoint(
+        $,
+        $._pattern_deferred_bracket_character,
+      ),
+
+    _pattern_deferred_range: ($) =>
+      patternBracketRange($, $._pattern_deferred_range_endpoint),
+
+    _pattern_deferred_initial_range: ($) =>
+      patternSpecialInitialRange($, $._pattern_deferred_range_endpoint),
+
+    _pattern_deferred_member: ($) =>
+      patternDeferredBracketMember(
+        $,
+        $._pattern_deferred_bracket_character,
+        $._pattern_deferred_range,
+      ),
+
+    _pattern_special_prefixed_members: ($) =>
+      patternSpecialPrefixedList(
+        $,
+        $._pattern_deferred_member,
+        $._pattern_deferred_initial_range,
+      ),
+
+    _parameter_pattern_deferred_bracket_character: ($) =>
+      choice(
+        $._pattern_deferred_bracket_character,
+        $._parameter_deferred_extra_character,
+      ),
+
+    _parameter_pattern_deferred_range_endpoint: ($) =>
+      patternDeferredBracketRangeEndpoint(
+        $,
+        $._parameter_pattern_deferred_bracket_character,
+      ),
+
+    _parameter_pattern_deferred_range: ($) =>
+      patternBracketRange($, $._parameter_pattern_deferred_range_endpoint),
+
+    _parameter_pattern_deferred_initial_range: ($) =>
+      patternSpecialInitialRange(
+        $,
+        $._parameter_pattern_deferred_range_endpoint,
+      ),
+
+    _parameter_pattern_deferred_member: ($) =>
+      patternDeferredBracketMember(
+        $,
+        $._parameter_pattern_deferred_bracket_character,
+        $._parameter_pattern_deferred_range,
+      ),
+
+    _parameter_pattern_special_prefixed_members: ($) =>
+      patternSpecialPrefixedList(
+        $,
+        $._parameter_pattern_deferred_member,
+        $._parameter_pattern_deferred_initial_range,
+      ),
+
+    pattern_bracket_range_operator_source: ($) =>
+      $._pattern_bracket_hyphen_token,
+
+    pattern_bracket_hyphen_source: ($) => $._pattern_bracket_hyphen_token,
+
+    pattern_character_class_source: ($) =>
+      prec.dynamic(
+        PATTERN_PRECEDENCE.specialElement,
+        seq(
+          patternSpecialStart($, $._pattern_character_class_colon),
+          patternCharacterClassBody($),
+          patternSpecialEnd($, $._pattern_character_class_colon),
+        ),
+      ),
+
+    pattern_character_class_content_source: ($) =>
+      prec.right(
+        1,
+        repeat1(
+          choice(
+            $._pattern_special_plain_character,
+            $._pattern_special_marker_character,
+            $._pattern_bracket_hyphen_token,
+            $._pattern_special_left_bracket,
+          ),
+        ),
+      ),
+
+    _pattern_character_class_colon: (_) => token.immediate(prec(-3, ":")),
+
+    pattern_collating_symbol_source: ($) =>
+      prec.dynamic(
+        PATTERN_PRECEDENCE.specialElement,
+        seq(
+          patternSpecialStart($, $._pattern_collating_dot),
+          repeat1(
+            field(
+              "value",
+              choice(
+                $.pattern_collating_symbol_character_source,
+                $.line_continuation,
+                $.escaped_character,
+                $.single_quoted,
+                $.double_quoted,
+                $.dollar_single_quoted,
+                $.parameter_expansion,
+                $.command_substitution,
+                $.arithmetic_expansion,
+                $.backquote_substitution,
+              ),
+            ),
+          ),
+          patternSpecialEnd($, $._pattern_collating_dot),
+        ),
+      ),
+
+    pattern_collating_symbol_character_source: ($) =>
+      choice(
+        $._pattern_special_plain_character,
+        $._pattern_special_marker_character,
+        $._pattern_bracket_hyphen_token,
+        $._pattern_special_left_bracket,
+        $._literal_right_bracket,
+      ),
+
+    _pattern_collating_dot: (_) => token.immediate(prec(-2, ".")),
+
+    pattern_equivalence_class_source: ($) =>
+      prec.dynamic(
+        PATTERN_PRECEDENCE.specialElement,
+        seq(
+          patternSpecialStart($, $._pattern_equivalence_equals),
+          repeat1(
+            field(
+              "value",
+              choice(
+                $.pattern_equivalence_class_character_source,
+                $.line_continuation,
+                $.escaped_character,
+                $.single_quoted,
+                $.double_quoted,
+                $.dollar_single_quoted,
+                $.parameter_expansion,
+                $.command_substitution,
+                $.arithmetic_expansion,
+                $.backquote_substitution,
+              ),
+            ),
+          ),
+          patternSpecialEnd($, $._pattern_equivalence_equals),
+        ),
+      ),
+
+    pattern_equivalence_class_character_source: ($) =>
+      choice(
+        $._pattern_special_plain_character,
+        $._pattern_special_marker_character,
+        $._pattern_bracket_hyphen_token,
+        $._pattern_special_left_bracket,
+      ),
+
+    _pattern_equivalence_equals: (_) => token.immediate(prec(-2, "=")),
+
+    escaped_character: (_) => token(seq("\\", /[^\n]/)),
+
+    single_quoted: ($) =>
+      seq(
+        "'",
+        optional($.single_quote_content),
+        choice(
+          "'",
+          alias($._here_document_boundary, $.here_document_end_recovery),
+        ),
+      ),
+
+    single_quote_content: ($) =>
+      repeat1(choice(token.immediate(/[^'\n]+/), $._newline)),
+
+    double_quoted: ($) =>
+      seq(
+        '"',
+        repeat(
+          choice(
+            $.double_quote_text,
+            $.double_quote_escape,
+            $.line_continuation,
+            alias($._newline, $.double_quote_text),
+            alias($._double_quoted_parameter_expansion, $.parameter_expansion),
+            $.command_substitution,
+            $.arithmetic_expansion,
+            $.backquote_substitution,
+          ),
+        ),
+        choice(
+          '"',
+          alias($._here_document_boundary, $.here_document_end_recovery),
+        ),
+      ),
+
+    double_quote_text: (_) =>
+      choice(
+        "$",
+        prec.right(
+          repeat1(choice(token.immediate(prec(-1, /[^"$`\\\n]+/)), "\\")),
+        ),
+      ),
+
+    double_quote_escape: (_) =>
+      token.immediate(seq("\\", choice("$", "`", '"', "\\"))),
+
+    dollar_single_quoted: ($) =>
+      prec(
+        2,
+        seq(
+          lineJoined($, "$'", $._continued_dollar_construct_start),
+          repeat(
+            choice(
+              $.dollar_single_quote_text,
+              $.dollar_single_quote_escape,
+              alias($._newline, $.dollar_single_quote_text),
+            ),
+          ),
+          choice(
+            "'",
+            alias($._here_document_boundary, $.here_document_end_recovery),
+          ),
+        ),
+      ),
+
+    dollar_single_quote_text: (_) => token.immediate(prec(-1, /[^'\\\n]+/)),
+
+    dollar_single_quote_escape: (_) =>
+      token.immediate(
+        seq(
+          "\\",
+          choice(
+            seq("x", /[0-9A-Fa-f]+/),
+            /[0-7]{1,3}/,
+            seq("c", choice(seq("\\", "\\"), /[^\\\n]/)),
+            /[^\n]/,
+            "\n",
+          ),
+        ),
+      ),
+
+    parameter_expansion: ($) =>
+      parameterExpansion($, $._braced_parameter_expansion),
+
+    _double_quoted_parameter_expansion: ($) =>
+      parameterExpansion($, $._double_quoted_braced_parameter_expansion),
+
+    _braced_parameter_expansion: ($) =>
+      bracedParameterExpansion($, $._parameter_expansion_tail),
+
+    _double_quoted_braced_parameter_expansion: ($) =>
+      bracedParameterExpansion($, $._double_quoted_parameter_expansion_tail),
+
+    _parameter_expansion_tail: ($) =>
+      parameterExpansionTail($, $.parameter_word),
+
+    _double_quoted_parameter_expansion_tail: ($) =>
+      parameterExpansionTail(
+        $,
+        alias($._double_quoted_parameter_word, $.parameter_word),
+      ),
+
+    _unbraced_parameter: ($) =>
+      choice(
+        $.variable_name,
+        alias($._unbraced_positional_parameter, $.positional_parameter),
+        $.special_parameter,
+      ),
+
+    _braced_parameter: ($) =>
+      choice(
+        $.variable_name,
+        $.positional_parameter,
+        $.parameter_number,
+        alias($._special_parameter_except_hash, $.special_parameter),
+      ),
+
+    _length_parameter: ($) =>
+      choice(
+        $._braced_parameter,
+        alias($._special_parameter_hash, $.special_parameter),
+      ),
+
+    _special_parameter_hash: (_) => "#",
+
+    _special_parameter_except_hash: (_) => /[0*@?$!-]/,
+
+    special_parameter: ($) =>
+      choice($._special_parameter_except_hash, $._special_parameter_hash),
+
+    _unbraced_positional_parameter: (_) => /[1-9]/,
+
+    positional_parameter: ($) =>
+      seq($._braced_positional_parameter_start, $._braced_numeric_parameter),
+
+    parameter_number: ($) =>
+      seq($._braced_parameter_number_start, $._braced_numeric_parameter),
+
+    _braced_numeric_parameter: ($) =>
+      seq(
+        /[0-9]+/,
+        repeat(
+          seq(
+            lineContinuationRun($, $._digit_line_continuation),
+            token.immediate(/[0-9]+/),
+          ),
+        ),
+      ),
+
+    parameter_length_operator: (_) => "#",
+
+    parameter_value_operator: ($) =>
+      choice(
+        lineJoined($, ":-"),
+        lineJoined($, ":="),
+        lineJoined($, ":?"),
+        lineJoined($, ":+"),
+        "-",
+        "=",
+        "?",
+        "+",
+      ),
+
+    parameter_pattern_operator: ($) =>
+      prec(
+        2,
+        choice(
+          lineJoined($, "%%", $._continued_parameter_pattern_operator_start),
+          lineJoined($, "##", $._continued_parameter_pattern_operator_start),
+          "%",
+          "#",
+        ),
+      ),
+
+    parameter_word: ($) =>
+      choice(
+        repeat1($.line_continuation),
+        seq(
+          repeat($.line_continuation),
+          choice($.tilde_expansion, $._parameter_word_part),
+          repeat(choice($.line_continuation, $._parameter_word_part)),
+        ),
+      ),
+
+    _parameter_word_part: ($) => $._parameter_pattern_part,
+
+    _double_quoted_parameter_word: ($) =>
+      repeat1($._double_quoted_parameter_word_part),
+
+    _double_quoted_parameter_word_part: ($) =>
+      choice(
+        alias($._double_quoted_parameter_text, $.double_quote_text),
+        alias($._double_quoted_parameter_escape, $.double_quote_escape),
+        $.line_continuation,
+        alias($._newline, $.double_quote_text),
+        alias($._double_quoted_parameter_expansion, $.parameter_expansion),
+        $.command_substitution,
+        $.arithmetic_expansion,
+        $.backquote_substitution,
+      ),
+
+    parameter_pattern: ($) =>
+      prec.right(
+        1,
+        seq(
+          choice($.tilde_expansion, $._parameter_pattern_part),
+          repeat(choice($.line_continuation, $._parameter_pattern_part)),
+        ),
+      ),
+
+    _parameter_pattern_part: ($) =>
+      choice(
+        $._parameter_pattern_bracket_part,
+        alias($._parameter_pattern_literal, $.literal),
+        alias($._literal_tilde, $.literal),
+        $.pattern_star_source,
+        $.pattern_question_source,
+        $.escaped_character,
+        $.single_quoted,
+        $.double_quoted,
+        $.dollar_single_quoted,
+        $.parameter_expansion,
+        $.command_substitution,
+        $.arithmetic_expansion,
+        $.backquote_substitution,
+      ),
+
+    _parameter_pattern_bracket_part: ($) =>
+      choice(
+        prec(
+          PATTERN_PRECEDENCE.specialElement,
+          alias(
+            $._parameter_pattern_bracket_expression,
+            $.pattern_bracket_source,
+          ),
+        ),
+        $._parameter_bracket_literal_fallback,
+        $._parameter_incomplete_bracket_literal,
+      ),
+
+    _parameter_incomplete_bracket_literal: ($) =>
+      incompleteBracketLiteral(
+        $,
+        $._parameter_bracket_literal_start,
+        $._parameter_incomplete_bracket_literal_part,
+        $._parameter_bracket_fallback_end,
+      ),
+
+    _parameter_incomplete_bracket_literal_part: ($) =>
+      incompleteBracketLiteralPart(
+        $,
+        choice(
+          alias(
+            $._parameter_pattern_bracket_expression,
+            $.pattern_bracket_source,
+          ),
+          alias(
+            $._parameter_special_prefixed_bracket_source,
+            $.pattern_bracket_source,
+          ),
+        ),
+        $._parameter_incomplete_bracket_literal_run,
+        [
+          $._pattern_special_literal_start,
+          alias($._parameter_incomplete_bracket_literal_text, $.literal),
+        ],
+        bracketContinuationRun($, $._parameter_bracket_continuation),
+      ),
+
+    _parameter_special_prefixed_bracket_source: ($) =>
+      patternSpecialPrefixedExpression(
+        $,
+        $._parameter_pattern_special_prefixed_members,
+      ),
+
+    _parameter_incomplete_bracket_literal_text: ($) =>
+      prec.right(1, repeat1(parameterIncompleteBracketLiteralAtom($))),
+
+    _parameter_incomplete_bracket_literal_run: ($) =>
+      prec.dynamic(
+        PATTERN_PRECEDENCE.literalFallback,
+        prec.right(
+          1,
+          seq(
+            $._pattern_bracket_left,
+            repeat(
+              choice(
+                $._pattern_bracket_left,
+                parameterIncompleteBracketLiteralAtom($),
+              ),
+            ),
+          ),
+        ),
+      ),
+
+    _parameter_bracket_literal_fallback: ($) =>
+      prec.dynamic(
+        PATTERN_PRECEDENCE.literalFallback,
+        prec.right(
+          1,
+          seq(
+            alias($._literal_left_bracket, $.literal),
+            optional(alias($._pattern_initial_right_bracket, $.literal)),
+            repeat1($._parameter_bracket_literal_fallback_part),
+            choice(
+              $._parameter_bracket_fallback_end,
+              alias($._literal_right_bracket, $.literal),
+            ),
+          ),
+        ),
+      ),
+
+    _parameter_bracket_literal_fallback_part: ($) =>
+      prec.right(
+        incompleteBracketLiteralPart(
+          $,
+          choice(
+            alias(
+              $._parameter_pattern_bracket_expression,
+              $.pattern_bracket_source,
+            ),
+            alias(
+              $._parameter_special_prefixed_bracket_source,
+              $.pattern_bracket_source,
+            ),
+          ),
+          $._parameter_bracket_literal_run,
+          [$._pattern_special_literal_start],
+          $.line_continuation,
+        ),
+      ),
+
+    _parameter_bracket_literal_run: ($) =>
+      repeat1(
+        choice(
+          $._parameter_pattern_bracket_character_token,
+          $._pattern_bracket_hyphen_token,
+          $._pattern_bracket_left,
+          $._pattern_bracket_exclamation,
+          $._pattern_character_class_colon,
+          $._pattern_collating_dot,
+          $._pattern_equivalence_equals,
+        ),
+      ),
+
+    _parameter_pattern_literal: ($) =>
+      choice(
+        "$",
+        prec.right(
+          repeat1(
+            choice(
+              $._parameter_pattern_text_token,
+              $._literal_right_bracket,
+              $._newline,
+            ),
+          ),
+        ),
+      ),
+
+    _double_quoted_parameter_text: (_) =>
+      choice("$", "\\", prec.right(token.immediate(prec(-1, /[^}"$`\\\n]+/)))),
+
+    _double_quoted_parameter_escape: (_) =>
+      token.immediate(seq("\\", choice("$", "`", '"', "\\", "}"))),
+
+    command_substitution: ($) =>
+      choice(
+        seq(
+          $._command_substitution_start,
+          optional(field("body", $.command_substitution_body)),
+          commandSubstitutionEnd($),
+        ),
+        seq(
+          $._command_substitution_start,
+          field(
+            "body",
+            alias(
+              $._continued_command_substitution_body,
+              $.command_substitution_body,
+            ),
+          ),
+          commandSubstitutionEnd($),
+        ),
+      ),
+
+    _command_substitution_start: ($) =>
+      choice(
+        lineJoined($, "$(", $._continued_dollar_construct_start),
+        seq(backquoteDollar($), repeat($.line_continuation), "("),
+      ),
+
+    command_substitution_body: ($) => $._substitution_body,
+
+    _continued_command_substitution_body: ($) =>
+      continuedParenthesizedCommandBody($),
+
+    backquote_substitution: ($) =>
+      seq(
+        backquoteDelimiter($._backquote_start, $._backquote_start_prefix),
+        optional(field("body", $.backquote_substitution_body)),
+        choice(
+          substitutionDelimiter(
+            $,
+            $._backquote_end_line_continuation,
+            backquoteDelimiter($._backquote_end, $._backquote_end_prefix),
+          ),
+          $.backquote_end_recovery,
+        ),
+      ),
+
+    backquote_substitution_body: ($) => $._substitution_body,
+
+    _substitution_body: ($) => commandSequenceBody($),
+
+    _arithmetic_expansion_start: ($) =>
+      seq($._command_substitution_start, $._arithmetic_second_left_parenthesis),
+
+    arithmetic_expansion: ($) =>
+      prec.dynamic(
+        ARITHMETIC_AMBIGUITY_PRECEDENCE,
+        seq(
+          $._arithmetic_expansion_start,
+          optional($._arithmetic_layout),
+          choice(
+            seq(
+              field(
+                "expression",
+                choice(
+                  prec.dynamic(2, $._arithmetic_assignment_expression),
+                  $.arithmetic_dynamic_expression,
+                ),
+              ),
+              arithmeticClosingLayout($),
+              arithmeticExpansionEnd($),
+            ),
+            alias($._here_document_boundary, $.here_document_end_recovery),
+          ),
+        ),
+      ),
+
+    arithmetic_dynamic_expression: ($) =>
+      prec.dynamic(
+        -1,
+        seq(
+          repeat(
+            seq(
+              $._arithmetic_source_part,
+              optional($._arithmetic_source_layout),
+            ),
+          ),
+          field("runtime_fragment", $._arithmetic_runtime_fragment),
+          repeat(
+            seq(
+              optional($._arithmetic_source_layout),
+              choice($._arithmetic_source_part, $._arithmetic_runtime_fragment),
+            ),
+          ),
+        ),
+      ),
+
+    _arithmetic_source_part: ($) =>
+      choice(
+        $.arithmetic_number,
+        $.arithmetic_variable,
+        alias($._arithmetic_source_operator, $.arithmetic_operator),
+        $.parenthesized_arithmetic_source,
+      ),
+
+    _arithmetic_runtime_fragment: ($) =>
+      choice(
+        alias($._double_quoted_parameter_expansion, $.parameter_expansion),
+        $.command_substitution,
+        $.arithmetic_expansion,
+        $.backquote_substitution,
+        $.parenthesized_arithmetic_dynamic_source,
+      ),
+
+    _arithmetic_source_operator: ($) =>
+      choice(
+        $._arithmetic_assignment_operator,
+        $._arithmetic_logical_or_operator,
+        $._arithmetic_logical_and_operator,
+        $._arithmetic_bitwise_or_operator,
+        $._arithmetic_bitwise_xor_operator,
+        $._arithmetic_bitwise_and_operator,
+        $._arithmetic_equality_operator,
+        $._arithmetic_relational_operator,
+        $._arithmetic_shift_operator,
+        $._arithmetic_additive_operator,
+        $._arithmetic_multiplicative_operator,
+        "!",
+        "~",
+        "?",
+        ":",
+      ),
+
+    parenthesized_arithmetic_source: ($) =>
+      seq(
+        "(",
+        optional($._arithmetic_layout),
+        repeat(
+          seq($._arithmetic_source_part, optional($._arithmetic_source_layout)),
+        ),
+        ")",
+      ),
+
+    parenthesized_arithmetic_dynamic_source: ($) =>
+      seq(
+        "(",
+        optional($._arithmetic_layout),
+        field("expression", $.arithmetic_dynamic_expression),
+        arithmeticClosingLayout($),
+        ")",
+      ),
+
+    _arithmetic_second_left_parenthesis: ($) =>
+      choice("(", seq($._second_left_parenthesis_layout, "(")),
+
+    _second_left_parenthesis_layout: ($) =>
+      lineContinuationRun(
+        $,
+        $._second_left_parenthesis_start_line_continuation,
+      ),
+
+    _arithmetic_second_right_parenthesis: ($) =>
+      choice(")", seq(repeat1($.line_continuation), token.immediate(")"))),
+
+    _arithmetic_assignment_expression: ($) =>
+      choice(
+        $.arithmetic_assignment_expression,
+        $._arithmetic_conditional_expression,
+      ),
+
+    arithmetic_assignment_expression: ($) =>
+      prec.right(
+        seq(
+          field("left", $.arithmetic_variable),
+          $._arithmetic_assignment_operator_segment,
+          arithmeticOperandLayout($),
+          field(
+            "right",
+            choice(
+              $.arithmetic_assignment_expression,
+              $._arithmetic_conditional_expression,
+            ),
+          ),
+        ),
+      ),
+
+    _arithmetic_conditional_expression: ($) =>
+      prec.right(
+        choice(
+          $.arithmetic_conditional_expression,
+          $._arithmetic_logical_or_expression,
+        ),
+      ),
+
+    arithmetic_conditional_expression: ($) =>
+      prec.right(
+        seq(
+          field("condition", $._arithmetic_logical_or_expression),
+          $._arithmetic_question_operator_segment,
+          arithmeticOperandLayout($),
+          field("consequence", $._arithmetic_assignment_expression),
+          $._arithmetic_colon_operator_segment,
+          arithmeticOperandLayout($),
+          field("alternative", $._arithmetic_conditional_expression),
+        ),
+      ),
+
+    _arithmetic_logical_or_expression: ($) =>
+      choice(
+        alias(
+          $._arithmetic_logical_or_binary_expression,
+          $.arithmetic_binary_expression,
+        ),
+        $._arithmetic_logical_and_expression,
+      ),
+
+    _arithmetic_logical_or_binary_expression: ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $._arithmetic_logical_or_expression,
+        $._arithmetic_logical_and_expression,
+        $._arithmetic_logical_or_operator_segment,
+      ),
+
+    _arithmetic_logical_and_expression: ($) =>
+      choice(
+        alias(
+          $._arithmetic_logical_and_binary_expression,
+          $.arithmetic_binary_expression,
+        ),
+        $._arithmetic_bitwise_or_expression,
+      ),
+
+    _arithmetic_logical_and_binary_expression: ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $._arithmetic_logical_and_expression,
+        $._arithmetic_bitwise_or_expression,
+        $._arithmetic_logical_and_operator_segment,
+      ),
+
+    _arithmetic_bitwise_or_expression: ($) =>
+      choice(
+        alias(
+          $._arithmetic_bitwise_or_binary_expression,
+          $.arithmetic_binary_expression,
+        ),
+        $._arithmetic_bitwise_xor_expression,
+      ),
+
+    _arithmetic_bitwise_or_binary_expression: ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $._arithmetic_bitwise_or_expression,
+        $._arithmetic_bitwise_xor_expression,
+        $._arithmetic_bitwise_or_operator_segment,
+      ),
+
+    _arithmetic_bitwise_xor_expression: ($) =>
+      choice(
+        alias(
+          $._arithmetic_bitwise_xor_binary_expression,
+          $.arithmetic_binary_expression,
+        ),
+        $._arithmetic_bitwise_and_expression,
+      ),
+
+    _arithmetic_bitwise_xor_binary_expression: ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $._arithmetic_bitwise_xor_expression,
+        $._arithmetic_bitwise_and_expression,
+        $._arithmetic_bitwise_xor_operator_segment,
+      ),
+
+    _arithmetic_bitwise_and_expression: ($) =>
+      choice(
+        alias(
+          $._arithmetic_bitwise_and_binary_expression,
+          $.arithmetic_binary_expression,
+        ),
+        $._arithmetic_equality_expression,
+      ),
+
+    _arithmetic_bitwise_and_binary_expression: ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $._arithmetic_bitwise_and_expression,
+        $._arithmetic_equality_expression,
+        $._arithmetic_bitwise_and_operator_segment,
+      ),
+
+    _arithmetic_equality_expression: ($) =>
+      choice(
+        alias(
+          $._arithmetic_equality_binary_expression,
+          $.arithmetic_binary_expression,
+        ),
+        $._arithmetic_relational_expression,
+      ),
+
+    _arithmetic_equality_binary_expression: ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $._arithmetic_equality_expression,
+        $._arithmetic_relational_expression,
+        $._arithmetic_equality_operator_segment,
+      ),
+
+    _arithmetic_relational_expression: ($) =>
+      choice(
+        alias(
+          $._arithmetic_relational_binary_expression,
+          $.arithmetic_binary_expression,
+        ),
+        $._arithmetic_shift_expression,
+      ),
+
+    _arithmetic_relational_binary_expression: ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $._arithmetic_relational_expression,
+        $._arithmetic_shift_expression,
+        $._arithmetic_relational_operator_segment,
+      ),
+
+    _arithmetic_shift_expression: ($) =>
+      choice(
+        alias(
+          $._arithmetic_shift_binary_expression,
+          $.arithmetic_binary_expression,
+        ),
+        $._arithmetic_additive_expression,
+      ),
+
+    _arithmetic_shift_binary_expression: ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $._arithmetic_shift_expression,
+        $._arithmetic_additive_expression,
+        $._arithmetic_shift_operator_segment,
+      ),
+
+    _arithmetic_additive_expression: ($) =>
+      choice(
+        alias(
+          $._arithmetic_additive_binary_expression,
+          $.arithmetic_binary_expression,
+        ),
+        $._arithmetic_multiplicative_expression,
+      ),
+
+    _arithmetic_additive_binary_expression: ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $._arithmetic_additive_expression,
+        $._arithmetic_multiplicative_expression,
+        $._arithmetic_additive_operator_segment,
+      ),
+
+    _arithmetic_multiplicative_expression: ($) =>
+      choice(
+        alias(
+          $._arithmetic_multiplicative_binary_expression,
+          $.arithmetic_binary_expression,
+        ),
+        $._arithmetic_unary_expression,
+      ),
+
+    _arithmetic_multiplicative_binary_expression: ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $._arithmetic_multiplicative_expression,
+        $._arithmetic_unary_expression,
+        $._arithmetic_multiplicative_operator_segment,
+      ),
+
+    _arithmetic_unary_expression: ($) =>
+      choice($.arithmetic_unary_expression, $._arithmetic_primary_expression),
+
+    arithmetic_unary_expression: ($) =>
+      choice(
+        arithmeticUnaryExpression(
+          $,
+          "+",
+          $._arithmetic_plus_operand_boundary,
+          $._arithmetic_plus_operand_line_continuation,
+        ),
+        arithmeticUnaryExpression(
+          $,
+          "-",
+          $._arithmetic_minus_operand_boundary,
+          $._arithmetic_minus_operand_line_continuation,
+        ),
+        arithmeticUnaryExpression($, choice("!", $._bang_token, "~")),
+      ),
+
+    _arithmetic_primary_expression: ($) =>
+      choice(
+        $.arithmetic_number,
+        $.arithmetic_variable,
+        alias($._double_quoted_parameter_expansion, $.parameter_expansion),
+        $.command_substitution,
+        $.arithmetic_expansion,
+        $.backquote_substitution,
+        $.parenthesized_arithmetic,
+      ),
+
+    parenthesized_arithmetic: ($) =>
+      prec.dynamic(
+        ARITHMETIC_AMBIGUITY_PRECEDENCE,
+        seq(
+          "(",
+          optional($._arithmetic_layout),
+          field("expression", $._arithmetic_assignment_expression),
+          arithmeticClosingLayout($),
+          ")",
+        ),
+      ),
+
+    arithmetic_number: ($) =>
+      choice(
+        token(prec(2, /0[xX][0-9A-Fa-f]+/)),
+        token(/[1-9][0-9]*/),
+        token(/0[0-7]*/),
+        $._continued_decimal_arithmetic_number,
+        $._continued_octal_arithmetic_number,
+        $._continued_hexadecimal_arithmetic_number,
+      ),
+
+    _continued_decimal_arithmetic_number: ($) =>
+      prec.right(
+        seq(
+          $._continued_decimal_arithmetic_number_start,
+          token(/[1-9][0-9]*/),
+          repeat1($._continued_decimal_arithmetic_number_chunk),
+        ),
+      ),
+
+    _continued_decimal_arithmetic_number_chunk: ($) =>
+      seq(repeat1($.line_continuation), token.immediate(/[0-9]+/)),
+
+    _continued_octal_arithmetic_number: ($) =>
+      prec.right(
+        seq(
+          $._continued_octal_arithmetic_number_start,
+          token(/0[0-7]*/),
+          repeat1($._continued_octal_arithmetic_number_chunk),
+        ),
+      ),
+
+    _continued_octal_arithmetic_number_chunk: ($) =>
+      seq(repeat1($.line_continuation), token.immediate(/[0-7]+/)),
+
+    _continued_hexadecimal_arithmetic_number: ($) =>
+      prec.right(
+        seq(
+          $._continued_hexadecimal_arithmetic_number_start,
+          choice(
+            seq(
+              "0",
+              repeat1($.line_continuation),
+              token.immediate(/[xX]/),
+              choice(
+                token.immediate(/[0-9A-Fa-f]+/),
+                $._continued_hexadecimal_arithmetic_number_chunk,
+              ),
+              repeat($._continued_hexadecimal_arithmetic_number_chunk),
+            ),
+            seq(
+              token(/0[xX]/),
+              repeat1($._continued_hexadecimal_arithmetic_number_chunk),
+            ),
+            seq(
+              token(/0[xX][0-9A-Fa-f]+/),
+              repeat1($._continued_hexadecimal_arithmetic_number_chunk),
+            ),
+          ),
+        ),
+      ),
+
+    _continued_hexadecimal_arithmetic_number_chunk: ($) =>
+      seq(repeat1($.line_continuation), token.immediate(/[0-9A-Fa-f]+/)),
+
+    arithmetic_variable: ($) =>
+      prec.right(
+        2,
+        seq(
+          $._name_token,
+          repeat(
+            seq(
+              lineContinuationRun($, $._name_line_continuation),
+              $._name_continue_token,
+            ),
+          ),
+        ),
+      ),
+
+    _arithmetic_assignment_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_assignment_operator_boundary,
+        $._arithmetic_assignment_operator_line_continuation,
+        $._arithmetic_assignment_operator,
+      ),
+
+    _arithmetic_question_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_question_operator_boundary,
+        $._arithmetic_question_operator_line_continuation,
+        "?",
+      ),
+
+    _arithmetic_colon_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_colon_operator_boundary,
+        $._arithmetic_colon_operator_line_continuation,
+        ":",
+      ),
+
+    _arithmetic_logical_or_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_logical_or_operator_boundary,
+        $._arithmetic_logical_or_operator_line_continuation,
+        $._arithmetic_logical_or_operator,
+      ),
+
+    _arithmetic_logical_and_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_logical_and_operator_boundary,
+        $._arithmetic_logical_and_operator_line_continuation,
+        $._arithmetic_logical_and_operator,
+      ),
+
+    _arithmetic_bitwise_or_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_bitwise_or_operator_boundary,
+        $._arithmetic_bitwise_or_operator_line_continuation,
+        $._arithmetic_bitwise_or_operator,
+      ),
+
+    _arithmetic_bitwise_xor_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_bitwise_xor_operator_boundary,
+        $._arithmetic_bitwise_xor_operator_line_continuation,
+        $._arithmetic_bitwise_xor_operator,
+      ),
+
+    _arithmetic_bitwise_and_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_bitwise_and_operator_boundary,
+        $._arithmetic_bitwise_and_operator_line_continuation,
+        $._arithmetic_bitwise_and_operator,
+      ),
+
+    _arithmetic_equality_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_equality_operator_boundary,
+        $._arithmetic_equality_operator_line_continuation,
+        $._arithmetic_equality_operator,
+      ),
+
+    _arithmetic_relational_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_relational_operator_boundary,
+        $._arithmetic_relational_operator_line_continuation,
+        $._arithmetic_relational_operator,
+      ),
+
+    _arithmetic_shift_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_shift_operator_boundary,
+        $._arithmetic_shift_operator_line_continuation,
+        $._arithmetic_shift_operator,
+      ),
+
+    _arithmetic_additive_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_additive_operator_boundary,
+        $._arithmetic_additive_operator_line_continuation,
+        $._arithmetic_additive_operator,
+      ),
+
+    _arithmetic_multiplicative_operator_segment: ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $._arithmetic_multiplicative_operator_boundary,
+        $._arithmetic_multiplicative_operator_line_continuation,
+        $._arithmetic_multiplicative_operator,
+      ),
+
+    _arithmetic_assignment_operator: ($) =>
+      choice(
+        lineJoined($, "<<="),
+        lineJoined($, ">>="),
+        lineJoined($, "*="),
+        lineJoined($, "/="),
+        lineJoined($, "%="),
+        lineJoined($, "+="),
+        lineJoined($, "-="),
+        lineJoined($, "&="),
+        lineJoined($, "^="),
+        lineJoined($, "|="),
+        "=",
+      ),
+
+    _arithmetic_logical_or_operator: ($) => lineJoined($, "||"),
+
+    _arithmetic_logical_and_operator: ($) => lineJoined($, "&&"),
+
+    _arithmetic_bitwise_or_operator: (_) => "|",
+
+    _arithmetic_bitwise_xor_operator: (_) => "^",
+
+    _arithmetic_bitwise_and_operator: (_) => "&",
+
+    _arithmetic_equality_operator: ($) =>
+      choice(lineJoined($, "=="), lineJoined($, "!=")),
+
+    _arithmetic_relational_operator: ($) =>
+      prec.right(1, choice(lineJoined($, "<="), lineJoined($, ">="), "<", ">")),
+
+    _arithmetic_shift_operator: ($) =>
+      choice(lineJoined($, "<<"), lineJoined($, ">>")),
+
+    _arithmetic_additive_operator: (_) => choice("+", "-"),
+
+    _arithmetic_multiplicative_operator: (_) => choice("*", "/", "%"),
+
+    _arithmetic_closing_layout: ($) =>
+      choice(
+        seq(
+          alias($._arithmetic_closing_line_continuation, $.line_continuation),
+          optional($._arithmetic_layout),
+        ),
+        $._arithmetic_layout,
+      ),
+
+    _arithmetic_operator_boundary: ($) =>
+      choice(
+        $._arithmetic_assignment_operator_boundary,
+        $._arithmetic_question_operator_boundary,
+        $._arithmetic_colon_operator_boundary,
+        $._arithmetic_logical_or_operator_boundary,
+        $._arithmetic_logical_and_operator_boundary,
+        $._arithmetic_bitwise_or_operator_boundary,
+        $._arithmetic_bitwise_xor_operator_boundary,
+        $._arithmetic_bitwise_and_operator_boundary,
+        $._arithmetic_equality_operator_boundary,
+        $._arithmetic_relational_operator_boundary,
+        $._arithmetic_shift_operator_boundary,
+        $._arithmetic_additive_operator_boundary,
+        $._arithmetic_multiplicative_operator_boundary,
+      ),
+
+    _arithmetic_operator_line_continuation: ($) =>
+      choice(
+        alias(
+          $._arithmetic_assignment_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_question_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_colon_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_logical_or_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_logical_and_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_bitwise_or_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_bitwise_xor_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_bitwise_and_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_equality_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_relational_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_shift_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_additive_operator_line_continuation,
+          $.line_continuation,
+        ),
+        alias(
+          $._arithmetic_multiplicative_operator_line_continuation,
+          $.line_continuation,
+        ),
+      ),
+
+    _arithmetic_source_layout: ($) =>
+      choice(
+        seq($._arithmetic_operator_boundary, optional($._arithmetic_layout)),
+        seq(
+          $._arithmetic_operator_line_continuation,
+          optional($._arithmetic_layout),
+        ),
+        $._arithmetic_layout,
+      ),
+
+    _arithmetic_layout: ($) => repeat1(arithmeticLayoutUnit($)),
+
+    _literal_token: (_) => token(prec(-1, LITERAL_TOKEN_PATTERN)),
+
+    _literal_left_bracket: (_) => "[",
+
+    _literal_right_bracket: (_) => "]",
+
+    _literal_tilde: (_) => "~",
+
+    _literal_colon: (_) => ":",
+
+    _literal_equals: (_) => "=",
+
+    _parameter_pattern_text_token: (_) =>
+      token.immediate(prec(-1, PARAMETER_PATTERN_TEXT_PATTERN)),
+
+    _pattern_initial_right_bracket: (_) => token.immediate("]"),
+
+    _pattern_bracket_left: (_) => token.immediate("["),
+
+    _pattern_special_literal_start: ($) =>
+      seq(
+        $._pattern_special_literal_left,
+        repeat($.line_continuation),
+        alias(
+          choice(
+            $._pattern_character_class_colon,
+            $._pattern_collating_dot,
+            $._pattern_equivalence_equals,
+          ),
+          $.literal,
+        ),
+      ),
+
+    _pattern_special_literal_left: ($) =>
+      alias($._pattern_special_left_bracket, $.literal),
+
+    _pattern_special_plain_character: (_) =>
+      token.immediate(prec(-2, PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN)),
+
+    _parameter_deferred_extra_character: (_) =>
+      token.immediate(prec(-2, PARAMETER_DEFERRED_EXTRA_CHARACTER_PATTERN)),
+
+    _pattern_special_marker_character: ($) =>
+      choice(
+        $._pattern_character_class_colon,
+        $._pattern_collating_dot,
+        $._pattern_equivalence_equals,
+      ),
+
+    _pattern_bracket_exclamation: (_) => token.immediate("!"),
+
+    _name_token: (_) => token(prec(1, /[A-Za-z_][A-Za-z0-9_]*/)),
+
+    _name_continue_token: (_) => token.immediate(/[A-Za-z0-9_]+/),
+
+    _tilde_user_token: (_) => token.immediate(prec(3, /[A-Za-z0-9._-]+/)),
+
+    _tilde_user_continue_token: (_) =>
+      token.immediate(prec(3, /[A-Za-z0-9._-]+/)),
+
+    newline_list: ($) =>
+      repeat1(
+        choice(
+          $.here_document_sequence,
+          $._newline,
+          $._blank_line,
+          $._continued_blank_line,
+          $._comment_line,
+        ),
+      ),
+
+    linebreak: ($) => $.newline_list,
+
+    _horizontal_layout: ($) =>
+      prec.right(
+        1,
+        repeat1(
+          choice(
+            $._blank,
+            $._continued_horizontal_layout,
+            $._spaced_horizontal_layout,
+          ),
+        ),
+      ),
+
+    _continued_horizontal_layout: ($) =>
+      horizontalContinuationRun($, $.line_continuation),
+
+    _spaced_horizontal_layout: ($) =>
+      horizontalContinuationRun(
+        $,
+        alias($._spaced_line_continuation, $.line_continuation),
+      ),
+
+    _word_separator: ($) =>
+      seq(
+        repeat($.line_continuation),
+        choice(
+          $._blank,
+          alias($._spaced_line_continuation, $.line_continuation),
+        ),
+        repeat(
+          choice(
+            $._blank,
+            $.line_continuation,
+            alias($._spaced_line_continuation, $.line_continuation),
+          ),
+        ),
+      ),
+
+    _free_trailing_layout: ($) =>
+      choice(
+        $._horizontal_layout,
+        $._free_comment,
+        seq($._horizontal_layout, $._free_comment, optional($.linebreak)),
+      ),
+
+    _comment_line: ($) => seq($._free_comment, $._newline),
+
+    _continued_blank_line: ($) =>
+      prec.dynamic(
+        2,
+        seq(continuedBlankLineLayout($), $._blank_line_boundary, $._newline),
+      ),
+
+    _free_comment: ($) => lineComment($, $._comment_token),
+
+    _comment_token: ($) =>
+      choice($.comment, alias($._spaced_comment, $.comment)),
+
+    _blank: (_) => /[ \t]+/,
+  },
+});

@@ -1,0 +1,35 @@
+{
+  "name": "tree-sitter-posix-sh",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Tree-sitter grammar for POSIX sh.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/konomanoasa/tree-sitter-posix-sh.git"
+  },
+  "type": "commonjs",
+  "scripts": {
+    "check": "npm run check:generated && npm run check:scanner && npm run check:shellcheck && npm run check:biome && npm test && npm run test:wasm && npm run check:runtime",
+    "check:biome": "biome check .",
+    "check:generated": "scripts/check-generated.sh",
+    "check:runtime": "scripts/check-runtime.sh",
+    "check:scanner": "cc -std=c11 -Wall -Wextra -Werror -pedantic -Isrc -fsyntax-only src/scanner.c",
+    "check:shellcheck": "shellcheck scripts/*.sh",
+    "check:write": "biome check --write .",
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test",
+    "test:fuzz": "tree-sitter fuzz --iterations 10 --edits 5",
+    "test:wasm": "tree-sitter test --wasm"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@biomejs/biome": "2.5.5",
+    "tree-sitter-cli": "0.26.11"
+  },
+  "allowScripts": {
+    "tree-sitter-cli": true
+  }
+}

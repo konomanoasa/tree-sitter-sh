@@ -1,0 +1,2612 @@
+==================
+Adjacent source parts form one word
+==================
+
+printf pre\ value'suffix'"tail"$name${other}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (escaped_character)
+                      (literal)
+                      (single_quoted
+                        (single_quote_content))
+                      (double_quoted
+                        (double_quote_text))
+                      (parameter_expansion
+                        parameter: (variable_name))
+                      (parameter_expansion
+                        parameter: (variable_name))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Quoted and expanded command names retain word structure
+==================
+
+"printf" value
+${runner} value
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (double_quoted
+                        (double_quote_text))))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (parameter_expansion
+                        parameter: (variable_name))))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Hyphen-prefixed words retain concatenated source parts
+==================
+
+tool --long'' -x${suffix} --long
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (single_quoted))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (variable_name)))
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Single quotes preserve literal multiline source
+==================
+
+printf 'a b
+;$HOME\still'
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (single_quoted
+                        (single_quote_content))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Double quotes expose escapes and nested substitutions
+==================
+
+printf "a\$b\\c\q ${name} $(printf '%s' "$value") $((1 + ($n))) `printf x`"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (double_quote_text)
+                        (double_quote_escape)
+                        (double_quote_text)
+                        (double_quote_escape)
+                        (double_quote_text)
+                        (parameter_expansion
+                          parameter: (variable_name))
+                        (double_quote_text)
+                        (command_substitution
+                          body: (command_substitution_body
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (simple_command
+                                            name: (cmd_name
+                                              (word
+                                                (literal)))
+                                            suffix: (cmd_suffix
+                                              word: (word
+                                                (single_quoted
+                                                  (single_quote_content)))
+                                              word: (word
+                                                (double_quoted
+                                                  (parameter_expansion
+                                                    parameter: (variable_name)))))))))))))))
+                        (double_quote_text)
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_number)
+                            operator: (arithmetic_operator)
+                            right: (parenthesized_arithmetic
+                              expression: (parameter_expansion
+                                parameter: (variable_name)))))
+                        (double_quote_text)
+                        (backquote_substitution
+                          body: (backquote_substitution_body
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (simple_command
+                                            name: (cmd_name
+                                              (word
+                                                (literal)))
+                                            suffix: (cmd_suffix
+                                              word: (word
+                                                (literal))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Dollar single quotes expose escapes and multiline text
+==================
+
+printf $'a\nb\'c\\d\x41\101\cA\q\
+tail'
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (dollar_single_quoted
+                        (dollar_single_quote_text)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Unbraced and braced parameter expansions remain distinct
+==================
+
+echo $name $1 $? $- ${outer:-${inner:-$(printf value)}} cost$:
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (positional_parameter)))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (special_parameter)))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (special_parameter)))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (parameter_expansion
+                            parameter: (variable_name)
+                            operator: (parameter_value_operator)
+                            word: (parameter_word
+                              (command_substitution
+                                body: (command_substitution_body
+                                  (complete_commands
+                                    command: (complete_command
+                                      body: (list
+                                        and_or: (and_or
+                                          pipeline: (pipeline
+                                            sequence: (pipe_sequence
+                                              command: (command
+                                                body: (simple_command
+                                                  name: (cmd_name
+                                                    (word
+                                                      (literal)))
+                                                  suffix: (cmd_suffix
+                                                    word: (word
+                                                      (literal))))))))))))))))))
+                    word: (word
+                      (literal)
+                      (literal)
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Arithmetic expansion preserves balanced and nested source
+==================
+
+echo $((1 + (2 * ${factor}) + $(value) + $((3 + 4))))
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (arithmetic_expansion
+                        expression: (arithmetic_binary_expression
+                          left: (arithmetic_binary_expression
+                            left: (arithmetic_binary_expression
+                              left: (arithmetic_number)
+                              operator: (arithmetic_operator)
+                              right: (parenthesized_arithmetic
+                                expression: (arithmetic_binary_expression
+                                  left: (arithmetic_number)
+                                  operator: (arithmetic_operator)
+                                  right: (parameter_expansion
+                                    parameter: (variable_name)))))
+                            operator: (arithmetic_operator)
+                            right: (command_substitution
+                              body: (command_substitution_body
+                                (complete_commands
+                                  command: (complete_command
+                                    body: (list
+                                      and_or: (and_or
+                                        pipeline: (pipeline
+                                          sequence: (pipe_sequence
+                                            command: (command
+                                              body: (simple_command
+                                                name: (cmd_name
+                                                  (word
+                                                    (literal))))))))))))))
+                          operator: (arithmetic_operator)
+                          right: (arithmetic_expansion
+                            expression: (arithmetic_binary_expression
+                              left: (arithmetic_number)
+                              operator: (arithmetic_operator)
+                              right: (arithmetic_number)))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Arithmetic layout remains at operators and closing delimiters
+==================
+
+: "$((a==b + 2))" "$((a==b + (2)))" "$((a=b + (2)))" "$((v\
++=1))" "$((v\
+))" "$((na\
+me))"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_binary_expression
+                              left: (arithmetic_variable)
+                              operator: (arithmetic_operator)
+                              right: (arithmetic_number))))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_binary_expression
+                              left: (arithmetic_variable)
+                              operator: (arithmetic_operator)
+                              right: (parenthesized_arithmetic
+                                expression: (arithmetic_number)))))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_assignment_expression
+                            left: (arithmetic_variable)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_binary_expression
+                              left: (arithmetic_variable)
+                              operator: (arithmetic_operator)
+                              right: (parenthesized_arithmetic
+                                expression: (arithmetic_number)))))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_assignment_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_number)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_variable)
+                          (line_continuation))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_variable
+                            (line_continuation))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+A continued equality operator remains one arithmetic operator
+==================
+
+: "$((a=\
+=b))"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            operator: (arithmetic_operator
+                              (line_continuation))
+                            right: (arithmetic_variable))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+An arithmetic assignment retains layout after its operator
+==================
+
+: "$((a=\
+1))"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_assignment_expression
+                            left: (arithmetic_variable)
+                            operator: (arithmetic_operator)
+                            (line_continuation)
+                            right: (arithmetic_number))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+A non-arithmetic $(( prefix falls back to command substitution
+==================
+
+echo $(( "double" + 'single' + $'not-dollar-quote' + \$value + \q ))
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (command_substitution
+                        body: (command_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (compound_command
+                                          (subshell
+                                            body: (compound_list
+                                              body: (term
+                                                and_or: (and_or
+                                                  pipeline: (pipeline
+                                                    sequence: (pipe_sequence
+                                                      command: (command
+                                                        body: (simple_command
+                                                          name: (cmd_name
+                                                            (word
+                                                              (double_quoted
+                                                                (double_quote_text))))
+                                                          suffix: (cmd_suffix
+                                                            word: (word
+                                                              (literal))
+                                                            word: (word
+                                                              (single_quoted
+                                                                (single_quote_content)))
+                                                            word: (word
+                                                              (literal))
+                                                            word: (word
+                                                              (dollar_single_quoted
+                                                                (dollar_single_quote_text)))
+                                                            word: (word
+                                                              (literal))
+                                                            word: (word
+                                                              (escaped_character)
+                                                              (literal))
+                                                            word: (word
+                                                              (literal))
+                                                            word: (word
+                                                              (escaped_character)))))))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Backquote substitution exposes escapes and nested expansions
+==================
+
+echo `printf \`value\` ${name} $(other) \${escaped} \$(nested)`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (backquote_substitution
+                                                body: (backquote_substitution_body
+                                                  (complete_commands
+                                                    command: (complete_command
+                                                      body: (list
+                                                        and_or: (and_or
+                                                          pipeline: (pipeline
+                                                            sequence: (pipe_sequence
+                                                              command: (command
+                                                                body: (simple_command
+                                                                  name: (cmd_name
+                                                                    (word
+                                                                      (literal))))))))))))))
+                                            word: (word
+                                              (parameter_expansion
+                                                parameter: (variable_name)))
+                                            word: (word
+                                              (command_substitution
+                                                body: (command_substitution_body
+                                                  (complete_commands
+                                                    command: (complete_command
+                                                      body: (list
+                                                        and_or: (and_or
+                                                          pipeline: (pipeline
+                                                            sequence: (pipe_sequence
+                                                              command: (command
+                                                                body: (simple_command
+                                                                  name: (cmd_name
+                                                                    (word
+                                                                      (literal))))))))))))))
+                                            word: (word
+                                              (parameter_expansion
+                                                parameter: (variable_name)))
+                                            word: (word
+                                              (command_substitution
+                                                body: (command_substitution_body
+                                                  (complete_commands
+                                                    command: (complete_command
+                                                      body: (list
+                                                        and_or: (and_or
+                                                          pipeline: (pipeline
+                                                            sequence: (pipe_sequence
+                                                              command: (command
+                                                                body: (simple_command
+                                                                  name: (cmd_name
+                                                                    (word
+                                                                      (literal)))))))))))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+A backquote body owns a removed newline at its opening boundary
+==================
+
+printf `\
+command`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (line_continuation)
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+A backquote command literal owns an embedded removed newline
+==================
+
+printf `com\
+mand`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal
+                                                (line_continuation))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Substitution closers retain boundary escaped newlines
+==================
+
+echo $(printf x\
+)
+echo `printf x\
+`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (command_substitution
+                        body: (command_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (literal))))))))))))
+                        (line_continuation)))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (literal))))))))))))
+                        (line_continuation))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+An escaped nested backquote can follow a removed newline in one word
+==================
+
+echo `echo\
+\`inner\``
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)
+                                              (line_continuation)
+                                              (backquote_substitution
+                                                body: (backquote_substitution_body
+                                                  (complete_commands
+                                                    command: (complete_command
+                                                      body: (list
+                                                        and_or: (and_or
+                                                          pipeline: (pipeline
+                                                            sequence: (pipe_sequence
+                                                              command: (command
+                                                                body: (simple_command
+                                                                  name: (cmd_name
+                                                                    (word
+                                                                      (literal)))))))))))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Command substitutions contain command source recursively
+==================
+
+echo $(first "$(second $((1 + 2)))"; third)
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (command_substitution
+                        body: (command_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (double_quoted
+                                                (command_substitution
+                                                  body: (command_substitution_body
+                                                    (complete_commands
+                                                      command: (complete_command
+                                                        body: (list
+                                                          and_or: (and_or
+                                                            pipeline: (pipeline
+                                                              sequence: (pipe_sequence
+                                                                command: (command
+                                                                  body: (simple_command
+                                                                    name: (cmd_name
+                                                                      (word
+                                                                        (literal)))
+                                                                    suffix: (cmd_suffix
+                                                                      word: (word
+                                                                        (arithmetic_expansion
+                                                                          expression: (arithmetic_binary_expression
+                                                                            left: (arithmetic_number)
+                                                                            operator: (arithmetic_operator)
+                                                                            right: (arithmetic_number)))))))))))))))))))))))
+                                separator: (separator_op)
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Empty quoted and substitution forms remain source parts
+==================
+
+printf '' "" $'' ${value} $() ``
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (single_quoted))
+                    word: (word
+                      (double_quoted))
+                    word: (word
+                      (dollar_single_quoted))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)))
+                    word: (word
+                      (command_substitution))
+                    word: (word
+                      (backquote_substitution)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Unterminated double quote remains a syntax error
+:error
+==================
+
+echo "open
+
+---
+
+
+
+==================
+Unterminated dollar single quote remains a syntax error
+:error
+==================
+
+echo $'open
+
+---
+
+
+
+==================
+Unterminated parameter expansion remains a syntax error
+:error
+==================
+
+echo ${open
+
+---
+
+
+
+==================
+Unterminated arithmetic expansion remains a syntax error
+:error
+==================
+
+echo $((1 + 2)
+
+---
+
+
+
+==================
+Unterminated backquote substitution remains a syntax error
+==================
+
+echo `open
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))))))))))
+                          (linebreak
+                            (newline_list)))
+                        (backquote_end_recovery)))))))))))))
+
+==================
+Legacy backquotes preserve three nested substitutions
+==================
+
+echo `one \`two \\\`three\\\` two\` one`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (backquote_substitution
+                                                (backquote_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (backquote_substitution
+                                                                        (backquote_substitution_body
+                                                                          (complete_commands
+                                                                            (complete_command
+                                                                              (list
+                                                                                (and_or
+                                                                                  (pipeline
+                                                                                    (pipe_sequence
+                                                                                      (command
+                                                                                        (simple_command
+                                                                                          (cmd_name
+                                                                                            (word
+                                                                                              (literal))))))))))))))
+                                                                    (word
+                                                                      (literal))))))))))))))
+                                            (word
+                                              (literal)))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Every POSIX arithmetic operator category remains structured after horizontal layout
+==================
+
+: "$((a = b *= c /= d %= e += f -= g <<= h >>= i &= j ^= k |= l))"
+: "$((a ? b || c && d | e ^ f & g == h != i < j <= k > l >= m << n >> o + p - q * r / s % t : u))"
+: "$((a \
+== \
+b))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_assignment_expression
+                            (arithmetic_variable)
+                            (arithmetic_operator)
+                            (arithmetic_assignment_expression
+                              (arithmetic_variable)
+                              (arithmetic_operator)
+                              (arithmetic_assignment_expression
+                                (arithmetic_variable)
+                                (arithmetic_operator)
+                                (arithmetic_assignment_expression
+                                  (arithmetic_variable)
+                                  (arithmetic_operator)
+                                  (arithmetic_assignment_expression
+                                    (arithmetic_variable)
+                                    (arithmetic_operator)
+                                    (arithmetic_assignment_expression
+                                      (arithmetic_variable)
+                                      (arithmetic_operator)
+                                      (arithmetic_assignment_expression
+                                        (arithmetic_variable)
+                                        (arithmetic_operator)
+                                        (arithmetic_assignment_expression
+                                          (arithmetic_variable)
+                                          (arithmetic_operator)
+                                          (arithmetic_assignment_expression
+                                            (arithmetic_variable)
+                                            (arithmetic_operator)
+                                            (arithmetic_assignment_expression
+                                              (arithmetic_variable)
+                                              (arithmetic_operator)
+                                              (arithmetic_assignment_expression
+                                                (arithmetic_variable)
+                                                (arithmetic_operator)
+                                                (arithmetic_variable)))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_conditional_expression
+                            (arithmetic_variable)
+                            (arithmetic_operator)
+                            (arithmetic_binary_expression
+                              (arithmetic_variable)
+                              (arithmetic_operator)
+                              (arithmetic_binary_expression
+                                (arithmetic_variable)
+                                (arithmetic_operator)
+                                (arithmetic_binary_expression
+                                  (arithmetic_variable)
+                                  (arithmetic_operator)
+                                  (arithmetic_binary_expression
+                                    (arithmetic_variable)
+                                    (arithmetic_operator)
+                                    (arithmetic_binary_expression
+                                      (arithmetic_variable)
+                                      (arithmetic_operator)
+                                      (arithmetic_binary_expression
+                                        (arithmetic_binary_expression
+                                          (arithmetic_variable)
+                                          (arithmetic_operator)
+                                          (arithmetic_variable))
+                                        (arithmetic_operator)
+                                        (arithmetic_binary_expression
+                                          (arithmetic_binary_expression
+                                            (arithmetic_binary_expression
+                                              (arithmetic_binary_expression
+                                                (arithmetic_variable)
+                                                (arithmetic_operator)
+                                                (arithmetic_variable))
+                                              (arithmetic_operator)
+                                              (arithmetic_variable))
+                                            (arithmetic_operator)
+                                            (arithmetic_variable))
+                                          (arithmetic_operator)
+                                          (arithmetic_binary_expression
+                                            (arithmetic_binary_expression
+                                              (arithmetic_variable)
+                                              (arithmetic_operator)
+                                              (arithmetic_variable))
+                                            (arithmetic_operator)
+                                            (arithmetic_binary_expression
+                                              (arithmetic_binary_expression
+                                                (arithmetic_variable)
+                                                (arithmetic_operator)
+                                                (arithmetic_variable))
+                                              (arithmetic_operator)
+                                              (arithmetic_binary_expression
+                                                (arithmetic_binary_expression
+                                                  (arithmetic_binary_expression
+                                                    (arithmetic_variable)
+                                                    (arithmetic_operator)
+                                                    (arithmetic_variable))
+                                                  (arithmetic_operator)
+                                                  (arithmetic_variable))
+                                                (arithmetic_operator)
+                                                (arithmetic_variable)))))))))))
+                            (arithmetic_operator)
+                            (arithmetic_variable)))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_binary_expression
+                            (arithmetic_variable)
+                            (line_continuation)
+                            (arithmetic_operator)
+                            (line_continuation)
+                            (arithmetic_variable))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Removed newlines preserve dollar-led source structures
+==================
+
+printf '%s\n' x$\
+name "$\
+{value}" "$\
+(printf command)" "$\
+((1 + 1))" x$\
+'quoted'
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (single_quoted
+                        (single_quote_content)))
+                    (word
+                      (literal)
+                      (parameter_expansion
+                        (line_continuation)
+                        (variable_name)))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (line_continuation)
+                          (variable_name))))
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (line_continuation)
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))
+                                            (cmd_suffix
+                                              (word
+                                                (literal)))))))))))))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (line_continuation)
+                          (arithmetic_binary_expression
+                            (arithmetic_number)
+                            (arithmetic_operator)
+                            (arithmetic_number)))))
+                    (word
+                      (literal)
+                      (dollar_single_quoted
+                        (line_continuation)
+                        (dollar_single_quote_text))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Arithmetic expansion owns a removed newline after opening layout
+==================
+
+: "$(( \
+a+1))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (line_continuation)
+                          (arithmetic_binary_expression
+                            (arithmetic_variable)
+                            (arithmetic_operator)
+                            (arithmetic_number))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Arithmetic expansion survives repeated tight removed newlines in its opener
+==================
+
+: "$(\
+\
+\
+(a+b))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (line_continuation)
+                          (line_continuation)
+                          (line_continuation)
+                          (arithmetic_binary_expression
+                            (arithmetic_variable)
+                            (arithmetic_operator)
+                            (arithmetic_variable))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Arithmetic unary negation remains arithmetic after horizontal layout
+==================
+
+: "$((! a))" "$((!!a))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_unary_expression
+                            (arithmetic_operator)
+                            (arithmetic_variable)))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_unary_expression
+                            (arithmetic_operator)
+                            (arithmetic_unary_expression
+                              (arithmetic_operator)
+                              (arithmetic_variable)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+A line-joined parenthesized command remains command substitution
+==================
+
+: "$(\
+(echo one; echo two))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (line_continuation)
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (subshell
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            (cmd_suffix
+                                                              (word
+                                                                (literal))))))))
+                                                  (separator
+                                                    (separator_op))
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            (cmd_suffix
+                                                              (word
+                                                                (literal))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Every arithmetic operator category accepts preceding continuations
+==================
+
+: "$((a\
+=b))" "$((a\
+?b\
+:c))" "$((a\
+||b))" "$((a\
+&&b))" "$((a\
+|b))" "$((a\
+^b))" "$((a\
+&b))" "$((a\
+==b))" "$((a\
+<b))" "$((a\
+<<b))" "$((a\
+\
++b))" "$((a\
+*b))"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_assignment_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_conditional_expression
+                            condition: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            consequence: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            alternative: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Unary arithmetic operands retain continuation boundaries
+==================
+
+: "$((!\
++a))" $((!\
+-a)) "$((+\
+\
+-a))" $((-\
++a)) "$((~\
++a))" "$((a\
+-b))" "$((+\
+ +a))" "$((-\
+ -a))"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_unary_expression
+                            operator: (arithmetic_operator)
+                            (line_continuation)
+                            operand: (arithmetic_unary_expression
+                              operator: (arithmetic_operator)
+                              operand: (arithmetic_variable))))))
+                    word: (word
+                      (arithmetic_expansion
+                        expression: (arithmetic_unary_expression
+                          operator: (arithmetic_operator)
+                          (line_continuation)
+                          operand: (arithmetic_unary_expression
+                            operator: (arithmetic_operator)
+                            operand: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_unary_expression
+                            operator: (arithmetic_operator)
+                            (line_continuation)
+                            (line_continuation)
+                            operand: (arithmetic_unary_expression
+                              operator: (arithmetic_operator)
+                              operand: (arithmetic_variable))))))
+                    word: (word
+                      (arithmetic_expansion
+                        expression: (arithmetic_unary_expression
+                          operator: (arithmetic_operator)
+                          (line_continuation)
+                          operand: (arithmetic_unary_expression
+                            operator: (arithmetic_operator)
+                            operand: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_unary_expression
+                            operator: (arithmetic_operator)
+                            (line_continuation)
+                            operand: (arithmetic_unary_expression
+                              operator: (arithmetic_operator)
+                              operand: (arithmetic_variable))))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_variable)
+                            (line_continuation)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_variable)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_unary_expression
+                            operator: (arithmetic_operator)
+                            (line_continuation)
+                            operand: (arithmetic_unary_expression
+                              operator: (arithmetic_operator)
+                              operand: (arithmetic_variable))))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_unary_expression
+                            operator: (arithmetic_operator)
+                            (line_continuation)
+                            operand: (arithmetic_unary_expression
+                              operator: (arithmetic_operator)
+                              operand: (arithmetic_variable)))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Adjacent dollar source distinguishes parameters from text fallback
+==================
+
+value=x$x
+printf x$x x$1 x$? x$* x$# x$$ x$ x$% "a$x" "a$%"
+printf "${source:-a$fallback}" "${source:-a$%}" "${source#a$x}" "${source#a$%}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)
+                        (parameter_expansion
+                          parameter: (variable_name))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (variable_name)))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (positional_parameter)))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (special_parameter)))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (special_parameter)))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (special_parameter)))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (special_parameter)))
+                    word: (word
+                      (literal)
+                      (literal))
+                    word: (word
+                      (literal)
+                      (literal)
+                      (literal))
+                    word: (word
+                      (double_quoted
+                        (double_quote_text)
+                        (parameter_expansion
+                          parameter: (variable_name))))
+                    word: (word
+                      (double_quoted
+                        (double_quote_text)
+                        (double_quote_text)
+                        (double_quote_text)))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)
+                            (parameter_expansion
+                              parameter: (variable_name))))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)
+                            (double_quote_text)
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal)
+                            (parameter_expansion
+                              parameter: (variable_name))))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal)
+                            (literal)
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+POSIX parameter expansion forms have explicit structure
+==================
+
+printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${0\
+0}" "${0\
+01}" "${#name}" "${name:-default}" "${name:=value}" "${name:?message}" "${name:+alternate}" "${name-word}" "${name=value}" "${name?message}" "${name+alternate}" "${name%pattern}" "${name%%pattern}" "${name#pattern}" "${name##pattern}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (positional_parameter))
+                        (double_quote_text)))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (special_parameter))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (special_parameter))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (special_parameter))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (positional_parameter))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (positional_parameter))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (parameter_number))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (parameter_number
+                            (line_continuation)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (positional_parameter
+                            (line_continuation)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          operator: (parameter_length_operator)
+                          parameter: (variable_name))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Braced parameters expose removed line continuations at their boundaries
+==================
+
+printf "${\
+name}" "${\
+#name}" "${name#\
+pattern}" "${name:-\
+word}" "${name#\
+}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          (line_continuation)
+                          parameter: (variable_name))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          (line_continuation)
+                          operator: (parameter_length_operator)
+                          parameter: (variable_name))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          (line_continuation)
+                          pattern: (parameter_pattern
+                            (literal)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (line_continuation)
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          (line_continuation)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Arithmetic numbers expose removed line continuations
+==================
+
+printf "$((1\
+2 + 0\
+x\
+10 + 0x\
+10 + 0x1\
+0 + 0\
+77))"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_binary_expression
+                              left: (arithmetic_binary_expression
+                                left: (arithmetic_binary_expression
+                                  left: (arithmetic_number
+                                    (line_continuation))
+                                  operator: (arithmetic_operator)
+                                  right: (arithmetic_number
+                                    (line_continuation)
+                                    (line_continuation)))
+                                operator: (arithmetic_operator)
+                                right: (arithmetic_number
+                                  (line_continuation)))
+                              operator: (arithmetic_operator)
+                              right: (arithmetic_number
+                                (line_continuation)))
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_number
+                              (line_continuation)))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Arithmetic expansion follows POSIX expression precedence
+==================
+
+printf "$((a = b += 2 ? b << 1 : ~b & 7))" "$((0x10 + 077 + (value * 3)))"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_assignment_expression
+                            left: (arithmetic_variable)
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_assignment_expression
+                              left: (arithmetic_variable)
+                              operator: (arithmetic_operator)
+                              right: (arithmetic_conditional_expression
+                                condition: (arithmetic_number)
+                                operator: (arithmetic_operator)
+                                consequence: (arithmetic_binary_expression
+                                  left: (arithmetic_variable)
+                                  operator: (arithmetic_operator)
+                                  right: (arithmetic_number))
+                                operator: (arithmetic_operator)
+                                alternative: (arithmetic_binary_expression
+                                  left: (arithmetic_unary_expression
+                                    operator: (arithmetic_operator)
+                                    operand: (arithmetic_variable))
+                                  operator: (arithmetic_operator)
+                                  right: (arithmetic_number))))))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (arithmetic_binary_expression
+                              left: (arithmetic_number)
+                              operator: (arithmetic_operator)
+                              right: (arithmetic_number))
+                            operator: (arithmetic_operator)
+                            right: (parenthesized_arithmetic
+                              expression: (arithmetic_binary_expression
+                                left: (arithmetic_variable)
+                                operator: (arithmetic_operator)
+                                right: (arithmetic_number))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Arithmetic expansion is distinguished from a subshell in command substitution
+==================
+
+printf "$((echo one; echo two))"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (command_substitution
+                          body: (command_substitution_body
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (compound_command
+                                            (subshell
+                                              body: (compound_list
+                                                body: (term
+                                                  and_or: (and_or
+                                                    pipeline: (pipeline
+                                                      sequence: (pipe_sequence
+                                                        command: (command
+                                                          body: (simple_command
+                                                            name: (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            suffix: (cmd_suffix
+                                                              word: (word
+                                                                (literal))))))))
+                                                  separator: (separator
+                                                    operator: (separator_op))
+                                                  and_or: (and_or
+                                                    pipeline: (pipeline
+                                                      sequence: (pipe_sequence
+                                                        command: (command
+                                                          body: (simple_command
+                                                            name: (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            suffix: (cmd_suffix
+                                                              word: (word
+                                                                (literal))))))))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Dynamic arithmetic source remains structured without evaluation
+==================
+
+printf "$((1 $operator 2))" "$(($left + $(value)))" "$((1 + (2 $operator 3)))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_dynamic_expression
+                            (arithmetic_number)
+                            (parameter_expansion
+                              (variable_name))
+                            (arithmetic_number)))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_binary_expression
+                            (parameter_expansion
+                              (variable_name))
+                            (arithmetic_operator)
+                            (command_substitution
+                              (command_substitution_body
+                                (complete_commands
+                                  (complete_command
+                                    (list
+                                      (and_or
+                                        (pipeline
+                                          (pipe_sequence
+                                            (command
+                                              (simple_command
+                                                (cmd_name
+                                                  (word
+                                                    (literal)))))))))))))))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_dynamic_expression
+                            (arithmetic_number)
+                            (arithmetic_operator)
+                            (parenthesized_arithmetic_dynamic_source
+                              (arithmetic_dynamic_expression
+                                (arithmetic_number)
+                                (parameter_expansion
+                                  (variable_name))
+                                (arithmetic_number))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Tilde prefixes are structured only where expansion can occur
+==================
+
+printf ~ ~user ~/path x~user
+PATH=~bin:/usr/bin:~other/bin command
+printf "${value:-~fallback}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (tilde_expansion))
+                    word: (word
+                      (tilde_expansion
+                        user: (tilde_user)))
+                    word: (word
+                      (tilde_expansion)
+                      (literal))
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (tilde_expansion
+                          user: (tilde_user))
+                        (literal)
+                        (literal)
+                        (literal)
+                        (tilde_expansion
+                          user: (tilde_user))
+                        (literal))))
+                  word: (cmd_word
+                    (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Dollar single quote control escapes retain their delimiter value
+==================
+
+printf $'\c\\'
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (dollar_single_quoted
+                        (dollar_single_quote_escape))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Runtime arithmetic fragments can precede parenthesized source
+==================
+
+printf '%s\n' "$((a ${operator} (b + c)))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (single_quoted
+                        (single_quote_content)))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_dynamic_expression
+                            (arithmetic_variable)
+                            (parameter_expansion
+                              (variable_name))
+                            (parenthesized_arithmetic_source
+                              (arithmetic_variable)
+                              (arithmetic_operator)
+                              (arithmetic_variable)))))))))))))))
+  (linebreak
+    (newline_list)))

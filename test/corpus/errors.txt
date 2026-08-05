@@ -1,0 +1,501 @@
+==================
+Unterminated single quote remains a syntax error
+:error
+==================
+
+echo 'open
+
+---
+
+==================
+Unterminated command substitution remains a syntax error
+:error
+==================
+
+echo $(open
+
+---
+
+
+
+==================
+Normal redirection requires a target
+:error
+==================
+
+command >
+
+---
+
+==================
+A comment cannot replace a redirection target
+==================
+
+command > # missing target
+next
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_file
+                        (filename
+                          (redirection_target_recovery))))))))))))
+    (newline_list
+      (comment))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+An unterminated here-document remains a syntax error
+==================
+
+command <<delimiter
+body
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (here_document_text))
+          end: (here_document_end_recovery))))))
+
+==================
+A here-document declaration requires a delimiter word
+==================
+
+command <<
+command << # comment is not a delimiter
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (missing_here_end))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (missing_here_end)))))))))))))
+  (linebreak
+    (newline_list
+      (comment))))
+
+==================
+A removed newline cannot separate a case subject from in
+:error
+==================
+
+case x\
+in x) : ;; esac
+
+---
+
+
+
+==================
+A removed newline cannot separate a for name from in
+:error
+==================
+
+for x\
+in value; do :; done
+
+---
+
+
+
+==================
+A third less-than sign is not a POSIX here-document operator
+:error
+==================
+
+command <<<word
+
+---
+
+==================
+Connecting operators require a following command
+==================
+
+first &&
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))
+          (and_if)
+          (linebreak
+            (newline_list))
+          (pipeline
+            (pipe_sequence
+              (command
+                (command_recovery)))))))))
+
+==================
+An empty subshell remains a syntax error
+:error
+==================
+
+()
+
+---
+
+
+
+==================
+An empty brace group remains a syntax error
+:error
+==================
+
+{ }
+
+---
+
+(program
+  (ERROR
+    (UNEXPECTED '\n')
+
+==================
+A longer word cannot close a brace group
+:error
+==================
+
+holder() { first; }suffix
+
+---
+
+
+
+==================
+Closing reserved words cannot be command names
+:error
+==================
+
+then
+done
+esac
+in
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Reserved words cannot be function names
+:error
+==================
+
+then() { :; }
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (function_definition
+                  (fname
+                    (name))
+                  (function_body
+                    (compound_command
+                      (brace_group
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))))))))
+                          (separator
+                            (separator_op))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Reserved clauses require command separators
+==================
+
+if first then second; fi
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator_recovery))
+                    (then_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (fi_keyword))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+For loop variables must be POSIX names
+:error
+==================
+
+for bad-name; do :; done
+
+---
+
+
+
+==================
+Nonfinal case items require clause terminators
+:error
+==================
+
+case value in
+  one) first
+  two) second
+esac
+
+---
+
+
+
+==================
+Function names must be POSIX names
+:error
+==================
+
+bad-name()
+9bad()
+
+---
+
+
+
+==================
+A function definition requires a compound command body
+:error
+==================
+
+missing()
+
+---
+
+==================
+Compound and function redirect lists require every target
+:error
+==================
+
+(:)>
+holder() { :; } 2>>
+
+---
+
+==================
+Unsupported parameter expansion forms remain syntax errors
+:error
+==================
+
+printf "${}" "${name/old/new}"
+
+---
+
+==================
+Incomplete arithmetic expressions remain syntax errors
+:error
+==================
+
+printf "$((1 + ))"
+
+---
+
+==================
+Top-level comma is not a portable POSIX arithmetic operator
+:error
+==================
+
+printf "$((1, 2))"
+
+---
+
+==================
+Empty arithmetic expressions remain syntax errors
+:error
+==================
+
+printf "$(( ))"
+
+---
