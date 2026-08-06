@@ -1,7 +1,6 @@
 #include "tree_sitter/parser.h"
 
 #include <limits.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -11,9 +10,8 @@
 #define TREE_SITTER_SERIALIZATION_BUFFER_SIZE 1024
 #endif
 
-#define SCANNER_SERIALIZATION_VERSION 10
-#define INLINE_SCANNER_STATE 0
-#define INTERNED_SCANNER_STATE 1
+#define SCANNER_SERIALIZATION_VERSION 11
+#define SCANNER_STATE_CAPACITY (TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 1)
 
 enum TokenType {
   LEFT_BRACE,
@@ -257,13 +255,6 @@ struct HereDocumentFrame {
   bool at_line_start;
 };
 
-struct ScannerStateSnapshot {
-  char *data;
-  size_t length;
-  size_t next;
-  uint64_t hash;
-};
-
 struct Scanner {
   struct HereDocument *captured_documents;
   size_t captured_count;
@@ -284,25 +275,10 @@ struct ByteBuffer {
   char *data;
   size_t length;
   size_t capacity;
+  size_t limit;
 };
 
-static atomic_flag scanner_state_snapshots_lock = ATOMIC_FLAG_INIT;
-static struct ScannerStateSnapshot *scanner_state_snapshots = NULL;
-static size_t scanner_state_snapshot_count = 0;
-static size_t scanner_state_snapshot_capacity = 0;
-static size_t *scanner_state_snapshot_buckets = NULL;
-static size_t scanner_state_snapshot_bucket_count = 0;
-
-/*
- * Tree-sitter copies at most TREE_SITTER_SERIALIZATION_BUFFER_SIZE bytes into
- * a tree and provides no callback when that tree releases an external scanner
- * state. An old tree can also be edited after the scanner instance that made
- * it has been destroyed. Exact, unbounded here-document state therefore
- * cannot be both self-contained and safely reclaimed. Oversized states are
- * content-interned for the process lifetime so old trees remain valid; the
- * hash table keeps lookup and insertion linear in the serialized state size
- * instead of in the number of earlier states.
- */
+static bool scanner_state_fits(const struct Scanner *scanner);
 
 struct ReservedWord {
   const char *text;
@@ -400,11 +376,48 @@ static bool append_captured_document(
   struct Scanner *scanner,
   struct HereDocument document
 ) {
-  return append_document(
-    &scanner->captured_documents,
-    &scanner->captured_count,
-    document
-  );
+  if (!append_document(
+        &scanner->captured_documents,
+        &scanner->captured_count,
+        document
+      )) {
+    return false;
+  }
+
+  if (!scanner_state_fits(scanner)) {
+    scanner->captured_count -= 1;
+    scanner->captured_documents[scanner->captured_count] =
+      (struct HereDocument){0};
+    return false;
+  }
+  return true;
+}
+
+static bool move_captured_document_to_pending(struct Scanner *scanner) {
+  if (scanner->captured_count == 0) {
+    return false;
+  }
+
+  struct HereDocument document =
+    scanner->captured_documents[scanner->captured_count - 1];
+  if (!append_pending_document(scanner, document)) {
+    return false;
+  }
+
+  scanner->captured_count -= 1;
+  if (!scanner_state_fits(scanner)) {
+    scanner->captured_count += 1;
+    scanner->pending_count -= 1;
+    scanner->pending_documents[scanner->pending_count] =
+      (struct HereDocument){0};
+    return false;
+  }
+
+  if (scanner->captured_count == 0) {
+    free(scanner->captured_documents);
+    scanner->captured_documents = NULL;
+  }
+  return true;
 }
 
 static bool suspend_active_documents(struct Scanner *scanner) {
@@ -420,7 +433,8 @@ static bool suspend_active_documents(struct Scanner *scanner) {
     return false;
   }
 
-  size_t next_count = scanner->suspended_frame_count + 1;
+  size_t frame_index = scanner->suspended_frame_count;
+  size_t next_count = frame_index + 1;
   struct HereDocumentFrame *resized = realloc(
     scanner->suspended_frames,
     next_count * sizeof(struct HereDocumentFrame)
@@ -429,16 +443,26 @@ static bool suspend_active_documents(struct Scanner *scanner) {
     return false;
   }
 
-  resized[scanner->suspended_frame_count] = (struct HereDocumentFrame){
+  struct HereDocumentFrame frame = {
     .documents = scanner->active_documents,
     .count = scanner->active_count,
     .at_line_start = scanner->at_here_document_line_start,
   };
+  resized[frame_index] = frame;
   scanner->suspended_frames = resized;
   scanner->suspended_frame_count = next_count;
   scanner->active_documents = NULL;
   scanner->active_count = 0;
   scanner->at_here_document_line_start = false;
+
+  if (!scanner_state_fits(scanner)) {
+    scanner->active_documents = frame.documents;
+    scanner->active_count = frame.count;
+    scanner->at_here_document_line_start = frame.at_line_start;
+    scanner->suspended_frame_count = frame_index;
+    scanner->suspended_frames[frame_index] = (struct HereDocumentFrame){0};
+    return false;
+  }
   return true;
 }
 
@@ -491,6 +515,10 @@ static void finish_active_document(struct Scanner *scanner) {
 }
 
 static bool grow_byte_buffer(struct ByteBuffer *buffer, size_t minimum) {
+  if (buffer->limit != 0 && minimum > buffer->limit) {
+    return false;
+  }
+
   size_t capacity = buffer->capacity == 0 ? 32 : buffer->capacity;
   while (capacity < minimum) {
     if (capacity > SIZE_MAX / 2) {
@@ -498,6 +526,10 @@ static bool grow_byte_buffer(struct ByteBuffer *buffer, size_t minimum) {
       break;
     }
     capacity *= 2;
+  }
+
+  if (buffer->limit != 0 && capacity > buffer->limit) {
+    capacity = buffer->limit;
   }
 
   if (capacity < minimum) {
@@ -1529,7 +1561,7 @@ static bool scan_here_document_delimiter(
 ) {
   lexer->mark_end(lexer);
   enum DelimiterQuote quote = DELIMITER_UNQUOTED;
-  struct ByteBuffer delimiter = {0};
+  struct ByteBuffer delimiter = {.limit = SCANNER_STATE_CAPACITY};
   struct ByteBuffer group_ends = {0};
   struct ByteBuffer group_kinds = {0};
   struct ByteBuffer command_starts = {0};
@@ -2234,16 +2266,8 @@ static bool scan_here_end_commit(struct Scanner *scanner, TSLexer *lexer) {
     return false;
   }
 
-  struct HereDocument document =
-    scanner->captured_documents[scanner->captured_count - 1];
-  if (!append_pending_document(scanner, document)) {
+  if (!move_captured_document_to_pending(scanner)) {
     return false;
-  }
-
-  scanner->captured_count -= 1;
-  if (scanner->captured_count == 0) {
-    free(scanner->captured_documents);
-    scanner->captured_documents = NULL;
   }
 
   lexer->mark_end(lexer);
@@ -3903,18 +3927,25 @@ static bool scan_source_word_continuation_boundary(
   return true;
 }
 
-static bool scan_backquote_start(struct Scanner *scanner, TSLexer *lexer) {
+static bool increase_backquote_depth(struct Scanner *scanner) {
   if (scanner->backquote_depth == SIZE_MAX) {
     return false;
   }
 
-  if (lexer->lookahead == '`') {
-    lexer->advance(lexer, false);
-  } else {
+  scanner->backquote_depth += 1;
+  if (!scanner_state_fits(scanner)) {
+    scanner->backquote_depth -= 1;
+    return false;
+  }
+  return true;
+}
+
+static bool scan_backquote_start(struct Scanner *scanner, TSLexer *lexer) {
+  if (lexer->lookahead != '`' || !increase_backquote_depth(scanner)) {
     return false;
   }
 
-  scanner->backquote_depth += 1;
+  lexer->advance(lexer, false);
   lexer->mark_end(lexer);
   lexer->result_symbol = BACKQUOTE_START;
   return true;
@@ -4049,17 +4080,16 @@ static bool scan_backquote_prefix(
 
   if (
     valid_symbols[BACKQUOTE_START_PREFIX] &&
-    scanner->backquote_depth <
-    SIZE_MAX &&
     backquote_escape_count(
       scanner->backquote_depth,
       true,
       &expected_escape_count
     ) &&
-    escape_count == expected_escape_count
+    escape_count ==
+    expected_escape_count &&
+    increase_backquote_depth(scanner)
   ) {
     lexer->mark_end(lexer);
-    scanner->backquote_depth += 1;
     lexer->result_symbol = BACKQUOTE_START_PREFIX;
     return true;
   }
@@ -4306,34 +4336,41 @@ void tree_sitter_posix_sh_external_scanner_destroy(void *payload) {
   free(scanner);
 }
 
-static bool
-append_bytes(struct ByteBuffer *buffer, const char *bytes, size_t length) {
-  if (length > SIZE_MAX - buffer->length) {
-    return false;
-  }
+struct StateWriter {
+  char *data;
+  size_t length;
+  size_t capacity;
+};
 
-  size_t next_length = buffer->length + length;
-  if (
-    next_length > buffer->capacity && !grow_byte_buffer(buffer, next_length)
-  ) {
+static bool write_state_bytes(
+  struct StateWriter *writer,
+  const char *bytes,
+  size_t length
+) {
+  if (length > writer->capacity - writer->length) {
     return false;
   }
 
   if (length > 0) {
-    memcpy(buffer->data + buffer->length, bytes, length);
+    memcpy(writer->data + writer->length, bytes, length);
   }
-  buffer->length = next_length;
+  writer->length += length;
   return true;
 }
 
-static bool append_size(struct ByteBuffer *buffer, size_t value) {
+static bool write_state_byte(struct StateWriter *writer, uint8_t byte) {
+  char data = (char)byte;
+  return write_state_bytes(writer, &data, 1);
+}
+
+static bool write_state_size(struct StateWriter *writer, size_t value) {
   do {
     uint8_t byte = (uint8_t)(value & 0x7f);
     value >>= 7;
     if (value != 0) {
       byte |= 0x80;
     }
-    if (!append_byte(buffer, byte)) {
+    if (!write_state_byte(writer, byte)) {
       return false;
     }
   } while (value != 0);
@@ -4342,31 +4379,31 @@ static bool append_size(struct ByteBuffer *buffer, size_t value) {
 }
 
 static bool serialize_document(
-  struct ByteBuffer *buffer,
+  struct StateWriter *writer,
   const struct HereDocument *document
 ) {
   return (
-    append_byte(
-      buffer,
+    write_state_byte(
+      writer,
       (document->quoted ? 1 : 0) | (document->strip_tabs ? 2 : 0)
     ) &&
-    append_size(buffer, document->source_end_column) &&
-    append_size(buffer, document->delimiter_length) &&
-    append_bytes(buffer, document->delimiter, document->delimiter_length)
+    write_state_size(writer, document->source_end_column) &&
+    write_state_size(writer, document->delimiter_length) &&
+    write_state_bytes(writer, document->delimiter, document->delimiter_length)
   );
 }
 
 static bool serialize_document_array(
-  struct ByteBuffer *buffer,
+  struct StateWriter *writer,
   const struct HereDocument *documents,
   size_t count
 ) {
-  if (!append_size(buffer, count)) {
+  if (!write_state_size(writer, count)) {
     return false;
   }
 
   for (size_t index = 0; index < count; index += 1) {
-    if (!serialize_document(buffer, &documents[index])) {
+    if (!serialize_document(writer, &documents[index])) {
       return false;
     }
   }
@@ -4375,33 +4412,33 @@ static bool serialize_document_array(
 
 static bool serialize_scanner_state(
   const struct Scanner *scanner,
-  struct ByteBuffer *state
+  struct StateWriter *writer
 ) {
   if (
-    !append_byte(
-      state,
+    !write_state_byte(
+      writer,
       (scanner->expecting_delimiter ? 1 : 0) |
         (scanner->delimiter_strips_tabs ? 2 : 0) |
         (scanner->sequence_end_pending ? 4 : 0) |
         (scanner->at_here_document_line_start ? 8 : 0)
     ) ||
-    !append_size(state, scanner->backquote_depth) ||
+    !write_state_size(writer, scanner->backquote_depth) ||
     !serialize_document_array(
-      state,
+      writer,
       scanner->captured_documents,
       scanner->captured_count
     ) ||
     !serialize_document_array(
-      state,
+      writer,
       scanner->pending_documents,
       scanner->pending_count
     ) ||
     !serialize_document_array(
-      state,
+      writer,
       scanner->active_documents,
       scanner->active_count
     ) ||
-    !append_size(state, scanner->suspended_frame_count)
+    !write_state_size(writer, scanner->suspended_frame_count)
   ) {
     return false;
   }
@@ -4413,8 +4450,8 @@ static bool serialize_scanner_state(
     const struct HereDocumentFrame *frame =
       &scanner->suspended_frames[frame_index];
     if (
-      !append_byte(state, frame->at_line_start ? 1 : 0) ||
-      !serialize_document_array(state, frame->documents, frame->count)
+      !write_state_byte(writer, frame->at_line_start ? 1 : 0) ||
+      !serialize_document_array(writer, frame->documents, frame->count)
     ) {
       return false;
     }
@@ -4423,177 +4460,13 @@ static bool serialize_scanner_state(
   return true;
 }
 
-static uint64_t hash_scanner_state(const char *data, size_t length) {
-  uint64_t hash = UINT64_C(14695981039346656037);
-  for (size_t index = 0; index < length; index += 1) {
-    hash ^= (uint8_t)data[index];
-    hash *= UINT64_C(1099511628211);
-  }
-  return hash;
-}
-
-static void lock_scanner_state_snapshots(void) {
-  while (
-    atomic_flag_test_and_set_explicit(
-      &scanner_state_snapshots_lock,
-      memory_order_acquire
-    )
-  ) {
-  }
-}
-
-static void unlock_scanner_state_snapshots(void) {
-  atomic_flag_clear_explicit(
-    &scanner_state_snapshots_lock,
-    memory_order_release
-  );
-}
-
-static bool resize_scanner_state_buckets(size_t bucket_count) {
-  if (bucket_count == 0 || bucket_count > SIZE_MAX / sizeof(size_t)) {
-    return false;
-  }
-
-  size_t *buckets = calloc(bucket_count, sizeof(size_t));
-  if (buckets == NULL) {
-    return false;
-  }
-
-  for (size_t index = 0; index < scanner_state_snapshot_count; index += 1) {
-    struct ScannerStateSnapshot *snapshot = &scanner_state_snapshots[index];
-    size_t bucket = (size_t)(snapshot->hash % bucket_count);
-    snapshot->next = buckets[bucket];
-    buckets[bucket] = index + 1;
-  }
-
-  free(scanner_state_snapshot_buckets);
-  scanner_state_snapshot_buckets = buckets;
-  scanner_state_snapshot_bucket_count = bucket_count;
-  return true;
-}
-
-static bool ensure_scanner_state_capacity(void) {
-  if (
-    scanner_state_snapshot_bucket_count ==
-    0 &&
-    !resize_scanner_state_buckets(16)
-  ) {
-    return false;
-  }
-
-  size_t resize_threshold = scanner_state_snapshot_bucket_count -
-    scanner_state_snapshot_bucket_count /
-    4;
-  if (scanner_state_snapshot_count >= resize_threshold) {
-    if (scanner_state_snapshot_bucket_count > SIZE_MAX / 2) {
-      return false;
-    }
-    if (!resize_scanner_state_buckets(
-          scanner_state_snapshot_bucket_count * 2
-        )) {
-      return false;
-    }
-  }
-
-  if (scanner_state_snapshot_count < scanner_state_snapshot_capacity) {
-    return true;
-  }
-
-  size_t capacity = scanner_state_snapshot_capacity == 0
-    ? 16
-    : scanner_state_snapshot_capacity * 2;
-  if (
-    capacity <
-    scanner_state_snapshot_capacity ||
-    capacity >
-    SIZE_MAX /
-    sizeof(struct ScannerStateSnapshot)
-  ) {
-    return false;
-  }
-
-  struct ScannerStateSnapshot *snapshots = realloc(
-    scanner_state_snapshots,
-    capacity * sizeof(struct ScannerStateSnapshot)
-  );
-  if (snapshots == NULL) {
-    return false;
-  }
-
-  scanner_state_snapshots = snapshots;
-  scanner_state_snapshot_capacity = capacity;
-  return true;
-}
-
-static uint64_t intern_scanner_state(struct ByteBuffer *state) {
-  uint64_t hash = hash_scanner_state(state->data, state->length);
-  lock_scanner_state_snapshots();
-  if (scanner_state_snapshot_bucket_count > 0) {
-    size_t bucket = (size_t)(hash % scanner_state_snapshot_bucket_count);
-    size_t entry = scanner_state_snapshot_buckets[bucket];
-    while (entry != 0) {
-      struct ScannerStateSnapshot *snapshot =
-        &scanner_state_snapshots[entry - 1];
-      if (
-        snapshot->hash ==
-        hash &&
-        snapshot->length ==
-        state->length &&
-        memcmp(snapshot->data, state->data, state->length) == 0
-      ) {
-        free(state->data);
-        state->data = NULL;
-        state->length = 0;
-        state->capacity = 0;
-        unlock_scanner_state_snapshots();
-        return entry;
-      }
-      entry = snapshot->next;
-    }
-  }
-
-  if (
-    scanner_state_snapshot_count ==
-    SIZE_MAX ||
-    scanner_state_snapshot_count >=
-    UINT64_MAX ||
-    !ensure_scanner_state_capacity()
-  ) {
-    unlock_scanner_state_snapshots();
-    return 0;
-  }
-
-  size_t index = scanner_state_snapshot_count;
-  size_t bucket = (size_t)(hash % scanner_state_snapshot_bucket_count);
-  scanner_state_snapshots[index] = (struct ScannerStateSnapshot){
-    .data = state->data,
-    .length = state->length,
-    .next = scanner_state_snapshot_buckets[bucket],
-    .hash = hash,
+static bool scanner_state_fits(const struct Scanner *scanner) {
+  char data[SCANNER_STATE_CAPACITY];
+  struct StateWriter writer = {
+    .data = data,
+    .capacity = sizeof(data),
   };
-  scanner_state_snapshot_buckets[bucket] = index + 1;
-  scanner_state_snapshot_count += 1;
-
-  state->data = NULL;
-  state->length = 0;
-  state->capacity = 0;
-  unlock_scanner_state_snapshots();
-  return index + 1;
-}
-
-static bool find_scanner_state(uint64_t id, const char **data, size_t *length) {
-  lock_scanner_state_snapshots();
-  if (id == 0 || id > scanner_state_snapshot_count) {
-    unlock_scanner_state_snapshots();
-    return false;
-  }
-
-  const struct ScannerStateSnapshot *snapshot =
-    &scanner_state_snapshots[id - 1];
-  *data = snapshot->data;
-  *length = snapshot->length;
-  unlock_scanner_state_snapshots();
-  return true;
+  return serialize_scanner_state(scanner, &writer);
 }
 
 struct SerializedScannerState {
@@ -4806,32 +4679,16 @@ tree_sitter_posix_sh_external_scanner_serialize(void *payload, char *buffer) {
     return 0;
   }
 
-  struct ByteBuffer state = {0};
-  if (!serialize_scanner_state(scanner, &state)) {
-    free(state.data);
+  struct StateWriter writer = {
+    .data = buffer + 1,
+    .capacity = SCANNER_STATE_CAPACITY,
+  };
+  if (!serialize_scanner_state(scanner, &writer)) {
     return 0;
   }
 
   buffer[0] = SCANNER_SERIALIZATION_VERSION;
-  if (state.length <= TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 2) {
-    buffer[1] = INLINE_SCANNER_STATE;
-    memcpy(buffer + 2, state.data, state.length);
-    unsigned result = (unsigned)state.length + 2;
-    free(state.data);
-    return result;
-  }
-
-  uint64_t id = intern_scanner_state(&state);
-  free(state.data);
-  if (id == 0) {
-    return 0;
-  }
-
-  buffer[1] = INTERNED_SCANNER_STATE;
-  for (unsigned shift = 0; shift < 64; shift += 8) {
-    buffer[2 + (shift / 8)] = (char)(id >> shift);
-  }
-  return 10;
+  return (unsigned)writer.length + 1;
 }
 
 void tree_sitter_posix_sh_external_scanner_deserialize(
@@ -4845,29 +4702,17 @@ void tree_sitter_posix_sh_external_scanner_deserialize(
   }
 
   clear_scanner(scanner);
-  if (length < 2 || (uint8_t)buffer[0] != SCANNER_SERIALIZATION_VERSION) {
+  if (
+    length <
+    1 ||
+    length >
+    TREE_SITTER_SERIALIZATION_BUFFER_SIZE ||
+    (uint8_t)buffer[0] != SCANNER_SERIALIZATION_VERSION
+  ) {
     return;
   }
 
-  const char *state_data;
-  size_t state_length;
-  uint8_t storage = (uint8_t)buffer[1];
-  if (storage == INLINE_SCANNER_STATE) {
-    state_data = buffer + 2;
-    state_length = length - 2;
-  } else if (storage == INTERNED_SCANNER_STATE && length == 10) {
-    uint64_t id = 0;
-    for (unsigned shift = 0; shift < 64; shift += 8) {
-      id |= (uint64_t)(uint8_t)buffer[2 + (shift / 8)] << shift;
-    }
-    if (!find_scanner_state(id, &state_data, &state_length)) {
-      return;
-    }
-  } else {
-    return;
-  }
-
-  if (!deserialize_scanner_state(scanner, state_data, state_length)) {
+  if (!deserialize_scanner_state(scanner, buffer + 1, length - 1)) {
     clear_scanner(scanner);
   }
 }

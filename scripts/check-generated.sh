@@ -40,8 +40,7 @@ stale=0
 for generated_file in $generated_files; do
   if ! cmp -s \
     "$snapshot_directory/$generated_file" \
-    "$repository_directory/$generated_file"
-  then
+    "$repository_directory/$generated_file"; then
     printf '%s\n' "Generated file is stale: $generated_file" >&2
     stale=1
   fi

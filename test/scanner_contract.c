@@ -54,6 +54,49 @@ static void assert_document(
   assert(document->strip_tabs == strip_tabs);
 }
 
+static void assert_repeated_document(
+  const struct HereDocument *document,
+  char delimiter,
+  size_t delimiter_length,
+  uint32_t source_end_column
+) {
+  assert(document->delimiter_length == delimiter_length);
+  for (size_t index = 0; index < delimiter_length; index += 1) {
+    assert(document->delimiter[index] == delimiter);
+  }
+  assert(document->source_end_column == source_end_column);
+  assert(document->quoted);
+  assert(document->strip_tabs);
+}
+
+static unsigned snapshot_scanner(
+  const struct Scanner *scanner,
+  char buffer[TREE_SITTER_SERIALIZATION_BUFFER_SIZE]
+) {
+  unsigned length =
+    tree_sitter_posix_sh_external_scanner_serialize((void *)scanner, buffer);
+  assert(length > 0);
+  return length;
+}
+
+static void assert_scanner_matches_snapshot(
+  const struct Scanner *scanner,
+  const char expected[TREE_SITTER_SERIALIZATION_BUFFER_SIZE],
+  unsigned expected_length
+) {
+  char actual[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned actual_length = snapshot_scanner(scanner, actual);
+  assert(actual_length == expected_length);
+  assert(memcmp(actual, expected, expected_length) == 0);
+}
+
+static struct Scanner *make_exact_fit_scanner(void) {
+  struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
+  assert(scanner != NULL);
+  assert(append_captured_document(scanner, make_repeated_document(1013, 0)));
+  return scanner;
+}
+
 static void assert_all_valid_scan_preserves_state(void) {
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -84,7 +127,7 @@ static void assert_all_valid_scan_preserves_state(void) {
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
 
-static void assert_inline_state_round_trip(void) {
+static void assert_state_round_trip(void) {
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   struct Scanner *restored = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -125,9 +168,8 @@ static void assert_inline_state_round_trip(void) {
   char serialized[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
   unsigned length =
     tree_sitter_posix_sh_external_scanner_serialize(scanner, serialized);
-  assert(length > 2);
+  assert(length > 1);
   assert((uint8_t)serialized[0] == SCANNER_SERIALIZATION_VERSION);
-  assert((uint8_t)serialized[1] == INLINE_SCANNER_STATE);
 
   tree_sitter_posix_sh_external_scanner_deserialize(
     restored,
@@ -168,20 +210,15 @@ static void assert_inline_state_round_trip(void) {
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
 
-static void assert_oversized_state_round_trip(void) {
-  struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
+static void assert_exact_fit_state_round_trip(void) {
+  struct Scanner *scanner = make_exact_fit_scanner();
   struct Scanner *restored = tree_sitter_posix_sh_external_scanner_create();
-  assert(scanner != NULL);
   assert(restored != NULL);
 
-  assert(append_captured_document(scanner, make_repeated_document(2048, 4096)));
-
   char serialized[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
-  unsigned length =
-    tree_sitter_posix_sh_external_scanner_serialize(scanner, serialized);
-  assert(length == 10);
+  unsigned length = snapshot_scanner(scanner, serialized);
+  assert(length == TREE_SITTER_SERIALIZATION_BUFFER_SIZE);
   assert((uint8_t)serialized[0] == SCANNER_SERIALIZATION_VERSION);
-  assert((uint8_t)serialized[1] == INTERNED_SCANNER_STATE);
 
   tree_sitter_posix_sh_external_scanner_deserialize(
     restored,
@@ -190,22 +227,101 @@ static void assert_oversized_state_round_trip(void) {
   );
 
   assert(restored->captured_count == 1);
-  const struct HereDocument *document = &restored->captured_documents[0];
-  assert(document->delimiter_length == 2048);
-  assert(document->source_end_column == 4096);
-  assert(document->quoted);
-  assert(document->strip_tabs);
-  for (size_t index = 0; index < document->delimiter_length; index += 1) {
-    assert(document->delimiter[index] == 'D');
-  }
+  assert_repeated_document(&restored->captured_documents[0], 'D', 1013, 0);
+  assert_scanner_matches_snapshot(restored, serialized, length);
 
   tree_sitter_posix_sh_external_scanner_destroy(restored);
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
 
+static void assert_delimiter_capture_rejects_oversized_state(void) {
+  struct Scanner *scanner = make_exact_fit_scanner();
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(scanner, before);
+  assert(before_length == TREE_SITTER_SERIALIZATION_BUFFER_SIZE);
+
+  struct HereDocument rejected = make_document("x", 0, false, false);
+  assert(!append_captured_document(scanner, rejected));
+  assert_scanner_matches_snapshot(scanner, before, before_length);
+
+  clear_document(&rejected);
+  tree_sitter_posix_sh_external_scanner_destroy(scanner);
+}
+
+static void assert_captured_to_pending_rejects_oversized_state(void) {
+  struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  assert(append_document(
+    &scanner->captured_documents,
+    &scanner->captured_count,
+    make_document("x", 0, false, false)
+  ));
+  for (size_t index = 0; index < 127; index += 1) {
+    assert(append_document(
+      &scanner->pending_documents,
+      &scanner->pending_count,
+      make_document("x", 0, false, false)
+    ));
+  }
+  assert(append_document(
+    &scanner->active_documents,
+    &scanner->active_count,
+    make_repeated_document(501, 0)
+  ));
+
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(scanner, before);
+  assert(before_length == TREE_SITTER_SERIALIZATION_BUFFER_SIZE);
+
+  assert(!move_captured_document_to_pending(scanner));
+  assert_scanner_matches_snapshot(scanner, before, before_length);
+
+  tree_sitter_posix_sh_external_scanner_destroy(scanner);
+}
+
+static void assert_active_suspend_rejects_oversized_state(void) {
+  struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  scanner->at_here_document_line_start = true;
+  assert(append_document(
+    &scanner->active_documents,
+    &scanner->active_count,
+    make_repeated_document(1013, 0)
+  ));
+
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(scanner, before);
+  assert(before_length == TREE_SITTER_SERIALIZATION_BUFFER_SIZE);
+
+  assert(!suspend_active_documents(scanner));
+  assert_scanner_matches_snapshot(scanner, before, before_length);
+
+  tree_sitter_posix_sh_external_scanner_destroy(scanner);
+}
+
+static void assert_backquote_growth_rejects_oversized_state(void) {
+  struct Scanner *scanner = make_exact_fit_scanner();
+  scanner->backquote_depth = 127;
+
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(scanner, before);
+  assert(before_length == TREE_SITTER_SERIALIZATION_BUFFER_SIZE);
+
+  assert(!increase_backquote_depth(scanner));
+  assert_scanner_matches_snapshot(scanner, before, before_length);
+
+  tree_sitter_posix_sh_external_scanner_destroy(scanner);
+}
+
 int main(void) {
   assert_all_valid_scan_preserves_state();
-  assert_inline_state_round_trip();
-  assert_oversized_state_round_trip();
+  assert_state_round_trip();
+  assert_exact_fit_state_round_trip();
+  assert_delimiter_capture_rejects_oversized_state();
+  assert_captured_to_pending_rejects_oversized_state();
+  assert_active_suspend_rejects_oversized_state();
+  assert_backquote_growth_rejects_oversized_state();
   return 0;
 }

@@ -64,8 +64,7 @@ assert_valid() {
     --quiet \
     --timeout 10000000 \
     "$source_file" \
-    >"$output_file" 2>&1
-  then
+    >"$output_file" 2>&1; then
     sed -n '1,200p' "$output_file" >&2
     fail "Expected valid parse: $source_file"
   fi
@@ -77,8 +76,7 @@ assert_valid_with_output() {
   if ! parse_current \
     --timeout 10000000 \
     "$source_file" \
-    >"$output_file" 2>/dev/null
-  then
+    >"$output_file" 2>/dev/null; then
     fail "Expected valid parse: $source_file"
   fi
 }
@@ -90,8 +88,7 @@ assert_cst_valid_with_output() {
     --cst \
     --timeout 10000000 \
     "$source_file" \
-    >"$output_file" 2>/dev/null
-  then
+    >"$output_file" 2>/dev/null; then
     fail "Expected valid CST parse: $source_file"
   fi
 }
@@ -100,9 +97,8 @@ assert_cst_range() {
   expected_range=$1
   expected_item=$2
   file=$3
-  if ! grep -F -- "$expected_range" "$file" | \
-    grep -Fq -- "$expected_item"
-  then
+  if ! grep -F -- "$expected_range" "$file" |
+    grep -Fq -- "$expected_item"; then
     printf '%s\n' \
       "Expected CST item $expected_item at $expected_range" >&2
     sed -n '1,200p' "$file" >&2
@@ -118,7 +114,19 @@ assert_invalid_with_output() {
   fi
 }
 
-assert_incremental_equals_fresh() {
+normalize_parse_cst() {
+  input_file=$1
+  output_file=$2
+  awk '
+    /^[^[:space:](].*[[:space:]]Parse:[[:space:]]/ { next }
+    /^[[:space:]]*Edit:[[:space:]]/ { next }
+    { print }
+  ' "$input_file" >"$output_file"
+}
+
+assert_incremental_equals_fresh_status() {
+  expected_status=$1
+  shift
   initial_file=$1
   final_file=$2
   test_name=$3
@@ -127,26 +135,56 @@ assert_incremental_equals_fresh() {
   initial_output="$runtime_directory/$test_name.initial"
   incremental_output="$runtime_directory/$test_name.incremental"
   fresh_output="$runtime_directory/$test_name.fresh"
+  incremental_cst="$incremental_output.cst"
+  fresh_cst="$fresh_output.cst"
+  initial_cst="$initial_output.cst"
 
-  parse_current \
+  if parse_current \
     --edits "$@" \
     -- "$initial_file" \
-    >"$incremental_output" 2>/dev/null
-  parse_current \
+    >"$incremental_output" 2>/dev/null; then
+    incremental_status=valid
+  else
+    incremental_status=invalid
+  fi
+  if parse_current \
     "$final_file" \
-    >"$fresh_output" 2>/dev/null
+    >"$fresh_output" 2>/dev/null; then
+    fresh_status=valid
+  else
+    fresh_status=invalid
+  fi
   parse_current \
     "$initial_file" \
-    >"$initial_output" 2>/dev/null
+    >"$initial_output" 2>/dev/null || true
+  normalize_parse_cst "$incremental_output" "$incremental_cst"
+  normalize_parse_cst "$fresh_output" "$fresh_cst"
+  normalize_parse_cst "$initial_output" "$initial_cst"
 
-  if ! cmp -s "$incremental_output" "$fresh_output"; then
-    diff -u "$fresh_output" "$incremental_output" >&2 || true
+  if [ "$incremental_status" != "$fresh_status" ]; then
+    fail "Incremental and fresh statuses differ: $test_name"
+  fi
+
+  if [ "$fresh_status" != "$expected_status" ]; then
+    fail "Expected $expected_status incremental and fresh parses: $test_name"
+  fi
+
+  if ! cmp -s "$incremental_cst" "$fresh_cst"; then
+    diff -u "$fresh_cst" "$incremental_cst" >&2 || true
     fail "Incremental and fresh trees differ: $test_name"
   fi
 
-  if cmp -s "$initial_output" "$fresh_output"; then
+  if cmp -s "$initial_cst" "$fresh_cst"; then
     fail "Incremental regression does not change the CST: $test_name"
   fi
+}
+
+assert_incremental_equals_fresh() {
+  assert_incremental_equals_fresh_status valid "$@"
+}
+
+assert_invalid_incremental_equals_fresh() {
+  assert_incremental_equals_fresh_status invalid "$@"
 }
 
 assert_valid_incremental_equals_fresh() {
@@ -496,13 +534,19 @@ printf 'cat <<%s\nbody\n%s\nafter' \
   "$long_final_delimiter" \
   "$long_final_delimiter" \
   >"$long_final"
-assert_incremental_equals_fresh \
+assert_invalid_incremental_equals_fresh \
   "$long_initial" \
   "$long_final" \
-  "long-exact-delimiter" \
+  "oversized-delimiter-recovery" \
   "6 2048 $long_final_delimiter" \
   "2060 2048 $long_final_delimiter" \
   "4109 0 after"
+long_output="$runtime_directory/long-final.out"
+assert_invalid_with_output "$long_final" "$long_output"
+assert_contains "(ERROR [0, 4] - [0, 6]" "$long_output"
+assert_contains "word: (word [0, 6] - [0, 2054]" "$long_output"
+assert_not_contains "missing_here_end" "$long_output"
+assert_contains "(complete_command [3, 0] - [3, 5]" "$long_output"
 
 descriptor_initial="$runtime_directory/descriptor-initial.sh"
 descriptor_final="$runtime_directory/descriptor-final.sh"
@@ -1925,18 +1969,6 @@ awk 'BEGIN {
 }' >"$here_document_dollars"
 assert_valid "$here_document_dollars"
 
-long_delimiter="$runtime_directory/long-delimiter.sh"
-awk 'BEGIN {
-  printf "cat <<"
-  for (counter = 0; counter < 1048576; counter += 1) printf "D"
-  print ""
-  print "body"
-  for (counter = 0; counter < 1048576; counter += 1) printf "D"
-  print ""
-  print "after"
-}' >"$long_delimiter"
-assert_valid "$long_delimiter"
-
 many_documents="$runtime_directory/many-documents.sh"
 awk 'BEGIN {
   printf "cat"
@@ -1948,7 +1980,9 @@ awk 'BEGIN {
   }
   print "after"
 }' >"$many_documents"
-assert_valid "$many_documents"
+assert_invalid_with_output \
+  "$many_documents" \
+  "$runtime_directory/many-documents.out"
 
 deep_documents="$runtime_directory/deep-documents.sh"
 awk 'BEGIN {
@@ -1962,7 +1996,9 @@ awk 'BEGIN {
   }
   print "after"
 }' >"$deep_documents"
-assert_valid "$deep_documents"
+assert_invalid_with_output \
+  "$deep_documents" \
+  "$runtime_directory/deep-documents.out"
 
 scanner_contract="$runtime_directory/scanner-contract"
 "${CC:-cc}" \
