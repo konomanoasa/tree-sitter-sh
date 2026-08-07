@@ -21875,11 +21875,6 @@
       "_word_separator"
     ],
     [
-      "here_document_sequence",
-      "_word_separator",
-      "_free_comment"
-    ],
-    [
       "pipe_sequence"
     ],
     [
@@ -21966,9 +21961,6 @@
       "compound_list",
       "case_item_ns",
       "case_item"
-    ],
-    [
-      "else_part"
     ],
     [
       "wordlist"

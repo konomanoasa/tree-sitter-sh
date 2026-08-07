@@ -1,24 +1,17 @@
 /**
- * @file Tree-sitter grammar for POSIX sh
  * @author konomanoasa
  * @license MIT
  */
 
-/// <reference types="tree-sitter-cli/dsl" />
-// @ts-check
-
-// biome-ignore lint/complexity/useRegexLiterals: Tree-sitter's ERE parser requires the opening bracket escape.
-const LITERAL_TOKEN_PATTERN = new RegExp(
-  "[^ \\t\\n;&|<>()\\\\'\"$`*?\\[\\]~:#=]+",
+const LITERAL_TOKEN_PATTERN_SOURCE = "[^ \\t\\n;&|<>()\\\\'\"$`*?\\[\\]~:#=]+";
+const PARAMETER_PATTERN_TEXT_PATTERN_SOURCE = "[^}\\n'\"$`\\\\*?\\[\\]~]+";
+const LITERAL_TOKEN_PATTERN = RegExp(LITERAL_TOKEN_PATTERN_SOURCE);
+const PARAMETER_PATTERN_TEXT_PATTERN = RegExp(
+  PARAMETER_PATTERN_TEXT_PATTERN_SOURCE,
 );
 
-// biome-ignore lint/complexity/useRegexLiterals: Tree-sitter's ERE parser requires the opening bracket escape.
-const PARAMETER_PATTERN_TEXT_PATTERN = new RegExp("[^}\\n'\"$`\\\\*?\\[\\]~]+");
-
 const PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN = /[^ \t\n;&|<>()\\'"$`:.=\]-]/;
-
 const PARAMETER_DEFERRED_EXTRA_CHARACTER_PATTERN = /[ \t\n;&|<>()]/;
-
 const IO_LOCATION_CONTENT_PATTERN = /[^ \t\n;&|<>()}\\'"`]+/;
 
 // POSIX requires a complete arithmetic interpretation of `$((...))` to win
@@ -823,7 +816,6 @@ module.exports = grammar({
     [$.cmd_suffix],
     [$.variable_name, $.literal],
     [$._horizontal_layout, $._word_separator],
-    [$.here_document_sequence, $._word_separator, $._free_comment],
     [$.pipe_sequence],
     [$.pipe_sequence, $._closed_pipe_sequence],
     [$.pipe_sequence, $._closed_pipe_sequence, $._recoverable_pipe_sequence],
@@ -857,7 +849,6 @@ module.exports = grammar({
     [$.case_item_ns, $.case_item],
     [$.compound_list, $.case_item_ns],
     [$.compound_list, $.case_item_ns, $.case_item],
-    [$.else_part],
     [$.wordlist],
     [$.redirect_list],
     [$.io_redirect, $._io_redirect_without_descriptor],
