@@ -1,0 +1,366 @@
+==================
+Assignment colons defer tilde classification across continuations
+==================
+
+x=a:\
+b :
+y=c:\
+\
+d :
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)
+                        (literal)
+                        (line_continuation)
+                        (literal))))
+                  word: (cmd_word
+                    (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)
+                        (literal)
+                        (line_continuation)
+                        (line_continuation)
+                        (literal))))
+                  word: (cmd_word
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Assignment colon continuations preserve the following tilde prefix
+==================
+
+PATH=a:\
+~user/path command
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)
+                        (literal)
+                        (line_continuation)
+                        (tilde_expansion
+                          user: (tilde_user))
+                        (literal))))
+                  word: (cmd_word
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+An opening-boundary removed newline belongs to the tilde expansion
+==================
+
+printf ~\
+user
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (tilde_expansion
+                        (line_continuation)
+                        user: (tilde_user))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Escaped newlines remain inside complete tilde users
+==================
+
+printf ~us\
+er
+PATH=~bi\
+n:/bin command
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (tilde_expansion
+                        (tilde_user
+                          (line_continuation))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (tilde_expansion
+                          (tilde_user
+                            (line_continuation)))
+                        (literal)
+                        (literal))))
+                  (cmd_word
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Escaped newlines after complete tilde users belong to the enclosing word
+==================
+
+printf ~username\
+/path
+PATH=~username\
+:next command
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (tilde_expansion
+                        (tilde_user))
+                      (line_continuation)
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (tilde_expansion
+                          (tilde_user))
+                        (line_continuation)
+                        (literal)
+                        (literal))))
+                  (cmd_word
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Tilde continuation ownership follows the next logical character
+==================
+
+printf ~\
+\
+user ~us\
+\
+er ~\
+\
+ next ~user\
+\
+/path
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (tilde_expansion
+                        (line_continuation)
+                        (line_continuation)
+                        (tilde_user)))
+                    (word
+                      (tilde_expansion
+                        (tilde_user
+                          (line_continuation)
+                          (line_continuation))))
+                    (word
+                      (tilde_expansion))
+                    (line_continuation)
+                    (line_continuation)
+                    (word
+                      (literal))
+                    (word
+                      (tilde_expansion
+                        (tilde_user))
+                      (line_continuation)
+                      (line_continuation)
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Tilde prefixes are structured only where expansion can occur
+==================
+
+printf ~ ~user ~/path x~user
+PATH=~bin:/usr/bin:~other/bin command
+printf "${value:-~fallback}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (tilde_expansion))
+                    word: (word
+                      (tilde_expansion
+                        user: (tilde_user)))
+                    word: (word
+                      (tilde_expansion)
+                      (literal))
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (tilde_expansion
+                          user: (tilde_user))
+                        (literal)
+                        (literal)
+                        (literal)
+                        (tilde_expansion
+                          user: (tilde_user))
+                        (literal))))
+                  word: (cmd_word
+                    (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text))))))))))))))
+  trailing: (linebreak
+    (newline_list)))

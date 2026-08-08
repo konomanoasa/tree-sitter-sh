@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../src/scanner.c"
+#include "../../src/scanner.c"
 
 static struct HereDocument make_document(
   const char *delimiter,

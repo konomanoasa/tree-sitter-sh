@@ -1671,12 +1671,12 @@ assert_incremental_equals_fresh \
   "compound-list-assignment-edit" \
   "46 0 s"
 
-case_and_or_sample="$repository_directory/test/case_and_or_functions.sh"
+case_and_or_sample="$repository_directory/test/runtime/case_and_or_functions.sh"
 case_and_or_output="$runtime_directory/case-and-or-functions.out"
 case_and_or_query_output="$runtime_directory/case-and-or-functions.query"
 assert_valid_with_output "$case_and_or_sample" "$case_and_or_output"
 "$tree_sitter" query \
-  "$repository_directory/test/function_definitions.scm" \
+  "$repository_directory/test/runtime/function_definitions.scm" \
   "$case_and_or_sample" \
   >"$case_and_or_query_output" 2>/dev/null
 assert_contains 'sample_log' "$case_and_or_query_output"
@@ -2008,7 +2008,7 @@ scanner_contract="$runtime_directory/scanner-contract"
   -Werror \
   -pedantic \
   -I"$repository_directory/src" \
-  "$repository_directory/test/scanner_contract.c" \
+  "$repository_directory/test/scanner/contract.c" \
   -o "$scanner_contract"
 "$scanner_contract"
 

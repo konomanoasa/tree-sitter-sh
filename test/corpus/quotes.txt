@@ -1,0 +1,314 @@
+==================
+Quoted and escaped separators stay inside one source word
+==================
+
+printf 'a b;c#d'#suffix "e
+f|g" a\ b c\;d \#literal
+next
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (single_quoted
+                        (single_quote_content))
+                      (literal)
+                      (literal))
+                    word: (word
+                      (double_quoted
+                        (double_quote_text)
+                        (double_quote_text)
+                        (double_quote_text)))
+                    word: (word
+                      (literal)
+                      (escaped_character)
+                      (literal))
+                    word: (word
+                      (literal)
+                      (escaped_character)
+                      (literal))
+                    word: (word
+                      (escaped_character)
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Empty and concatenated quotes still form source words
+==================
+
+printf '' "" pre''post "a"'b'c#tail # ignored
+next
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (single_quoted))
+                    word: (word
+                      (double_quoted))
+                    word: (word
+                      (literal)
+                      (single_quoted)
+                      (literal))
+                    word: (word
+                      (double_quoted
+                        (double_quote_text))
+                      (single_quoted
+                        (single_quote_content))
+                      (literal)
+                      (literal)
+                      (literal))))))))))
+    separator: (newline_list
+      (comment))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Dollar single quotes preserve internal separators
+==================
+
+printf $'a b;\'c' tail
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (dollar_single_quoted
+                        (dollar_single_quote_text)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)))
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Single quotes preserve literal multiline source
+==================
+
+printf 'a b
+;$HOME\still'
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (single_quoted
+                        (single_quote_content))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Double quotes expose escapes and parameter expansions
+==================
+
+printf "a\$b\\c\q ${name}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (double_quote_text)
+                        (double_quote_escape)
+                        (double_quote_text)
+                        (double_quote_escape)
+                        (double_quote_text)
+                        (parameter_expansion
+                          (variable_name)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Dollar single quotes expose escapes and multiline text
+==================
+
+printf $'a\nb\'c\\d\x41\101\cA\q\
+tail'
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (dollar_single_quoted
+                        (dollar_single_quote_text)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Unterminated double quote remains a syntax error
+:error
+==================
+
+echo "open
+
+---
+
+
+
+==================
+Unterminated dollar single quote remains a syntax error
+:error
+==================
+
+echo $'open
+
+---
+
+
+
+==================
+Dollar single quote control escapes retain their delimiter value
+==================
+
+printf $'\c\\'
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (dollar_single_quoted
+                        (dollar_single_quote_escape))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Unterminated single quote remains a syntax error
+:error
+==================
+
+echo 'open
+
+---

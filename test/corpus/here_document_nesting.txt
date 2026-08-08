@@ -1,0 +1,342 @@
+==================
+Here-documents attach to compound commands and function bodies
+==================
+
+(:) <<OUTER
+outside
+OUTER
+copy() {
+  cat <<INNER
+inside
+INNER
+}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (subshell
+                    body: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal))))))))))))
+                redirects: (redirect_list
+                  redirect: (io_redirect
+                    body: (io_here
+                      operator: (dless)
+                      end: (here_end
+                        word: (word
+                          (literal))))))))))))
+    separator: (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (here_document_text))
+          end: (here_document_end))))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (function_definition
+                  name: (fname
+                    (name))
+                  body: (function_body
+                    body: (compound_command
+                      (brace_group
+                        body: (compound_list
+                          leading: (linebreak
+                            (newline_list))
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))
+                                      suffix: (cmd_suffix
+                                        redirect: (io_redirect
+                                          body: (io_here
+                                            operator: (dless)
+                                            end: (here_end
+                                              word: (word
+                                                (literal))))))))))))
+                          terminator: (separator
+                            newlines: (newline_list
+                              (here_document_sequence
+                                line_end: (here_document_line_end)
+                                document: (here_document
+                                  body: (here_document_body
+                                    (here_document_text))
+                                  end: (here_document_end)))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Dollar and backquote substitutions reuse the command hierarchy
+==================
+
+printf '%s\n' "$(cat <<DOLLAR
+inside dollar
+DOLLAR
+)" `cat <<BACK
+inside backquote
+BACK
+`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (single_quoted
+                        (single_quote_content)))
+                    word: (word
+                      (double_quoted
+                        (command_substitution
+                          body: (command_substitution_body
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (simple_command
+                                            name: (cmd_name
+                                              (word
+                                                (literal)))
+                                            suffix: (cmd_suffix
+                                              redirect: (io_redirect
+                                                body: (io_here
+                                                  operator: (dless)
+                                                  end: (here_end
+                                                    word: (word
+                                                      (literal))))))))))))))
+                            (linebreak
+                              (newline_list
+                                (here_document_sequence
+                                  line_end: (here_document_line_end)
+                                  document: (here_document
+                                    body: (here_document_body
+                                      (here_document_text))
+                                    end: (here_document_end)))))))))
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            redirect: (io_redirect
+                                              body: (io_here
+                                                operator: (dless)
+                                                end: (here_end
+                                                  word: (word
+                                                    (literal)))))))))))))
+                            separator: (newline_list
+                              (here_document_sequence
+                                line_end: (here_document_line_end)
+                                document: (here_document
+                                  body: (here_document_body
+                                    (here_document_text))
+                                  end: (here_document_end))))
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (backquote_substitution
+                                                body: (backquote_substitution_body
+                                                  (linebreak
+                                                    (newline_list)))
+                                                (backquote_end_recovery)))))))))))))
+                        (backquote_end_recovery)))))))))))))
+
+==================
+A nested substitution can suspend and resume an outer here-document
+==================
+
+cat <<OUTER
+before
+$(cat <<INNER
+inside
+INNER
+)
+after
+OUTER
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (here_document_text)
+            (command_substitution
+              body: (command_substitution_body
+                (complete_commands
+                  command: (complete_command
+                    body: (list
+                      and_or: (and_or
+                        pipeline: (pipeline
+                          sequence: (pipe_sequence
+                            command: (command
+                              body: (simple_command
+                                name: (cmd_name
+                                  (word
+                                    (literal)))
+                                suffix: (cmd_suffix
+                                  redirect: (io_redirect
+                                    body: (io_here
+                                      operator: (dless)
+                                      end: (here_end
+                                        word: (word
+                                          (literal))))))))))))))
+                (linebreak
+                  (newline_list
+                    (here_document_sequence
+                      line_end: (here_document_line_end)
+                      document: (here_document
+                        body: (here_document_body
+                          (here_document_text))
+                        end: (here_document_end)))))))
+            (here_document_text))
+          end: (here_document_end))))))
+
+==================
+A delimiter substitution skips nested here-document bodies
+==================
+
+cat <<$(cat <<\eof
+a here-doc with )
+eof
+)
+after
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (command_substitution
+                              body: (command_substitution_body
+                                (complete_commands
+                                  command: (complete_command
+                                    body: (list
+                                      and_or: (and_or
+                                        pipeline: (pipeline
+                                          sequence: (pipe_sequence
+                                            command: (command
+                                              body: (simple_command
+                                                name: (cmd_name
+                                                  (word
+                                                    (literal)))
+                                                suffix: (cmd_suffix
+                                                  redirect: (io_redirect
+                                                    body: (io_here
+                                                      operator: (dless)
+                                                      end: (here_end
+                                                        word: (word
+                                                          (escaped_character)
+                                                          (literal))))))))))))))
+                                (linebreak
+                                  (newline_list
+                                    (here_document_sequence
+                                      line_end: (here_document_line_end)
+                                      document: (here_document
+                                        body: (quoted_here_document_body
+                                          (quoted_here_document_text))
+                                        end: (here_document_end))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (quoted_here_document_body
+            (quoted_here_document_text))
+          end: (here_document_end_recovery))))))

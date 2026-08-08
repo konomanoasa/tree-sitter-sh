@@ -1,0 +1,287 @@
+==================
+Case alternatives reuse pattern source nodes
+==================
+
+case "$value" in
+  (src/*.c | file?.[ch]) printf match ;;
+  '*' | \? | "[abc]") printf quoted ;;
+  ${prefix}*) printf expanded ;;
+esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name))))
+                    in: (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (literal)
+                            (pattern_star_source)
+                            (literal))
+                          word: (word
+                            (literal)
+                            (pattern_question_source)
+                            (literal)
+                            (pattern_bracket_source
+                              members: (pattern_bracket_members_source
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)))))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))
+                                      suffix: (cmd_suffix
+                                        word: (word
+                                          (literal))))))))))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list)))
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (single_quoted
+                              (single_quote_content)))
+                          word: (word
+                            (escaped_character))
+                          word: (word
+                            (double_quoted
+                              (double_quote_text))))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))
+                                      suffix: (cmd_suffix
+                                        word: (word
+                                          (literal))))))))))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list)))
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (parameter_expansion
+                              parameter: (variable_name))
+                            (pattern_star_source)))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))
+                                      suffix: (cmd_suffix
+                                        word: (word
+                                          (literal))))))))))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Case pattern alternatives retain boundary escaped newlines
+==================
+
+case value in
+  first\
+  | second) : ;;
+esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (literal))
+                          (line_continuation)
+                          word: (word
+                            (literal)))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Case patterns preserve connector and closing-parenthesis continuations
+==================
+
+case x in
+  a  \
+ \
+| b  \
+ \
+) :;;
+esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (literal))
+                          (line_continuation)
+                          (line_continuation)
+                          word: (word
+                            (literal)))
+                        (line_continuation)
+                        (line_continuation)
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Case patterns allow layout before their closing parenthesis
+==================
+
+case value in
+  one | two   ) printf match ;;
+esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (literal))
+                          word: (word
+                            (literal)))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))
+                                      suffix: (cmd_suffix
+                                        word: (word
+                                          (literal))))))))))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))

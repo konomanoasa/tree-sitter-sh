@@ -1,0 +1,948 @@
+==================
+Incomplete bracket expressions remain literal source
+==================
+
+printf [ [abc [] [!
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))
+                    word: (word
+                      (literal)
+                      (literal))
+                    word: (word
+                      (literal)
+                      (literal))
+                    word: (word
+                      (literal)
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Incomplete bracket openers remain distinct before structured source
+==================
+
+printf [abc'x' [abc"$x" [abc\q [abc$x
+printf "${value#[abc'x'}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (literal)
+                      (single_quoted
+                        (single_quote_content)))
+                    (word
+                      (literal)
+                      (literal)
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name))))
+                    (word
+                      (literal)
+                      (literal)
+                      (escaped_character))
+                    (word
+                      (literal)
+                      (literal)
+                      (parameter_expansion
+                        (variable_name)))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (literal)
+                            (single_quoted
+                              (single_quote_content)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Bracket specials and range endpoints retain nested source
+==================
+
+printf [[:${class}:]] [[.$(symbol).]] [[=${value}=]] [${start}-${end}]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_character_class_source
+                            (parameter_expansion
+                              (variable_name))))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_collating_symbol_source
+                            (command_substitution
+                              (command_substitution_body
+                                (complete_commands
+                                  (complete_command
+                                    (list
+                                      (and_or
+                                        (pipeline
+                                          (pipe_sequence
+                                            (command
+                                              (simple_command
+                                                (cmd_name
+                                                  (word
+                                                    (literal)))))))))))))))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_equivalence_class_source
+                            (parameter_expansion
+                              (variable_name))))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_range_source
+                            (parameter_expansion
+                              (variable_name))
+                            (pattern_bracket_range_operator_source)
+                            (parameter_expansion
+                              (variable_name)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Structured unclosed brackets remain source words and preserve later commands
+==================
+
+printf [a${value}suffix
+after
+printf [[:${class}:]suffix
+after_again
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (literal)
+                      (parameter_expansion
+                        (variable_name))
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (parameter_expansion
+                            (variable_name))
+                          (pattern_bracket_character_source)))
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+An incomplete bracket prefix preserves operators and a completed suffix
+==================
+
+printf [a"x"*[.]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (literal)
+                      (double_quoted
+                        (double_quote_text))
+                      (pattern_star_source)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+An empty incomplete bracket remains literal across a removed newline
+==================
+
+echo [\
+]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (line_continuation)
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+A negated incomplete bracket remains literal across a removed newline
+==================
+
+echo [!\
+]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (literal)
+                      (line_continuation)
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+An assignment keeps an incomplete bracket across a removed newline
+==================
+
+value=[!\
+]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (literal)
+                        (literal)
+                        (line_continuation)
+                        (literal))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+A removal pattern keeps an incomplete bracket across a removed newline
+==================
+
+printf '%s\n' "${value#[!\
+]}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (single_quoted
+                        (single_quote_content)))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (literal)
+                            (line_continuation)
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Pattern operators remain source after an incomplete bracket opener
+==================
+
+echo [* [?
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (pattern_star_source))
+                    (word
+                      (literal)
+                      (pattern_question_source)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+A shell operator delimits an incomplete bracket word
+==================
+
+echo [;]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal))))))))
+        (separator_op)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Every terminal continuation after an incomplete bracket remains public
+==================
+
+echo [!]\
+\
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (literal)
+                      (literal)))))))))))
+  (line_continuation)
+  (line_continuation))
+
+==================
+An incomplete bracket exposes consecutive internal removed newlines
+==================
+
+echo [\
+\
+x
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (line_continuation)
+                      (line_continuation)
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Consecutive incomplete bracket openers remain literal source
+==================
+
+echo [[abc [*[abc [!\
+[abc "${value#[[abc}" "${value#[*[abc}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (literal))
+                    (word
+                      (literal)
+                      (pattern_star_source)
+                      (literal))
+                    (word
+                      (literal)
+                      (literal)
+                      (line_continuation)
+                      (literal))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (literal)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (pattern_star_source)
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Bracket fallback preserves completed suffixes and closing continuations in words
+==================
+
+printf []] []\
+] [[. [[= [[: [][.] [\
+][.] [\
+[:alpha:] [a[.] [![.]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))
+                        (line_continuation)))
+                    (word
+                      (literal)
+                      (literal)
+                      (literal))
+                    (word
+                      (literal)
+                      (literal)
+                      (literal))
+                    (word
+                      (literal)
+                      (literal)
+                      (literal))
+                    (word
+                      (literal)
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (line_continuation)
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (line_continuation)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Assignment bracket fallback preserves source ownership
+==================
+
+close=[]\
+] incomplete=[[. restart=[\
+][.]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (pattern_bracket_source
+                          (pattern_bracket_members_source
+                            (pattern_bracket_character_source))
+                          (line_continuation))))
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (literal)
+                        (literal)
+                        (literal)))
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (literal)
+                        (line_continuation)
+                        (literal)
+                        (pattern_bracket_source
+                          (pattern_bracket_members_source
+                            (pattern_bracket_character_source))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Parameter pattern bracket fallback preserves source ownership
+==================
+
+printf "${value#[]\
+]}" "${value#[[.}" "${value#[\
+][.]}" "${value#[x[: a]}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (pattern_bracket_source
+                              (pattern_bracket_members_source
+                                (pattern_bracket_character_source))
+                              (line_continuation))))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (literal)
+                            (literal)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (line_continuation)
+                            (literal)
+                            (pattern_bracket_source
+                              (pattern_bracket_members_source
+                                (pattern_bracket_character_source)))))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (literal)
+                            (pattern_bracket_source
+                              (pattern_bracket_members_source
+                                (pattern_bracket_character_source)
+                                (pattern_bracket_character_source)
+                                (pattern_bracket_character_source))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+An incomplete outer bracket preserves completed suffix brackets
+==================
+
+printf [[:alpha:] [[.ch.] [[=a=] "${value#[[:alpha:]}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal)
+                            (pattern_bracket_source
+                              members: (pattern_bracket_members_source
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Incomplete word brackets expose terminal removed line continuations
+==================
+
+printf [abc\
+ next
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (literal))
+                    (line_continuation)
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Incomplete parameter brackets expose terminal removed line continuations
+==================
+
+printf "${value#[abc\
+}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (literal)
+                            (line_continuation))))))))))))))
+  (linebreak
+    (newline_list)))

@@ -1,0 +1,1057 @@
+==================
+Parameter value words retain ordinary quotes only outside inherited double quotes
+==================
+
+printf ${x:-'foo'} ${x:-$'\n'} ${x:-\q} "${x:-'foo'}" "${x:-$'\n'}" "${x:-\q}" "${x:-\$}" "${x:-\}}" "${x:-'}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (single_quoted
+                            (single_quote_content)))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (dollar_single_quoted
+                            (dollar_single_quote_escape)))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (escaped_character))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)
+                            (double_quote_text)
+                            (double_quote_text)
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_escape)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_escape)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Ordinary parameter words own every removed newline
+==================
+
+printf ${x:-\
+} ${x:-\
+~user} ${x:-a\
+\
+b} ${x:-a\
+}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (line_continuation))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (line_continuation)
+                          (tilde_expansion
+                            user: (tilde_user)))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (literal)
+                          (line_continuation)
+                          (line_continuation)
+                          (literal))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (literal)
+                          (line_continuation)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+An unclosed ordinary parameter quote remains invalid
+:error
+==================
+
+printf ${x:-'}
+
+---
+
+
+
+==================
+Parameter value words follow unquoted and double-quote-like contexts
+==================
+
+printf ${x:-~user/*?[a]} "${x:-~user/*?[a]}" "$(( ${x:-$'\n'} + ${y:-~} ))"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (tilde_expansion
+                            user: (tilde_user))
+                          (literal)
+                          (pattern_star_source)
+                          (pattern_question_source)
+                          (pattern_bracket_source
+                            members: (pattern_bracket_members_source
+                              member: (pattern_bracket_character_source))))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (parameter_expansion
+                              parameter: (variable_name)
+                              operator: (parameter_value_operator)
+                              word: (parameter_word
+                                (double_quote_text)
+                                (double_quote_text)
+                                (double_quote_text)
+                                (double_quote_text)))
+                            operator: (arithmetic_operator)
+                            right: (parameter_expansion
+                              parameter: (variable_name)
+                              operator: (parameter_value_operator)
+                              word: (parameter_word
+                                (double_quote_text))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Substring removal operators own optional pattern source
+==================
+
+printf ${path%/*} ${path%%/*} ${path#*/} ${path##*/} ${path%} ${path#}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (literal)
+                          (pattern_star_source))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (literal)
+                          (pattern_star_source))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (pattern_star_source)
+                          (literal))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (pattern_star_source)
+                          (literal))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Substring patterns preserve inner and outer quote boundaries
+==================
+
+printf "${path#*}" ${path#"*"} ${path#\*} ${path#[!a-z]*} ${path#~} "${path#~}" "${path#'*'}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (pattern_star_source)))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (double_quoted
+                            (double_quote_text)))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (escaped_character))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (pattern_bracket_source
+                            negation: (pattern_bracket_negation_source)
+                            members: (pattern_bracket_members_source
+                              member: (pattern_bracket_range_source
+                                start: (pattern_bracket_character_source)
+                                operator: (pattern_bracket_range_operator_source)
+                                end: (pattern_bracket_character_source))))
+                          (pattern_star_source))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (tilde_expansion))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (tilde_expansion)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (single_quoted
+                              (single_quote_content)))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Substring patterns retain nested source parts
+==================
+
+printf ${10%${suffix}*$(printf x)?} ${value%%$((1 + 1))*} "${outer:-${inner:-*.js}}" "${outer#${inner:-*.js}}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (parameter_expansion
+                        parameter: (positional_parameter)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (parameter_expansion
+                            parameter: (variable_name))
+                          (pattern_star_source)
+                          (command_substitution
+                            body: (command_substitution_body
+                              (complete_commands
+                                command: (complete_command
+                                  body: (list
+                                    and_or: (and_or
+                                      pipeline: (pipeline
+                                        sequence: (pipe_sequence
+                                          command: (command
+                                            body: (simple_command
+                                              name: (cmd_name
+                                                (word
+                                                  (literal)))
+                                              suffix: (cmd_suffix
+                                                word: (word
+                                                  (literal)))))))))))))
+                          (pattern_question_source))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (arithmetic_expansion
+                            expression: (arithmetic_binary_expression
+                              left: (arithmetic_number)
+                              operator: (arithmetic_operator)
+                              right: (arithmetic_number)))
+                          (pattern_star_source))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (parameter_expansion
+                              parameter: (variable_name)
+                              operator: (parameter_value_operator)
+                              word: (parameter_word
+                                (double_quote_text)))))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (parameter_expansion
+                              parameter: (variable_name)
+                              operator: (parameter_value_operator)
+                              word: (parameter_word
+                                (pattern_star_source)
+                                (literal))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Pattern specials in parameter values are not substring patterns
+==================
+
+printf ${name:-*}
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (pattern_star_source)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Removed newlines preserve longest substring removal operators
+==================
+
+printf '%s\n' "${value#\
+#prefix}" "${value%\
+%suffix}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (single_quoted
+                        (single_quote_content)))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator
+                            (line_continuation))
+                          (parameter_pattern
+                            (literal)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator
+                            (line_continuation))
+                          (parameter_pattern
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Hash special parameters remain distinct from length and pattern operators
+==================
+
+printf "${#}" "${#:-word}" "${#-word}" "${#%x}" "${##x}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Nested parameter expansions retain recursive source structure
+==================
+
+echo ${outer:-${inner:-$(printf value)}}
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (parameter_expansion
+                            (variable_name)
+                            (parameter_value_operator)
+                            (parameter_word
+                              (command_substitution
+                                (command_substitution_body
+                                  (complete_commands
+                                    (complete_command
+                                      (list
+                                        (and_or
+                                          (pipeline
+                                            (pipe_sequence
+                                              (command
+                                                (simple_command
+                                                  (cmd_name
+                                                    (word
+                                                      (literal)))
+                                                  (cmd_suffix
+                                                    (word
+                                                      (literal)))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Unterminated parameter expansion remains a syntax error
+:error
+==================
+
+echo ${open
+
+---
+
+
+
+==================
+Adjacent dollar source distinguishes parameters from text fallback
+==================
+
+value=x$x
+printf x$x x$1 x$? x$* x$# x$$ x$ x$% "a$x" "a$%"
+printf "${source:-a$fallback}" "${source:-a$%}" "${source#a$x}" "${source#a$%}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)
+                        (parameter_expansion
+                          parameter: (variable_name))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (variable_name)))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (positional_parameter)))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (special_parameter)))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (special_parameter)))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (special_parameter)))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (special_parameter)))
+                    word: (word
+                      (literal)
+                      (literal))
+                    word: (word
+                      (literal)
+                      (literal)
+                      (literal))
+                    word: (word
+                      (double_quoted
+                        (double_quote_text)
+                        (parameter_expansion
+                          parameter: (variable_name))))
+                    word: (word
+                      (double_quoted
+                        (double_quote_text)
+                        (double_quote_text)
+                        (double_quote_text)))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)
+                            (parameter_expansion
+                              parameter: (variable_name))))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)
+                            (double_quote_text)
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal)
+                            (parameter_expansion
+                              parameter: (variable_name))))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal)
+                            (literal)
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+POSIX parameter names and positions have explicit structure
+==================
+
+printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${0\
+0}" "${0\
+01}" "${#name}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (positional_parameter))
+                        (double_quote_text)))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (positional_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (positional_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (parameter_number))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (parameter_number
+                            (line_continuation)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (positional_parameter
+                            (line_continuation)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (parameter_length_operator)
+                          (variable_name)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+POSIX parameter value operators have explicit structure
+==================
+
+printf "${name:-default}" "${name:=value}" "${name:?message}" "${name:+alternate}" "${name-word}" "${name=value}" "${name?message}" "${name+alternate}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Braced parameters expose removed line continuations at their boundaries
+==================
+
+printf "${\
+name}" "${\
+#name}" "${name#\
+pattern}" "${name:-\
+word}" "${name#\
+}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          (line_continuation)
+                          parameter: (variable_name))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          (line_continuation)
+                          operator: (parameter_length_operator)
+                          parameter: (variable_name))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          (line_continuation)
+                          pattern: (parameter_pattern
+                            (literal)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (line_continuation)
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          (line_continuation)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Unsupported parameter expansion forms remain syntax errors
+:error
+==================
+
+printf "${}" "${name/old/new}"
+
+---
+
+
+
+==================
+Parameter operators expose removed line continuations in source order
+==================
+
+printf "${value:\
+-fallback}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator
+                            (line_continuation))
+                          (parameter_word
+                            (double_quote_text))))))))))))))
+  (linebreak
+    (newline_list)))
