@@ -285,10 +285,12 @@ printf '%s\n' \
   "if condition; then" \
   "  inside" \
   >"$compound_source"
-assert_invalid_with_output "$compound_source" "$compound_output"
+assert_valid_with_output "$compound_source" "$compound_output"
 assert_contains "(complete_command [0, 0] - [0, 6]" "$compound_output"
-assert_contains "(ERROR [0, 0] - [3, 0]" "$compound_output"
 assert_contains "(and_or [2, 2] - [2, 8]" "$compound_output"
+assert_contains \
+  "recovery: (compound_command_recovery [3, 0] - [3, 0])" \
+  "$compound_output"
 
 subshell_source="$runtime_directory/recovery-subshell.sh"
 subshell_output="$runtime_directory/recovery-subshell.out"

@@ -1,0 +1,552 @@
+================================================================================
+An incomplete if clause preserves its formal structure
+================================================================================
+
+if check;
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)
+                        (linebreak
+                          (newline_list))))
+                    (compound_command_recovery)))))))))))
+
+================================================================================
+An incomplete if body preserves a missing command
+================================================================================
+
+if
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (linebreak
+                        (newline_list))
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (command_recovery)))))))))))))))))
+
+================================================================================
+An ambiguous if word remains a condition command
+================================================================================
+
+if check; th
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal))))))))
+                        (separator
+                          (separator_op))
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (newline_list)))
+                    (compound_command_recovery)))))))))))
+
+================================================================================
+An incomplete braced parameter preserves its formal structure
+================================================================================
+
+printf '%s\n' "${name:"
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (single_quoted
+                        (single_quote_content)))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_expansion_recovery)))))))))))))
+  (linebreak
+    (newline_list)))
+
+================================================================================
+A redirection without a target recovers before a raw newline
+================================================================================
+
+command >
+next
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_file
+                        (filename
+                          (redirection_target_recovery))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+================================================================================
+An incomplete consequence keeps the if clause and missing command
+================================================================================
+
+if check; then
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (then_keyword)
+                    (compound_list
+                      (linebreak
+                        (newline_list))
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (command_recovery)))))))))))))))))
+
+================================================================================
+An incomplete alternative keeps its owning if clause
+================================================================================
+
+if check; then pass; elif other;
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (then_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (else_part
+                      (elif_keyword)
+                      (compound_list
+                        (term
+                          (and_or
+                            (pipeline
+                              (pipe_sequence
+                                (command
+                                  (simple_command
+                                    (cmd_name
+                                      (word
+                                        (literal)))))))))
+                        (separator
+                          (separator_op)
+                          (linebreak
+                            (newline_list))))
+                      (compound_command_recovery))))))))))))
+
+================================================================================
+An incomplete else body keeps its owning if clause
+================================================================================
+
+if check; then pass; else
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (then_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (else_part
+                      (else_keyword)
+                      (compound_list
+                        (linebreak
+                          (newline_list))
+                        (term
+                          (and_or
+                            (pipeline
+                              (pipe_sequence
+                                (command
+                                  (command_recovery))))))))))))))))))
+
+================================================================================
+Incomplete loop stages retain their formal owners
+================================================================================
+
+while check; do pass;
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (while_clause
+                    (while_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (do_group
+                      (do_keyword)
+                      (compound_list
+                        (term
+                          (and_or
+                            (pipeline
+                              (pipe_sequence
+                                (command
+                                  (simple_command
+                                    (cmd_name
+                                      (word
+                                        (literal)))))))))
+                        (separator
+                          (separator_op)
+                          (linebreak
+                            (newline_list))))
+                      (compound_command_recovery))))))))))))
+
+================================================================================
+An incomplete for word list retains its formal owner
+================================================================================
+
+for item in one two;
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (for_clause
+                    (for_keyword)
+                    (name)
+                    (in
+                      (in_keyword))
+                    (wordlist
+                      (word
+                        (literal))
+                      (word
+                        (literal)))
+                    (sequential_sep
+                      (linebreak
+                        (newline_list)))
+                    (compound_command_recovery)))))))))))
+
+================================================================================
+An incomplete for body preserves a missing command
+================================================================================
+
+for item; do
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (for_clause
+                    (for_keyword)
+                    (name)
+                    (sequential_sep)
+                    (do_group
+                      (do_keyword)
+                      (compound_list
+                        (linebreak
+                          (newline_list))
+                        (term
+                          (and_or
+                            (pipeline
+                              (pipe_sequence
+                                (command
+                                  (command_recovery))))))))))))))))))
+
+================================================================================
+An incomplete case list retains its formal owner
+================================================================================
+
+case value in
+  pattern) pass ;;
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list))
+                    (case_list
+                      (case_item
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (compound_command_recovery)))))))))))
+
+================================================================================
+An empty braced parameter preserves its closer
+================================================================================
+
+printf "${}"
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (parameter_expansion_recovery)))))))))))))
+  (linebreak
+    (newline_list)))

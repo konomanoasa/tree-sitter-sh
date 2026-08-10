@@ -876,7 +876,7 @@
     "fields": {
       "in": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "in",
@@ -898,9 +898,19 @@
           }
         ]
       },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
+            "named": true
+          }
+        ]
+      },
       "word": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "word",
@@ -1423,6 +1433,11 @@
     }
   },
   {
+    "type": "compound_command_recovery",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "compound_list",
     "named": true,
     "fields": {
@@ -1527,6 +1542,16 @@
         "types": [
           {
             "type": "compound_list",
+            "named": true
+          }
+        ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -1744,6 +1769,16 @@
             "named": true
           }
         ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
+            "named": true
+          }
+        ]
       }
     },
     "children": {
@@ -1846,7 +1881,7 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "do_group",
@@ -1870,6 +1905,16 @@
         "types": [
           {
             "type": "name",
+            "named": true
+          }
+        ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -2217,10 +2262,20 @@
       },
       "consequence": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "compound_list",
+            "named": true
+          }
+        ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -2686,6 +2741,16 @@
           }
         ]
       },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "parameter_expansion_recovery",
+            "named": true
+          }
+        ]
+      },
       "word": {
         "multiple": false,
         "required": false,
@@ -2705,6 +2770,21 @@
           "type": "here_document_end_recovery",
           "named": true
         },
+        {
+          "type": "line_continuation",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "parameter_expansion_recovery",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
         {
           "type": "line_continuation",
           "named": true
@@ -4002,7 +4082,7 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "do_group",
@@ -4016,6 +4096,16 @@
         "types": [
           {
             "type": "compound_list",
+            "named": true
+          }
+        ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -4072,7 +4162,7 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "do_group",
@@ -4086,6 +4176,16 @@
         "types": [
           {
             "type": "compound_list",
+            "named": true
+          }
+        ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
             "named": true
           }
         ]

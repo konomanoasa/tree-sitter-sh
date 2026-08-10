@@ -132,6 +132,10 @@ enum TokenType {
   SEPARATOR_BEGIN,
   CLOSED_COMMAND_END,
   CASE_ITEM_END,
+  COMPOUND_COMMAND_RECOVERY_BOUNDARY,
+  PARAMETER_MISSING_RECOVERY_BOUNDARY,
+  PARAMETER_OPERATOR_RECOVERY_BOUNDARY,
+  PARAMETER_EXPANSION_RECOVERY_BOUNDARY,
   BOUNDARY_COMMAND_RECOVERY,
   COMMAND_RECOVERY,
   SEPARATOR_RECOVERY,
@@ -2404,7 +2408,15 @@ static bool scan_recovery_boundary(
   lexer->mark_end(lexer);
 
   bool is_direct_boundary = lexer->lookahead == '}';
-  if (symbol != SEPARATOR_RECOVERY) {
+  if (symbol == COMPOUND_COMMAND_RECOVERY_BOUNDARY) {
+    is_direct_boundary =
+      (is_direct_boundary ||
+        lexer->lookahead ==
+        0 ||
+        lexer->lookahead ==
+        ')' ||
+        lexer->lookahead == '`');
+  } else if (symbol != SEPARATOR_RECOVERY) {
     is_direct_boundary =
       (is_direct_boundary ||
         lexer->lookahead ==
@@ -2452,12 +2464,59 @@ static bool scan_recovery_boundary(
     }
   }
 
+  if (symbol == COMPOUND_COMMAND_RECOVERY_BOUNDARY) {
+    return false;
+  }
+
   if (!is_recovery_reserved_word(word)) {
     return false;
   }
 
   lexer->result_symbol = (TSSymbol)symbol;
   return true;
+}
+
+static bool scan_parameter_expansion_recovery_boundary(
+  TSLexer *lexer,
+  enum TokenType symbol
+) {
+  lexer->mark_end(lexer);
+  if (symbol == PARAMETER_EXPANSION_RECOVERY_BOUNDARY) {
+    if (lexer->lookahead != 0) {
+      return false;
+    }
+    lexer->result_symbol = PARAMETER_EXPANSION_RECOVERY_BOUNDARY;
+    return true;
+  }
+  if (
+    lexer->lookahead ==
+    0 ||
+    lexer->lookahead ==
+    '\n' ||
+    lexer->lookahead ==
+    ' ' ||
+    lexer->lookahead ==
+    '\t' ||
+    ((symbol ==
+       PARAMETER_MISSING_RECOVERY_BOUNDARY ||
+       symbol == PARAMETER_OPERATOR_RECOVERY_BOUNDARY) &&
+      lexer->lookahead == '}') ||
+    lexer->lookahead ==
+    ')' ||
+    lexer->lookahead ==
+    '`' ||
+    lexer->lookahead ==
+    ';' ||
+    lexer->lookahead ==
+    '&' ||
+    lexer->lookahead ==
+    '"' ||
+    lexer->lookahead == '\''
+  ) {
+    lexer->result_symbol = (TSSymbol)symbol;
+    return true;
+  }
+  return false;
 }
 
 static bool scan_horizontal_layout(TSLexer *lexer) {
@@ -4916,7 +4975,31 @@ bool tree_sitter_posix_sh_external_scanner_scan(
   }
 
   if (
+    (valid_symbols[PARAMETER_MISSING_RECOVERY_BOUNDARY] ||
+      valid_symbols[PARAMETER_OPERATOR_RECOVERY_BOUNDARY] ||
+      valid_symbols[PARAMETER_EXPANSION_RECOVERY_BOUNDARY])
+  ) {
+    enum TokenType symbol = valid_symbols[PARAMETER_MISSING_RECOVERY_BOUNDARY]
+      ? PARAMETER_MISSING_RECOVERY_BOUNDARY
+      : (valid_symbols[PARAMETER_OPERATOR_RECOVERY_BOUNDARY]
+            ? PARAMETER_OPERATOR_RECOVERY_BOUNDARY
+            : PARAMETER_EXPANSION_RECOVERY_BOUNDARY);
+    if (scan_parameter_expansion_recovery_boundary(lexer, symbol)) {
+      return true;
+    }
+  }
+
+  if (valid_symbols[REDIRECTION_TARGET_RECOVERY] && lexer->lookahead == '\n') {
+    return scan_recovery_boundary(
+      lexer,
+      REDIRECTION_TARGET_RECOVERY,
+      valid_symbols
+    );
+  }
+
+  if (
     (valid_symbols[COMMAND_RECOVERY] ||
+      valid_symbols[COMPOUND_COMMAND_RECOVERY_BOUNDARY] ||
       valid_symbols[BOUNDARY_COMMAND_RECOVERY] ||
       valid_symbols[SEPARATOR_RECOVERY] ||
       valid_symbols[REDIRECTION_TARGET_RECOVERY]) &&
@@ -4950,11 +5033,13 @@ bool tree_sitter_posix_sh_external_scanner_scan(
       ? SEPARATOR_RECOVERY
       : (valid_symbols[REDIRECTION_TARGET_RECOVERY]
             ? REDIRECTION_TARGET_RECOVERY
-            : (use_boundary_command_recovery
-                  ? BOUNDARY_COMMAND_RECOVERY
-                  : (valid_symbols[COMMAND_RECOVERY]
-                        ? COMMAND_RECOVERY
-                        : BOUNDARY_COMMAND_RECOVERY)));
+            : (valid_symbols[COMPOUND_COMMAND_RECOVERY_BOUNDARY]
+                  ? COMPOUND_COMMAND_RECOVERY_BOUNDARY
+                  : (use_boundary_command_recovery
+                        ? BOUNDARY_COMMAND_RECOVERY
+                        : (valid_symbols[COMMAND_RECOVERY]
+                              ? COMMAND_RECOVERY
+                              : BOUNDARY_COMMAND_RECOVERY))));
     return scan_recovery_boundary(lexer, recovery_symbol, valid_symbols);
   }
 
