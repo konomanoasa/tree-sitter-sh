@@ -34,8 +34,7 @@ holder() { echo value; }
             sequence: (pipe_sequence
               command: (command
                 body: (function_definition
-                  name: (fname
-                    (name))
+                  name: (fname)
                   body: (function_body
                     body: (compound_command
                       (brace_group
@@ -79,8 +78,7 @@ greet
             sequence: (pipe_sequence
               command: (command
                 body: (function_definition
-                  name: (fname
-                    (name))
+                  name: (fname)
                   body: (function_body
                     body: (compound_command
                       (brace_group
@@ -137,8 +135,7 @@ until_body() until :; do :; done
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (brace_group
@@ -162,8 +159,7 @@ until_body() until :; do :; done
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (subshell
@@ -185,8 +181,7 @@ until_body() until :; do :; done
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (for_clause
@@ -216,8 +211,7 @@ until_body() until :; do :; done
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (case_clause
@@ -251,8 +245,7 @@ until_body() until :; do :; done
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (if_clause
@@ -291,8 +284,7 @@ until_body() until :; do :; done
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (while_clause
@@ -332,8 +324,7 @@ until_body() until :; do :; done
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (until_clause
@@ -393,8 +384,7 @@ long_function
               command: (command
                 body: (function_definition
                   name: (fname
-                    (name
-                      (line_continuation)))
+                    (line_continuation))
                   (line_continuation)
                   body: (function_body
                     body: (compound_command
@@ -436,36 +426,7 @@ then() { :; }
 
 ---
 
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (function_definition
-                  (fname
-                    (name))
-                  (function_body
-                    (compound_command
-                      (brace_group
-                        (compound_list
-                          (term
-                            (and_or
-                              (pipeline
-                                (pipe_sequence
-                                  (command
-                                    (simple_command
-                                      (cmd_name
-                                        (word
-                                          (literal)))))))))
-                          (separator
-                            (separator_op))))))))))))))
-  (linebreak
-    (newline_list)))
+
 
 ==================
 Function names must be POSIX names
@@ -480,15 +441,29 @@ bad-name()
 
 
 ==================
-A function definition requires a compound command body
-:error
+A function definition without a body retains its formal owner
 ==================
 
 missing()
 
 ---
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (function_definition
+                  (fname)
+                  (function_body
+                    (compound_command_recovery))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 A redirected function retains list boundaries
@@ -509,8 +484,7 @@ holder() { :; }>function_output & holder
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (brace_group

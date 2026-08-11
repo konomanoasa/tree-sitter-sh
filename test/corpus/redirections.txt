@@ -1409,8 +1409,7 @@ holder() { :; } 2>>
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (brace_group

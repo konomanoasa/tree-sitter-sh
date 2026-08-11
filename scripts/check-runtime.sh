@@ -32,6 +32,13 @@ parse_current() {
     "$@"
 }
 
+query_current() {
+  "$tree_sitter" query \
+    --lib-path "$parser_library" \
+    --lang-name posix_sh \
+    "$@"
+}
+
 fail() {
   printf '%s\n' "$1" >&2
   exit 1
@@ -106,21 +113,223 @@ assert_cst_range() {
   fi
 }
 
-assert_invalid_with_output() {
-  source_file=$1
-  output_file=$2
-  if parse_current "$source_file" >"$output_file" 2>/dev/null; then
-    fail "Expected syntax error: $source_file"
+assert_cst_direct_child_range() {
+  parent_range=$1
+  parent_item=$2
+  child_range=$3
+  child_item=$4
+  file=$5
+  if ! awk \
+    -v parent_range="$parent_range" \
+    -v parent_item="$parent_item" \
+    -v child_range="$child_range" \
+    -v child_item="$child_item" '
+      {
+        separator = index($0, " - ")
+        if (separator == 0) {
+          next
+        }
+
+        start = substr($0, 1, separator - 1)
+        sub(/[[:space:]]+$/, "", start)
+        tail = substr($0, separator + 3)
+        match(tail, /^[^[:space:]]+/)
+        end = substr(tail, RSTART, RLENGTH)
+        content = substr(tail, RLENGTH + 1)
+        match(content, /[^[:space:]]/)
+        depth = RSTART - 1
+        content = substr(content, RSTART)
+        if (sub(/^•/, "", content)) {
+          depth += 1
+        }
+        range = start "-" end
+
+        if (!inside && range == parent_range && content == parent_item) {
+          inside = 1
+          parent_depth = depth
+          next
+        }
+        if (!inside) {
+          next
+        }
+        if (depth <= parent_depth) {
+          exit 1
+        }
+        if (depth == parent_depth + 2 && range == child_range && (child_item == "*" || content == child_item)) {
+          found = 1
+          exit 0
+        }
+      }
+      END { exit found ? 0 : 1 }
+    ' "$file"; then
+    printf '%s\n' \
+      "Expected $child_item at $child_range directly under $parent_item at $parent_range" >&2
+    sed -n '1,200p' "$file" >&2
+    exit 1
   fi
 }
 
-normalize_parse_cst() {
+assert_parse_with_output() {
+  source_file=$1
+  output_file=$2
+  if parse_current \
+    --timeout 10000000 \
+    "$source_file" \
+    >"$output_file" 2>/dev/null; then
+    return
+  else
+    status=$?
+  fi
+  if [ "$status" -gt 1 ]; then
+    fail "Parser failed with status $status while recovering source: $source_file"
+  fi
+}
+
+assert_parse_contains_all() {
+  source_file=$1
+  output_file=$2
+  shift 2
+  assert_parse_with_output "$source_file" "$output_file"
+  for expected_item; do
+    assert_contains "$expected_item" "$output_file"
+  done
+}
+
+parse_incremental_and_fresh_with_output() {
+  initial_file=$1
+  final_file=$2
+  test_name=$3
+  shift 3
+
+  incremental_output="$runtime_directory/$test_name.incremental"
+  fresh_output="$runtime_directory/$test_name.fresh"
+  initial_xml="$runtime_directory/$test_name.initial.xml"
+  incremental_xml="$runtime_directory/$test_name.incremental.xml"
+  fresh_xml="$runtime_directory/$test_name.fresh.xml"
+  initial_public="$initial_xml.public"
+  incremental_public="$incremental_xml.public"
+  fresh_public="$fresh_xml.public"
+
+  if parse_current \
+    --timeout 10000000 \
+    --edits "$@" \
+    -- "$initial_file" \
+    >"$incremental_output" 2>/dev/null; then
+    :
+  else
+    status=$?
+    if [ "$status" -gt 1 ]; then
+      fail "Incremental parser failed with status $status while recovering source: $test_name"
+    fi
+  fi
+
+  if parse_current \
+    --timeout 10000000 \
+    "$final_file" \
+    >"$fresh_output" 2>/dev/null; then
+    :
+  else
+    status=$?
+    if [ "$status" -gt 1 ]; then
+      fail "Fresh parser failed with status $status while recovering source: $test_name"
+    fi
+  fi
+
+  if parse_current \
+    --xml \
+    --timeout 10000000 \
+    --edits "$@" \
+    -- "$initial_file" \
+    >"$incremental_xml" 2>/dev/null; then
+    incremental_status=valid
+  else
+    status=$?
+    if [ "$status" -gt 1 ]; then
+      fail "Incremental XML parser failed with status $status while recovering source: $test_name"
+    fi
+    incremental_status=invalid
+  fi
+
+  if parse_current \
+    --xml \
+    --timeout 10000000 \
+    "$final_file" \
+    >"$fresh_xml" 2>/dev/null; then
+    fresh_status=valid
+  else
+    status=$?
+    if [ "$status" -gt 1 ]; then
+      fail "Fresh XML parser failed with status $status while recovering source: $test_name"
+    fi
+    fresh_status=invalid
+  fi
+
+  parse_current \
+    --xml \
+    --timeout 10000000 \
+    "$initial_file" \
+    >"$initial_xml" 2>/dev/null || true
+  normalize_public_xml "$incremental_xml" "$incremental_public"
+  normalize_public_xml "$fresh_xml" "$fresh_public"
+  normalize_public_xml "$initial_xml" "$initial_public"
+
+  if [ "$incremental_status" != "$fresh_status" ]; then
+    fail "Incremental and fresh statuses differ: $test_name"
+  fi
+
+  if ! cmp -s "$incremental_public" "$fresh_public"; then
+    diff -u "$fresh_public" "$incremental_public" >&2 || true
+    fail "Incremental and fresh public CSTs differ: $test_name"
+  fi
+
+  if cmp -s "$initial_public" "$fresh_public"; then
+    fail "Incremental recovery regression does not change the public CST: $test_name"
+  fi
+}
+
+normalize_public_xml() {
   input_file=$1
   output_file=$2
   awk '
-    /^[^[:space:](].*[[:space:]]Parse:[[:space:]]/ { next }
-    /^[[:space:]]*Edit:[[:space:]]/ { next }
-    { print }
+    function print_indent(count, cursor) {
+      for (cursor = 0; cursor < count; cursor += 1) {
+        printf " "
+      }
+    }
+
+    /^<\?xml / { next }
+    /^[[:space:]]*<\/?sources>/ { next }
+    /^[[:space:]]*<source / { next }
+    /^[[:space:]]*<\/source>/ { next }
+
+    {
+      line = $0
+      trimmed = line
+      sub(/^[[:space:]]*/, "", trimmed)
+
+      if (trimmed ~ /^<(ERROR|MISSING)([[:space:]>]|\/)/) {
+        if (trimmed !~ /<\/(ERROR|MISSING)>/ && trimmed !~ /\/>$/) {
+          artifact_depth += 1
+        }
+        next
+      }
+      if (trimmed ~ /^<\/(ERROR|MISSING)>/) {
+        artifact_depth -= 1
+        next
+      }
+      if (trimmed !~ /^</) {
+        next
+      }
+
+      match(line, /[^[:space:]]/)
+      indentation = RSTART - 1 - 4 - artifact_depth * 2
+      if (indentation < 0) {
+        indentation = 0
+      }
+      gsub(/>[^<]*</, "><", trimmed)
+      print_indent(indentation)
+      print trimmed
+    }
   ' "$input_file" >"$output_file"
 }
 
@@ -132,14 +341,16 @@ assert_incremental_equals_fresh_status() {
   test_name=$3
   shift 3
 
-  initial_output="$runtime_directory/$test_name.initial"
-  incremental_output="$runtime_directory/$test_name.incremental"
-  fresh_output="$runtime_directory/$test_name.fresh"
-  incremental_cst="$incremental_output.cst"
-  fresh_cst="$fresh_output.cst"
-  initial_cst="$initial_output.cst"
+  initial_output="$runtime_directory/$test_name.initial.xml"
+  incremental_output="$runtime_directory/$test_name.incremental.xml"
+  fresh_output="$runtime_directory/$test_name.fresh.xml"
+  incremental_public="$incremental_output.public"
+  fresh_public="$fresh_output.public"
+  initial_public="$initial_output.public"
 
   if parse_current \
+    --xml \
+    --timeout 10000000 \
     --edits "$@" \
     -- "$initial_file" \
     >"$incremental_output" 2>/dev/null; then
@@ -148,6 +359,8 @@ assert_incremental_equals_fresh_status() {
     incremental_status=invalid
   fi
   if parse_current \
+    --xml \
+    --timeout 10000000 \
     "$final_file" \
     >"$fresh_output" 2>/dev/null; then
     fresh_status=valid
@@ -155,11 +368,13 @@ assert_incremental_equals_fresh_status() {
     fresh_status=invalid
   fi
   parse_current \
+    --xml \
+    --timeout 10000000 \
     "$initial_file" \
     >"$initial_output" 2>/dev/null || true
-  normalize_parse_cst "$incremental_output" "$incremental_cst"
-  normalize_parse_cst "$fresh_output" "$fresh_cst"
-  normalize_parse_cst "$initial_output" "$initial_cst"
+  normalize_public_xml "$incremental_output" "$incremental_public"
+  normalize_public_xml "$fresh_output" "$fresh_public"
+  normalize_public_xml "$initial_output" "$initial_public"
 
   if [ "$incremental_status" != "$fresh_status" ]; then
     fail "Incremental and fresh statuses differ: $test_name"
@@ -169,22 +384,18 @@ assert_incremental_equals_fresh_status() {
     fail "Expected $expected_status incremental and fresh parses: $test_name"
   fi
 
-  if ! cmp -s "$incremental_cst" "$fresh_cst"; then
-    diff -u "$fresh_cst" "$incremental_cst" >&2 || true
-    fail "Incremental and fresh trees differ: $test_name"
+  if ! cmp -s "$incremental_public" "$fresh_public"; then
+    diff -u "$fresh_public" "$incremental_public" >&2 || true
+    fail "Incremental and fresh public CSTs differ: $test_name"
   fi
 
-  if cmp -s "$initial_cst" "$fresh_cst"; then
-    fail "Incremental regression does not change the CST: $test_name"
+  if cmp -s "$initial_public" "$fresh_public"; then
+    fail "Incremental regression does not change the public CST: $test_name"
   fi
 }
 
 assert_incremental_equals_fresh() {
   assert_incremental_equals_fresh_status valid "$@"
-}
-
-assert_invalid_incremental_equals_fresh() {
-  assert_incremental_equals_fresh_status invalid "$@"
 }
 
 assert_valid_incremental_equals_fresh() {
@@ -280,6 +491,7 @@ assert_contains \
 
 compound_source="$runtime_directory/recovery-compound.sh"
 compound_output="$runtime_directory/recovery-compound.out"
+compound_query_output="$runtime_directory/recovery-compound.query"
 printf '%s\n' \
   "before" \
   "if condition; then" \
@@ -291,26 +503,644 @@ assert_contains "(and_or [2, 2] - [2, 8]" "$compound_output"
 assert_contains \
   "recovery: (compound_command_recovery [3, 0] - [3, 0])" \
   "$compound_output"
+query_current \
+  "$repository_directory/test/runtime/recovery_contract.scm" \
+  "$compound_source" \
+  >"$compound_query_output" 2>/dev/null
+assert_contains "compound.owner" "$compound_query_output"
+assert_contains "compound.recovery" "$compound_query_output"
 
-subshell_source="$runtime_directory/recovery-subshell.sh"
-subshell_output="$runtime_directory/recovery-subshell.out"
-printf '%s\n' "(inside" >"$subshell_source"
-assert_invalid_with_output "$subshell_source" "$subshell_output"
-assert_contains "(ERROR [0, 0] - [1, 0]" "$subshell_output"
-assert_contains "(and_or [0, 1] - [0, 7]" "$subshell_output"
+nested_compound_initial="$runtime_directory/recovery-nested-compound-initial.sh"
+nested_compound_final="$runtime_directory/recovery-nested-compound-final.sh"
+printf '%s\n' 'if x; then while y; do z; done; fi' \
+  >"$nested_compound_initial"
+printf '%s\n' 'if x; then while y; do z; fi' >"$nested_compound_final"
+parse_incremental_and_fresh_with_output \
+  "$nested_compound_initial" \
+  "$nested_compound_final" \
+  "nested-compound-outer-closer" \
+  "26 6"
+for nested_compound_output in \
+  "$runtime_directory/nested-compound-outer-closer.incremental" \
+  "$runtime_directory/nested-compound-outer-closer.fresh"; do
+  assert_contains "(while_clause [0, 11] - [0, 26]" \
+    "$nested_compound_output"
+  assert_contains \
+    "recovery: (compound_command_recovery [0, 26] - [0, 26])" \
+    "$nested_compound_output"
+  assert_contains "(fi_keyword [0, 26] - [0, 28])" \
+    "$nested_compound_output"
+done
+
+nested_case_recovery="$runtime_directory/recovery-nested-case.sh"
+nested_case_recovery_output="$runtime_directory/recovery-nested-case.out"
+printf '%s\n' 'case x in x) if y; then z;; esac' \
+  >"$nested_case_recovery"
+assert_parse_with_output \
+  "$nested_case_recovery" \
+  "$nested_case_recovery_output"
+assert_contains "(if_clause [0, 13] - [0, 25]" \
+  "$nested_case_recovery_output"
+assert_contains "(separator_recovery [0, 25] - [0, 25])" \
+  "$nested_case_recovery_output"
+assert_contains \
+  "recovery: (compound_command_recovery [0, 25] - [0, 25])" \
+  "$nested_case_recovery_output"
+assert_contains "terminator: (dsemi [0, 25] - [0, 27])" \
+  "$nested_case_recovery_output"
+assert_contains "(esac_keyword [0, 28] - [0, 32])" \
+  "$nested_case_recovery_output"
+
+same_kind_if_recovery="$runtime_directory/recovery-same-kind-if.sh"
+same_kind_if_recovery_output="$runtime_directory/recovery-same-kind-if.out"
+printf '%s\n' 'if x; then if y; then z; fi' >"$same_kind_if_recovery"
+assert_parse_with_output \
+  "$same_kind_if_recovery" \
+  "$same_kind_if_recovery_output"
+assert_contains "(fi_keyword [0, 25] - [0, 27])" \
+  "$same_kind_if_recovery_output"
+assert_contains \
+  "recovery: (compound_command_recovery [1, 0] - [1, 0])" \
+  "$same_kind_if_recovery_output"
+
+same_kind_while_recovery="$runtime_directory/recovery-same-kind-while.sh"
+same_kind_while_recovery_output="$runtime_directory/recovery-same-kind-while.out"
+printf '%s\n' 'while x; do while y; do z; done' \
+  >"$same_kind_while_recovery"
+assert_parse_with_output \
+  "$same_kind_while_recovery" \
+  "$same_kind_while_recovery_output"
+assert_contains "(done_keyword [0, 27] - [0, 31])" \
+  "$same_kind_while_recovery_output"
+assert_contains \
+  "recovery: (compound_command_recovery [1, 0] - [1, 0])" \
+  "$same_kind_while_recovery_output"
+
+reserved_word_arguments="$runtime_directory/recovery-reserved-word-arguments.sh"
+printf '%s\n' \
+  'if x; then echo fi done esac; fi' \
+  'case x in x) echo fi done esac;; esac' \
+  'case fi in fi) :;; esac' \
+  'case done in done) :;; esac' \
+  'if x; then case fi in fi) :;; esac; fi' \
+  'while x; do case done in done) :;; esac; done' \
+  >"$reserved_word_arguments"
+assert_valid "$reserved_word_arguments"
+
+case_esac_pattern="$runtime_directory/case-esac-pattern.sh"
+case_esac_pattern_output="$runtime_directory/case-esac-pattern.out"
+printf '%s\n' 'case esac in esac) :;; esac' >"$case_esac_pattern"
+assert_parse_with_output "$case_esac_pattern" "$case_esac_pattern_output"
+assert_contains "(esac_keyword [0, 13] - [0, 17])" \
+  "$case_esac_pattern_output"
+
+parameter_recovery_initial="$runtime_directory/recovery-parameter-initial.sh"
+parameter_recovery_final="$runtime_directory/recovery-parameter-final.sh"
+printf '%s\n' 'echo ${x}; next' >"$parameter_recovery_initial"
+printf '%s\n' 'echo ${x; next' >"$parameter_recovery_final"
+parse_incremental_and_fresh_with_output \
+  "$parameter_recovery_initial" \
+  "$parameter_recovery_final" \
+  "parameter-tail-recovery" \
+  "8 1"
+for parameter_recovery_output in \
+  "$runtime_directory/parameter-tail-recovery.incremental" \
+  "$runtime_directory/parameter-tail-recovery.fresh"; do
+  assert_contains \
+    "recovery: (parameter_expansion_recovery [0, 8] - [0, 8])" \
+    "$parameter_recovery_output"
+  assert_contains "(and_or [0, 10] - [0, 14]" "$parameter_recovery_output"
+done
+
+parameter_recovery_query="$runtime_directory/recovery-parameter.query"
+query_current \
+  "$repository_directory/test/runtime/recovery_contract.scm" \
+  "$parameter_recovery_final" \
+  >"$parameter_recovery_query" 2>/dev/null
+assert_contains "parameter.owner" "$parameter_recovery_query"
+assert_contains "parameter.recovery" "$parameter_recovery_query"
+
+parameter_recovery_boundaries="$runtime_directory/recovery-parameter-boundaries.sh"
+parameter_recovery_boundaries_output="$runtime_directory/recovery-parameter-boundaries.out"
+printf '%s\n' \
+  'echo ${x' \
+  'next' \
+  'echo "${x"; next' \
+  'echo $(printf ${x); next' \
+  'echo ${00& next' \
+  >"$parameter_recovery_boundaries"
+assert_parse_with_output \
+  "$parameter_recovery_boundaries" \
+  "$parameter_recovery_boundaries_output"
+assert_contains \
+  "recovery: (parameter_expansion_recovery [0, 8] - [0, 8])" \
+  "$parameter_recovery_boundaries_output"
+assert_contains "(complete_command [1, 0] - [1, 4]" \
+  "$parameter_recovery_boundaries_output"
+assert_contains \
+  "recovery: (parameter_expansion_recovery [2, 9] - [2, 9])" \
+  "$parameter_recovery_boundaries_output"
+assert_contains \
+  "recovery: (parameter_expansion_recovery [3, 17] - [3, 17])" \
+  "$parameter_recovery_boundaries_output"
+assert_contains \
+  "recovery: (parameter_expansion_recovery [4, 9] - [4, 9])" \
+  "$parameter_recovery_boundaries_output"
+
+parameter_operator_metacharacters="$runtime_directory/parameter-operator-metacharacters.sh"
+parameter_operator_metacharacters_output="$runtime_directory/parameter-operator-metacharacters.out"
+printf '%s\n' 'echo ${x:-a;b} ${x:-a&b}' \
+  >"$parameter_operator_metacharacters"
+assert_valid_with_output \
+  "$parameter_operator_metacharacters" \
+  "$parameter_operator_metacharacters_output"
+assert_not_contains \
+  "parameter_expansion_recovery" \
+  "$parameter_operator_metacharacters_output"
+
+subshell_initial="$runtime_directory/recovery-subshell-initial.sh"
+subshell_final="$runtime_directory/recovery-subshell-final.sh"
+printf '%s\n' '(inside)' >"$subshell_initial"
+printf '%s\n' '(inside' >"$subshell_final"
+parse_incremental_and_fresh_with_output \
+  "$subshell_initial" \
+  "$subshell_final" \
+  "unclosed-subshell" \
+  "7 1"
+for subshell_output in \
+  "$runtime_directory/unclosed-subshell.incremental" \
+  "$runtime_directory/unclosed-subshell.fresh"; do
+  assert_contains "(subshell [0, 0] - [1, 0]" "$subshell_output"
+  assert_contains "(and_or [0, 1] - [0, 7]" "$subshell_output"
+  assert_contains \
+    "recovery: (compound_command_recovery [1, 0] - [1, 0])" \
+    "$subshell_output"
+done
+
+group_recovery_query="$runtime_directory/recovery-group.query"
+query_current \
+  "$repository_directory/test/runtime/recovery_contract.scm" \
+  "$subshell_final" \
+  >"$group_recovery_query" 2>/dev/null
+assert_contains "group.owner" "$group_recovery_query"
+assert_contains "group.recovery" "$group_recovery_query"
+
+brace_group_initial="$runtime_directory/recovery-brace-group-initial.sh"
+brace_group_final="$runtime_directory/recovery-brace-group-final.sh"
+printf '%s\n' '{ inside; }' >"$brace_group_initial"
+printf '%s\n' '{ inside;' >"$brace_group_final"
+parse_incremental_and_fresh_with_output \
+  "$brace_group_initial" \
+  "$brace_group_final" \
+  "unclosed-brace-group" \
+  "9 2"
+for brace_group_output in \
+  "$runtime_directory/unclosed-brace-group.incremental" \
+  "$runtime_directory/unclosed-brace-group.fresh"; do
+  assert_contains "(brace_group [0, 0] - [1, 0]" "$brace_group_output"
+  assert_contains "(and_or [0, 2] - [0, 8]" "$brace_group_output"
+  assert_contains \
+    "recovery: (compound_command_recovery [1, 0] - [1, 0])" \
+    "$brace_group_output"
+done
+
+nested_group_recovery="$runtime_directory/recovery-nested-groups.sh"
+nested_group_recovery_output="$runtime_directory/recovery-nested-groups.out"
+printf '%s\n' '{ (inside; }' '( { inside; )' \
+  >"$nested_group_recovery"
+assert_parse_with_output \
+  "$nested_group_recovery" \
+  "$nested_group_recovery_output"
+assert_contains "(subshell [0, 2] - [0, 11]" \
+  "$nested_group_recovery_output"
+assert_contains \
+  "recovery: (compound_command_recovery [0, 11] - [0, 11])" \
+  "$nested_group_recovery_output"
+assert_contains "(brace_group [1, 2] - [1, 12]" \
+  "$nested_group_recovery_output"
+assert_contains \
+  "recovery: (compound_command_recovery [1, 12] - [1, 12])" \
+  "$nested_group_recovery_output"
+
+nested_compound_group_recovery="$runtime_directory/recovery-nested-compound-groups.sh"
+nested_compound_group_recovery_output="$runtime_directory/recovery-nested-compound-groups.out"
+printf '%s\n' '{ if x; then y; }' '(if x; then y;)' \
+  >"$nested_compound_group_recovery"
+assert_parse_with_output \
+  "$nested_compound_group_recovery" \
+  "$nested_compound_group_recovery_output"
+assert_contains "(brace_group [0, 0] - [0, 17]" \
+  "$nested_compound_group_recovery_output"
+assert_contains "(if_clause [0, 2] - [0, 16]" \
+  "$nested_compound_group_recovery_output"
+assert_contains \
+  "recovery: (compound_command_recovery [0, 16] - [0, 16])" \
+  "$nested_compound_group_recovery_output"
+assert_contains "(subshell [1, 0] - [1, 15]" \
+  "$nested_compound_group_recovery_output"
+assert_contains "(if_clause [1, 1] - [1, 14]" \
+  "$nested_compound_group_recovery_output"
+assert_contains \
+  "recovery: (compound_command_recovery [1, 14] - [1, 14])" \
+  "$nested_compound_group_recovery_output"
+
+unclosed_function_group="$runtime_directory/recovery-function-group.sh"
+unclosed_function_group_output="$runtime_directory/recovery-function-group.out"
+printf '%s\n' 'f() { inside;' >"$unclosed_function_group"
+assert_parse_with_output \
+  "$unclosed_function_group" \
+  "$unclosed_function_group_output"
+assert_contains "(function_definition [0, 0] - [1, 0]" \
+  "$unclosed_function_group_output"
+assert_contains "(brace_group [0, 4] - [1, 0]" \
+  "$unclosed_function_group_output"
+assert_contains \
+  "recovery: (compound_command_recovery [1, 0] - [1, 0])" \
+  "$unclosed_function_group_output"
+
+empty_groups="$runtime_directory/recovery-empty-groups.sh"
+empty_groups_output="$runtime_directory/recovery-empty-groups.out"
+printf '%s\n' '()' '{ }' >"$empty_groups"
+assert_parse_with_output "$empty_groups" "$empty_groups_output"
+assert_contains "(subshell [0, 0] - [0, 2]" "$empty_groups_output"
+assert_contains \
+  "recovery: (compound_command_recovery [0, 1] - [0, 1])" \
+  "$empty_groups_output"
+assert_contains "(brace_group [1, 0] - [1, 3]" "$empty_groups_output"
+assert_contains \
+  "recovery: (compound_command_recovery [1, 2] - [1, 2])" \
+  "$empty_groups_output"
+
+long_brace_closer="$runtime_directory/recovery-long-brace-closer.sh"
+long_brace_closer_output="$runtime_directory/recovery-long-brace-closer.out"
+printf '%s\n' 'holder() { first; }suffix' >"$long_brace_closer"
+assert_parse_with_output "$long_brace_closer" "$long_brace_closer_output"
+assert_contains "(brace_group [0, 9] - [1, 0]" \
+  "$long_brace_closer_output"
+assert_contains \
+  "recovery: (compound_command_recovery [1, 0] - [1, 0])" \
+  "$long_brace_closer_output"
 
 right_brace_source="$runtime_directory/recovery-right-brace.sh"
 right_brace_output="$runtime_directory/recovery-right-brace.out"
 printf '%s\n' "first; }" >"$right_brace_source"
-assert_invalid_with_output "$right_brace_source" "$right_brace_output"
-assert_contains "(ERROR [0, 5] - [1, 0]" "$right_brace_output"
+assert_parse_with_output "$right_brace_source" "$right_brace_output"
 assert_not_contains "(word [0, 7] - [0, 8]" \
   "$right_brace_output"
+
+parameter_pattern_initial="$runtime_directory/recovery-parameter-pattern-initial.sh"
+parameter_pattern_final="$runtime_directory/recovery-parameter-pattern-final.sh"
+printf '%s\n' 'echo "${x%foo}"; next' >"$parameter_pattern_initial"
+printf '%s\n' 'echo "${x%foo"; next' >"$parameter_pattern_final"
+parse_incremental_and_fresh_with_output \
+  "$parameter_pattern_initial" \
+  "$parameter_pattern_final" \
+  "parameter-pattern-tail-recovery" \
+  "13 1"
+for parameter_pattern_output in \
+  "$runtime_directory/parameter-pattern-tail-recovery.incremental" \
+  "$runtime_directory/parameter-pattern-tail-recovery.fresh"; do
+  assert_contains \
+    "(parameter_expansion [0, 6] - [0, 13]" \
+    "$parameter_pattern_output"
+  assert_contains \
+    "recovery: (parameter_expansion_recovery [0, 13] - [0, 13])" \
+    "$parameter_pattern_output"
+  assert_contains "(and_or [0, 16] - [0, 20]" \
+    "$parameter_pattern_output"
+done
+parameter_pattern_cst="$runtime_directory/recovery-parameter-pattern.cst"
+assert_cst_valid_with_output \
+  "$parameter_pattern_final" \
+  "$parameter_pattern_cst"
+assert_cst_direct_child_range \
+  "0:5-0:14" \
+  "double_quoted" \
+  "0:13-0:14" \
+  "*" \
+  "$parameter_pattern_cst"
+
+empty_body_source="$runtime_directory/recovery-empty-bodies.sh"
+empty_body_output="$runtime_directory/recovery-empty-bodies.out"
+empty_body_cst="$runtime_directory/recovery-empty-bodies.cst"
+printf '%s\n' \
+  'if x; then fi' \
+  'after_if' \
+  'while x; do done' \
+  'after_while' \
+  'for x; do done' \
+  'after_for' \
+  '{ }' \
+  'after_brace' \
+  '()' \
+  'after_subshell' \
+  >"$empty_body_source"
+assert_parse_contains_all \
+  "$empty_body_source" \
+  "$empty_body_output" \
+  "(if_clause [0, 0] - [0, 13]" \
+  "recovery: (compound_command_recovery [0, 11] - [0, 11])" \
+  "(fi_keyword [0, 11] - [0, 13])" \
+  "(complete_command [1, 0] - [1, 8]" \
+  "(while_clause [2, 0] - [2, 16]" \
+  "recovery: (compound_command_recovery [2, 12] - [2, 12])" \
+  "(done_keyword [2, 12] - [2, 16])" \
+  "(complete_command [3, 0] - [3, 11]" \
+  "(for_clause [4, 0] - [4, 14]" \
+  "recovery: (compound_command_recovery [4, 10] - [4, 10])" \
+  "(done_keyword [4, 10] - [4, 14])" \
+  "(complete_command [5, 0] - [5, 9]" \
+  "(brace_group [6, 0] - [6, 3]" \
+  "recovery: (compound_command_recovery [6, 2] - [6, 2])" \
+  "(complete_command [7, 0] - [7, 11]" \
+  "(subshell [8, 0] - [8, 2]" \
+  "recovery: (compound_command_recovery [8, 1] - [8, 1])" \
+  "(complete_command [9, 0] - [9, 14]"
+assert_cst_valid_with_output "$empty_body_source" "$empty_body_cst"
+assert_cst_direct_child_range \
+  "6:0-6:3" \
+  "brace_group" \
+  "6:2-6:3" \
+  '"}"' \
+  "$empty_body_cst"
+assert_cst_direct_child_range \
+  "8:0-8:2" \
+  "subshell" \
+  "8:1-8:2" \
+  '")"' \
+  "$empty_body_cst"
+
+empty_if_initial="$runtime_directory/recovery-empty-if-initial.sh"
+empty_if_final="$runtime_directory/recovery-empty-if-final.sh"
+printf '%s\n' 'if x; then :; fi' 'next' >"$empty_if_initial"
+printf '%s\n' 'if x; then fi' 'next' >"$empty_if_final"
+parse_incremental_and_fresh_with_output \
+  "$empty_if_initial" \
+  "$empty_if_final" \
+  "delete-if-body" \
+  "11 3"
+
+empty_do_initial="$runtime_directory/recovery-empty-do-initial.sh"
+empty_do_final="$runtime_directory/recovery-empty-do-final.sh"
+printf '%s\n' 'while x; do :; done' 'next' >"$empty_do_initial"
+printf '%s\n' 'while x; do done' 'next' >"$empty_do_final"
+parse_incremental_and_fresh_with_output \
+  "$empty_do_initial" \
+  "$empty_do_final" \
+  "delete-do-group-body" \
+  "12 3"
+
+empty_brace_initial="$runtime_directory/recovery-empty-brace-initial.sh"
+empty_brace_final="$runtime_directory/recovery-empty-brace-final.sh"
+printf '%s\n' '{ :; }' 'next' >"$empty_brace_initial"
+printf '%s\n' '{ }' 'next' >"$empty_brace_final"
+parse_incremental_and_fresh_with_output \
+  "$empty_brace_initial" \
+  "$empty_brace_final" \
+  "delete-brace-body" \
+  "2 3"
+
+missing_owner_source="$runtime_directory/recovery-missing-owners.sh"
+missing_owner_output="$runtime_directory/recovery-missing-owners.out"
+printf '%s\n' \
+  'case' \
+  'after_case' \
+  'case # comment' \
+  'after_commented_case' \
+  'for' \
+  'after_for' \
+  'for # comment' \
+  'after_commented_for' \
+  'f()' \
+  'after_function' \
+  'g() # comment' \
+  'after_commented_function' \
+  >"$missing_owner_source"
+assert_parse_contains_all \
+  "$missing_owner_source" \
+  "$missing_owner_output" \
+  "(case_clause [0, 0] - [0, 4]" \
+  "(complete_command [1, 0] - [1, 10]" \
+  "(case_clause [2, 0] - [2, 5]" \
+  "(complete_command [3, 0] - [3, 20]" \
+  "(for_clause [4, 0] - [4, 3]" \
+  "(complete_command [5, 0] - [5, 9]" \
+  "(for_clause [6, 0] - [6, 4]" \
+  "(complete_command [7, 0] - [7, 19]" \
+  "(function_definition [8, 0] - [8, 3]" \
+  "name: (fname [8, 0] - [8, 1])" \
+  "(complete_command [9, 0] - [9, 14]" \
+  "(function_definition [10, 0] - [10, 3]" \
+  "name: (fname [10, 0] - [10, 1])" \
+  "(complete_command [11, 0] - [11, 24]"
+
+function_body_initial="$runtime_directory/recovery-function-body-initial.sh"
+function_body_final="$runtime_directory/recovery-function-body-final.sh"
+printf '%s\n' 'f()' '{ :; }' >"$function_body_initial"
+printf '%s\n' 'f()' 'next' >"$function_body_final"
+parse_incremental_and_fresh_with_output \
+  "$function_body_initial" \
+  "$function_body_final" \
+  "replace-function-body" \
+  "4 6 next"
+
+stray_source="$runtime_directory/recovery-stray-closers.sh"
+stray_output="$runtime_directory/recovery-stray-closers.out"
+printf '%s\n' \
+  'first; fi' \
+  'after' \
+  'first; }' \
+  'after_brace' \
+  'first; )' \
+  'after_parenthesis' \
+  'first; ;;' \
+  'after_dsemi' \
+  'first; ;&' \
+  'after_semi_and' \
+  >"$stray_source"
+assert_parse_contains_all \
+  "$stray_source" \
+  "$stray_output" \
+  "recovery: (command_recovery [0, 7] - [0, 9]" \
+  "(fi_keyword [0, 7] - [0, 9])" \
+  "(complete_command [1, 0] - [1, 5]" \
+  "recovery: (command_recovery [2, 7] - [2, 8])" \
+  "(complete_command [3, 0] - [3, 11]" \
+  "recovery: (command_recovery [4, 7] - [4, 8])" \
+  "(complete_command [5, 0] - [5, 17]" \
+  "recovery: (command_recovery [6, 7] - [6, 9]" \
+  "(dsemi [6, 7] - [6, 9])" \
+  "(complete_command [7, 0] - [7, 11]" \
+  "recovery: (command_recovery [8, 7] - [8, 9]" \
+  "(semi_and [8, 7] - [8, 9])" \
+  "(complete_command [9, 0] - [9, 14]"
+assert_not_contains "(word [0, 7] - [0, 9]" "$stray_output"
+assert_not_contains "(word [2, 7] - [2, 8]" "$stray_output"
+assert_not_contains "(word [4, 7] - [4, 8]" "$stray_output"
+assert_not_contains "(word [6, 7] - [6, 9]" "$stray_output"
+assert_not_contains "(word [8, 7] - [8, 9]" "$stray_output"
+
+continued_reserved_source="$runtime_directory/recovery-continued-reserved.sh"
+continued_reserved_output="$runtime_directory/recovery-continued-reserved.out"
+printf '%s\n' 'first; f\' 'i' 'after' >"$continued_reserved_source"
+assert_parse_contains_all \
+  "$continued_reserved_source" \
+  "$continued_reserved_output" \
+  "recovery: (command_recovery [0, 7] - [1, 1]" \
+  "(fi_keyword [0, 7] - [1, 1]" \
+  "(line_continuation [0, 8] - [1, 0])" \
+  "(complete_command [2, 0] - [2, 5]"
+
+stray_initial="$runtime_directory/recovery-stray-initial.sh"
+stray_final="$runtime_directory/recovery-stray-final.sh"
+printf '%s\n' 'first' 'after' >"$stray_initial"
+printf '%s\n' 'first; fi' 'after' >"$stray_final"
+parse_incremental_and_fresh_with_output \
+  "$stray_initial" \
+  "$stray_final" \
+  "insert-stray-reserved-closer" \
+  "5 0 ; fi"
+
+stray_parenthesis_final="$runtime_directory/recovery-stray-parenthesis-final.sh"
+printf '%s\n' 'first; )' 'after' >"$stray_parenthesis_final"
+parse_incremental_and_fresh_with_output \
+  "$stray_initial" \
+  "$stray_parenthesis_final" \
+  "insert-stray-right-parenthesis" \
+  "5 0 ; )"
+
+and_if_semicolon_source="$runtime_directory/recovery-and-if-semicolon.sh"
+and_if_semicolon_output="$runtime_directory/recovery-and-if-semicolon.out"
+printf '%s\n' 'broken() {' '  first &&;' '}' 'after=$(ok)' \
+  >"$and_if_semicolon_source"
+assert_parse_contains_all \
+  "$and_if_semicolon_source" \
+  "$and_if_semicolon_output" \
+  "(function_definition [0, 0] - [2, 1]" \
+  "recovery: (command_recovery [1, 10] - [1, 10]" \
+  "(complete_command [3, 0] - [3, 11]"
+
+and_if_newline_initial="$runtime_directory/recovery-and-if-newline-initial.sh"
+and_if_newline_final="$runtime_directory/recovery-and-if-newline-final.sh"
+printf '%s\n' 'broken() {' '  first && :' '}' 'after=$(ok)' \
+  >"$and_if_newline_initial"
+printf '%s\n' 'broken() {' '  first && ' '}' 'after=$(ok)' \
+  >"$and_if_newline_final"
+parse_incremental_and_fresh_with_output \
+  "$and_if_newline_initial" \
+  "$and_if_newline_final" \
+  "delete-command-after-and-if" \
+  "22 1"
+for and_if_newline_output in \
+  "$runtime_directory/delete-command-after-and-if.incremental" \
+  "$runtime_directory/delete-command-after-and-if.fresh"; do
+  assert_contains \
+    "recovery: (command_recovery [2, 0] - [2, 0])" \
+    "$and_if_newline_output"
+  assert_contains \
+    "(complete_command [3, 0] - [3, 11]" \
+    "$and_if_newline_output"
+done
+
+outer_closer_source="$runtime_directory/recovery-enclosing-closers.sh"
+outer_closer_output="$runtime_directory/recovery-enclosing-closers.out"
+outer_closer_cst="$runtime_directory/recovery-enclosing-closers.cst"
+printf '%s\n' \
+  '(if x; then y); next' \
+  'echo `if x; then y`; next' \
+  >"$outer_closer_source"
+assert_parse_contains_all \
+  "$outer_closer_source" \
+  "$outer_closer_output" \
+  "(subshell [0, 0] - [0, 14]" \
+  "terminator: (separator_recovery [0, 13] - [0, 13])" \
+  "recovery: (compound_command_recovery [0, 13] - [0, 13])" \
+  "(and_or [0, 16] - [0, 20]" \
+  "(backquote_substitution [1, 5] - [1, 19]" \
+  "terminator: (separator_recovery [1, 18] - [1, 18])" \
+  "recovery: (compound_command_recovery [1, 18] - [1, 18])" \
+  "(and_or [1, 21] - [1, 25]"
+assert_cst_valid_with_output "$outer_closer_source" "$outer_closer_cst"
+assert_cst_direct_child_range \
+  "0:0-0:14" \
+  "subshell" \
+  "0:13-0:14" \
+  '")"' \
+  "$outer_closer_cst"
+assert_cst_direct_child_range \
+  "1:5-1:19" \
+  "backquote_substitution" \
+  "1:18-1:19" \
+  "*" \
+  "$outer_closer_cst"
+
+missing_command_parenthesis_source="$runtime_directory/recovery-missing-command-parenthesis.sh"
+missing_command_parenthesis_output="$runtime_directory/recovery-missing-command-parenthesis.out"
+missing_command_parenthesis_cst="$runtime_directory/recovery-missing-command-parenthesis.cst"
+printf '%s\n' '(first && )' 'after_missing_command' \
+  >"$missing_command_parenthesis_source"
+assert_parse_contains_all \
+  "$missing_command_parenthesis_source" \
+  "$missing_command_parenthesis_output" \
+  "(subshell [0, 0] - [0, 11]" \
+  "recovery: (command_recovery [0, 10] - [0, 10])" \
+  "(complete_command [1, 0] - [1, 21]"
+assert_cst_valid_with_output \
+  "$missing_command_parenthesis_source" \
+  "$missing_command_parenthesis_cst"
+assert_cst_direct_child_range \
+  "0:0-0:11" \
+  "subshell" \
+  "0:10-0:11" \
+  '")"' \
+  "$missing_command_parenthesis_cst"
+
+outer_subshell_initial="$runtime_directory/recovery-enclosing-subshell-initial.sh"
+outer_subshell_final="$runtime_directory/recovery-enclosing-subshell-final.sh"
+printf '%s\n' '(if x; then y; fi); next' >"$outer_subshell_initial"
+printf '%s\n' '(if x; then y); next' >"$outer_subshell_final"
+parse_incremental_and_fresh_with_output \
+  "$outer_subshell_initial" \
+  "$outer_subshell_final" \
+  "delete-inner-fi-before-subshell-closer" \
+  "13 4"
+
+outer_backquote_initial="$runtime_directory/recovery-enclosing-backquote-initial.sh"
+outer_backquote_final="$runtime_directory/recovery-enclosing-backquote-final.sh"
+printf '%s\n' 'echo `if x; then y; fi`; next' >"$outer_backquote_initial"
+printf '%s\n' 'echo `if x; then y`; next' >"$outer_backquote_final"
+parse_incremental_and_fresh_with_output \
+  "$outer_backquote_initial" \
+  "$outer_backquote_final" \
+  "delete-inner-fi-before-backquote-closer" \
+  "18 4"
+
+case_pattern_recovery="$runtime_directory/recovery-case-pattern.sh"
+case_pattern_recovery_output="$runtime_directory/recovery-case-pattern.out"
+printf '%s\n' 'case x in fi' 'next' >"$case_pattern_recovery"
+assert_parse_contains_all \
+  "$case_pattern_recovery" \
+  "$case_pattern_recovery_output" \
+  "(case_clause [0, 0] - [0, 12]" \
+  "patterns: (pattern_list [0, 10] - [0, 12]" \
+  "word: (word [0, 10] - [0, 12]" \
+  "recovery: (compound_command_recovery [0, 12] - [0, 12])" \
+  "(complete_command [1, 0] - [1, 4]"
+
+case_pattern_initial="$runtime_directory/recovery-case-pattern-initial.sh"
+case_pattern_final="$runtime_directory/recovery-case-pattern-final.sh"
+printf '%s\n' 'case x in fi) :;; esac' 'next' >"$case_pattern_initial"
+printf '%s\n' 'case x in fi' 'next' >"$case_pattern_final"
+parse_incremental_and_fresh_with_output \
+  "$case_pattern_initial" \
+  "$case_pattern_final" \
+  "delete-case-pattern-tail" \
+  "12 10"
 
 io_location_source="$runtime_directory/recovery-io-location.sh"
 io_location_output="$runtime_directory/recovery-io-location.out"
 printf '%s\n' "printf {x'}>file" >"$io_location_source"
-assert_invalid_with_output "$io_location_source" "$io_location_output"
+assert_parse_with_output "$io_location_source" "$io_location_output"
 assert_not_contains "(io_location " "$io_location_output"
 
 delimiter_source="$runtime_directory/source-delimiters.sh"
@@ -364,11 +1194,12 @@ printf '%s\n' \
   "EOF" \
   "after" \
   >"$boundary_source"
-assert_invalid_with_output "$boundary_source" "$boundary_output"
+assert_parse_with_output "$boundary_source" "$boundary_output"
 assert_contains \
   "(here_document_end_recovery [1, 2] - [2, 0])" \
   "$boundary_output"
 assert_contains "end: (here_document_end [2, 0] - [3, 0])" "$boundary_output"
+assert_contains "(complete_command [5, 0] - [5, 5]" "$boundary_output"
 
 continued_delimiter_initial="$runtime_directory/continued-delimiter-initial.sh"
 continued_delimiter_final="$runtime_directory/continued-delimiter-final.sh"
@@ -474,6 +1305,110 @@ assert_incremental_equals_fresh \
   "delete-here-document-delimiter-boundary-continuation" \
   "6 2"
 
+continued_dollar_delimiter_initial="$runtime_directory/continued-dollar-delimiter-initial.sh"
+continued_dollar_delimiter_final="$runtime_directory/continued-dollar-delimiter-final.sh"
+continued_dollar_delimiter_output="$runtime_directory/continued-dollar-delimiter.out"
+printf '%s\n' \
+  'cat <<$(echo)' \
+  'body' \
+  '$(echo)' \
+  'after' \
+  >"$continued_dollar_delimiter_initial"
+printf '%s\n' \
+  'cat <<$\' \
+  '(echo)' \
+  'body' \
+  '$(echo)' \
+  'after' \
+  >"$continued_dollar_delimiter_final"
+assert_cst_valid_with_output \
+  "$continued_dollar_delimiter_final" \
+  "$continued_dollar_delimiter_output"
+assert_cst_range \
+  "0:6 - 1:6" \
+  "end: here_end" \
+  "$continued_dollar_delimiter_output"
+assert_cst_range \
+  "0:7 - 1:0" \
+  "line_continuation" \
+  "$continued_dollar_delimiter_output"
+assert_cst_range \
+  "3:0 - 4:0" \
+  "end: here_document_end" \
+  "$continued_dollar_delimiter_output"
+assert_valid_incremental_equals_fresh \
+  "$continued_dollar_delimiter_initial" \
+  "$continued_dollar_delimiter_final" \
+  "insert-continuation-after-delimiter-dollar" \
+  '7 0 \
+'
+
+continued_dollar_quote_initial="$runtime_directory/continued-dollar-quote-initial.sh"
+continued_dollar_quote_final="$runtime_directory/continued-dollar-quote-final.sh"
+continued_dollar_quote_output="$runtime_directory/continued-dollar-quote.out"
+printf '%s\n' "echo \"\$'text'\"" >"$continued_dollar_quote_initial"
+printf '%s\n' 'echo "$\' "'text'\"" >"$continued_dollar_quote_final"
+assert_cst_valid_with_output \
+  "$continued_dollar_quote_final" \
+  "$continued_dollar_quote_output"
+assert_cst_range \
+  "0:7 - 1:0" \
+  "line_continuation" \
+  "$continued_dollar_quote_output"
+assert_not_contains "dollar_single_quoted" "$continued_dollar_quote_output"
+assert_valid_incremental_equals_fresh \
+  "$continued_dollar_quote_initial" \
+  "$continued_dollar_quote_final" \
+  "insert-continuation-before-inherited-quote" \
+  '7 0 \
+'
+
+continued_dollar_parameter_initial="$runtime_directory/continued-dollar-parameter-initial.sh"
+continued_dollar_parameter_final="$runtime_directory/continued-dollar-parameter-final.sh"
+continued_dollar_parameter_output="$runtime_directory/continued-dollar-parameter.out"
+printf '%s\n' "echo \"\${x:-\$'text'}\"" \
+  >"$continued_dollar_parameter_initial"
+printf '%s\n' 'echo "${x:-$\' "'text'}\"" \
+  >"$continued_dollar_parameter_final"
+assert_cst_valid_with_output \
+  "$continued_dollar_parameter_final" \
+  "$continued_dollar_parameter_output"
+assert_cst_range \
+  "0:12 - 1:0" \
+  "line_continuation" \
+  "$continued_dollar_parameter_output"
+assert_not_contains \
+  "dollar_single_quoted" \
+  "$continued_dollar_parameter_output"
+assert_valid_incremental_equals_fresh \
+  "$continued_dollar_parameter_initial" \
+  "$continued_dollar_parameter_final" \
+  "insert-continuation-in-inherited-parameter-word" \
+  '12 0 \
+'
+
+continued_dollar_body_initial="$runtime_directory/continued-dollar-body-initial.sh"
+continued_dollar_body_final="$runtime_directory/continued-dollar-body-final.sh"
+continued_dollar_body_output="$runtime_directory/continued-dollar-body.out"
+printf '%s\n' 'cat <<EOF' "\$'text'" 'EOF' \
+  >"$continued_dollar_body_initial"
+printf '%s\n' 'cat <<EOF' '$\' "'text'" 'EOF' \
+  >"$continued_dollar_body_final"
+assert_cst_valid_with_output \
+  "$continued_dollar_body_final" \
+  "$continued_dollar_body_output"
+assert_cst_range \
+  "1:1 - 2:0" \
+  "line_continuation" \
+  "$continued_dollar_body_output"
+assert_not_contains "dollar_single_quoted" "$continued_dollar_body_output"
+assert_valid_incremental_equals_fresh \
+  "$continued_dollar_body_initial" \
+  "$continued_dollar_body_final" \
+  "insert-continuation-in-here-document-body" \
+  '11 0 \
+'
+
 nested_initial="$runtime_directory/nested-initial.sh"
 nested_final="$runtime_directory/nested-final.sh"
 printf '%s\n' \
@@ -536,19 +1471,21 @@ printf 'cat <<%s\nbody\n%s\nafter' \
   "$long_final_delimiter" \
   "$long_final_delimiter" \
   >"$long_final"
-assert_invalid_incremental_equals_fresh \
+parse_incremental_and_fresh_with_output \
   "$long_initial" \
   "$long_final" \
   "oversized-delimiter-recovery" \
   "6 2048 $long_final_delimiter" \
   "2060 2048 $long_final_delimiter" \
   "4109 0 after"
-long_output="$runtime_directory/long-final.out"
-assert_invalid_with_output "$long_final" "$long_output"
-assert_contains "(ERROR [0, 4] - [0, 6]" "$long_output"
-assert_contains "word: (word [0, 6] - [0, 2054]" "$long_output"
-assert_not_contains "missing_here_end" "$long_output"
-assert_contains "(complete_command [3, 0] - [3, 5]" "$long_output"
+long_incremental_output="$runtime_directory/oversized-delimiter-recovery.incremental"
+long_fresh_output="$runtime_directory/oversized-delimiter-recovery.fresh"
+assert_contains \
+  "(complete_command [3, 0] - [3, 5]" \
+  "$long_incremental_output"
+assert_contains \
+  "(complete_command [3, 0] - [3, 5]" \
+  "$long_fresh_output"
 
 descriptor_initial="$runtime_directory/descriptor-initial.sh"
 descriptor_final="$runtime_directory/descriptor-final.sh"
@@ -619,14 +1556,15 @@ assert_cst_range \
   "parameter: positional_parameter" \
   "$numeric_parameter_output"
 assert_cst_range \
-  "1:10 - 2:1" \
-  "parameter: parameter_number" \
+  "1:8  - 2:2" \
+  "parameter_expansion" \
   "$numeric_parameter_output"
 assert_cst_range \
   "1:11 - 2:0" \
   "line_continuation" \
   "$numeric_parameter_output"
 assert_not_contains "ERROR" "$numeric_parameter_output"
+assert_not_contains "parameter_number" "$numeric_parameter_output"
 
 numeric_positional_initial="$runtime_directory/numeric-positional-initial.sh"
 numeric_positional_final="$runtime_directory/numeric-positional-final.sh"
@@ -651,14 +1589,29 @@ printf '%s\n' 'printf "${0\' '0}"' >"$numeric_unspecified_final"
 assert_incremental_equals_fresh \
   "$numeric_unspecified_initial" \
   "$numeric_unspecified_final" \
-  "insert-parameter-number-continuation" \
+  "insert-unclassified-numeric-parameter-continuation" \
   '11 0 \
 '
 assert_incremental_equals_fresh \
   "$numeric_unspecified_final" \
   "$numeric_unspecified_initial" \
-  "delete-parameter-number-continuation" \
+  "delete-unclassified-numeric-parameter-continuation" \
   "11 2"
+
+numeric_category_initial="$runtime_directory/numeric-category-initial.sh"
+numeric_category_final="$runtime_directory/numeric-category-final.sh"
+printf '%s\n' 'printf "${00}"' >"$numeric_category_initial"
+printf '%s\n' 'printf "${01}"' >"$numeric_category_final"
+assert_incremental_equals_fresh \
+  "$numeric_category_initial" \
+  "$numeric_category_final" \
+  "numeric-source-to-positional-parameter" \
+  "11 1 1"
+assert_incremental_equals_fresh \
+  "$numeric_category_final" \
+  "$numeric_category_initial" \
+  "positional-parameter-to-numeric-source" \
+  "11 1 0"
 
 arithmetic_direct="$runtime_directory/arithmetic-direct.sh"
 arithmetic_continued="$runtime_directory/arithmetic-continued.sh"
@@ -1391,6 +2344,22 @@ assert_valid_incremental_equals_fresh \
   "delete-second-case-subject-continuation" \
   "9 2"
 
+case_keyword_initial="$runtime_directory/case-keyword-initial.sh"
+case_keyword_final="$runtime_directory/case-keyword-final.sh"
+printf '%s\n' 'case x in esac' >"$case_keyword_initial"
+printf '%s\n' 'case\' ' x in esac' >"$case_keyword_final"
+assert_valid_incremental_equals_fresh \
+  "$case_keyword_initial" \
+  "$case_keyword_final" \
+  "insert-case-keyword-continuation" \
+  '4 0 \
+'
+assert_valid_incremental_equals_fresh \
+  "$case_keyword_final" \
+  "$case_keyword_initial" \
+  "delete-case-keyword-continuation" \
+  "4 2"
+
 or_boundary_initial="$runtime_directory/or-boundary-initial.sh"
 or_boundary_final="$runtime_directory/or-boundary-final.sh"
 printf '%s\n' 'echo word||next' >"$or_boundary_initial"
@@ -1737,6 +2706,58 @@ assert_valid_incremental_equals_fresh \
   "delete-second-case-item-boundary-continuation" \
   "16 2"
 
+case_body_separator_initial="$runtime_directory/case-body-separator-initial.sh"
+case_body_separator_final="$runtime_directory/case-body-separator-final.sh"
+printf '%s\n' 'case x in x)echo z;;esac' >"$case_body_separator_initial"
+printf '%s\n' 'case x in x)echo \' 'z;;esac' >"$case_body_separator_final"
+assert_valid_incremental_equals_fresh \
+  "$case_body_separator_initial" \
+  "$case_body_separator_final" \
+  "insert-case-body-separator-continuation" \
+  '17 0 \
+'
+assert_valid_incremental_equals_fresh \
+  "$case_body_separator_final" \
+  "$case_body_separator_initial" \
+  "delete-case-body-separator-continuation" \
+  "17 2"
+
+case_item_following_initial="$runtime_directory/case-item-following-initial.sh"
+case_item_following_final="$runtime_directory/case-item-following-final.sh"
+printf '%s\n' 'case x in x):;; y):;;esac' >"$case_item_following_initial"
+printf '%s\n' 'case x in x):;;\' ' y):;;esac' >"$case_item_following_final"
+assert_valid_incremental_equals_fresh \
+  "$case_item_following_initial" \
+  "$case_item_following_final" \
+  "insert-case-item-following-continuation" \
+  '15 0 \
+'
+assert_valid_incremental_equals_fresh \
+  "$case_item_following_final" \
+  "$case_item_following_initial" \
+  "delete-case-item-following-continuation" \
+  "15 2"
+
+empty_case_item_initial="$runtime_directory/empty-case-item-initial.sh"
+empty_case_item_final="$runtime_directory/empty-case-item-final.sh"
+printf '%s\n' 'case x in x):;;esac' >"$empty_case_item_initial"
+printf '%s\n' 'case x in x);;esac' >"$empty_case_item_final"
+assert_valid_incremental_equals_fresh \
+  "$empty_case_item_initial" \
+  "$empty_case_item_final" \
+  "delete-empty-case-item-body" \
+  "12 1"
+
+reserved_for_word_initial="$runtime_directory/reserved-for-word-initial.sh"
+reserved_for_word_final="$runtime_directory/reserved-for-word-final.sh"
+printf '%s\n' 'for x in ordinary; do :; done' >"$reserved_for_word_initial"
+printf '%s\n' 'for x in fi; do :; done' >"$reserved_for_word_final"
+assert_valid_incremental_equals_fresh \
+  "$reserved_for_word_initial" \
+  "$reserved_for_word_final" \
+  "replace-for-word-with-reserved-closer-spelling" \
+  "9 8 fi"
+
 bracket_unclosed="$runtime_directory/bracket-unclosed.sh"
 bracket_closed="$runtime_directory/bracket-closed.sh"
 bracket_range="$runtime_directory/bracket-range.sh"
@@ -1982,7 +3003,7 @@ awk 'BEGIN {
   }
   print "after"
 }' >"$many_documents"
-assert_invalid_with_output \
+assert_parse_with_output \
   "$many_documents" \
   "$runtime_directory/many-documents.out"
 
@@ -1998,7 +3019,7 @@ awk 'BEGIN {
   }
   print "after"
 }' >"$deep_documents"
-assert_invalid_with_output \
+assert_parse_with_output \
   "$deep_documents" \
   "$runtime_directory/deep-documents.out"
 

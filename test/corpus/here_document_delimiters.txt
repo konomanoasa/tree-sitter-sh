@@ -1121,8 +1121,7 @@ after
                                           (pipe_sequence
                                             (command
                                               (function_definition
-                                                (fname
-                                                  (name))
+                                                (fname)
                                                 (function_body
                                                   (compound_command
                                                     (brace_group
@@ -1390,3 +1389,165 @@ EOF
         (here_document_line_end)
         (here_document
           (here_document_end))))))
+
+==================
+Here-document delimiters classify constructs after removed newlines
+==================
+
+cat <<$\
+(echo)
+body
+$(echo)
+cat <<$\
+{x:-word}
+body
+${x:-word}
+cat <<$\
+((1+2))
+body
+$((1+2))
+cat <<$\
+'EOF'
+body
+EOF
+after
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (command_substitution
+                              (line_continuation)
+                              (command_substitution_body
+                                (complete_commands
+                                  (complete_command
+                                    (list
+                                      (and_or
+                                        (pipeline
+                                          (pipe_sequence
+                                            (command
+                                              (simple_command
+                                                (cmd_name
+                                                  (word
+                                                    (literal)))))))))))))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (parameter_expansion
+                              (line_continuation)
+                              (variable_name)
+                              (parameter_value_operator)
+                              (parameter_word
+                                (literal)))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (arithmetic_expansion
+                              (line_continuation)
+                              (arithmetic_binary_expression
+                                (arithmetic_number)
+                                (arithmetic_operator)
+                                (arithmetic_number)))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (dollar_single_quoted
+                              (line_continuation)
+                              (dollar_single_quote_text))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (quoted_here_document_body
+            (quoted_here_document_text))
+          (here_document_end))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))

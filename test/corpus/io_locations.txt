@@ -46,8 +46,7 @@ function_name() { :; } {output}>file
             sequence: (pipe_sequence
               command: (command
                 body: (function_definition
-                  name: (fname
-                    (name))
+                  name: (fname)
                   body: (function_body
                     body: (compound_command
                       (brace_group

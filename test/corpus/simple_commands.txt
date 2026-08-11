@@ -701,8 +701,61 @@ tool --long'' -x${suffix} --long
     (newline_list)))
 
 ==================
-Closing reserved words cannot be command names
-:error
+Command words after prefixes follow POSIX rule 7b
+==================
+
+x=1 done arg
+>out then else
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal))))
+                  word: (cmd_word
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))
+                  word: (cmd_word
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Closing reserved words at command positions are owned by command recovery
 ==================
 
 then
@@ -722,10 +775,8 @@ in
           (pipeline
             (pipe_sequence
               (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal))))))))))
+                (command_recovery
+                  (then_keyword))))))))
     (newline_list)
     (complete_command
       (list
@@ -733,10 +784,8 @@ in
           (pipeline
             (pipe_sequence
               (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal))))))))))
+                (command_recovery
+                  (done_keyword))))))))
     (newline_list)
     (complete_command
       (list
@@ -744,10 +793,8 @@ in
           (pipeline
             (pipe_sequence
               (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal))))))))))
+                (command_recovery
+                  (esac_keyword))))))))
     (newline_list)
     (complete_command
       (list
@@ -755,9 +802,7 @@ in
           (pipeline
             (pipe_sequence
               (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
+                (command_recovery
+                  (in_keyword)))))))))
   (linebreak
     (newline_list)))

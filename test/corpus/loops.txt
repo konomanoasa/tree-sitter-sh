@@ -559,3 +559,63 @@ for item\
                       (done_keyword)))))))))))
   (linebreak
     (newline_list)))
+
+==================
+For wordlists keep reserved closer spellings as words
+==================
+
+for item in fi then elif else in do done esac; do :; done
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (for_clause
+                    (for_keyword)
+                    (name)
+                    (in
+                      (in_keyword))
+                    (wordlist
+                      (word
+                        (literal))
+                      (word
+                        (literal))
+                      (word
+                        (literal))
+                      (word
+                        (literal))
+                      (word
+                        (literal))
+                      (word
+                        (literal))
+                      (word
+                        (literal))
+                      (word
+                        (literal)))
+                    (sequential_sep)
+                    (do_group
+                      (do_keyword)
+                      (compound_list
+                        (term
+                          (and_or
+                            (pipeline
+                              (pipe_sequence
+                                (command
+                                  (simple_command
+                                    (cmd_name
+                                      (word
+                                        (literal)))))))))
+                        (separator
+                          (separator_op)))
+                      (done_keyword)))))))))))
+  (linebreak
+    (newline_list)))

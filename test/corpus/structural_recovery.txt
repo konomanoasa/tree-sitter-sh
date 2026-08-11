@@ -59,12 +59,8 @@ if
                     (compound_list
                       (linebreak
                         (newline_list))
-                      (term
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (command_recovery)))))))))))))))))
+                      (compound_command_recovery))
+                    (compound_command_recovery)))))))))))
 
 ================================================================================
 An ambiguous if word remains a condition command
@@ -224,12 +220,8 @@ if check; then
                     (compound_list
                       (linebreak
                         (newline_list))
-                      (term
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (command_recovery)))))))))))))))))
+                      (compound_command_recovery))
+                    (compound_command_recovery)))))))))))
 
 ================================================================================
 An incomplete alternative keeps its owning if clause
@@ -293,7 +285,8 @@ if check; then pass; elif other;
                           (separator_op)
                           (linebreak
                             (newline_list))))
-                      (compound_command_recovery))))))))))))
+                      (compound_command_recovery))
+                    (compound_command_recovery)))))))))))
 
 ================================================================================
 An incomplete else body keeps its owning if clause
@@ -346,12 +339,8 @@ if check; then pass; else
                       (compound_list
                         (linebreak
                           (newline_list))
-                        (term
-                          (and_or
-                            (pipeline
-                              (pipe_sequence
-                                (command
-                                  (command_recovery))))))))))))))))))
+                        (compound_command_recovery)))
+                    (compound_command_recovery)))))))))))
 
 ================================================================================
 Incomplete loop stages retain their formal owners
@@ -466,12 +455,8 @@ for item; do
                       (compound_list
                         (linebreak
                           (newline_list))
-                        (term
-                          (and_or
-                            (pipeline
-                              (pipe_sequence
-                                (command
-                                  (command_recovery))))))))))))))))))
+                        (compound_command_recovery))
+                      (compound_command_recovery))))))))))))
 
 ================================================================================
 An incomplete case list retains its formal owner

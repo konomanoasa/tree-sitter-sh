@@ -46,4 +46,42 @@ for generated_file in $generated_files; do
   fi
 done
 
+state_limit=40000
+parser_size_limit=55000000
+state_count=$(
+  awk '/^#define STATE_COUNT / { print $3; exit }' \
+    "$repository_directory/src/parser.c"
+)
+parser_size=$(
+  wc -c <"$repository_directory/src/parser.c" | tr -d '[:space:]'
+)
+
+case $state_count in
+'' | *[!0-9]*)
+  printf '%s\n' "Could not read STATE_COUNT from src/parser.c" >&2
+  stale=1
+  ;;
+*)
+  if [ "$state_count" -gt "$state_limit" ]; then
+    printf '%s\n' \
+      "Generated parser state budget exceeded: $state_count > $state_limit" >&2
+    stale=1
+  fi
+  ;;
+esac
+
+case $parser_size in
+'' | *[!0-9]*)
+  printf '%s\n' "Could not read the size of src/parser.c" >&2
+  stale=1
+  ;;
+*)
+  if [ "$parser_size" -gt "$parser_size_limit" ]; then
+    printf '%s\n' \
+      "Generated parser size budget exceeded: $parser_size > $parser_size_limit bytes" >&2
+    stale=1
+  fi
+  ;;
+esac
+
 exit "$stale"

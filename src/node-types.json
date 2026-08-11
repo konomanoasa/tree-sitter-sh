@@ -857,6 +857,16 @@
             "named": true
           }
         ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
+            "named": true
+          }
+        ]
       }
     },
     "children": {
@@ -1019,6 +1029,16 @@
             "named": true
           }
         ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
+            "named": true
+          }
+        ]
       }
     },
     "children": {
@@ -1114,7 +1134,7 @@
     "fields": {},
     "children": {
       "multiple": false,
-      "required": false,
+      "required": true,
       "types": [
         {
           "type": "word",
@@ -1201,7 +1221,7 @@
     "fields": {},
     "children": {
       "multiple": false,
-      "required": false,
+      "required": true,
       "types": [
         {
           "type": "word",
@@ -1259,6 +1279,57 @@
       "types": [
         {
           "type": "line_continuation",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "command_recovery",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "do_keyword",
+          "named": true
+        },
+        {
+          "type": "done_keyword",
+          "named": true
+        },
+        {
+          "type": "dsemi",
+          "named": true
+        },
+        {
+          "type": "elif_keyword",
+          "named": true
+        },
+        {
+          "type": "else_keyword",
+          "named": true
+        },
+        {
+          "type": "esac_keyword",
+          "named": true
+        },
+        {
+          "type": "fi_keyword",
+          "named": true
+        },
+        {
+          "type": "in_keyword",
+          "named": true
+        },
+        {
+          "type": "semi_and",
+          "named": true
+        },
+        {
+          "type": "then_keyword",
           "named": true
         }
       ]
@@ -1443,7 +1514,7 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "term",
@@ -1457,6 +1528,16 @@
         "types": [
           {
             "type": "linebreak",
+            "named": true
+          }
+        ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -1865,11 +1946,11 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
-      "required": true,
+      "multiple": true,
+      "required": false,
       "types": [
         {
-          "type": "name",
+          "type": "line_continuation",
           "named": true
         }
       ]
@@ -1901,7 +1982,7 @@
       },
       "name": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "name",
@@ -1980,10 +2061,20 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "compound_command",
+            "named": true
+          }
+        ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -2252,7 +2343,7 @@
       },
       "condition": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "compound_list",
@@ -2402,10 +2493,6 @@
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "comment",
-          "named": true
-        },
         {
           "type": "line_continuation",
           "named": true
@@ -2714,10 +2801,6 @@
         "required": false,
         "types": [
           {
-            "type": "parameter_number",
-            "named": true
-          },
-          {
             "type": "positional_parameter",
             "named": true
           },
@@ -2796,21 +2879,6 @@
     "type": "parameter_length_operator",
     "named": true,
     "fields": {}
-  },
-  {
-    "type": "parameter_number",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "line_continuation",
-          "named": true
-        }
-      ]
-    }
   },
   {
     "type": "parameter_pattern",
@@ -3971,6 +4039,16 @@
             "named": true
           }
         ]
+      },
+      "recovery": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_command_recovery",
+            "named": true
+          }
+        ]
       }
     },
     "children": {
@@ -4092,7 +4170,7 @@
       },
       "condition": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "compound_list",
@@ -4172,7 +4250,7 @@
       },
       "condition": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "compound_list",
@@ -4555,56 +4633,12 @@
     "named": false
   },
   {
-    "type": "a",
-    "named": false
-  },
-  {
-    "type": "ac",
-    "named": false
-  },
-  {
-    "type": "as",
-    "named": false
-  },
-  {
-    "type": "ase",
-    "named": false
-  },
-  {
     "type": "backquote_end_recovery",
-    "named": true
-  },
-  {
-    "type": "c",
-    "named": false
-  },
-  {
-    "type": "ca",
-    "named": false
-  },
-  {
-    "type": "cas",
-    "named": false
-  },
-  {
-    "type": "case",
-    "named": false
-  },
-  {
-    "type": "command_recovery",
     "named": true
   },
   {
     "type": "comment",
     "named": true
-  },
-  {
-    "type": "d",
-    "named": false
-  },
-  {
-    "type": "do",
-    "named": false
   },
   {
     "type": "dollar_single_quote_escape",
@@ -4615,88 +4649,12 @@
     "named": true
   },
   {
-    "type": "don",
-    "named": false
-  },
-  {
-    "type": "done",
-    "named": false
-  },
-  {
     "type": "double_quote_escape",
     "named": true
   },
   {
-    "type": "e",
-    "named": false
-  },
-  {
-    "type": "el",
-    "named": false
-  },
-  {
-    "type": "eli",
-    "named": false
-  },
-  {
-    "type": "elif",
-    "named": false
-  },
-  {
-    "type": "els",
-    "named": false
-  },
-  {
-    "type": "else",
-    "named": false
-  },
-  {
-    "type": "en",
-    "named": false
-  },
-  {
-    "type": "es",
-    "named": false
-  },
-  {
-    "type": "esa",
-    "named": false
-  },
-  {
-    "type": "esac",
-    "named": false
-  },
-  {
     "type": "escaped_character",
     "named": true
-  },
-  {
-    "type": "f",
-    "named": false
-  },
-  {
-    "type": "fi",
-    "named": false
-  },
-  {
-    "type": "fo",
-    "named": false
-  },
-  {
-    "type": "for",
-    "named": false
-  },
-  {
-    "type": "h",
-    "named": false
-  },
-  {
-    "type": "he",
-    "named": false
-  },
-  {
-    "type": "hen",
-    "named": false
   },
   {
     "type": "here_document_end_recovery",
@@ -4711,100 +4669,8 @@
     "named": true
   },
   {
-    "type": "hi",
-    "named": false
-  },
-  {
-    "type": "hil",
-    "named": false
-  },
-  {
-    "type": "hile",
-    "named": false
-  },
-  {
-    "type": "i",
-    "named": false
-  },
-  {
-    "type": "if",
-    "named": false
-  },
-  {
-    "type": "il",
-    "named": false
-  },
-  {
-    "type": "ile",
-    "named": false
-  },
-  {
-    "type": "in",
-    "named": false
-  },
-  {
-    "type": "l",
-    "named": false
-  },
-  {
-    "type": "le",
-    "named": false
-  },
-  {
-    "type": "li",
-    "named": false
-  },
-  {
-    "type": "lif",
-    "named": false
-  },
-  {
     "type": "line_continuation",
     "named": true
-  },
-  {
-    "type": "ls",
-    "named": false
-  },
-  {
-    "type": "lse",
-    "named": false
-  },
-  {
-    "type": "n",
-    "named": false
-  },
-  {
-    "type": "ne",
-    "named": false
-  },
-  {
-    "type": "nt",
-    "named": false
-  },
-  {
-    "type": "nti",
-    "named": false
-  },
-  {
-    "type": "ntil",
-    "named": false
-  },
-  {
-    "type": "o",
-    "named": false
-  },
-  {
-    "type": "on",
-    "named": false
-  },
-  {
-    "type": "one",
-    "named": false
-  },
-  {
-    "type": "or",
-    "named": false
   },
   {
     "type": "pattern_question_source",
@@ -4819,96 +4685,12 @@
     "named": true
   },
   {
-    "type": "r",
-    "named": false
-  },
-  {
     "type": "redirection_target_recovery",
     "named": true
   },
   {
-    "type": "s",
-    "named": false
-  },
-  {
-    "type": "sa",
-    "named": false
-  },
-  {
-    "type": "sac",
-    "named": false
-  },
-  {
-    "type": "se",
-    "named": false
-  },
-  {
     "type": "separator_recovery",
     "named": true
-  },
-  {
-    "type": "t",
-    "named": false
-  },
-  {
-    "type": "th",
-    "named": false
-  },
-  {
-    "type": "the",
-    "named": false
-  },
-  {
-    "type": "then",
-    "named": false
-  },
-  {
-    "type": "ti",
-    "named": false
-  },
-  {
-    "type": "til",
-    "named": false
-  },
-  {
-    "type": "u",
-    "named": false
-  },
-  {
-    "type": "un",
-    "named": false
-  },
-  {
-    "type": "unt",
-    "named": false
-  },
-  {
-    "type": "unti",
-    "named": false
-  },
-  {
-    "type": "until",
-    "named": false
-  },
-  {
-    "type": "w",
-    "named": false
-  },
-  {
-    "type": "wh",
-    "named": false
-  },
-  {
-    "type": "whi",
-    "named": false
-  },
-  {
-    "type": "whil",
-    "named": false
-  },
-  {
-    "type": "while",
-    "named": false
   },
   {
     "type": "{",

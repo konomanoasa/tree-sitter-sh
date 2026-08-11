@@ -317,20 +317,6 @@ EOF
           end: (here_document_end))))))
 
 ==================
-Here-document delimiters are recognized before body expansion parsing
-:error
-==================
-
-cat <<EOF
-$(
-EOF
-)
-EOF
-after
-
----
-
-==================
 An unclosed quote inside a substitution synchronizes at a here-document end
 ==================
 
@@ -541,3 +527,49 @@ body
           body: (here_document_body
             (here_document_text))
           end: (here_document_end_recovery))))))
+
+==================
+Unquoted here-document bodies keep logical dollar-single-quote source literal
+==================
+
+cat <<EOF
+$'text'
+$\
+'text'
+EOF
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)
+            (here_document_text)
+            (here_document_text)
+            (line_continuation)
+            (here_document_text))
+          (here_document_end))))))

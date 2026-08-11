@@ -1,6 +1,5 @@
 ==================
-A right brace at command start is not a command word
-:error
+A right brace at command start is owned by command recovery
 ==================
 
 first; }
@@ -26,10 +25,7 @@ first; }
           (pipeline
             (pipe_sequence
               (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
+                (command_recovery))))))))
   (linebreak
     (newline_list)))
 
@@ -55,8 +51,7 @@ holder() {
             sequence: (pipe_sequence
               command: (command
                 body: (function_definition
-                  name: (fname
-                    (name))
+                  name: (fname)
                   body: (function_body
                     body: (compound_command
                       (brace_group
@@ -121,8 +116,7 @@ holder() { command }
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (brace_group
@@ -348,43 +342,3 @@ after
                       (literal)))))))))))
   (linebreak
     (newline_list)))
-
-==================
-An unclosed subshell retains its parsed inner command
-:error
-==================
-
-(inside
-
----
-
-==================
-An empty subshell remains a syntax error
-:error
-==================
-
-()
-
----
-
-==================
-An empty brace group remains a syntax error
-:error
-==================
-
-{ }
-
----
-
-(program
-  (ERROR
-    (UNEXPECTED '\n')
-
-==================
-A longer word cannot close a brace group
-:error
-==================
-
-holder() { first; }suffix
-
----

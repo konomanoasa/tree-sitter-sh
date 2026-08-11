@@ -1003,14 +1003,3 @@ Top-level comma is not a portable POSIX arithmetic operator
 printf "$((1, 2))"
 
 ---
-
-
-
-==================
-Empty arithmetic expressions remain syntax errors
-:error
-==================
-
-printf "$(( ))"
-
----

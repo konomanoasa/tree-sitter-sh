@@ -744,8 +744,7 @@ greet() { :; }; : | greet && greet; greet &
             sequence: (pipe_sequence
               command: (command
                 body: (function_definition
-                  name: (fname
-                    (name))
+                  name: (fname)
                   body: (function_body
                     body: (compound_command
                       (brace_group
@@ -1229,8 +1228,7 @@ regular_file_identity() {
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (brace_group
@@ -1428,8 +1426,7 @@ holder() {
             (pipe_sequence
               (command
                 (function_definition
-                  (fname
-                    (name))
+                  (fname)
                   (function_body
                     (compound_command
                       (brace_group
@@ -1727,156 +1724,6 @@ esac
                         (linebreak
                           (newline_list))))
                     (esac_keyword))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-An incomplete AND-OR list does not consume the following top-level assignment
-==================
-
-broken() {
-  first &&;
-}
-after=$(ok)
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (function_definition
-                  name: (fname
-                    (name))
-                  body: (function_body
-                    body: (compound_command
-                      (brace_group
-                        body: (compound_list
-                          leading: (linebreak
-                            (newline_list))
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal)))))))
-                              operator: (and_if)
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    recovery: (command_recovery))))))
-                          terminator: (separator
-                            operator: (separator_op)
-                            linebreak: (linebreak
-                              (newline_list))))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (command_substitution
-                          body: (command_substitution_body
-                            (complete_commands
-                              command: (complete_command
-                                body: (list
-                                  and_or: (and_or
-                                    pipeline: (pipeline
-                                      sequence: (pipe_sequence
-                                        command: (command
-                                          body: (simple_command
-                                            name: (cmd_name
-                                              (word
-                                                (literal))))))))))))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-A missing command after AND-IF preserves the closer and following complete command
-==================
-
-broken() {
-  first &&
-}
-after=$(ok)
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (function_definition
-                  (fname
-                    (name))
-                  (function_body
-                    (compound_command
-                      (brace_group
-                        (compound_list
-                          (linebreak
-                            (newline_list))
-                          (term
-                            (and_or
-                              (pipeline
-                                (pipe_sequence
-                                  (command
-                                    (simple_command
-                                      (cmd_name
-                                        (word
-                                          (literal)))))))
-                              (and_if)
-                              (linebreak
-                                (newline_list))
-                              (pipeline
-                                (pipe_sequence
-                                  (command
-                                    (command_recovery)))))))))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_prefix
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (command_substitution
-                          (command_substitution_body
-                            (complete_commands
-                              (complete_command
-                                (list
-                                  (and_or
-                                    (pipeline
-                                      (pipe_sequence
-                                        (command
-                                          (simple_command
-                                            (cmd_name
-                                              (word
-                                                (literal))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 

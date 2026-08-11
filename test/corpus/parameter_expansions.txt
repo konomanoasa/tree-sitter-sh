@@ -642,17 +642,6 @@ echo ${outer:-${inner:-$(printf value)}}
     (newline_list)))
 
 ==================
-Unterminated parameter expansion remains a syntax error
-:error
-==================
-
-echo ${open
-
----
-
-
-
-==================
 Adjacent dollar source distinguishes parameters from text fallback
 ==================
 
@@ -844,13 +833,11 @@ printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${0\
                           (positional_parameter))))
                     (word
                       (double_quoted
-                        (parameter_expansion
-                          (parameter_number))))
+                        (parameter_expansion)))
                     (word
                       (double_quoted
                         (parameter_expansion
-                          (parameter_number
-                            (line_continuation)))))
+                          (line_continuation))))
                     (word
                       (double_quoted
                         (parameter_expansion
@@ -861,6 +848,46 @@ printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${0\
                         (parameter_expansion
                           (parameter_length_operator)
                           (variable_name)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Unclassified numeric parameter source stays anonymous
+==================
+
+printf ${00:-x} "${0\
+0}" "${#00}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (line_continuation))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (parameter_length_operator)))))))))))))
   (linebreak
     (newline_list)))
 
@@ -1052,6 +1079,63 @@ printf "${value:\
                           (parameter_value_operator
                             (line_continuation))
                           (parameter_word
+                            (double_quote_text))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Inherited parameter words keep logical dollar-single-quote source literal
+==================
+
+echo "${x:-$'text'}"
+echo "${x:-$\
+'text'}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)
+                            (double_quote_text)))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)
+                            (line_continuation)
                             (double_quote_text))))))))))))))
   (linebreak
     (newline_list)))

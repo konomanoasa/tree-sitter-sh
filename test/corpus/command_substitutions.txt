@@ -61,9 +61,9 @@ next
                                             word: (word
                                               (single_quoted
                                                 (single_quote_content))))))))))))
+                          (comment)
                           (linebreak
-                            (newline_list
-                              (comment))))))))))))))
+                            (newline_list)))))))))))))
     separator: (newline_list)
     command: (complete_command
       body: (list

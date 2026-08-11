@@ -32,6 +32,8 @@ enum TokenType {
   ESAC_KEYWORD,
   WHILE_KEYWORD,
   UNTIL_KEYWORD,
+  RESERVED_WORD_NONFINAL_SEGMENT,
+  RESERVED_WORD_FINAL_SEGMENT,
   DLESS,
   DLESSDASH,
   HERE_END_BEGIN,
@@ -109,7 +111,8 @@ enum TokenType {
   CONTINUED_PARAMETER_PATTERN_OPERATOR_START,
   CONTINUED_REDIRECTION_OPERATOR_START,
   CONTINUED_DLESSDASH_START,
-  CONTINUED_DOLLAR_CONSTRUCT_START,
+  CONTINUED_DOLLAR_EXPANSION_START,
+  CONTINUED_DOLLAR_SINGLE_QUOTE_START,
   PATTERN_SPECIAL_LEFT_BRACKET,
   LITERAL_HASH,
   COMMENT_BOUNDARY,
@@ -131,18 +134,31 @@ enum TokenType {
   COMMAND_CONTINUATION,
   SEPARATOR_BEGIN,
   CLOSED_COMMAND_END,
+  CLOSED_SIMPLE_COMMAND_END,
   CASE_ITEM_END,
   COMPOUND_COMMAND_RECOVERY_BOUNDARY,
+  SUBSHELL_RECOVERY_BOUNDARY,
+  DIRECT_RECOVERY_BOUNDARY,
+  HEADER_RECOVERY_BOUNDARY,
+  FOR_TAIL_RECOVERY_BOUNDARY,
+  CASE_ITEMS_RECOVERY_BOUNDARY,
+  EMPTY_COMPOUND_LIST_RECOVERY_BOUNDARY,
+  FUNCTION_BODY_CONTINUATION_BOUNDARY,
+  FUNCTION_BODY_RECOVERY_BOUNDARY,
   PARAMETER_MISSING_RECOVERY_BOUNDARY,
   PARAMETER_OPERATOR_RECOVERY_BOUNDARY,
+  PARAMETER_TAIL_RECOVERY_BOUNDARY,
+  DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY,
   PARAMETER_EXPANSION_RECOVERY_BOUNDARY,
   BOUNDARY_COMMAND_RECOVERY,
-  COMMAND_RECOVERY,
+  MISSING_COMMAND_RECOVERY_BOUNDARY,
+  INVALID_RESERVED_COMMAND_START,
+  INVALID_CASE_TERMINATOR_START,
+  INVALID_COMMAND_CHARACTER_SOURCE,
   SEPARATOR_RECOVERY,
   REDIRECTION_TARGET_RECOVERY,
   HERE_DOCUMENT_END_RECOVERY,
   BACKQUOTE_END_RECOVERY,
-  INVALID_COMMAND_START,
   WORD_BRACKET_LITERAL_START,
   PARAMETER_BRACKET_LITERAL_START,
   WORD_BRACKET_FALLBACK_END,
@@ -1259,6 +1275,20 @@ static bool skip_line_continuations(TSLexer *lexer, bool *found) {
   return true;
 }
 
+static bool
+scan_dollar_logical_follower(TSLexer *lexer, bool *escaped_follower) {
+  *escaped_follower = false;
+  while (lexer->lookahead == '\\') {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead != '\n') {
+      *escaped_follower = true;
+      return lexer->lookahead != 0;
+    }
+    lexer->advance(lexer, false);
+  }
+  return true;
+}
+
 static enum TokenType scan_continued_arithmetic_number_start(TSLexer *lexer) {
   lexer->mark_end(lexer);
 
@@ -1625,7 +1655,26 @@ static bool scan_here_document_delimiter(
         lexer->advance(lexer, false);
       } else if (character == '$') {
         lexer->advance(lexer, false);
-        valid = append_byte(&delimiter, '$');
+        bool escaped_follower = false;
+        valid = scan_dollar_logical_follower(lexer, &escaped_follower) &&
+          append_byte(&delimiter, '$');
+        if (valid && escaped_follower) {
+          if (
+            lexer->lookahead ==
+            '$' ||
+            lexer->lookahead ==
+            '`' ||
+            lexer->lookahead ==
+            '"' ||
+            lexer->lookahead == '\\'
+          ) {
+            valid = append_codepoint(&delimiter, lexer->lookahead);
+            lexer->advance(lexer, false);
+          } else {
+            valid = append_byte(&delimiter, '\\');
+          }
+          continue;
+        }
         if (valid && (lexer->lookahead == '(' || lexer->lookahead == '{')) {
           int32_t opening = lexer->lookahead;
           char closing = opening == '(' ? ')' : '}';
@@ -2001,6 +2050,26 @@ static bool scan_here_document_delimiter(
       has_word_content = true;
       lexer->advance(lexer, false);
 
+      bool escaped_follower = false;
+      valid = scan_dollar_logical_follower(lexer, &escaped_follower);
+      if (!valid) {
+        continue;
+      }
+
+      if (escaped_follower) {
+        valid = append_byte(&delimiter, '$');
+        if (!valid) {
+          continue;
+        }
+        quoted = true;
+        if (collecting_nested_delimiter) {
+          nested_delimiter_quoted = true;
+        }
+        valid = append_codepoint(&delimiter, lexer->lookahead);
+        lexer->advance(lexer, false);
+        continue;
+      }
+
       if (lexer->lookahead == '\'') {
         quoted = true;
         if (collecting_nested_delimiter) {
@@ -2315,6 +2384,8 @@ static bool scan_reserved_character(
   return true;
 }
 
+static bool is_recovery_reserved_word(const char *word);
+
 static bool read_reserved_word(TSLexer *lexer, char *word) {
   unsigned length = 0;
 
@@ -2348,6 +2419,36 @@ static bool read_reserved_word(TSLexer *lexer, char *word) {
   return true;
 }
 
+static bool scan_reserved_word_segment(TSLexer *lexer) {
+  if (!is_lowercase_letter(lexer->lookahead)) {
+    return false;
+  }
+
+  do {
+    lexer->advance(lexer, false);
+  } while (is_lowercase_letter(lexer->lookahead));
+  lexer->mark_end(lexer);
+
+  while (lexer->lookahead == '\\') {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead != '\n') {
+      return false;
+    }
+    lexer->advance(lexer, false);
+  }
+
+  if (is_lowercase_letter(lexer->lookahead)) {
+    lexer->result_symbol = RESERVED_WORD_NONFINAL_SEGMENT;
+    return true;
+  }
+  if (!is_token_delimiter(lexer->lookahead)) {
+    return false;
+  }
+
+  lexer->result_symbol = RESERVED_WORD_FINAL_SEGMENT;
+  return true;
+}
+
 static bool scan_reserved_word(TSLexer *lexer, const bool *valid_symbols) {
   char word[6];
   lexer->mark_end(lexer);
@@ -2367,14 +2468,12 @@ static bool scan_reserved_word(TSLexer *lexer, const bool *valid_symbols) {
     }
   }
 
-  if (valid_symbols[INVALID_COMMAND_START]) {
-    for (unsigned index = 0; index < word_count; index += 1) {
-      if (strcmp(word, RESERVED_WORDS[index].text) == 0) {
-        lexer->mark_end(lexer);
-        lexer->result_symbol = INVALID_COMMAND_START;
-        return true;
-      }
-    }
+  if (
+    valid_symbols[INVALID_RESERVED_COMMAND_START] &&
+    is_recovery_reserved_word(word)
+  ) {
+    lexer->result_symbol = INVALID_RESERVED_COMMAND_START;
+    return true;
   }
 
   return false;
@@ -2400,6 +2499,164 @@ static bool is_recovery_reserved_word(const char *word) {
   );
 }
 
+static bool scan_case_item_terminator(TSLexer *lexer);
+
+static bool scan_horizontal_layout(TSLexer *lexer);
+
+static bool scan_empty_compound_list_recovery_boundary(
+  TSLexer *lexer,
+  const bool *valid_symbols
+) {
+  lexer->mark_end(lexer);
+
+  if (
+    lexer->lookahead ==
+    0 ||
+    lexer->lookahead ==
+    ')' ||
+    lexer->lookahead ==
+    '}' ||
+    lexer->lookahead == '`'
+  ) {
+    lexer->result_symbol = EMPTY_COMPOUND_LIST_RECOVERY_BOUNDARY;
+    return true;
+  }
+
+  if (lexer->lookahead == ';') {
+    if (!scan_case_item_terminator(lexer)) {
+      return false;
+    }
+    lexer->result_symbol = EMPTY_COMPOUND_LIST_RECOVERY_BOUNDARY;
+    return true;
+  }
+
+  if (!is_lowercase_letter(lexer->lookahead)) {
+    return false;
+  }
+
+  char word[6];
+  if (!read_reserved_word(lexer, word)) {
+    return false;
+  }
+
+  if (is_recovery_reserved_word(word)) {
+    lexer->result_symbol = EMPTY_COMPOUND_LIST_RECOVERY_BOUNDARY;
+    return true;
+  }
+
+  size_t word_count = sizeof(RESERVED_WORDS) / sizeof(RESERVED_WORDS[0]);
+  for (size_t index = 0; index < word_count; index += 1) {
+    const struct ReservedWord *reserved_word = &RESERVED_WORDS[index];
+    if (
+      valid_symbols[reserved_word->symbol] &&
+      strcmp(word, reserved_word->text) == 0
+    ) {
+      lexer->result_symbol = (TSSymbol)reserved_word->symbol;
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static bool
+scan_direct_recovery_boundary(TSLexer *lexer, enum TokenType symbol) {
+  lexer->mark_end(lexer);
+
+  bool is_boundary = lexer->lookahead ==
+    0 ||
+    lexer->lookahead ==
+    ')' ||
+    lexer->lookahead ==
+    '}' ||
+    lexer->lookahead == '`';
+  if (symbol != FOR_TAIL_RECOVERY_BOUNDARY) {
+    is_boundary =
+      is_boundary || lexer->lookahead == '\n' || lexer->lookahead == '#';
+  }
+  if (symbol == HEADER_RECOVERY_BOUNDARY) {
+    is_boundary =
+      is_boundary || lexer->lookahead == ';' || lexer->lookahead == '&';
+  }
+
+  if (!is_boundary) {
+    return false;
+  }
+
+  lexer->result_symbol = (TSSymbol)symbol;
+  return true;
+}
+
+static bool
+scan_function_body_boundary(TSLexer *lexer, const bool *valid_symbols) {
+  lexer->mark_end(lexer);
+
+  while (true) {
+    while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+      lexer->advance(lexer, false);
+    }
+
+    if (lexer->lookahead == '\\') {
+      lexer->advance(lexer, false);
+      if (lexer->lookahead != '\n') {
+        break;
+      }
+      lexer->advance(lexer, false);
+      continue;
+    }
+
+    if (lexer->lookahead == '#') {
+      do {
+        lexer->advance(lexer, false);
+      } while (lexer->lookahead != 0 && lexer->lookahead != '\n');
+    }
+
+    if (lexer->lookahead != '\n') {
+      break;
+    }
+    lexer->advance(lexer, false);
+  }
+
+  bool has_function_body = lexer->lookahead == '(';
+  if (lexer->lookahead == '{') {
+    bool has_valid_continuations = true;
+    lexer->advance(lexer, false);
+    while (lexer->lookahead == '\\') {
+      lexer->advance(lexer, false);
+      if (lexer->lookahead != '\n') {
+        has_valid_continuations = false;
+        break;
+      }
+      lexer->advance(lexer, false);
+    }
+    has_function_body =
+      has_valid_continuations && is_token_delimiter(lexer->lookahead);
+  } else if (is_lowercase_letter(lexer->lookahead)) {
+    char word[6];
+    if (read_reserved_word(lexer, word)) {
+      has_function_body = strcmp(word, "if") ==
+        0 ||
+        strcmp(word, "for") ==
+        0 ||
+        strcmp(word, "case") ==
+        0 ||
+        strcmp(word, "while") ==
+        0 ||
+        strcmp(word, "until") == 0;
+    }
+  }
+
+  enum TokenType symbol = has_function_body
+    ? FUNCTION_BODY_CONTINUATION_BOUNDARY
+    : FUNCTION_BODY_RECOVERY_BOUNDARY;
+  if (!valid_symbols[symbol]) {
+    return false;
+  }
+
+  lexer->result_symbol = (TSSymbol)symbol;
+  return true;
+}
+
 static bool scan_recovery_boundary(
   TSLexer *lexer,
   enum TokenType symbol,
@@ -2407,14 +2664,43 @@ static bool scan_recovery_boundary(
 ) {
   lexer->mark_end(lexer);
 
+  if (
+    (symbol ==
+      COMPOUND_COMMAND_RECOVERY_BOUNDARY ||
+      symbol ==
+      SUBSHELL_RECOVERY_BOUNDARY ||
+      symbol ==
+      CASE_ITEMS_RECOVERY_BOUNDARY ||
+      symbol == SEPARATOR_RECOVERY) &&
+    lexer->lookahead == ';'
+  ) {
+    if (!scan_case_item_terminator(lexer)) {
+      return false;
+    }
+    lexer->result_symbol = (TSSymbol)symbol;
+    return true;
+  }
+
   bool is_direct_boundary = lexer->lookahead == '}';
-  if (symbol == COMPOUND_COMMAND_RECOVERY_BOUNDARY) {
+  if (symbol == SEPARATOR_RECOVERY) {
+    is_direct_boundary =
+      is_direct_boundary || lexer->lookahead == ')' || lexer->lookahead == '`';
+  }
+  if (
+    symbol ==
+    COMPOUND_COMMAND_RECOVERY_BOUNDARY ||
+    symbol ==
+    SUBSHELL_RECOVERY_BOUNDARY ||
+    symbol == CASE_ITEMS_RECOVERY_BOUNDARY
+  ) {
     is_direct_boundary =
       (is_direct_boundary ||
         lexer->lookahead ==
         0 ||
-        lexer->lookahead ==
-        ')' ||
+        ((symbol ==
+           COMPOUND_COMMAND_RECOVERY_BOUNDARY ||
+           symbol == CASE_ITEMS_RECOVERY_BOUNDARY) &&
+          lexer->lookahead == ')') ||
         lexer->lookahead == '`');
   } else if (symbol != SEPARATOR_RECOVERY) {
     is_direct_boundary =
@@ -2452,6 +2738,20 @@ static bool scan_recovery_boundary(
     return false;
   }
 
+  if (symbol == CASE_ITEMS_RECOVERY_BOUNDARY) {
+    if (valid_symbols[ESAC_KEYWORD] && strcmp(word, "esac") == 0) {
+      lexer->result_symbol = ESAC_KEYWORD;
+      return true;
+    }
+
+    if (!scan_horizontal_layout(lexer)) {
+      return false;
+    }
+    if (lexer->lookahead == ')' || lexer->lookahead == '|') {
+      return false;
+    }
+  }
+
   size_t word_count = sizeof(RESERVED_WORDS) / sizeof(RESERVED_WORDS[0]);
   for (size_t index = 0; index < word_count; index += 1) {
     const struct ReservedWord *reserved_word = &RESERVED_WORDS[index];
@@ -2460,11 +2760,14 @@ static bool scan_recovery_boundary(
       strcmp(word, reserved_word->text) == 0
     ) {
       lexer->result_symbol = (TSSymbol)reserved_word->symbol;
+      if (symbol == SEPARATOR_RECOVERY) {
+        lexer->result_symbol = SEPARATOR_RECOVERY;
+      }
       return true;
     }
   }
 
-  if (symbol == COMPOUND_COMMAND_RECOVERY_BOUNDARY) {
+  if (symbol == CASE_ITEMS_RECOVERY_BOUNDARY) {
     return false;
   }
 
@@ -2481,6 +2784,7 @@ static bool scan_parameter_expansion_recovery_boundary(
   enum TokenType symbol
 ) {
   lexer->mark_end(lexer);
+
   if (symbol == PARAMETER_EXPANSION_RECOVERY_BOUNDARY) {
     if (lexer->lookahead != 0) {
       return false;
@@ -2488,8 +2792,8 @@ static bool scan_parameter_expansion_recovery_boundary(
     lexer->result_symbol = PARAMETER_EXPANSION_RECOVERY_BOUNDARY;
     return true;
   }
-  if (
-    lexer->lookahead ==
+
+  bool is_outer_boundary = lexer->lookahead ==
     0 ||
     lexer->lookahead ==
     '\n' ||
@@ -2497,21 +2801,21 @@ static bool scan_parameter_expansion_recovery_boundary(
     ' ' ||
     lexer->lookahead ==
     '\t' ||
-    ((symbol ==
-       PARAMETER_MISSING_RECOVERY_BOUNDARY ||
-       symbol == PARAMETER_OPERATOR_RECOVERY_BOUNDARY) &&
-      lexer->lookahead == '}') ||
     lexer->lookahead ==
     ')' ||
     lexer->lookahead ==
     '`' ||
     lexer->lookahead ==
     ';' ||
-    lexer->lookahead ==
-    '&' ||
-    lexer->lookahead ==
-    '"' ||
-    lexer->lookahead == '\''
+    lexer->lookahead == '&';
+  bool includes_double_quote = symbol != PARAMETER_TAIL_RECOVERY_BOUNDARY;
+  is_outer_boundary =
+    is_outer_boundary || (includes_double_quote && lexer->lookahead == '"');
+  bool includes_closing_brace = symbol ==
+    PARAMETER_MISSING_RECOVERY_BOUNDARY ||
+    symbol == PARAMETER_OPERATOR_RECOVERY_BOUNDARY;
+  if (
+    is_outer_boundary || (includes_closing_brace && lexer->lookahead == '}')
   ) {
     lexer->result_symbol = (TSSymbol)symbol;
     return true;
@@ -2606,6 +2910,7 @@ static bool scan_command_boundary(
   bool allow_continuation,
   bool allow_separator,
   bool allow_closed_command_end,
+  bool allow_closed_simple_command_end,
   bool allow_reserved_word_closer
 ) {
   lexer->mark_end(lexer);
@@ -2620,7 +2925,11 @@ static bool scan_command_boundary(
     return scan_command_continuation_operator(lexer);
   }
 
-  if (!allow_separator && !allow_closed_command_end) {
+  if (
+    !allow_separator &&
+    !allow_closed_command_end &&
+    !allow_closed_simple_command_end
+  ) {
     return false;
   }
 
@@ -2629,11 +2938,18 @@ static bool scan_command_boundary(
     return true;
   }
 
-  if (!allow_closed_command_end) {
+  if (!allow_closed_command_end && !allow_closed_simple_command_end) {
     return false;
   }
 
-  bool is_closer = lexer->lookahead == ')' || lexer->lookahead == '}';
+  bool is_closer = lexer->lookahead ==
+    ')' ||
+    lexer->lookahead ==
+    '}' ||
+    lexer->lookahead == '`';
+  if (!is_closer && lexer->lookahead == ';') {
+    is_closer = scan_case_item_terminator(lexer);
+  }
   if (
     !is_closer &&
     allow_reserved_word_closer &&
@@ -2648,7 +2964,9 @@ static bool scan_command_boundary(
     return false;
   }
 
-  lexer->result_symbol = CLOSED_COMMAND_END;
+  lexer->result_symbol = allow_closed_simple_command_end
+    ? CLOSED_SIMPLE_COMMAND_END
+    : CLOSED_COMMAND_END;
   return true;
 }
 
@@ -2711,7 +3029,7 @@ static bool scan_left_brace_or_io_location(
   TSLexer *lexer,
   bool left_brace_is_valid,
   bool io_location_is_valid,
-  bool invalid_command_start_is_valid
+  bool recovery_source_is_valid
 ) {
   if (lexer->lookahead != '{') {
     return false;
@@ -2734,8 +3052,8 @@ static bool scan_left_brace_or_io_location(
       return true;
     }
 
-    if (invalid_command_start_is_valid) {
-      lexer->result_symbol = INVALID_COMMAND_START;
+    if (recovery_source_is_valid) {
+      lexer->result_symbol = INVALID_COMMAND_CHARACTER_SOURCE;
       return true;
     }
 
@@ -2867,7 +3185,9 @@ static bool scan_case_item_terminator(TSLexer *lexer) {
  * Tight line continuations are handled by the central continuation scanner.
  */
 static bool scan_case_item_boundary(TSLexer *lexer, const bool *valid_symbols) {
+  bool crossed_blank_prefix = false;
   while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
+    crossed_blank_prefix = true;
     lexer->advance(lexer, true);
   }
   lexer->mark_end(lexer);
@@ -2891,7 +3211,12 @@ static bool scan_case_item_boundary(TSLexer *lexer, const bool *valid_symbols) {
   }
 
   if (lexer->lookahead == '\\') {
-    return scan_line_continuation(lexer, valid_symbols);
+    lexer->advance(lexer, false);
+    return scan_line_continuation_after_backslash(
+      lexer,
+      valid_symbols,
+      crossed_blank_prefix
+    );
   }
 
   if (!scan_case_item_terminator(lexer)) {
@@ -3889,15 +4214,20 @@ static bool scan_dollar_start(TSLexer *lexer, const bool *valid_symbols) {
   }
 
   if (
-    valid_symbols[CONTINUED_DOLLAR_CONSTRUCT_START] &&
+    valid_symbols[CONTINUED_DOLLAR_EXPANSION_START] &&
     has_escaped_newline &&
-    (lexer->lookahead ==
-      '{' ||
-      lexer->lookahead ==
-      '(' ||
-      lexer->lookahead == '\'')
+    (lexer->lookahead == '{' || lexer->lookahead == '(')
   ) {
-    lexer->result_symbol = CONTINUED_DOLLAR_CONSTRUCT_START;
+    lexer->result_symbol = CONTINUED_DOLLAR_EXPANSION_START;
+    return true;
+  }
+
+  if (
+    valid_symbols[CONTINUED_DOLLAR_SINGLE_QUOTE_START] &&
+    has_escaped_newline &&
+    lexer->lookahead == '\''
+  ) {
+    lexer->result_symbol = CONTINUED_DOLLAR_SINGLE_QUOTE_START;
     return true;
   }
 
@@ -4898,6 +5228,14 @@ bool tree_sitter_posix_sh_external_scanner_scan(
   }
 
   if (
+    (valid_symbols[RESERVED_WORD_NONFINAL_SEGMENT] ||
+      valid_symbols[RESERVED_WORD_FINAL_SEGMENT]) &&
+    is_lowercase_letter(lexer->lookahead)
+  ) {
+    return scan_reserved_word_segment(lexer);
+  }
+
+  if (
     valid_symbols[CASE_ITEM_END] &&
     (lexer->lookahead ==
       ' ' ||
@@ -4948,7 +5286,8 @@ bool tree_sitter_posix_sh_external_scanner_scan(
   if (
     (valid_symbols[COMMAND_CONTINUATION] ||
       valid_symbols[SEPARATOR_BEGIN] ||
-      valid_symbols[CLOSED_COMMAND_END]) &&
+      valid_symbols[CLOSED_COMMAND_END] ||
+      valid_symbols[CLOSED_SIMPLE_COMMAND_END]) &&
     (lexer->lookahead ==
       ' ' ||
       lexer->lookahead ==
@@ -4962,6 +5301,12 @@ bool tree_sitter_posix_sh_external_scanner_scan(
       ')' ||
       lexer->lookahead ==
       '}' ||
+      lexer->lookahead ==
+      '`' ||
+      (lexer->lookahead ==
+        ';' &&
+        (valid_symbols[CLOSED_COMMAND_END] ||
+          valid_symbols[CLOSED_SIMPLE_COMMAND_END])) ||
       (is_lowercase_letter(lexer->lookahead) &&
         !valid_symbols[SOURCE_WORD_CONTINUATION_BOUNDARY]))
   ) {
@@ -4970,20 +5315,45 @@ bool tree_sitter_posix_sh_external_scanner_scan(
       valid_symbols[COMMAND_CONTINUATION],
       valid_symbols[SEPARATOR_BEGIN],
       valid_symbols[CLOSED_COMMAND_END],
-      !valid_symbols[SOURCE_WORD_CONTINUATION_BOUNDARY]
+      valid_symbols[CLOSED_SIMPLE_COMMAND_END],
+      valid_symbols[CLOSED_COMMAND_END] &&
+        !valid_symbols[SOURCE_WORD_CONTINUATION_BOUNDARY]
     );
+  }
+
+  if (
+    valid_symbols[FUNCTION_BODY_CONTINUATION_BOUNDARY] ||
+    valid_symbols[FUNCTION_BODY_RECOVERY_BOUNDARY]
+  ) {
+    return scan_function_body_boundary(lexer, valid_symbols);
+  }
+
+  if (valid_symbols[INVALID_CASE_TERMINATOR_START] && lexer->lookahead == ';') {
+    lexer->mark_end(lexer);
+    if (!scan_case_item_terminator(lexer)) {
+      return false;
+    }
+    lexer->result_symbol = INVALID_CASE_TERMINATOR_START;
+    return true;
   }
 
   if (
     (valid_symbols[PARAMETER_MISSING_RECOVERY_BOUNDARY] ||
       valid_symbols[PARAMETER_OPERATOR_RECOVERY_BOUNDARY] ||
+      valid_symbols[PARAMETER_TAIL_RECOVERY_BOUNDARY] ||
+      valid_symbols[DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY] ||
       valid_symbols[PARAMETER_EXPANSION_RECOVERY_BOUNDARY])
   ) {
     enum TokenType symbol = valid_symbols[PARAMETER_MISSING_RECOVERY_BOUNDARY]
       ? PARAMETER_MISSING_RECOVERY_BOUNDARY
       : (valid_symbols[PARAMETER_OPERATOR_RECOVERY_BOUNDARY]
             ? PARAMETER_OPERATOR_RECOVERY_BOUNDARY
-            : PARAMETER_EXPANSION_RECOVERY_BOUNDARY);
+            : (valid_symbols[PARAMETER_TAIL_RECOVERY_BOUNDARY]
+                  ? PARAMETER_TAIL_RECOVERY_BOUNDARY
+                  : (valid_symbols
+                          [DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY]
+                        ? DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY
+                        : PARAMETER_EXPANSION_RECOVERY_BOUNDARY)));
     if (scan_parameter_expansion_recovery_boundary(lexer, symbol)) {
       return true;
     }
@@ -4998,11 +5368,86 @@ bool tree_sitter_posix_sh_external_scanner_scan(
   }
 
   if (
-    (valid_symbols[COMMAND_RECOVERY] ||
+    valid_symbols[EMPTY_COMPOUND_LIST_RECOVERY_BOUNDARY] &&
+    (lexer->lookahead ==
+      0 ||
+      lexer->lookahead ==
+      ')' ||
+      lexer->lookahead ==
+      '}' ||
+      lexer->lookahead ==
+      ';' ||
+      lexer->lookahead ==
+      '`' ||
+      is_lowercase_letter(lexer->lookahead))
+  ) {
+    return scan_empty_compound_list_recovery_boundary(lexer, valid_symbols);
+  }
+
+  if (
+    valid_symbols[INVALID_RESERVED_COMMAND_START] &&
+    is_lowercase_letter(lexer->lookahead)
+  ) {
+    return scan_reserved_word(lexer, valid_symbols);
+  }
+
+  bool suppress_broad_recovery = false;
+  if (valid_symbols[HEADER_RECOVERY_BOUNDARY]) {
+    if (scan_direct_recovery_boundary(lexer, HEADER_RECOVERY_BOUNDARY)) {
+      return true;
+    }
+    suppress_broad_recovery = is_lowercase_letter(lexer->lookahead);
+  }
+  if (valid_symbols[DIRECT_RECOVERY_BOUNDARY]) {
+    if (scan_direct_recovery_boundary(lexer, DIRECT_RECOVERY_BOUNDARY)) {
+      return true;
+    }
+    suppress_broad_recovery = is_lowercase_letter(lexer->lookahead);
+  }
+  if (valid_symbols[FOR_TAIL_RECOVERY_BOUNDARY]) {
+    if (scan_direct_recovery_boundary(lexer, FOR_TAIL_RECOVERY_BOUNDARY)) {
+      return true;
+    }
+    suppress_broad_recovery = is_lowercase_letter(lexer->lookahead);
+  }
+
+  if (
+    valid_symbols[BACKQUOTE_END] &&
+    !valid_symbols[SEPARATOR_RECOVERY] &&
+    !valid_symbols[COMPOUND_COMMAND_RECOVERY_BOUNDARY] &&
+    lexer->lookahead == '`'
+  ) {
+    return scan_backquote_end(scanner, lexer);
+  }
+
+  if (
+    valid_symbols[SUBSHELL_RECOVERY_BOUNDARY] &&
+    !suppress_broad_recovery &&
+    (lexer->lookahead ==
+      0 ||
+      lexer->lookahead ==
+      '}' ||
+      lexer->lookahead ==
+      ';' ||
+      lexer->lookahead ==
+      '`' ||
+      is_lowercase_letter(lexer->lookahead))
+  ) {
+    return scan_recovery_boundary(
+      lexer,
+      SUBSHELL_RECOVERY_BOUNDARY,
+      valid_symbols
+    );
+  }
+
+  if (
+    (valid_symbols[MISSING_COMMAND_RECOVERY_BOUNDARY] ||
       valid_symbols[COMPOUND_COMMAND_RECOVERY_BOUNDARY] ||
+      valid_symbols[CASE_ITEMS_RECOVERY_BOUNDARY] ||
       valid_symbols[BOUNDARY_COMMAND_RECOVERY] ||
       valid_symbols[SEPARATOR_RECOVERY] ||
       valid_symbols[REDIRECTION_TARGET_RECOVERY]) &&
+    !suppress_broad_recovery &&
     !(lexer->lookahead == '}' && valid_symbols[RIGHT_BRACE]) &&
     !(lexer->lookahead == '#' && valid_symbols[COMMENT_BOUNDARY]) &&
     (lexer->lookahead ==
@@ -5029,17 +5474,29 @@ bool tree_sitter_posix_sh_external_scanner_scan(
         lexer->lookahead ==
         '}' ||
         is_lowercase_letter(lexer->lookahead));
-    enum TokenType recovery_symbol = valid_symbols[SEPARATOR_RECOVERY]
-      ? SEPARATOR_RECOVERY
-      : (valid_symbols[REDIRECTION_TARGET_RECOVERY]
-            ? REDIRECTION_TARGET_RECOVERY
-            : (valid_symbols[COMPOUND_COMMAND_RECOVERY_BOUNDARY]
-                  ? COMPOUND_COMMAND_RECOVERY_BOUNDARY
-                  : (use_boundary_command_recovery
-                        ? BOUNDARY_COMMAND_RECOVERY
-                        : (valid_symbols[COMMAND_RECOVERY]
-                              ? COMMAND_RECOVERY
-                              : BOUNDARY_COMMAND_RECOVERY))));
+    enum TokenType recovery_symbol = BOUNDARY_COMMAND_RECOVERY;
+    if (valid_symbols[SEPARATOR_RECOVERY]) {
+      recovery_symbol = SEPARATOR_RECOVERY;
+    } else if (valid_symbols[REDIRECTION_TARGET_RECOVERY]) {
+      recovery_symbol = REDIRECTION_TARGET_RECOVERY;
+    } else if (valid_symbols[COMPOUND_COMMAND_RECOVERY_BOUNDARY]) {
+      recovery_symbol = COMPOUND_COMMAND_RECOVERY_BOUNDARY;
+    } else if (valid_symbols[CASE_ITEMS_RECOVERY_BOUNDARY]) {
+      recovery_symbol = CASE_ITEMS_RECOVERY_BOUNDARY;
+    } else if (use_boundary_command_recovery) {
+      recovery_symbol = BOUNDARY_COMMAND_RECOVERY;
+    } else if (valid_symbols[MISSING_COMMAND_RECOVERY_BOUNDARY]) {
+      recovery_symbol = MISSING_COMMAND_RECOVERY_BOUNDARY;
+    }
+    if (
+      recovery_symbol ==
+      MISSING_COMMAND_RECOVERY_BOUNDARY &&
+      (lexer->lookahead ==
+        ')' ||
+        (lexer->lookahead == ';' && scan_case_item_terminator(lexer)))
+    ) {
+      return false;
+    }
     return scan_recovery_boundary(lexer, recovery_symbol, valid_symbols);
   }
 
@@ -5047,7 +5504,8 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     lexer->lookahead ==
     '$' &&
     (valid_symbols[UNBRACED_PARAMETER_START] ||
-      valid_symbols[CONTINUED_DOLLAR_CONSTRUCT_START])
+      valid_symbols[CONTINUED_DOLLAR_EXPANSION_START] ||
+      valid_symbols[CONTINUED_DOLLAR_SINGLE_QUOTE_START])
   ) {
     return scan_dollar_start(lexer, valid_symbols);
   }
@@ -5150,12 +5608,12 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     return (
       (valid_symbols[LEFT_BRACE] ||
         valid_symbols[IO_LOCATION] ||
-        valid_symbols[INVALID_COMMAND_START]) &&
+        valid_symbols[INVALID_COMMAND_CHARACTER_SOURCE]) &&
       scan_left_brace_or_io_location(
         lexer,
         valid_symbols[LEFT_BRACE],
         valid_symbols[IO_LOCATION],
-        valid_symbols[INVALID_COMMAND_START]
+        valid_symbols[INVALID_COMMAND_CHARACTER_SOURCE]
       )
     );
   }
@@ -5165,8 +5623,16 @@ bool tree_sitter_posix_sh_external_scanner_scan(
       return scan_reserved_character(lexer, '}', RIGHT_BRACE);
     }
     return (
-      valid_symbols[INVALID_COMMAND_START] &&
-      scan_reserved_character(lexer, '}', INVALID_COMMAND_START)
+      valid_symbols[INVALID_COMMAND_CHARACTER_SOURCE] &&
+      scan_reserved_character(lexer, '}', INVALID_COMMAND_CHARACTER_SOURCE)
+    );
+  }
+
+  if (lexer->lookahead == ')') {
+    return (
+      valid_symbols[INVALID_COMMAND_CHARACTER_SOURCE] &&
+      !valid_symbols[COMMAND_SUBSTITUTION_END_LINE_CONTINUATION] &&
+      scan_reserved_character(lexer, ')', INVALID_COMMAND_CHARACTER_SOURCE)
     );
   }
 
@@ -5238,8 +5704,8 @@ bool tree_sitter_posix_sh_external_scanner_scan(
       return scan_pipeline_negation(lexer);
     }
     return (
-      valid_symbols[INVALID_COMMAND_START] &&
-      scan_reserved_character(lexer, '!', INVALID_COMMAND_START)
+      valid_symbols[INVALID_COMMAND_CHARACTER_SOURCE] &&
+      scan_reserved_character(lexer, '!', INVALID_COMMAND_CHARACTER_SOURCE)
     );
   }
 
