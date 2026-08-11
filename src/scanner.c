@@ -2503,7 +2503,13 @@ static bool scan_case_item_terminator(TSLexer *lexer);
 
 static bool scan_horizontal_layout(TSLexer *lexer);
 
+static bool
+is_active_backquote_boundary(const struct Scanner *scanner, int32_t character) {
+  return scanner->backquote_depth > 0 && character == '`';
+}
+
 static bool scan_empty_compound_list_recovery_boundary(
+  const struct Scanner *scanner,
   TSLexer *lexer,
   const bool *valid_symbols
 ) {
@@ -2516,7 +2522,7 @@ static bool scan_empty_compound_list_recovery_boundary(
     ')' ||
     lexer->lookahead ==
     '}' ||
-    lexer->lookahead == '`'
+    is_active_backquote_boundary(scanner, lexer->lookahead)
   ) {
     lexer->result_symbol = EMPTY_COMPOUND_LIST_RECOVERY_BOUNDARY;
     return true;
@@ -2559,8 +2565,11 @@ static bool scan_empty_compound_list_recovery_boundary(
   return false;
 }
 
-static bool
-scan_direct_recovery_boundary(TSLexer *lexer, enum TokenType symbol) {
+static bool scan_direct_recovery_boundary(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  enum TokenType symbol
+) {
   lexer->mark_end(lexer);
 
   bool is_boundary = lexer->lookahead ==
@@ -2569,7 +2578,7 @@ scan_direct_recovery_boundary(TSLexer *lexer, enum TokenType symbol) {
     ')' ||
     lexer->lookahead ==
     '}' ||
-    lexer->lookahead == '`';
+    is_active_backquote_boundary(scanner, lexer->lookahead);
   if (symbol != FOR_TAIL_RECOVERY_BOUNDARY) {
     is_boundary =
       is_boundary || lexer->lookahead == '\n' || lexer->lookahead == '#';
@@ -2658,6 +2667,7 @@ scan_function_body_boundary(TSLexer *lexer, const bool *valid_symbols) {
 }
 
 static bool scan_recovery_boundary(
+  const struct Scanner *scanner,
   TSLexer *lexer,
   enum TokenType symbol,
   const bool *valid_symbols
@@ -2683,8 +2693,10 @@ static bool scan_recovery_boundary(
 
   bool is_direct_boundary = lexer->lookahead == '}';
   if (symbol == SEPARATOR_RECOVERY) {
-    is_direct_boundary =
-      is_direct_boundary || lexer->lookahead == ')' || lexer->lookahead == '`';
+    is_direct_boundary = is_direct_boundary ||
+      lexer->lookahead ==
+      ')' ||
+      is_active_backquote_boundary(scanner, lexer->lookahead);
   }
   if (
     symbol ==
@@ -2701,7 +2713,7 @@ static bool scan_recovery_boundary(
            COMPOUND_COMMAND_RECOVERY_BOUNDARY ||
            symbol == CASE_ITEMS_RECOVERY_BOUNDARY) &&
           lexer->lookahead == ')') ||
-        lexer->lookahead == '`');
+        is_active_backquote_boundary(scanner, lexer->lookahead));
   } else if (symbol != SEPARATOR_RECOVERY) {
     is_direct_boundary =
       (is_direct_boundary ||
@@ -2715,8 +2727,7 @@ static bool scan_recovery_boundary(
         ';' ||
         lexer->lookahead ==
         '&' ||
-        lexer->lookahead ==
-        '`' ||
+        is_active_backquote_boundary(scanner, lexer->lookahead) ||
         lexer->lookahead == '#');
   }
 
@@ -2780,6 +2791,7 @@ static bool scan_recovery_boundary(
 }
 
 static bool scan_parameter_expansion_recovery_boundary(
+  const struct Scanner *scanner,
   TSLexer *lexer,
   enum TokenType symbol
 ) {
@@ -2803,8 +2815,7 @@ static bool scan_parameter_expansion_recovery_boundary(
     '\t' ||
     lexer->lookahead ==
     ')' ||
-    lexer->lookahead ==
-    '`' ||
+    is_active_backquote_boundary(scanner, lexer->lookahead) ||
     lexer->lookahead ==
     ';' ||
     lexer->lookahead == '&';
@@ -2906,6 +2917,7 @@ static bool scan_command_continuation_operator(TSLexer *lexer) {
 }
 
 static bool scan_command_boundary(
+  const struct Scanner *scanner,
   TSLexer *lexer,
   bool allow_continuation,
   bool allow_separator,
@@ -2946,7 +2958,7 @@ static bool scan_command_boundary(
     ')' ||
     lexer->lookahead ==
     '}' ||
-    lexer->lookahead == '`';
+    is_active_backquote_boundary(scanner, lexer->lookahead);
   if (!is_closer && lexer->lookahead == ';') {
     is_closer = scan_case_item_terminator(lexer);
   }
@@ -5301,8 +5313,7 @@ bool tree_sitter_posix_sh_external_scanner_scan(
       ')' ||
       lexer->lookahead ==
       '}' ||
-      lexer->lookahead ==
-      '`' ||
+      is_active_backquote_boundary(scanner, lexer->lookahead) ||
       (lexer->lookahead ==
         ';' &&
         (valid_symbols[CLOSED_COMMAND_END] ||
@@ -5311,6 +5322,7 @@ bool tree_sitter_posix_sh_external_scanner_scan(
         !valid_symbols[SOURCE_WORD_CONTINUATION_BOUNDARY]))
   ) {
     return scan_command_boundary(
+      scanner,
       lexer,
       valid_symbols[COMMAND_CONTINUATION],
       valid_symbols[SEPARATOR_BEGIN],
@@ -5354,13 +5366,14 @@ bool tree_sitter_posix_sh_external_scanner_scan(
                           [DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY]
                         ? DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY
                         : PARAMETER_EXPANSION_RECOVERY_BOUNDARY)));
-    if (scan_parameter_expansion_recovery_boundary(lexer, symbol)) {
+    if (scan_parameter_expansion_recovery_boundary(scanner, lexer, symbol)) {
       return true;
     }
   }
 
   if (valid_symbols[REDIRECTION_TARGET_RECOVERY] && lexer->lookahead == '\n') {
     return scan_recovery_boundary(
+      scanner,
       lexer,
       REDIRECTION_TARGET_RECOVERY,
       valid_symbols
@@ -5377,11 +5390,14 @@ bool tree_sitter_posix_sh_external_scanner_scan(
       '}' ||
       lexer->lookahead ==
       ';' ||
-      lexer->lookahead ==
-      '`' ||
+      is_active_backquote_boundary(scanner, lexer->lookahead) ||
       is_lowercase_letter(lexer->lookahead))
   ) {
-    return scan_empty_compound_list_recovery_boundary(lexer, valid_symbols);
+    return scan_empty_compound_list_recovery_boundary(
+      scanner,
+      lexer,
+      valid_symbols
+    );
   }
 
   if (
@@ -5393,19 +5409,25 @@ bool tree_sitter_posix_sh_external_scanner_scan(
 
   bool suppress_broad_recovery = false;
   if (valid_symbols[HEADER_RECOVERY_BOUNDARY]) {
-    if (scan_direct_recovery_boundary(lexer, HEADER_RECOVERY_BOUNDARY)) {
+    if (
+      scan_direct_recovery_boundary(scanner, lexer, HEADER_RECOVERY_BOUNDARY)
+    ) {
       return true;
     }
     suppress_broad_recovery = is_lowercase_letter(lexer->lookahead);
   }
   if (valid_symbols[DIRECT_RECOVERY_BOUNDARY]) {
-    if (scan_direct_recovery_boundary(lexer, DIRECT_RECOVERY_BOUNDARY)) {
+    if (
+      scan_direct_recovery_boundary(scanner, lexer, DIRECT_RECOVERY_BOUNDARY)
+    ) {
       return true;
     }
     suppress_broad_recovery = is_lowercase_letter(lexer->lookahead);
   }
   if (valid_symbols[FOR_TAIL_RECOVERY_BOUNDARY]) {
-    if (scan_direct_recovery_boundary(lexer, FOR_TAIL_RECOVERY_BOUNDARY)) {
+    if (
+      scan_direct_recovery_boundary(scanner, lexer, FOR_TAIL_RECOVERY_BOUNDARY)
+    ) {
       return true;
     }
     suppress_broad_recovery = is_lowercase_letter(lexer->lookahead);
@@ -5415,7 +5437,7 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     valid_symbols[BACKQUOTE_END] &&
     !valid_symbols[SEPARATOR_RECOVERY] &&
     !valid_symbols[COMPOUND_COMMAND_RECOVERY_BOUNDARY] &&
-    lexer->lookahead == '`'
+    is_active_backquote_boundary(scanner, lexer->lookahead)
   ) {
     return scan_backquote_end(scanner, lexer);
   }
@@ -5429,11 +5451,11 @@ bool tree_sitter_posix_sh_external_scanner_scan(
       '}' ||
       lexer->lookahead ==
       ';' ||
-      lexer->lookahead ==
-      '`' ||
+      is_active_backquote_boundary(scanner, lexer->lookahead) ||
       is_lowercase_letter(lexer->lookahead))
   ) {
     return scan_recovery_boundary(
+      scanner,
       lexer,
       SUBSHELL_RECOVERY_BOUNDARY,
       valid_symbols
@@ -5460,8 +5482,7 @@ bool tree_sitter_posix_sh_external_scanner_scan(
       ';' ||
       lexer->lookahead ==
       '&' ||
-      lexer->lookahead ==
-      '`' ||
+      is_active_backquote_boundary(scanner, lexer->lookahead) ||
       lexer->lookahead ==
       '#' ||
       (is_lowercase_letter(lexer->lookahead) &&
@@ -5497,7 +5518,12 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     ) {
       return false;
     }
-    return scan_recovery_boundary(lexer, recovery_symbol, valid_symbols);
+    return scan_recovery_boundary(
+      scanner,
+      lexer,
+      recovery_symbol,
+      valid_symbols
+    );
   }
 
   if (
@@ -5559,7 +5585,10 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     return scan_backquote_prefix(scanner, lexer, valid_symbols);
   }
 
-  if (valid_symbols[BACKQUOTE_END] && (lexer->lookahead == '`')) {
+  if (
+    valid_symbols[BACKQUOTE_END] &&
+    is_active_backquote_boundary(scanner, lexer->lookahead)
+  ) {
     return scan_backquote_end(scanner, lexer);
   }
 

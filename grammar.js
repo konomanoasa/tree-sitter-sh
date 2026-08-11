@@ -345,6 +345,9 @@ const commandSequenceBody = ($) =>
     $._free_trailing_layout,
   );
 
+const closedCommandBoundaryLayout = ($) =>
+  seq($._closed_command_end, optional($._horizontal_layout));
+
 const continuedParenthesizedCommandBody = ($) =>
   completeCommandsBody($, $._second_left_parenthesis_layout);
 
@@ -3488,7 +3491,7 @@ module.exports = grammar({
           optional(
             seq(
               field("body", $.command_substitution_body),
-              optional($._closed_command_end),
+              optional(closedCommandBoundaryLayout($)),
             ),
           ),
           commandSubstitutionEnd($),
@@ -3502,7 +3505,7 @@ module.exports = grammar({
               $.command_substitution_body,
             ),
           ),
-          optional($._closed_command_end),
+          optional(closedCommandBoundaryLayout($)),
           commandSubstitutionEnd($),
         ),
       ),
@@ -3524,7 +3527,7 @@ module.exports = grammar({
         optional(
           seq(
             field("body", $.backquote_substitution_body),
-            optional($._closed_command_end),
+            optional(closedCommandBoundaryLayout($)),
           ),
         ),
         choice(

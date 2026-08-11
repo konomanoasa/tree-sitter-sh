@@ -1042,12 +1042,67 @@ for and_if_newline_output in \
     "$and_if_newline_output"
 done
 
+backquote_opener_source="$runtime_directory/backquote-opener-boundaries.sh"
+backquote_opener_output="$runtime_directory/backquote-opener-boundaries.out"
+printf '%s\n' \
+  '{ `printf brace`; }' \
+  ': && `printf and-or`' \
+  'case `printf selector` in' \
+  '  selector) : ;;' \
+  'esac' \
+  >"$backquote_opener_source"
+assert_valid_with_output "$backquote_opener_source" "$backquote_opener_output"
+assert_contains \
+  "(backquote_substitution [0, 2] - [0, 16]" \
+  "$backquote_opener_output"
+assert_contains \
+  "(backquote_substitution [1, 5] - [1, 20]" \
+  "$backquote_opener_output"
+assert_contains \
+  "(backquote_substitution [2, 5] - [2, 22]" \
+  "$backquote_opener_output"
+assert_not_contains "recovery" "$backquote_opener_output"
+
+backquote_assignment_initial="$runtime_directory/backquote-assignment-initial.sh"
+backquote_assignment_final="$runtime_directory/backquote-assignment-final.sh"
+printf '%s\n' 'worker() {' '  :' '}' 'result="`printf nested`"' \
+  >"$backquote_assignment_initial"
+printf '%s\n' 'worker() {' '  :' '}' 'result=`printf nested`' \
+  >"$backquote_assignment_final"
+assert_valid_incremental_equals_fresh \
+  "$backquote_assignment_initial" \
+  "$backquote_assignment_final" \
+  "remove-double-quotes-around-assignment-backquote" \
+  "24 1" \
+  "39 1"
+
+command_substitution_layout_initial="$runtime_directory/command-substitution-layout-initial.sh"
+command_substitution_layout_final="$runtime_directory/command-substitution-layout-final.sh"
+printf '%s\n' 'echo $(first;)' >"$command_substitution_layout_initial"
+printf '%s\n' 'echo $(first; )' >"$command_substitution_layout_final"
+assert_valid_incremental_equals_fresh \
+  "$command_substitution_layout_initial" \
+  "$command_substitution_layout_final" \
+  "insert-layout-before-command-substitution-closer" \
+  "13 0  "
+
+backquote_layout_initial="$runtime_directory/backquote-layout-initial.sh"
+backquote_layout_final="$runtime_directory/backquote-layout-final.sh"
+printf '%s\n' 'echo `first;`' >"$backquote_layout_initial"
+printf '%s\n' 'echo `first; `' >"$backquote_layout_final"
+assert_valid_incremental_equals_fresh \
+  "$backquote_layout_initial" \
+  "$backquote_layout_final" \
+  "insert-layout-before-backquote-closer" \
+  "12 0  "
+
 outer_closer_source="$runtime_directory/recovery-enclosing-closers.sh"
 outer_closer_output="$runtime_directory/recovery-enclosing-closers.out"
 outer_closer_cst="$runtime_directory/recovery-enclosing-closers.cst"
 printf '%s\n' \
   '(if x; then y); next' \
   'echo `if x; then y`; next' \
+  'echo `printf ${x`; next' \
   >"$outer_closer_source"
 assert_parse_contains_all \
   "$outer_closer_source" \
@@ -1059,7 +1114,10 @@ assert_parse_contains_all \
   "(backquote_substitution [1, 5] - [1, 19]" \
   "terminator: (separator_recovery [1, 18] - [1, 18])" \
   "recovery: (compound_command_recovery [1, 18] - [1, 18])" \
-  "(and_or [1, 21] - [1, 25]"
+  "(and_or [1, 21] - [1, 25]" \
+  "(backquote_substitution [2, 5] - [2, 17]" \
+  "(parameter_expansion_recovery [2, 16] - [2, 16])" \
+  "(and_or [2, 19] - [2, 23]"
 assert_cst_valid_with_output "$outer_closer_source" "$outer_closer_cst"
 assert_cst_direct_child_range \
   "0:0-0:14" \
@@ -1071,6 +1129,12 @@ assert_cst_direct_child_range \
   "1:5-1:19" \
   "backquote_substitution" \
   "1:18-1:19" \
+  "*" \
+  "$outer_closer_cst"
+assert_cst_direct_child_range \
+  "2:5-2:17" \
+  "backquote_substitution" \
+  "2:16-2:17" \
   "*" \
   "$outer_closer_cst"
 
