@@ -13,13 +13,13 @@
     "check:biome": "biome check .",
     "check:generated": "scripts/check-generated.sh",
     "check:runtime": "scripts/check-runtime.sh",
-    "check:scanner": "cc -std=c11 -Wall -Wextra -Werror -pedantic -Isrc -fsyntax-only src/scanner.c",
+    "check:scanner": "scripts/check-scanner.sh",
     "check:shellcheck": "shellcheck scripts/*.sh",
     "check:write": "biome check --write .",
     "generate": "tree-sitter generate",
-    "test": "tree-sitter test",
-    "test:fuzz": "tree-sitter fuzz --iterations 10 --edits 5",
-    "test:wasm": "tree-sitter test --wasm"
+    "test": "tree-sitter test --rebuild",
+    "test:fuzz": "tree-sitter fuzz --rebuild --iterations 10 --edits 5",
+    "test:wasm": "tree-sitter test --wasm --rebuild"
   },
   "engines": {
     "node": ">=22"

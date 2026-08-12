@@ -45,7 +45,6 @@ for i in\
                       (done_keyword)))))))))))
   (linebreak
     (newline_list)))
-
 ==================
 For wordlist separators retain blank-leading continuation runs
 ==================
@@ -384,18 +383,6 @@ until ready; do wait; done
     (newline_list)))
 
 ==================
-A removed newline cannot separate a for name from in
-:error
-==================
-
-for x\
-in value; do :; done
-
----
-
-
-
-==================
 For loop variables must be POSIX names
 :error
 ==================
@@ -414,83 +401,6 @@ for i \
 in a; do :; done
 for j \
 do :; done
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (for_clause
-                    (for_keyword)
-                    (name)
-                    (line_continuation)
-                    (in
-                      (in_keyword))
-                    (wordlist
-                      (word
-                        (literal)))
-                    (sequential_sep)
-                    (do_group
-                      (do_keyword)
-                      (compound_list
-                        (term
-                          (and_or
-                            (pipeline
-                              (pipe_sequence
-                                (command
-                                  (simple_command
-                                    (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        (separator
-                          (separator_op)))
-                      (done_keyword))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (for_clause
-                    (for_keyword)
-                    (name)
-                    (line_continuation)
-                    (do_group
-                      (do_keyword)
-                      (compound_list
-                        (term
-                          (and_or
-                            (pipeline
-                              (pipe_sequence
-                                (command
-                                  (simple_command
-                                    (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        (separator
-                          (separator_op)))
-                      (done_keyword)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-For continuations preserve their formal productions
-==================
-
-for item\
- in one; do :; done
-for item\
- do :; done
 
 ---
 

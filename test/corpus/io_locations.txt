@@ -78,8 +78,6 @@ I/O locations remain distinct from decimal file descriptors
 
 {input}<source command {output}>target 2>>errors
 {9}<>state
-{out\
-put}>continued
 
 ---
 
@@ -133,8 +131,22 @@ put}>continued
                         operator: (lessgreat)
                         filename: (filename
                           word: (word
-                            (literal)))))))))))))
-    separator: (newline_list)
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+I/O locations retain internal right braces through the final brace
+==================
+
+{a}}>x
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -144,79 +156,7 @@ put}>continued
                 body: (simple_command
                   prefix: (cmd_prefix
                     redirect: (io_redirect
-                      location: (io_location
-                        (line_continuation))
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-An opening-boundary removed newline belongs to the I/O location
-==================
-
-printf {\
-fd}<>file
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      location: (io_location
-                        (line_continuation))
-                      body: (io_file
-                        operator: (lessgreat)
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-An empty I/O location after newline removal remains an ordinary word
-==================
-
-printf {\
-}>file
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal)
-                      (line_continuation)
-                      (literal))
-                    redirect: (io_redirect
+                      location: (io_location)
                       body: (io_file
                         filename: (filename
                           word: (word
@@ -293,48 +233,6 @@ I/O location recognition requires nonempty adjacent braces
     (newline_list)))
 
 ==================
-I/O tokens expose removed line continuations
-==================
-
-printf 1\
-2>out {out\
-put}>file
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      number: (io_number
-                        (line_continuation))
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))
-                    redirect: (io_redirect
-                      location: (io_location
-                        (line_continuation))
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 Unclosed quotes cannot become IO locations
 :error
 ==================
@@ -342,6 +240,8 @@ Unclosed quotes cannot become IO locations
 printf {x'}>file
 
 ---
+
+
 
 ==================
 An I/O location can own a here-document

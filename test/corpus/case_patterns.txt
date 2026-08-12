@@ -36,6 +36,7 @@ esac
                         patterns: (pattern_list
                           word: (word
                             (literal)
+                            (literal)
                             (pattern_star_source)
                             (literal))
                           word: (word

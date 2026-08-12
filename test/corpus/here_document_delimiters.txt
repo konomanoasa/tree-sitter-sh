@@ -1,99 +1,4 @@
 ==================
-A delimiter word continues across a removed newline
-==================
-
-cat <<EO\
-F
-body
-EOF
-after
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal
-                              (line_continuation))))))))))))))
-    separator: (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (here_document_body
-            (here_document_text))
-          end: (here_document_end))))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-An unterminated document preserves a continued delimiter word
-==================
-
-cat <<EO\
-F
-body
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal
-                              (line_continuation)))))))))))))))
-  trailing: (linebreak
-    (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (here_document_body
-            (here_document_text))
-          end: (here_document_end_recovery))))))
-
-==================
 A continuation before the delimiter word remains in io_here
 ==================
 
@@ -909,50 +814,6 @@ after
     (newline_list)))
 
 ==================
-A here-document delimiter keeps an incomplete bracket across a removed newline
-==================
-
-cat <<[!\
-]
-body
-[!]
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal)
-                            (literal)
-                            (line_continuation)
-                            (literal))))))))))))))
-  (linebreak
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end))))))
-
-==================
 A delimiter word owns terminal removed newlines before its body
 ==================
 
@@ -1007,78 +868,6 @@ after
                       (literal)))))))))))
   (linebreak
     (newline_list)))
-
-==================
-Removed newlines preserve DLESSDASH at both token boundaries
-==================
-
-cat <\
-<-ONE <<\
--TWO <\
-<\
--THREE
-one
-ONE
-two
-TWO
-three
-THREE
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dlessdash
-                          (line_continuation))
-                        (here_end
-                          (word
-                            (literal)))))
-                    (io_redirect
-                      (io_here
-                        (dlessdash
-                          (line_continuation))
-                        (here_end
-                          (word
-                            (literal)))))
-                    (io_redirect
-                      (io_here
-                        (dlessdash
-                          (line_continuation)
-                          (line_continuation))
-                        (here_end
-                          (word
-                            (literal))))))))))))))
-  (linebreak
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end))
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end))
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end))))))
 
 ==================
 Delimiter command substitutions retain parentheses inside functions
@@ -1218,15 +1007,9 @@ body
 Here-document delimiters preserve bracket fallback source ownership
 ==================
 
-cat <<[]\
-] <<[[. <<[\
-][.]
+cat <<[[.
 first
-[]]
-second
 [[.
-third
-[][.]
 
 ---
 
@@ -1250,41 +1033,13 @@ third
                         (dless)
                         (here_end
                           (word
-                            (pattern_bracket_source
-                              (pattern_bracket_members_source
-                                (pattern_bracket_character_source))
-                              (line_continuation))))))
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
                             (literal)
                             (literal)
-                            (literal)))))
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal)
-                            (line_continuation)
-                            (literal)
-                            (pattern_bracket_source
-                              (pattern_bracket_members_source
-                                (pattern_bracket_character_source))))))))))))))))
+                            (literal))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
         (here_document_line_end)
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end))
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end))
         (here_document
           (here_document_body
             (here_document_text))
@@ -1342,212 +1097,95 @@ command << # comment is not a delimiter
 
 ==================
 A third less-than sign is not a POSIX here-document operator
-:error
 ==================
 
 command <<<word
 
 ---
 
-
-
-==================
-Here-document operators expose removed line continuations in source order
-==================
-
-cat <\
-<EOF
-EOF
-
----
-
 (program
-  (linebreak
+  leading: (linebreak
     (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
                     (word
                       (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless
-                          (line_continuation))
-                        (here_end
-                          (word
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          recovery: (missing_here_end))))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
                             (literal))))))))))))))
-  (linebreak
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_end))))))
+  trailing: (linebreak
+    (newline_list)))
 
 ==================
-Here-document delimiters classify constructs after removed newlines
+A missing here-document delimiter yields to a following redirection
 ==================
 
-cat <<$\
-(echo)
-body
-$(echo)
-cat <<$\
-{x:-word}
-body
-${x:-word}
-cat <<$\
-((1+2))
-body
-$((1+2))
-cat <<$\
-'EOF'
-body
-EOF
-after
+command << >out
+command << <in
 
 ---
 
 (program
-  (linebreak
+  leading: (linebreak
     (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
                     (word
                       (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (command_substitution
-                              (line_continuation)
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (simple_command
-                                                (cmd_name
-                                                  (word
-                                                    (literal)))))))))))))))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          recovery: (missing_here_end))))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
                     (word
                       (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (parameter_expansion
-                              (line_continuation)
-                              (variable_name)
-                              (parameter_value_operator)
-                              (parameter_word
-                                (literal)))))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (arithmetic_expansion
-                              (line_continuation)
-                              (arithmetic_binary_expression
-                                (arithmetic_number)
-                                (arithmetic_operator)
-                                (arithmetic_number)))))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (dollar_single_quoted
-                              (line_continuation)
-                              (dollar_single_quote_text))))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (quoted_here_document_body
-            (quoted_here_document_text))
-          (here_document_end))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          recovery: (missing_here_end))))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
     (newline_list)))

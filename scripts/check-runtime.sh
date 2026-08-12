@@ -21,7 +21,8 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-"$tree_sitter" build \
+XDG_CACHE_HOME="$runtime_directory/cache" \
+  "$tree_sitter" build \
   --output "$parser_library" \
   "$repository_directory"
 
@@ -38,6 +39,8 @@ query_current() {
     --lang-name posix_sh \
     "$@"
 }
+
+parse_timeout_microseconds=10000000
 
 fail() {
   printf '%s\n' "$1" >&2
@@ -64,48 +67,300 @@ assert_not_contains() {
   fi
 }
 
+assert_occurrence_count() {
+  expected_count=$1
+  expected_text=$2
+  file=$3
+  actual_count=$(
+    awk -v expected_text="$expected_text" '
+      index($0, expected_text) { count += 1 }
+      END { print count + 0 }
+    ' "$file"
+  )
+  if [ "$actual_count" -ne "$expected_count" ]; then
+    printf '%s\n' \
+      "Expected $expected_count occurrences of $expected_text, found $actual_count" >&2
+    sed -n '1,200p' "$file" >&2
+    exit 1
+  fi
+}
+
+source_eof_point() (
+  eof_source=$1
+  eof_byte_count=$(LC_ALL=C wc -c <"$eof_source")
+  LC_ALL=C awk -v byte_count="$eof_byte_count" '
+    {
+      content_bytes += length($0)
+      final_column = length($0)
+    }
+    END {
+      if (NR == 0) {
+        print "0:0"
+      } else if (byte_count == content_bytes + NR) {
+        print NR ":0"
+      } else {
+        print NR - 1 ":" final_column
+      }
+    }
+  ' "$eof_source"
+)
+
+parse_root_end_point() (
+  root_format=$1
+  root_output=$2
+
+  case $root_format in
+  tree)
+    LC_ALL=C awk '
+      NR == 1 {
+        line = $0
+        if (line !~ /^\(program \[[0-9]+, [0-9]+\] - \[[0-9]+, [0-9]+\][)]?$/) {
+          exit
+        }
+        sub(/^.* - \[/, "", line)
+        sub(/\].*$/, "", line)
+        gsub(/,[[:space:]]*/, ":", line)
+        print line
+      }
+    ' "$root_output"
+    ;;
+  cst)
+    LC_ALL=C awk '
+      NR == 1 {
+        separator = index($0, " - ")
+        if (separator == 0) {
+          exit
+        }
+        tail = substr($0, separator + 3)
+        match(tail, /^[0-9]+:[0-9]+/)
+        if (RLENGTH > 0) {
+          print substr(tail, RSTART, RLENGTH)
+        }
+      }
+    ' "$root_output"
+    ;;
+  summary)
+    LC_ALL=C awk '
+      /"end"[[:space:]]*:[[:space:]]*\{/ {
+        inside_end = 1
+        next
+      }
+      inside_end && /"row"[[:space:]]*:/ {
+        line = $0
+        sub(/^.*"row"[[:space:]]*:[[:space:]]*/, "", line)
+        sub(/[^0-9].*$/, "", line)
+        end_row = line
+        next
+      }
+      inside_end && /"column"[[:space:]]*:/ {
+        line = $0
+        sub(/^.*"column"[[:space:]]*:[[:space:]]*/, "", line)
+        sub(/[^0-9].*$/, "", line)
+        if (end_row != "" && line != "") {
+          print end_row ":" line
+        }
+        exit
+      }
+    ' "$root_output"
+    ;;
+  esac
+)
+
+assert_resource_cst_root() (
+  resource_output=$1
+  resource_description=$2
+
+  if ! LC_ALL=C awk '
+    NR == 1 && $NF ~ /^(program|ERROR|•program|•ERROR)$/ {
+      valid = 1
+    }
+    END { exit valid ? 0 : 1 }
+  ' "$resource_output"; then
+    sed -n '1,200p' "$resource_output" >&2
+    fail "Resource-bounded parse has no complete program or ERROR root: $resource_description"
+  fi
+)
+
+assert_parse_consumed_source() (
+  consumed_format=$1
+  consumed_output=$2
+  consumed_description=$3
+  consumed_source=$4
+  expected_end=$(source_eof_point "$consumed_source")
+  actual_end=$(parse_root_end_point "$consumed_format" "$consumed_output")
+
+  if [ -z "$actual_end" ]; then
+    fail "Parser output has no readable root range: $consumed_description"
+  fi
+  if [ "$actual_end" != "$expected_end" ]; then
+    fail "Parser stopped at $actual_end before source EOF $expected_end (possible timeout): $consumed_description"
+  fi
+)
+
+run_parse() {
+  parse_mode=$1
+  parse_format=$2
+  parse_output=$3
+  parse_description=$4
+  shift 4
+  parse_diagnostics="$parse_output.stderr"
+
+  case $parse_format in
+  tree)
+    if parse_current \
+      --timeout "$parse_timeout_microseconds" \
+      "$@" \
+      >"$parse_output" 2>"$parse_diagnostics"; then
+      parse_status=0
+    else
+      parse_status=$?
+    fi
+    parse_root=program
+    ;;
+  cst)
+    if parse_current \
+      --cst \
+      --timeout "$parse_timeout_microseconds" \
+      "$@" \
+      >"$parse_output" 2>"$parse_diagnostics"; then
+      parse_status=0
+    else
+      parse_status=$?
+    fi
+    parse_root=program
+    ;;
+  summary)
+    if [ "$parse_mode" != valid ]; then
+      fail "JSON summaries are only valid for successful parse checks: $parse_description"
+    fi
+    if parse_current \
+      --quiet \
+      --json-summary \
+      --timeout "$parse_timeout_microseconds" \
+      "$@" \
+      >"$parse_output" 2>"$parse_diagnostics"; then
+      parse_status=0
+    else
+      parse_status=$?
+    fi
+    parse_root='"parse_summaries"'
+    ;;
+  *)
+    fail "Unknown parse output format: $parse_format"
+    ;;
+  esac
+
+  if [ "$parse_mode" = resource ]; then
+    if [ "$parse_format" != cst ]; then
+      fail "Resource-bounded checks require CST output: $parse_description"
+    fi
+    assert_resource_cst_root "$parse_output" "$parse_description"
+  elif [ ! -s "$parse_output" ] || ! grep -Fq -- "$parse_root" "$parse_output"; then
+    sed -n '1,200p' "$parse_diagnostics" >&2
+    fail "Parser produced no complete $parse_format output (possible timeout): $parse_description"
+  fi
+
+  case $parse_status in
+  0 | 1) ;;
+  *)
+    sed -n '1,200p' "$parse_diagnostics" >&2
+    fail "Parser failed with status $parse_status: $parse_description"
+    ;;
+  esac
+
+  case $parse_mode in
+  valid)
+    if [ "$parse_status" -ne 0 ]; then
+      sed -n '1,200p' "$parse_output" >&2
+      fail "Expected valid parse: $parse_description"
+    fi
+    ;;
+  recovery | resource) ;;
+  *) fail "Unknown parse mode: $parse_mode" ;;
+  esac
+
+  if [ "$#" -eq 1 ] && [ -f "$1" ]; then
+    assert_parse_consumed_source \
+      "$parse_format" \
+      "$parse_output" \
+      "$parse_description" \
+      "$1"
+  fi
+}
+
+assert_timeout_is_not_recovery() {
+  timeout_source="$runtime_directory/timeout-guard.sh"
+  timeout_output="$runtime_directory/timeout-guard.cst"
+  awk 'BEGIN {
+    for (counter = 0; counter < 10000; counter += 1) print ":"
+  }' >"$timeout_source"
+
+  if (
+    parse_timeout_microseconds=1
+    run_parse recovery cst "$timeout_output" "timeout guard" "$timeout_source"
+  ) >/dev/null 2>&1; then
+    fail "A timed-out parse was accepted as structural recovery"
+  fi
+}
+
+run_query() {
+  query_output=$1
+  query_path=$2
+  shift 2
+  query_diagnostics="$query_output.stderr"
+
+  if ! query_current \
+    --captures \
+    "$query_path" \
+    "$@" \
+    >"$query_output" 2>"$query_diagnostics"; then
+    sed -n '1,200p' "$query_diagnostics" >&2
+    fail "Query failed: $query_path"
+  fi
+}
+
 assert_valid() {
   source_file=$1
   output_file="$runtime_directory/assert-valid.out"
-  if ! parse_current \
-    --quiet \
-    --timeout 10000000 \
-    "$source_file" \
-    >"$output_file" 2>&1; then
-    sed -n '1,200p' "$output_file" >&2
-    fail "Expected valid parse: $source_file"
-  fi
+  run_parse valid summary "$output_file" "$source_file" "$source_file"
 }
 
 assert_valid_with_output() {
   source_file=$1
   output_file=$2
-  if ! parse_current \
-    --timeout 10000000 \
-    "$source_file" \
-    >"$output_file" 2>/dev/null; then
-    fail "Expected valid parse: $source_file"
-  fi
+  run_parse valid tree "$output_file" "$source_file" "$source_file"
 }
 
 assert_cst_valid_with_output() {
   source_file=$1
   output_file=$2
-  if ! parse_current \
-    --cst \
-    --timeout 10000000 \
-    "$source_file" \
-    >"$output_file" 2>/dev/null; then
-    fail "Expected valid CST parse: $source_file"
-  fi
+  run_parse valid cst "$output_file" "$source_file" "$source_file"
 }
 
 assert_cst_range() {
   expected_range=$1
   expected_item=$2
   file=$3
-  if ! grep -F -- "$expected_range" "$file" |
-    grep -Fq -- "$expected_item"; then
+  if ! awk \
+    -v expected_range="$expected_range" '
+      BEGIN { gsub(/[[:space:]]/, "", expected_range) }
+
+      {
+        separator = index($0, " - ")
+        if (separator == 0) {
+          next
+        }
+        start = substr($0, 1, separator - 1)
+        gsub(/[[:space:]]/, "", start)
+        tail = substr($0, separator + 3)
+        match(tail, /^[^[:space:]]+/)
+        end = substr(tail, RSTART, RLENGTH)
+        range = start "-" end
+        if (range == expected_range) {
+          print
+        }
+      }
+    ' "$file" | grep -Fq -- "$expected_item"; then
     printf '%s\n' \
       "Expected CST item $expected_item at $expected_range" >&2
     sed -n '1,200p' "$file" >&2
@@ -137,7 +392,7 @@ assert_cst_direct_child_range() {
         end = substr(tail, RSTART, RLENGTH)
         content = substr(tail, RLENGTH + 1)
         match(content, /[^[:space:]]/)
-        depth = RSTART - 1
+        depth = RSTART - 1 + length(end)
         content = substr(content, RSTART)
         if (sub(/^•/, "", content)) {
           depth += 1
@@ -172,17 +427,7 @@ assert_cst_direct_child_range() {
 assert_parse_with_output() {
   source_file=$1
   output_file=$2
-  if parse_current \
-    --timeout 10000000 \
-    "$source_file" \
-    >"$output_file" 2>/dev/null; then
-    return
-  else
-    status=$?
-  fi
-  if [ "$status" -gt 1 ]; then
-    fail "Parser failed with status $status while recovering source: $source_file"
-  fi
+  run_parse recovery tree "$output_file" "$source_file" "$source_file"
 }
 
 assert_parse_contains_all() {
@@ -195,7 +440,278 @@ assert_parse_contains_all() {
   done
 }
 
-parse_incremental_and_fresh_with_output() {
+normalize_cst_fingerprint() {
+  cst_input=$1
+  cst_fingerprint=$2
+  LC_ALL=C awk '
+    /^[0-9]+:[0-9]+[[:space:]]+-[[:space:]]+[0-9]+:[0-9]+/ {
+      print
+    }
+  ' "$cst_input" >"$cst_fingerprint"
+  if [ ! -s "$cst_fingerprint" ]; then
+    fail "CST fingerprint is empty: $cst_input"
+  fi
+}
+
+assert_cst_outputs_equal() {
+  comparison_name=$1
+  left_output=$2
+  left_status=$3
+  right_output=$4
+  right_status=$5
+  left_fingerprint="$left_output.fingerprint"
+  right_fingerprint="$right_output.fingerprint"
+
+  if [ "$left_status" != "$right_status" ]; then
+    fail "Parse statuses differ: $comparison_name"
+  fi
+
+  normalize_cst_fingerprint "$left_output" "$left_fingerprint"
+  normalize_cst_fingerprint "$right_output" "$right_fingerprint"
+  if ! cmp -s "$left_fingerprint" "$right_fingerprint"; then
+    diff -u "$right_fingerprint" "$left_fingerprint" >&2 || true
+    fail "Complete CSTs differ: $comparison_name"
+  fi
+}
+
+assert_repeated_cold_parse() {
+  repeated_mode=$1
+  repeated_source=$2
+  repeated_name=$3
+  first_output="$runtime_directory/$repeated_name.first.cst"
+  second_output="$runtime_directory/$repeated_name.second.cst"
+
+  run_parse \
+    "$repeated_mode" \
+    cst \
+    "$first_output" \
+    "$repeated_name first cold parse" \
+    "$repeated_source"
+  first_status=$parse_status
+  run_parse \
+    "$repeated_mode" \
+    cst \
+    "$second_output" \
+    "$repeated_name second cold parse" \
+    "$repeated_source"
+  second_status=$parse_status
+
+  assert_cst_outputs_equal \
+    "$repeated_name repeated cold parses" \
+    "$first_output" \
+    "$first_status" \
+    "$second_output" \
+    "$second_status"
+}
+
+assert_cst_fingerprint_distinguishes_anonymous_tokens() {
+  semicolon_source="$runtime_directory/fingerprint-semicolon.sh"
+  ampersand_source="$runtime_directory/fingerprint-ampersand.sh"
+  semicolon_cst="$runtime_directory/fingerprint-semicolon.cst"
+  ampersand_cst="$runtime_directory/fingerprint-ampersand.cst"
+  semicolon_fingerprint="$semicolon_cst.fingerprint"
+  ampersand_fingerprint="$ampersand_cst.fingerprint"
+
+  printf '%s\n' 'a;b' >"$semicolon_source"
+  printf '%s\n' 'a&b' >"$ampersand_source"
+  run_parse valid cst "$semicolon_cst" "semicolon fingerprint control" "$semicolon_source"
+  run_parse valid cst "$ampersand_cst" "ampersand fingerprint control" "$ampersand_source"
+  normalize_cst_fingerprint "$semicolon_cst" "$semicolon_fingerprint"
+  normalize_cst_fingerprint "$ampersand_cst" "$ampersand_fingerprint"
+
+  if cmp -s "$semicolon_fingerprint" "$ampersand_fingerprint"; then
+    fail "Complete CST fingerprints do not distinguish anonymous tokens"
+  fi
+}
+
+normalize_logical_projection() {
+  projection_input=$1
+  projection_output=$2
+  LC_ALL=C awk '
+    {
+      if ($0 !~ /^[0-9]+:[0-9]+[[:space:]]+-[[:space:]]+[0-9]+:[0-9]+/) {
+        next
+      }
+      separator = index($0, " - ")
+      if (separator == 0) {
+        next
+      }
+
+      tail = substr($0, separator + 3)
+      match(tail, /^[^[:space:]]+/)
+      end = substr(tail, RSTART, RLENGTH)
+      content = substr(tail, RLENGTH + 1)
+      match(content, /[^[:space:]]/)
+      depth = RSTART - 1 + length(end)
+      content = substr(content, RSTART)
+      if (sub(/^•/, "", content)) {
+        depth += 1
+        content = "!" content
+      }
+
+      if (content ~ /^["`]/) {
+        next
+      }
+      sub(/[[:space:]]+`.*`$/, "", content)
+      if (content == "line_continuation" || content ~ /: line_continuation$/) {
+        next
+      }
+
+      if (!have_root) {
+        root_depth = depth
+        have_root = 1
+      }
+      print depth - root_depth ":" content
+    }
+  ' "$projection_input" >"$projection_output"
+  if [ ! -s "$projection_output" ]; then
+    fail "Logical CST projection is empty: $projection_input"
+  fi
+}
+
+assert_same_logical_projection() {
+  projection_name=$1
+  logical_cst=$2
+  physical_cst=$3
+  logical_projection="$runtime_directory/$projection_name.logical"
+  physical_projection="$runtime_directory/$projection_name.physical"
+
+  normalize_logical_projection "$logical_cst" "$logical_projection"
+  normalize_logical_projection "$physical_cst" "$physical_projection"
+  if ! cmp -s "$logical_projection" "$physical_projection"; then
+    diff -u "$logical_projection" "$physical_projection" >&2 || true
+    fail "Physical source changes the logical CST: $projection_name"
+  fi
+}
+
+assert_continued_parse_equivalent() {
+  equivalence_name=$1
+  expected_status=$2
+  logical_source=$3
+  physical_source=$4
+  logical_cst="$runtime_directory/$equivalence_name.logical.cst"
+  physical_cst="$runtime_directory/$equivalence_name.physical.cst"
+
+  run_parse \
+    recovery \
+    cst \
+    "$logical_cst" \
+    "$equivalence_name logical source" \
+    "$logical_source"
+  logical_status=$parse_status
+  run_parse \
+    recovery \
+    cst \
+    "$physical_cst" \
+    "$equivalence_name physical source" \
+    "$physical_source"
+  physical_status=$parse_status
+
+  if [ "$logical_status" -ne "$expected_status" ] ||
+    [ "$physical_status" -ne "$expected_status" ]; then
+    fail "$equivalence_name parse statuses: expected $expected_status, logical $logical_status, physical $physical_status"
+  fi
+  assert_occurrence_count 1 "line_continuation" "$physical_cst"
+  assert_same_logical_projection \
+    "$equivalence_name" \
+    "$logical_cst" \
+    "$physical_cst"
+}
+
+extract_line_continuation_manifest() {
+  query_output=$1
+  manifest_output=$2
+  LC_ALL=C awk '
+    /capture: [0-9]+ - line\.continuation, start: \([0-9]+, [0-9]+\), end: \([0-9]+, [0-9]+\), text:/ {
+      range = $0
+      sub(/^.*start: \(/, "", range)
+      sub(/\), text:.*$/, "", range)
+      gsub(/\), end: \(/, "-", range)
+      gsub(/, /, ":", range)
+      print range
+    }
+  ' "$query_output" >"$manifest_output"
+}
+
+assert_manifest_source_order() {
+  manifest_file=$1
+  LC_ALL=C awk '
+    {
+      endpoint_count = split($0, endpoints, "-")
+      start_count = split(endpoints[1], start, ":")
+      end_count = split(endpoints[2], end, ":")
+      if (NF != 1 || endpoint_count != 2 || start_count != 2 || end_count != 2) {
+        exit 1
+      }
+      if (have_previous && (start[1] < previous_row || (start[1] == previous_row && start[2] <= previous_column))) {
+        exit 1
+      }
+      if (end[1] != start[1] + 1 || end[2] != 0) {
+        exit 1
+      }
+      previous_row = start[1]
+      previous_column = start[2]
+      have_previous = 1
+    }
+  ' "$manifest_file" || fail "Line continuations are duplicated, out of order, or have invalid ranges: $manifest_file"
+}
+
+assert_line_continuation_manifest() {
+  continuation_name=$1
+  physical_source=$2
+  logical_source=$3
+  expected_manifest=$4
+  physical_cst="$runtime_directory/$continuation_name.physical.cst"
+  logical_cst="$runtime_directory/$continuation_name.logical.cst"
+  query_output="$runtime_directory/$continuation_name.query"
+  actual_manifest="$runtime_directory/$continuation_name.ranges"
+  physical_projection="$runtime_directory/$continuation_name.physical.logical"
+  logical_projection="$runtime_directory/$continuation_name.logical.logical"
+
+  run_parse valid cst "$physical_cst" "$continuation_name physical" "$physical_source"
+  run_parse valid cst "$logical_cst" "$continuation_name logical" "$logical_source"
+  run_query \
+    "$query_output" \
+    "$repository_directory/test/runtime/contracts.scm" \
+    "$physical_source"
+  extract_line_continuation_manifest "$query_output" "$actual_manifest"
+  assert_manifest_source_order "$actual_manifest"
+
+  if ! cmp -s "$expected_manifest" "$actual_manifest"; then
+    diff -u "$expected_manifest" "$actual_manifest" >&2 || true
+    fail "Line-continuation count or ranges differ: $continuation_name"
+  fi
+
+  normalize_logical_projection "$physical_cst" "$physical_projection"
+  normalize_logical_projection "$logical_cst" "$logical_projection"
+  if ! cmp -s "$logical_projection" "$physical_projection"; then
+    diff -u "$logical_projection" "$physical_projection" >&2 || true
+    fail "Line continuations change the logical public CST: $continuation_name"
+  fi
+}
+
+assert_no_line_continuations() {
+  continuation_name=$1
+  source_file=$2
+  source_cst="$runtime_directory/$continuation_name.cst"
+  query_output="$runtime_directory/$continuation_name.query"
+  actual_manifest="$runtime_directory/$continuation_name.ranges"
+
+  run_parse valid cst "$source_cst" "$continuation_name" "$source_file"
+  run_query \
+    "$query_output" \
+    "$repository_directory/test/runtime/contracts.scm" \
+    "$source_file"
+  extract_line_continuation_manifest "$query_output" "$actual_manifest"
+  if [ -s "$actual_manifest" ]; then
+    sed -n '1,200p' "$actual_manifest" >&2
+    fail "Literal backslash-newline source became line_continuation: $continuation_name"
+  fi
+}
+
+compare_incremental_and_fresh() {
+  expected_mode=$1
+  shift
   initial_file=$1
   final_file=$2
   test_name=$3
@@ -203,206 +719,103 @@ parse_incremental_and_fresh_with_output() {
 
   incremental_output="$runtime_directory/$test_name.incremental"
   fresh_output="$runtime_directory/$test_name.fresh"
-  initial_xml="$runtime_directory/$test_name.initial.xml"
-  incremental_xml="$runtime_directory/$test_name.incremental.xml"
-  fresh_xml="$runtime_directory/$test_name.fresh.xml"
-  initial_public="$initial_xml.public"
-  incremental_public="$incremental_xml.public"
-  fresh_public="$fresh_xml.public"
 
-  if parse_current \
-    --timeout 10000000 \
+  if cmp -s "$initial_file" "$final_file"; then
+    fail "Incremental test has identical initial and final sources: $test_name"
+  fi
+
+  run_parse \
+    "$expected_mode" \
+    cst \
+    "$incremental_output" \
+    "$test_name incremental" \
     --edits "$@" \
-    -- "$initial_file" \
-    >"$incremental_output" 2>/dev/null; then
-    :
-  else
-    status=$?
-    if [ "$status" -gt 1 ]; then
-      fail "Incremental parser failed with status $status while recovering source: $test_name"
-    fi
-  fi
+    -- "$initial_file"
+  incremental_status=$parse_status
 
-  if parse_current \
-    --timeout 10000000 \
-    "$final_file" \
-    >"$fresh_output" 2>/dev/null; then
-    :
-  else
-    status=$?
-    if [ "$status" -gt 1 ]; then
-      fail "Fresh parser failed with status $status while recovering source: $test_name"
-    fi
-  fi
+  run_parse \
+    "$expected_mode" \
+    cst \
+    "$fresh_output" \
+    "$test_name fresh" \
+    "$final_file"
+  fresh_status=$parse_status
 
-  if parse_current \
-    --xml \
-    --timeout 10000000 \
-    --edits "$@" \
-    -- "$initial_file" \
-    >"$incremental_xml" 2>/dev/null; then
-    incremental_status=valid
-  else
-    status=$?
-    if [ "$status" -gt 1 ]; then
-      fail "Incremental XML parser failed with status $status while recovering source: $test_name"
-    fi
-    incremental_status=invalid
-  fi
-
-  if parse_current \
-    --xml \
-    --timeout 10000000 \
-    "$final_file" \
-    >"$fresh_xml" 2>/dev/null; then
-    fresh_status=valid
-  else
-    status=$?
-    if [ "$status" -gt 1 ]; then
-      fail "Fresh XML parser failed with status $status while recovering source: $test_name"
-    fi
-    fresh_status=invalid
-  fi
-
-  parse_current \
-    --xml \
-    --timeout 10000000 \
-    "$initial_file" \
-    >"$initial_xml" 2>/dev/null || true
-  normalize_public_xml "$incremental_xml" "$incremental_public"
-  normalize_public_xml "$fresh_xml" "$fresh_public"
-  normalize_public_xml "$initial_xml" "$initial_public"
-
-  if [ "$incremental_status" != "$fresh_status" ]; then
-    fail "Incremental and fresh statuses differ: $test_name"
-  fi
-
-  if ! cmp -s "$incremental_public" "$fresh_public"; then
-    diff -u "$fresh_public" "$incremental_public" >&2 || true
-    fail "Incremental and fresh public CSTs differ: $test_name"
-  fi
-
-  if cmp -s "$initial_public" "$fresh_public"; then
-    fail "Incremental recovery regression does not change the public CST: $test_name"
-  fi
+  assert_cst_outputs_equal \
+    "$test_name incremental and fresh parses" \
+    "$incremental_output" \
+    "$incremental_status" \
+    "$fresh_output" \
+    "$fresh_status"
 }
 
-normalize_public_xml() {
-  input_file=$1
-  output_file=$2
-  awk '
-    function print_indent(count, cursor) {
-      for (cursor = 0; cursor < count; cursor += 1) {
-        printf " "
-      }
-    }
-
-    /^<\?xml / { next }
-    /^[[:space:]]*<\/?sources>/ { next }
-    /^[[:space:]]*<source / { next }
-    /^[[:space:]]*<\/source>/ { next }
-
-    {
-      line = $0
-      trimmed = line
-      sub(/^[[:space:]]*/, "", trimmed)
-
-      if (trimmed ~ /^<(ERROR|MISSING)([[:space:]>]|\/)/) {
-        if (trimmed !~ /<\/(ERROR|MISSING)>/ && trimmed !~ /\/>$/) {
-          artifact_depth += 1
-        }
-        next
-      }
-      if (trimmed ~ /^<\/(ERROR|MISSING)>/) {
-        artifact_depth -= 1
-        next
-      }
-      if (trimmed !~ /^</) {
-        next
-      }
-
-      match(line, /[^[:space:]]/)
-      indentation = RSTART - 1 - 4 - artifact_depth * 2
-      if (indentation < 0) {
-        indentation = 0
-      }
-      gsub(/>[^<]*</, "><", trimmed)
-      print_indent(indentation)
-      print trimmed
-    }
-  ' "$input_file" >"$output_file"
-}
-
-assert_incremental_equals_fresh_status() {
-  expected_status=$1
-  shift
-  initial_file=$1
-  final_file=$2
-  test_name=$3
-  shift 3
-
-  initial_output="$runtime_directory/$test_name.initial.xml"
-  incremental_output="$runtime_directory/$test_name.incremental.xml"
-  fresh_output="$runtime_directory/$test_name.fresh.xml"
-  incremental_public="$incremental_output.public"
-  fresh_public="$fresh_output.public"
-  initial_public="$initial_output.public"
-
-  if parse_current \
-    --xml \
-    --timeout 10000000 \
-    --edits "$@" \
-    -- "$initial_file" \
-    >"$incremental_output" 2>/dev/null; then
-    incremental_status=valid
-  else
-    incremental_status=invalid
-  fi
-  if parse_current \
-    --xml \
-    --timeout 10000000 \
-    "$final_file" \
-    >"$fresh_output" 2>/dev/null; then
-    fresh_status=valid
-  else
-    fresh_status=invalid
-  fi
-  parse_current \
-    --xml \
-    --timeout 10000000 \
-    "$initial_file" \
-    >"$initial_output" 2>/dev/null || true
-  normalize_public_xml "$incremental_output" "$incremental_public"
-  normalize_public_xml "$fresh_output" "$fresh_public"
-  normalize_public_xml "$initial_output" "$initial_public"
-
-  if [ "$incremental_status" != "$fresh_status" ]; then
-    fail "Incremental and fresh statuses differ: $test_name"
-  fi
-
-  if [ "$fresh_status" != "$expected_status" ]; then
-    fail "Expected $expected_status incremental and fresh parses: $test_name"
-  fi
-
-  if ! cmp -s "$incremental_public" "$fresh_public"; then
-    diff -u "$fresh_public" "$incremental_public" >&2 || true
-    fail "Incremental and fresh public CSTs differ: $test_name"
-  fi
-
-  if cmp -s "$initial_public" "$fresh_public"; then
-    fail "Incremental regression does not change the public CST: $test_name"
-  fi
+parse_incremental_and_fresh_with_output() {
+  compare_incremental_and_fresh recovery "$@"
 }
 
 assert_incremental_equals_fresh() {
-  assert_incremental_equals_fresh_status valid "$@"
+  compare_incremental_and_fresh valid "$@"
 }
 
-assert_valid_incremental_equals_fresh() {
-  final_file=$2
-  assert_valid "$final_file"
-  assert_incremental_equals_fresh "$@"
-}
+assert_timeout_is_not_recovery
+assert_cst_fingerprint_distinguishes_anonymous_tokens
+
+# Line-continuation and comment contracts.
+syntax_continuation_physical="$runtime_directory/syntax-continuation-physical.sh"
+syntax_continuation_logical="$runtime_directory/syntax-continuation-logical.sh"
+syntax_continuation_ranges="$runtime_directory/syntax-continuation.ranges"
+printf '%s\n' 'echo "$(printf x\' ')"' 'echo `printf x\' '`' \
+  >"$syntax_continuation_physical"
+printf '%s\n' 'echo "$(printf x)"' 'echo `printf x`' \
+  >"$syntax_continuation_logical"
+printf '%s\n' '0:16-1:0' '2:14-3:0' >"$syntax_continuation_ranges"
+assert_line_continuation_manifest \
+  "line-continuation-syntax-contract" \
+  "$syntax_continuation_physical" \
+  "$syntax_continuation_logical" \
+  "$syntax_continuation_ranges"
+
+arithmetic_continuation_physical="$runtime_directory/arithmetic-continuation-physical.sh"
+arithmetic_continuation_logical="$runtime_directory/arithmetic-continuation-logical.sh"
+arithmetic_continuation_ranges="$runtime_directory/arithmetic-continuation.ranges"
+printf '%s\n' ': "$((1 + \' '2))"' ': "$((1 + 2\' '))"' \
+  >"$arithmetic_continuation_physical"
+printf '%s\n' ': "$((1 + 2))"' ': "$((1 + 2))"' \
+  >"$arithmetic_continuation_logical"
+printf '%s\n' '0:10-1:0' '2:11-3:0' >"$arithmetic_continuation_ranges"
+assert_line_continuation_manifest \
+  "line-continuation-arithmetic-contract" \
+  "$arithmetic_continuation_physical" \
+  "$arithmetic_continuation_logical" \
+  "$arithmetic_continuation_ranges"
+assert_no_line_continuations \
+  "line-continuation-literals" \
+  "$repository_directory/test/runtime/literal-line-continuations.source"
+
+terminal_assignment_physical="$runtime_directory/terminal-assignment-physical.sh"
+terminal_assignment_logical="$runtime_directory/terminal-assignment-logical.sh"
+terminal_assignment_physical_output="$runtime_directory/terminal-assignment-physical.cst"
+terminal_assignment_logical_output="$runtime_directory/terminal-assignment-logical.cst"
+printf 'A=\\\n' >"$terminal_assignment_physical"
+printf 'A=' >"$terminal_assignment_logical"
+assert_cst_valid_with_output \
+  "$terminal_assignment_physical" \
+  "$terminal_assignment_physical_output"
+assert_cst_valid_with_output \
+  "$terminal_assignment_logical" \
+  "$terminal_assignment_logical_output"
+assert_cst_range \
+  "0:2-1:0" \
+  "line_continuation" \
+  "$terminal_assignment_physical_output"
+assert_occurrence_count \
+  1 \
+  "line_continuation" \
+  "$terminal_assignment_physical_output"
+assert_same_logical_projection \
+  "terminal-assignment-continuation" \
+  "$terminal_assignment_logical_output" \
+  "$terminal_assignment_physical_output"
 
 comments_source="$runtime_directory/comments.sh"
 comments_output="$runtime_directory/comments.out"
@@ -413,7 +826,7 @@ printf '%s\n' \
   "body" \
   "EOF" \
   >"$comments_source"
-parse_current "$comments_source" >"$comments_output" 2>/dev/null
+assert_valid_with_output "$comments_source" "$comments_output"
 assert_contains "(comment [0, 2] - [0, 11])" "$comments_output"
 assert_contains "(comment [1, 8] - [1, 18])" "$comments_output"
 assert_contains "comment: (comment [2, 10] - [2, 23])" "$comments_output"
@@ -454,6 +867,23 @@ assert_contains \
   "$continued_comments_output"
 assert_not_contains "ERROR" "$continued_comments_output"
 
+nul_comment_source="$runtime_directory/nul-comment.sh"
+nul_comment_output="$runtime_directory/nul-comment.cst"
+printf '#a\000b\nnext\n' >"$nul_comment_source"
+run_parse \
+  recovery \
+  cst \
+  "$nul_comment_output" \
+  "NUL inside comment" \
+  -- \
+  "$nul_comment_source"
+assert_cst_range "0:0-0:4" "comment" "$nul_comment_output"
+assert_cst_range \
+  "1:0-1:4" \
+  "command: complete_command" \
+  "$nul_comment_output"
+assert_cst_range "0:0-2:0" "program" "$nul_comment_output"
+
 continued_comment_initial="$runtime_directory/continued-comment-initial.sh"
 continued_comment_final="$runtime_directory/continued-comment-final.sh"
 printf '%s\n' 'first && # comment' 'second' >"$continued_comment_initial"
@@ -470,6 +900,7 @@ assert_incremental_equals_fresh \
   "delete-comment-boundary-continuation" \
   "9 2"
 
+# Structural recovery and closer ownership.
 recovery_source="$runtime_directory/recovery-redirection.sh"
 recovery_output="$runtime_directory/recovery-redirection.out"
 printf '%s\n' "before >;" "after" >"$recovery_source"
@@ -503,10 +934,10 @@ assert_contains "(and_or [2, 2] - [2, 8]" "$compound_output"
 assert_contains \
   "recovery: (compound_command_recovery [3, 0] - [3, 0])" \
   "$compound_output"
-query_current \
-  "$repository_directory/test/runtime/recovery_contract.scm" \
-  "$compound_source" \
-  >"$compound_query_output" 2>/dev/null
+run_query \
+  "$compound_query_output" \
+  "$repository_directory/test/runtime/contracts.scm" \
+  "$compound_source"
 assert_contains "compound.owner" "$compound_query_output"
 assert_contains "compound.recovery" "$compound_query_output"
 
@@ -523,13 +954,50 @@ parse_incremental_and_fresh_with_output \
 for nested_compound_output in \
   "$runtime_directory/nested-compound-outer-closer.incremental" \
   "$runtime_directory/nested-compound-outer-closer.fresh"; do
-  assert_contains "(while_clause [0, 11] - [0, 26]" \
+  assert_cst_range "0:11-0:26" "while_clause" "$nested_compound_output"
+  assert_cst_range \
+    "0:26-0:26" \
+    "recovery: compound_command_recovery" \
     "$nested_compound_output"
-  assert_contains \
-    "recovery: (compound_command_recovery [0, 26] - [0, 26])" \
-    "$nested_compound_output"
-  assert_contains "(fi_keyword [0, 26] - [0, 28])" \
-    "$nested_compound_output"
+  assert_cst_range "0:26-0:28" "fi_keyword" "$nested_compound_output"
+done
+
+nested_eof_initial="$runtime_directory/recovery-nested-eof-initial.sh"
+nested_eof_final="$runtime_directory/recovery-nested-eof-final.sh"
+printf '%s\n' \
+  'worker() {' \
+  ' if true' \
+  ' then' \
+  ' printf yes' \
+  ' fi' \
+  '}' \
+  >"$nested_eof_initial"
+printf '%s\n' \
+  'worker() {' \
+  ' if true' \
+  ' then' \
+  ' printf yes' \
+  >"$nested_eof_final"
+parse_incremental_and_fresh_with_output \
+  "$nested_eof_initial" \
+  "$nested_eof_final" \
+  "delete-nested-compound-closers" \
+  "38 6"
+for nested_eof_output in \
+  "$runtime_directory/delete-nested-compound-closers.incremental" \
+  "$runtime_directory/delete-nested-compound-closers.fresh"; do
+  assert_cst_range "0:0-4:0" "function_definition" "$nested_eof_output"
+  assert_cst_range "0:9-4:0" "brace_group" "$nested_eof_output"
+  assert_cst_range "1:1-4:0" "if_clause" "$nested_eof_output"
+  assert_occurrence_count \
+    2 \
+    "recovery: compound_command_recovery" \
+    "$nested_eof_output"
+  assert_cst_range \
+    "4:0-4:0" \
+    "recovery: compound_command_recovery" \
+    "$nested_eof_output"
+  assert_not_contains "ERROR" "$nested_eof_output"
 done
 
 nested_case_recovery="$runtime_directory/recovery-nested-case.sh"
@@ -606,17 +1074,18 @@ parse_incremental_and_fresh_with_output \
 for parameter_recovery_output in \
   "$runtime_directory/parameter-tail-recovery.incremental" \
   "$runtime_directory/parameter-tail-recovery.fresh"; do
-  assert_contains \
-    "recovery: (parameter_expansion_recovery [0, 8] - [0, 8])" \
+  assert_cst_range \
+    "0:8-0:8" \
+    "recovery: parameter_expansion_recovery" \
     "$parameter_recovery_output"
-  assert_contains "(and_or [0, 10] - [0, 14]" "$parameter_recovery_output"
+  assert_cst_range "0:10-0:14" "and_or" "$parameter_recovery_output"
 done
 
 parameter_recovery_query="$runtime_directory/recovery-parameter.query"
-query_current \
-  "$repository_directory/test/runtime/recovery_contract.scm" \
-  "$parameter_recovery_final" \
-  >"$parameter_recovery_query" 2>/dev/null
+run_query \
+  "$parameter_recovery_query" \
+  "$repository_directory/test/runtime/contracts.scm" \
+  "$parameter_recovery_final"
 assert_contains "parameter.owner" "$parameter_recovery_query"
 assert_contains "parameter.recovery" "$parameter_recovery_query"
 
@@ -670,18 +1139,19 @@ parse_incremental_and_fresh_with_output \
 for subshell_output in \
   "$runtime_directory/unclosed-subshell.incremental" \
   "$runtime_directory/unclosed-subshell.fresh"; do
-  assert_contains "(subshell [0, 0] - [1, 0]" "$subshell_output"
-  assert_contains "(and_or [0, 1] - [0, 7]" "$subshell_output"
-  assert_contains \
-    "recovery: (compound_command_recovery [1, 0] - [1, 0])" \
+  assert_cst_range "0:0-1:0" "subshell" "$subshell_output"
+  assert_cst_range "0:1-0:7" "and_or" "$subshell_output"
+  assert_cst_range \
+    "1:0-1:0" \
+    "recovery: compound_command_recovery" \
     "$subshell_output"
 done
 
 group_recovery_query="$runtime_directory/recovery-group.query"
-query_current \
-  "$repository_directory/test/runtime/recovery_contract.scm" \
-  "$subshell_final" \
-  >"$group_recovery_query" 2>/dev/null
+run_query \
+  "$group_recovery_query" \
+  "$repository_directory/test/runtime/contracts.scm" \
+  "$subshell_final"
 assert_contains "group.owner" "$group_recovery_query"
 assert_contains "group.recovery" "$group_recovery_query"
 
@@ -697,10 +1167,11 @@ parse_incremental_and_fresh_with_output \
 for brace_group_output in \
   "$runtime_directory/unclosed-brace-group.incremental" \
   "$runtime_directory/unclosed-brace-group.fresh"; do
-  assert_contains "(brace_group [0, 0] - [1, 0]" "$brace_group_output"
-  assert_contains "(and_or [0, 2] - [0, 8]" "$brace_group_output"
-  assert_contains \
-    "recovery: (compound_command_recovery [1, 0] - [1, 0])" \
+  assert_cst_range "0:0-1:0" "brace_group" "$brace_group_output"
+  assert_cst_range "0:2-0:8" "and_or" "$brace_group_output"
+  assert_cst_range \
+    "1:0-1:0" \
+    "recovery: compound_command_recovery" \
     "$brace_group_output"
 done
 
@@ -800,14 +1271,15 @@ parse_incremental_and_fresh_with_output \
 for parameter_pattern_output in \
   "$runtime_directory/parameter-pattern-tail-recovery.incremental" \
   "$runtime_directory/parameter-pattern-tail-recovery.fresh"; do
-  assert_contains \
-    "(parameter_expansion [0, 6] - [0, 13]" \
+  assert_cst_range \
+    "0:6-0:13" \
+    "parameter_expansion" \
     "$parameter_pattern_output"
-  assert_contains \
-    "recovery: (parameter_expansion_recovery [0, 13] - [0, 13])" \
+  assert_cst_range \
+    "0:13-0:13" \
+    "recovery: parameter_expansion_recovery" \
     "$parameter_pattern_output"
-  assert_contains "(and_or [0, 16] - [0, 20]" \
-    "$parameter_pattern_output"
+  assert_cst_range "0:16-0:20" "and_or" "$parameter_pattern_output"
 done
 parameter_pattern_cst="$runtime_directory/recovery-parameter-pattern.cst"
 assert_cst_valid_with_output \
@@ -980,17 +1452,6 @@ assert_not_contains "(word [4, 7] - [4, 8]" "$stray_output"
 assert_not_contains "(word [6, 7] - [6, 9]" "$stray_output"
 assert_not_contains "(word [8, 7] - [8, 9]" "$stray_output"
 
-continued_reserved_source="$runtime_directory/recovery-continued-reserved.sh"
-continued_reserved_output="$runtime_directory/recovery-continued-reserved.out"
-printf '%s\n' 'first; f\' 'i' 'after' >"$continued_reserved_source"
-assert_parse_contains_all \
-  "$continued_reserved_source" \
-  "$continued_reserved_output" \
-  "recovery: (command_recovery [0, 7] - [1, 1]" \
-  "(fi_keyword [0, 7] - [1, 1]" \
-  "(line_continuation [0, 8] - [1, 0])" \
-  "(complete_command [2, 0] - [2, 5]"
-
 stray_initial="$runtime_directory/recovery-stray-initial.sh"
 stray_final="$runtime_directory/recovery-stray-final.sh"
 printf '%s\n' 'first' 'after' >"$stray_initial"
@@ -1034,14 +1495,17 @@ parse_incremental_and_fresh_with_output \
 for and_if_newline_output in \
   "$runtime_directory/delete-command-after-and-if.incremental" \
   "$runtime_directory/delete-command-after-and-if.fresh"; do
-  assert_contains \
-    "recovery: (command_recovery [2, 0] - [2, 0])" \
+  assert_cst_range \
+    "2:0-2:0" \
+    "recovery: command_recovery" \
     "$and_if_newline_output"
-  assert_contains \
-    "(complete_command [3, 0] - [3, 11]" \
+  assert_cst_range \
+    "3:0-3:11" \
+    "complete_command" \
     "$and_if_newline_output"
 done
 
+# Substitution, redirection, and token-boundary ownership.
 backquote_opener_source="$runtime_directory/backquote-opener-boundaries.sh"
 backquote_opener_output="$runtime_directory/backquote-opener-boundaries.out"
 printf '%s\n' \
@@ -1069,7 +1533,7 @@ printf '%s\n' 'worker() {' '  :' '}' 'result="`printf nested`"' \
   >"$backquote_assignment_initial"
 printf '%s\n' 'worker() {' '  :' '}' 'result=`printf nested`' \
   >"$backquote_assignment_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$backquote_assignment_initial" \
   "$backquote_assignment_final" \
   "remove-double-quotes-around-assignment-backquote" \
@@ -1080,7 +1544,7 @@ command_substitution_layout_initial="$runtime_directory/command-substitution-lay
 command_substitution_layout_final="$runtime_directory/command-substitution-layout-final.sh"
 printf '%s\n' 'echo $(first;)' >"$command_substitution_layout_initial"
 printf '%s\n' 'echo $(first; )' >"$command_substitution_layout_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$command_substitution_layout_initial" \
   "$command_substitution_layout_final" \
   "insert-layout-before-command-substitution-closer" \
@@ -1090,11 +1554,156 @@ backquote_layout_initial="$runtime_directory/backquote-layout-initial.sh"
 backquote_layout_final="$runtime_directory/backquote-layout-final.sh"
 printf '%s\n' 'echo `first;`' >"$backquote_layout_initial"
 printf '%s\n' 'echo `first; `' >"$backquote_layout_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$backquote_layout_initial" \
   "$backquote_layout_final" \
   "insert-layout-before-backquote-closer" \
   "12 0  "
+
+redirected_compound_without_separator="$runtime_directory/redirected-compound-without-separator.sh"
+redirected_compound_with_separator="$runtime_directory/redirected-compound-with-separator.sh"
+printf '%s\n' ': "$({ :; }>g)"' \
+  >"$redirected_compound_without_separator"
+printf '%s\n' ': "$({ :; }>g;)"' \
+  >"$redirected_compound_with_separator"
+assert_incremental_equals_fresh \
+  "$redirected_compound_without_separator" \
+  "$redirected_compound_with_separator" \
+  "insert-separator-after-redirected-compound-command" \
+  "13 0 ;"
+assert_incremental_equals_fresh \
+  "$redirected_compound_with_separator" \
+  "$redirected_compound_without_separator" \
+  "delete-separator-after-redirected-compound-command" \
+  "13 1"
+redirected_compound_output="$runtime_directory/delete-separator-after-redirected-compound-command.fresh"
+assert_cst_range \
+  "0:3-0:14" \
+  "command_substitution" \
+  "$redirected_compound_output"
+assert_cst_range \
+  "0:5-0:13" \
+  "command: complete_command" \
+  "$redirected_compound_output"
+assert_cst_range \
+  "0:5-0:11" \
+  "body: compound_command" \
+  "$redirected_compound_output"
+assert_cst_range \
+  "0:11-0:13" \
+  "redirects: redirect_list" \
+  "$redirected_compound_output"
+assert_cst_direct_child_range \
+  "0:3-0:14" \
+  "command_substitution" \
+  "0:13-0:14" \
+  '")"' \
+  "$redirected_compound_output"
+assert_not_contains "recovery" "$redirected_compound_output"
+
+redirected_function_without_separator="$runtime_directory/redirected-function-without-separator.sh"
+redirected_function_with_separator="$runtime_directory/redirected-function-with-separator.sh"
+printf '%s\n' ': "$(f(){ :; }>g)"' \
+  >"$redirected_function_without_separator"
+printf '%s\n' ': "$(f(){ :; }>g;)"' \
+  >"$redirected_function_with_separator"
+assert_incremental_equals_fresh \
+  "$redirected_function_without_separator" \
+  "$redirected_function_with_separator" \
+  "insert-separator-after-redirected-function" \
+  "16 0 ;"
+assert_incremental_equals_fresh \
+  "$redirected_function_with_separator" \
+  "$redirected_function_without_separator" \
+  "delete-separator-after-redirected-function" \
+  "16 1"
+redirected_function_output="$runtime_directory/delete-separator-after-redirected-function.fresh"
+assert_cst_range \
+  "0:3-0:17" \
+  "command_substitution" \
+  "$redirected_function_output"
+assert_cst_range \
+  "0:5-0:16" \
+  "body: function_definition" \
+  "$redirected_function_output"
+assert_cst_range \
+  "0:8-0:16" \
+  "body: function_body" \
+  "$redirected_function_output"
+assert_cst_range \
+  "0:8-0:14" \
+  "body: compound_command" \
+  "$redirected_function_output"
+assert_cst_range \
+  "0:14-0:16" \
+  "redirects: redirect_list" \
+  "$redirected_function_output"
+assert_cst_direct_child_range \
+  "0:3-0:17" \
+  "command_substitution" \
+  "0:16-0:17" \
+  '")"' \
+  "$redirected_function_output"
+assert_not_contains "recovery" "$redirected_function_output"
+
+redirect_target_word_initial="$runtime_directory/redirect-target-word-initial.sh"
+redirect_target_word_final="$runtime_directory/redirect-target-word-final.sh"
+printf '%s\n' '<2>x' >"$redirect_target_word_initial"
+printf '%s\n' '<""2>x' >"$redirect_target_word_final"
+assert_incremental_equals_fresh \
+  "$redirect_target_word_initial" \
+  "$redirect_target_word_final" \
+  "insert-empty-quote-before-redirect-target-digit" \
+  '1 0 ""'
+
+io_location_closer_initial="$runtime_directory/io-location-closer-initial.sh"
+io_location_closer_final="$runtime_directory/io-location-closer-final.sh"
+printf '%s\n' '{a}>x' >"$io_location_closer_initial"
+printf '%s\n' '{a}}>x' >"$io_location_closer_final"
+assert_incremental_equals_fresh \
+  "$io_location_closer_initial" \
+  "$io_location_closer_final" \
+  "extend-io-location-through-right-brace" \
+  '3 0 }'
+
+io_location_continuation_initial="$runtime_directory/io-location-continuation-initial.sh"
+io_location_continuation_final="$runtime_directory/io-location-continuation-final.sh"
+io_location_continuation_output="$runtime_directory/io-location-continuation.cst"
+printf '%s\n' '{a}>x' >"$io_location_continuation_initial"
+printf '%s\n' '{a}\' '>x' >"$io_location_continuation_final"
+assert_cst_valid_with_output \
+  "$io_location_continuation_final" \
+  "$io_location_continuation_output"
+assert_cst_range \
+  "0:0-0:3" \
+  "location: io_location" \
+  "$io_location_continuation_output"
+assert_cst_range \
+  "0:3-1:0" \
+  "line_continuation" \
+  "$io_location_continuation_output"
+assert_cst_direct_child_range \
+  "1:0-1:2" \
+  "body: io_file" \
+  "1:0-1:1" \
+  '">"' \
+  "$io_location_continuation_output"
+assert_incremental_equals_fresh \
+  "$io_location_continuation_initial" \
+  "$io_location_continuation_final" \
+  "insert-continuation-after-io-location" \
+  '3 0 \
+'
+
+function_outer_closer_initial="$runtime_directory/function-outer-closer-initial.sh"
+function_outer_closer_final="$runtime_directory/function-outer-closer-final.sh"
+printf '%s\n' '{ f()(:); }' >"$function_outer_closer_initial"
+printf '%s\n' '{ f()(:) }' >"$function_outer_closer_final"
+assert_incremental_equals_fresh \
+  "$function_outer_closer_initial" \
+  "$function_outer_closer_final" \
+  "delete-separator-before-function-outer-closer" \
+  "8 1"
 
 outer_closer_source="$runtime_directory/recovery-enclosing-closers.sh"
 outer_closer_output="$runtime_directory/recovery-enclosing-closers.out"
@@ -1248,6 +1857,7 @@ assert_incremental_equals_fresh \
   '5 1 `' \
   '11 1 `'
 
+# Here-document state, delimiter, and body contracts.
 boundary_source="$runtime_directory/here-document-boundary.sh"
 boundary_output="$runtime_directory/here-document-boundary.out"
 printf '%s\n' \
@@ -1265,53 +1875,131 @@ assert_contains \
 assert_contains "end: (here_document_end [2, 0] - [3, 0])" "$boundary_output"
 assert_contains "(complete_command [5, 0] - [5, 5]" "$boundary_output"
 
-continued_delimiter_initial="$runtime_directory/continued-delimiter-initial.sh"
-continued_delimiter_final="$runtime_directory/continued-delimiter-final.sh"
-continued_delimiter_output="$runtime_directory/continued-delimiter.out"
+backquote_here_document_source="$runtime_directory/backquote-here-document.sh"
+backquote_here_document_output="$runtime_directory/backquote-here-document.cst"
 printf '%s\n' \
-  "cat <<EOF" \
-  "body" \
-  "EOF" \
-  "after" \
-  >"$continued_delimiter_initial"
-printf '%s\n' \
-  "cat <<EO\\" \
-  "F" \
-  "body" \
-  "EOF" \
-  "after" \
-  >"$continued_delimiter_final"
+  'cat <<"`printf '\''%s'\'' END`"' \
+  'body' \
+  '`printf %s END`' \
+  'after' \
+  >"$backquote_here_document_source"
 assert_cst_valid_with_output \
-  "$continued_delimiter_final" \
-  "$continued_delimiter_output"
+  "$backquote_here_document_source" \
+  "$backquote_here_document_output"
 assert_cst_range \
-  "0:6 - 1:1" \
-  "end: here_end" \
-  "$continued_delimiter_output"
-assert_cst_range \
-  "0:6 - 1:1" \
-  "word: word" \
-  "$continued_delimiter_output"
-assert_cst_range \
-  "0:8 - 1:0" \
-  "line_continuation" \
-  "$continued_delimiter_output"
-assert_cst_range \
-  "3:0 - 4:0" \
+  "2:0-3:0" \
   "end: here_document_end" \
-  "$continued_delimiter_output"
-assert_not_contains "ERROR" "$continued_delimiter_output"
+  "$backquote_here_document_output"
+assert_cst_range \
+  "3:0-3:5" \
+  "command: complete_command" \
+  "$backquote_here_document_output"
+assert_not_contains \
+  "here_document_end_recovery" \
+  "$backquote_here_document_output"
+
+backquote_hash_initial="$runtime_directory/backquote-hash-initial.sh"
+backquote_hash_final="$runtime_directory/backquote-hash-final.sh"
+backquote_hash_output="$runtime_directory/backquote-hash.cst"
+printf '%s\n' \
+  'cat <<"`printf ${x}X#tag END`"' \
+  'body' \
+  '`printf ${x}X#tag END`' \
+  'after' \
+  >"$backquote_hash_initial"
+printf '%s\n' \
+  'cat <<"`printf ${x}#tag END`"' \
+  'body' \
+  '`printf ${x}#tag END`' \
+  'after' \
+  >"$backquote_hash_final"
+assert_cst_valid_with_output \
+  "$backquote_hash_final" \
+  "$backquote_hash_output"
+assert_cst_range \
+  "0:6-0:29" \
+  "end: here_end" \
+  "$backquote_hash_output"
+assert_cst_range \
+  "2:0-3:0" \
+  "end: here_document_end" \
+  "$backquote_hash_output"
+assert_cst_range \
+  "3:0-3:5" \
+  "command: complete_command" \
+  "$backquote_hash_output"
+assert_not_contains "ERROR" "$backquote_hash_output"
+assert_not_contains \
+  "here_document_end_recovery" \
+  "$backquote_hash_output"
 assert_incremental_equals_fresh \
-  "$continued_delimiter_initial" \
-  "$continued_delimiter_final" \
-  "insert-continued-here-document-delimiter" \
-  '8 0 \
-'
+  "$backquote_hash_initial" \
+  "$backquote_hash_final" \
+  "delete-backquote-delimiter-word-markers" \
+  "48 1" \
+  "19 1"
 assert_incremental_equals_fresh \
-  "$continued_delimiter_final" \
-  "$continued_delimiter_initial" \
-  "delete-continued-here-document-delimiter" \
-  "8 2"
+  "$backquote_hash_final" \
+  "$backquote_hash_initial" \
+  "insert-backquote-delimiter-word-markers" \
+  "47 0 X" \
+  "19 0 X"
+
+byte_here_document_source="$runtime_directory/byte-here-document.sh"
+byte_here_document_output="$runtime_directory/byte-here-document.cst"
+printf 'cat <<$'"'"'\\c?'"'"'\nbody\n\177\ncat <<$'"'"'\\xC3\\xBF'"'"'\nbody\n\303\277\nafter\n' \
+  >"$byte_here_document_source"
+assert_cst_valid_with_output \
+  "$byte_here_document_source" \
+  "$byte_here_document_output"
+assert_cst_range \
+  "2:0-3:0" \
+  "end: here_document_end" \
+  "$byte_here_document_output"
+assert_cst_range \
+  "5:0-6:0" \
+  "end: here_document_end" \
+  "$byte_here_document_output"
+assert_cst_range \
+  "6:0-6:5" \
+  "command: complete_command" \
+  "$byte_here_document_output"
+assert_not_contains \
+  "here_document_end_recovery" \
+  "$byte_here_document_output"
+
+nul_here_document_source="$runtime_directory/nul-here-document.sh"
+nul_here_document_output="$runtime_directory/nul-here-document.cst"
+printf 'cat <<EOF #a\000b\nbody\nEOF\nafter\n' >"$nul_here_document_source"
+run_parse \
+  valid \
+  cst \
+  "$nul_here_document_output" \
+  "NUL inside here-document declaration comment" \
+  -- \
+  "$nul_here_document_source"
+assert_cst_range "0:10-0:14" "comment: comment" "$nul_here_document_output"
+assert_cst_range \
+  "2:0-3:0" \
+  "end: here_document_end" \
+  "$nul_here_document_output"
+assert_cst_range \
+  "3:0-3:5" \
+  "command: complete_command" \
+  "$nul_here_document_output"
+assert_cst_range "0:0-4:0" "program" "$nul_here_document_output"
+
+byte_here_document_mismatch_source="$runtime_directory/byte-here-document-mismatch.sh"
+byte_here_document_mismatch_output="$runtime_directory/byte-here-document-mismatch.cst"
+printf 'cat <<$'"'"'\\xFF'"'"'\nbody\n\007\nafter\n' \
+  >"$byte_here_document_mismatch_source"
+assert_cst_valid_with_output \
+  "$byte_here_document_mismatch_source" \
+  "$byte_here_document_mismatch_output"
+assert_cst_range \
+  "4:0-4:0" \
+  "end: here_document_end_recovery" \
+  "$byte_here_document_mismatch_output"
 
 delimiter_boundary_initial="$runtime_directory/delimiter-boundary-initial.sh"
 delimiter_boundary_final="$runtime_directory/delimiter-boundary-final.sh"
@@ -1369,87 +2057,45 @@ assert_incremental_equals_fresh \
   "delete-here-document-delimiter-boundary-continuation" \
   "6 2"
 
-continued_dollar_delimiter_initial="$runtime_directory/continued-dollar-delimiter-initial.sh"
-continued_dollar_delimiter_final="$runtime_directory/continued-dollar-delimiter-final.sh"
-continued_dollar_delimiter_output="$runtime_directory/continued-dollar-delimiter.out"
-printf '%s\n' \
-  'cat <<$(echo)' \
-  'body' \
-  '$(echo)' \
-  'after' \
-  >"$continued_dollar_delimiter_initial"
-printf '%s\n' \
-  'cat <<$\' \
-  '(echo)' \
-  'body' \
-  '$(echo)' \
-  'after' \
-  >"$continued_dollar_delimiter_final"
-assert_cst_valid_with_output \
-  "$continued_dollar_delimiter_final" \
-  "$continued_dollar_delimiter_output"
+missing_delimiter_great="$runtime_directory/missing-delimiter-great.sh"
+missing_delimiter_less="$runtime_directory/missing-delimiter-less.sh"
+printf '%s\n' 'command << >out' >"$missing_delimiter_great"
+printf '%s\n' 'command << <in' >"$missing_delimiter_less"
+parse_incremental_and_fresh_with_output \
+  "$missing_delimiter_great" \
+  "$missing_delimiter_less" \
+  "replace-redirection-after-missing-here-document-delimiter" \
+  "11 4 <in"
+for missing_delimiter_output in \
+  "$runtime_directory/replace-redirection-after-missing-here-document-delimiter.incremental" \
+  "$runtime_directory/replace-redirection-after-missing-here-document-delimiter.fresh"; do
+  assert_cst_range \
+    "0:11-0:11" \
+    "recovery: missing_here_end" \
+    "$missing_delimiter_output"
+  assert_cst_range "0:11-0:12" '"<"' "$missing_delimiter_output"
+done
+
+continued_tab_initial="$runtime_directory/continued-tab-initial.sh"
+continued_tab_final="$runtime_directory/continued-tab-final.sh"
+continued_tab_output="$runtime_directory/continued-tab.cst"
+printf 'cat <<-AB\nA\\\nB\nAB\nafter\n' >"$continued_tab_initial"
+printf 'cat <<-AB\nA\\\n\tB\nAB\nafter\n' >"$continued_tab_final"
+assert_cst_valid_with_output "$continued_tab_final" "$continued_tab_output"
 assert_cst_range \
-  "0:6 - 1:6" \
-  "end: here_end" \
-  "$continued_dollar_delimiter_output"
-assert_cst_range \
-  "0:7 - 1:0" \
+  "1:1-2:0" \
   "line_continuation" \
-  "$continued_dollar_delimiter_output"
+  "$continued_tab_output"
 assert_cst_range \
-  "3:0 - 4:0" \
+  "3:0-4:0" \
   "end: here_document_end" \
-  "$continued_dollar_delimiter_output"
-assert_valid_incremental_equals_fresh \
-  "$continued_dollar_delimiter_initial" \
-  "$continued_dollar_delimiter_final" \
-  "insert-continuation-after-delimiter-dollar" \
-  '7 0 \
-'
-
-continued_dollar_quote_initial="$runtime_directory/continued-dollar-quote-initial.sh"
-continued_dollar_quote_final="$runtime_directory/continued-dollar-quote-final.sh"
-continued_dollar_quote_output="$runtime_directory/continued-dollar-quote.out"
-printf '%s\n' "echo \"\$'text'\"" >"$continued_dollar_quote_initial"
-printf '%s\n' 'echo "$\' "'text'\"" >"$continued_dollar_quote_final"
-assert_cst_valid_with_output \
-  "$continued_dollar_quote_final" \
-  "$continued_dollar_quote_output"
-assert_cst_range \
-  "0:7 - 1:0" \
-  "line_continuation" \
-  "$continued_dollar_quote_output"
-assert_not_contains "dollar_single_quoted" "$continued_dollar_quote_output"
-assert_valid_incremental_equals_fresh \
-  "$continued_dollar_quote_initial" \
-  "$continued_dollar_quote_final" \
-  "insert-continuation-before-inherited-quote" \
-  '7 0 \
-'
-
-continued_dollar_parameter_initial="$runtime_directory/continued-dollar-parameter-initial.sh"
-continued_dollar_parameter_final="$runtime_directory/continued-dollar-parameter-final.sh"
-continued_dollar_parameter_output="$runtime_directory/continued-dollar-parameter.out"
-printf '%s\n' "echo \"\${x:-\$'text'}\"" \
-  >"$continued_dollar_parameter_initial"
-printf '%s\n' 'echo "${x:-$\' "'text'}\"" \
-  >"$continued_dollar_parameter_final"
-assert_cst_valid_with_output \
-  "$continued_dollar_parameter_final" \
-  "$continued_dollar_parameter_output"
-assert_cst_range \
-  "0:12 - 1:0" \
-  "line_continuation" \
-  "$continued_dollar_parameter_output"
-assert_not_contains \
-  "dollar_single_quoted" \
-  "$continued_dollar_parameter_output"
-assert_valid_incremental_equals_fresh \
-  "$continued_dollar_parameter_initial" \
-  "$continued_dollar_parameter_final" \
-  "insert-continuation-in-inherited-parameter-word" \
-  '12 0 \
-'
+  "$continued_tab_output"
+continued_tab_character=$(printf '\t')
+assert_incremental_equals_fresh \
+  "$continued_tab_initial" \
+  "$continued_tab_final" \
+  "insert-tab-after-here-document-continuation" \
+  "13 0 $continued_tab_character"
 
 continued_dollar_body_initial="$runtime_directory/continued-dollar-body-initial.sh"
 continued_dollar_body_final="$runtime_directory/continued-dollar-body-final.sh"
@@ -1466,7 +2112,7 @@ assert_cst_range \
   "line_continuation" \
   "$continued_dollar_body_output"
 assert_not_contains "dollar_single_quoted" "$continued_dollar_body_output"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$continued_dollar_body_initial" \
   "$continued_dollar_body_final" \
   "insert-continuation-in-here-document-body" \
@@ -1544,13 +2190,10 @@ parse_incremental_and_fresh_with_output \
   "4109 0 after"
 long_incremental_output="$runtime_directory/oversized-delimiter-recovery.incremental"
 long_fresh_output="$runtime_directory/oversized-delimiter-recovery.fresh"
-assert_contains \
-  "(complete_command [3, 0] - [3, 5]" \
-  "$long_incremental_output"
-assert_contains \
-  "(complete_command [3, 0] - [3, 5]" \
-  "$long_fresh_output"
+assert_cst_range "3:0-3:5" "complete_command" "$long_incremental_output"
+assert_cst_range "3:0-3:5" "complete_command" "$long_fresh_output"
 
+# Word, parameter, arithmetic, and tilde classifications.
 descriptor_initial="$runtime_directory/descriptor-initial.sh"
 descriptor_final="$runtime_directory/descriptor-final.sh"
 printf '%s\n' "<input 2x>output" >"$descriptor_initial"
@@ -1582,85 +2225,28 @@ parameter_context_pattern="$runtime_directory/parameter-context-pattern.sh"
 printf '%s\n' "printf \${x:-*.js}" >"$parameter_context_unquoted"
 printf '%s\n' "printf \"\${x:-*.js}\"" >"$parameter_context_quoted"
 printf '%s\n' "printf \"\${x##*.js}\"" >"$parameter_context_pattern"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$parameter_context_unquoted" \
   "$parameter_context_quoted" \
   "insert-parameter-outer-quotes" \
   '7 0 "' \
   '18 0 "'
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$parameter_context_quoted" \
   "$parameter_context_unquoted" \
   "delete-parameter-outer-quotes" \
   "7 1" \
   "17 1"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$parameter_context_quoted" \
   "$parameter_context_pattern" \
   "parameter-value-to-pattern-context" \
   "11 2 ##"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$parameter_context_pattern" \
   "$parameter_context_quoted" \
   "parameter-pattern-to-value-context" \
   "11 2 :-"
-
-numeric_parameter_source="$runtime_directory/numeric-parameter.sh"
-numeric_parameter_output="$runtime_directory/numeric-parameter.out"
-printf '%s\n' \
-  'printf "${001}"' \
-  'printf "${0\' \
-  '0}"' \
-  >"$numeric_parameter_source"
-assert_cst_valid_with_output \
-  "$numeric_parameter_source" \
-  "$numeric_parameter_output"
-assert_cst_range \
-  "0:10 - 0:13" \
-  "parameter: positional_parameter" \
-  "$numeric_parameter_output"
-assert_cst_range \
-  "1:8  - 2:2" \
-  "parameter_expansion" \
-  "$numeric_parameter_output"
-assert_cst_range \
-  "1:11 - 2:0" \
-  "line_continuation" \
-  "$numeric_parameter_output"
-assert_not_contains "ERROR" "$numeric_parameter_output"
-assert_not_contains "parameter_number" "$numeric_parameter_output"
-
-numeric_positional_initial="$runtime_directory/numeric-positional-initial.sh"
-numeric_positional_final="$runtime_directory/numeric-positional-final.sh"
-printf '%s\n' 'printf "${001}"' >"$numeric_positional_initial"
-printf '%s\n' 'printf "${0\' '01}"' >"$numeric_positional_final"
-assert_incremental_equals_fresh \
-  "$numeric_positional_initial" \
-  "$numeric_positional_final" \
-  "insert-positional-parameter-continuation" \
-  '11 0 \
-'
-assert_incremental_equals_fresh \
-  "$numeric_positional_final" \
-  "$numeric_positional_initial" \
-  "delete-positional-parameter-continuation" \
-  "11 2"
-
-numeric_unspecified_initial="$runtime_directory/numeric-unspecified-initial.sh"
-numeric_unspecified_final="$runtime_directory/numeric-unspecified-final.sh"
-printf '%s\n' 'printf "${00}"' >"$numeric_unspecified_initial"
-printf '%s\n' 'printf "${0\' '0}"' >"$numeric_unspecified_final"
-assert_incremental_equals_fresh \
-  "$numeric_unspecified_initial" \
-  "$numeric_unspecified_final" \
-  "insert-unclassified-numeric-parameter-continuation" \
-  '11 0 \
-'
-assert_incremental_equals_fresh \
-  "$numeric_unspecified_final" \
-  "$numeric_unspecified_initial" \
-  "delete-unclassified-numeric-parameter-continuation" \
-  "11 2"
 
 numeric_category_initial="$runtime_directory/numeric-category-initial.sh"
 numeric_category_final="$runtime_directory/numeric-category-final.sh"
@@ -1676,56 +2262,6 @@ assert_incremental_equals_fresh \
   "$numeric_category_initial" \
   "positional-parameter-to-numeric-source" \
   "11 1 0"
-
-arithmetic_direct="$runtime_directory/arithmetic-direct.sh"
-arithmetic_continued="$runtime_directory/arithmetic-continued.sh"
-printf '%s\n' 'printf "$((12))"' >"$arithmetic_direct"
-printf '%s\n' 'printf "$((1\' '2))"' >"$arithmetic_continued"
-assert_incremental_equals_fresh \
-  "$arithmetic_direct" \
-  "$arithmetic_continued" \
-  "insert-arithmetic-number-continuation" \
-  '12 0 \
-'
-assert_incremental_equals_fresh \
-  "$arithmetic_continued" \
-  "$arithmetic_direct" \
-  "delete-arithmetic-number-continuation" \
-  "12 2"
-
-arithmetic_equality_initial="$runtime_directory/arithmetic-equality-initial.sh"
-arithmetic_equality_final="$runtime_directory/arithmetic-equality-final.sh"
-arithmetic_equality_output="$runtime_directory/arithmetic-equality.out"
-printf '%s\n' ': "$((a==b))"' >"$arithmetic_equality_initial"
-printf '%s\n' ': "$((a=\' '=b))"' >"$arithmetic_equality_final"
-assert_cst_valid_with_output \
-  "$arithmetic_equality_final" \
-  "$arithmetic_equality_output"
-assert_cst_range \
-  "0:3 - 1:4" \
-  "arithmetic_expansion" \
-  "$arithmetic_equality_output"
-assert_cst_range \
-  "0:7 - 1:1" \
-  "operator: arithmetic_operator" \
-  "$arithmetic_equality_output"
-assert_cst_range \
-  "0:8 - 1:0" \
-  "line_continuation" \
-  "$arithmetic_equality_output"
-assert_not_contains "command_substitution" "$arithmetic_equality_output"
-assert_not_contains "ERROR" "$arithmetic_equality_output"
-assert_incremental_equals_fresh \
-  "$arithmetic_equality_initial" \
-  "$arithmetic_equality_final" \
-  "insert-arithmetic-equality-continuation" \
-  '8 0 \
-'
-assert_incremental_equals_fresh \
-  "$arithmetic_equality_final" \
-  "$arithmetic_equality_initial" \
-  "delete-arithmetic-equality-continuation" \
-  "8 2"
 
 arithmetic_category_initial="$runtime_directory/arithmetic-category-initial.sh"
 arithmetic_category_final="$runtime_directory/arithmetic-category-final.sh"
@@ -1778,6 +2314,72 @@ assert_incremental_equals_fresh \
   "delete-arithmetic-operand-operator-boundary-continuation" \
   "7 2"
 
+arithmetic_missing_operand_source="$runtime_directory/arithmetic-missing-operand.sh"
+arithmetic_missing_operand_output="$runtime_directory/arithmetic-missing-operand.cst"
+printf '%s\n' ': "$((1 +\' '))"' >"$arithmetic_missing_operand_source"
+run_parse \
+  recovery \
+  cst \
+  "$arithmetic_missing_operand_output" \
+  "arithmetic missing operand after continuation" \
+  "$arithmetic_missing_operand_source"
+assert_cst_range \
+  "0:3-0:9" \
+  "ERROR" \
+  "$arithmetic_missing_operand_output"
+assert_cst_range \
+  "0:9-1:0" \
+  "line_continuation" \
+  "$arithmetic_missing_operand_output"
+assert_cst_range \
+  "1:0-1:2" \
+  "double_quote_text" \
+  "$arithmetic_missing_operand_output"
+assert_occurrence_count \
+  1 \
+  "line_continuation" \
+  "$arithmetic_missing_operand_output"
+
+arithmetic_prefix_increment_logical="$runtime_directory/arithmetic-prefix-increment-logical.sh"
+arithmetic_prefix_increment_physical="$runtime_directory/arithmetic-prefix-increment-physical.sh"
+printf '%s\n' ': "$((++a))"' >"$arithmetic_prefix_increment_logical"
+printf '%s\n' ': "$((+\' '+a))"' >"$arithmetic_prefix_increment_physical"
+assert_continued_parse_equivalent \
+  "arithmetic-prefix-increment" \
+  1 \
+  "$arithmetic_prefix_increment_logical" \
+  "$arithmetic_prefix_increment_physical"
+
+arithmetic_prefix_decrement_logical="$runtime_directory/arithmetic-prefix-decrement-logical.sh"
+arithmetic_prefix_decrement_physical="$runtime_directory/arithmetic-prefix-decrement-physical.sh"
+printf '%s\n' ': "$((--a))"' >"$arithmetic_prefix_decrement_logical"
+printf '%s\n' ': "$((-\' '-a))"' >"$arithmetic_prefix_decrement_physical"
+assert_continued_parse_equivalent \
+  "arithmetic-prefix-decrement" \
+  1 \
+  "$arithmetic_prefix_decrement_logical" \
+  "$arithmetic_prefix_decrement_physical"
+
+arithmetic_infix_increment_logical="$runtime_directory/arithmetic-infix-increment-logical.sh"
+arithmetic_infix_increment_physical="$runtime_directory/arithmetic-infix-increment-physical.sh"
+printf '%s\n' ': "$((a++b))"' >"$arithmetic_infix_increment_logical"
+printf '%s\n' ': "$((a+\' '+b))"' >"$arithmetic_infix_increment_physical"
+assert_continued_parse_equivalent \
+  "arithmetic-infix-increment" \
+  0 \
+  "$arithmetic_infix_increment_logical" \
+  "$arithmetic_infix_increment_physical"
+
+arithmetic_infix_decrement_logical="$runtime_directory/arithmetic-infix-decrement-logical.sh"
+arithmetic_infix_decrement_physical="$runtime_directory/arithmetic-infix-decrement-physical.sh"
+printf '%s\n' ': "$((a--b))"' >"$arithmetic_infix_decrement_logical"
+printf '%s\n' ': "$((a-\' '-b))"' >"$arithmetic_infix_decrement_physical"
+assert_continued_parse_equivalent \
+  "arithmetic-infix-decrement" \
+  0 \
+  "$arithmetic_infix_decrement_logical" \
+  "$arithmetic_infix_decrement_physical"
+
 arithmetic_parenthesized_initial="$runtime_directory/arithmetic-parenthesized-initial.sh"
 arithmetic_parenthesized_final="$runtime_directory/arithmetic-parenthesized-final.sh"
 printf '%s\n' ': "$((a + b))"' >"$arithmetic_parenthesized_initial"
@@ -1793,6 +2395,82 @@ assert_incremental_equals_fresh \
   "unparenthesize-arithmetic-expression" \
   "6 7 a + b"
 
+arithmetic_lvalue_initial="$runtime_directory/arithmetic-lvalue-initial.sh"
+arithmetic_lvalue_parenthesized="$runtime_directory/arithmetic-lvalue-parenthesized.sh"
+printf '%s\n' ': "$((name = 1))"' >"$arithmetic_lvalue_initial"
+printf '%s\n' ': "$(((name) = 1))"' >"$arithmetic_lvalue_parenthesized"
+assert_incremental_equals_fresh \
+  "$arithmetic_lvalue_initial" \
+  "$arithmetic_lvalue_parenthesized" \
+  "parenthesize-arithmetic-assignment-lvalue" \
+  "6 0 (" \
+  "11 0 )"
+assert_incremental_equals_fresh \
+  "$arithmetic_lvalue_parenthesized" \
+  "$arithmetic_lvalue_initial" \
+  "unparenthesize-arithmetic-assignment-lvalue" \
+  "6 1" \
+  "10 1"
+arithmetic_lvalue_output="$runtime_directory/parenthesize-arithmetic-assignment-lvalue.fresh"
+assert_cst_range \
+  "0:3-0:18" \
+  "arithmetic_expansion" \
+  "$arithmetic_lvalue_output"
+assert_cst_range \
+  "0:6-0:16" \
+  "expression: arithmetic_assignment_expression" \
+  "$arithmetic_lvalue_output"
+assert_cst_range \
+  "0:6-0:12" \
+  "left: parenthesized_arithmetic" \
+  "$arithmetic_lvalue_output"
+assert_cst_range \
+  "0:7-0:11" \
+  "expression: arithmetic_variable" \
+  "$arithmetic_lvalue_output"
+assert_cst_range \
+  "0:13-0:14" \
+  "operator: arithmetic_operator" \
+  "$arithmetic_lvalue_output"
+assert_cst_range \
+  "0:15-0:16" \
+  "right: arithmetic_number" \
+  "$arithmetic_lvalue_output"
+
+arithmetic_non_lvalue_initial="$runtime_directory/arithmetic-non-lvalue-initial.sh"
+arithmetic_non_lvalue_final="$runtime_directory/arithmetic-non-lvalue-final.sh"
+printf '%s\n' ': "$(((name) = 2))"' >"$arithmetic_non_lvalue_initial"
+printf '%s\n' ': "$(((name + 1) = 2))"' >"$arithmetic_non_lvalue_final"
+parse_incremental_and_fresh_with_output \
+  "$arithmetic_non_lvalue_initial" \
+  "$arithmetic_non_lvalue_final" \
+  "make-parenthesized-arithmetic-non-lvalue" \
+  "11 0  + 1"
+assert_incremental_equals_fresh \
+  "$arithmetic_non_lvalue_final" \
+  "$arithmetic_non_lvalue_initial" \
+  "restore-parenthesized-arithmetic-lvalue" \
+  "11 4"
+for arithmetic_non_lvalue_output in \
+  "$runtime_directory/make-parenthesized-arithmetic-non-lvalue.incremental" \
+  "$runtime_directory/make-parenthesized-arithmetic-non-lvalue.fresh"; do
+  assert_cst_range \
+    "0:3-0:22" \
+    "ERROR" \
+    "$arithmetic_non_lvalue_output"
+  assert_cst_range \
+    "0:6-0:16" \
+    "parenthesized_arithmetic_source" \
+    "$arithmetic_non_lvalue_output"
+  assert_cst_range \
+    "0:17-0:18" \
+    '"="' \
+    "$arithmetic_non_lvalue_output"
+  assert_not_contains \
+    "arithmetic_assignment_expression" \
+    "$arithmetic_non_lvalue_output"
+done
+
 arithmetic_opening_layout_initial="$runtime_directory/arithmetic-opening-layout-initial.sh"
 arithmetic_opening_layout_final="$runtime_directory/arithmetic-opening-layout-final.sh"
 printf '%s\n' ': "$((\' 'a+1))"' >"$arithmetic_opening_layout_initial"
@@ -1807,22 +2485,6 @@ assert_incremental_equals_fresh \
   "$arithmetic_opening_layout_initial" \
   "delete-arithmetic-opening-layout" \
   "6 1"
-
-arithmetic_opener_initial="$runtime_directory/arithmetic-opener-initial.sh"
-arithmetic_opener_final="$runtime_directory/arithmetic-opener-final.sh"
-printf '%s\n' ': "$(\' '(a+b))"' >"$arithmetic_opener_initial"
-printf '%s\n' ': "$(\' '\' '(a+b))"' >"$arithmetic_opener_final"
-assert_incremental_equals_fresh \
-  "$arithmetic_opener_initial" \
-  "$arithmetic_opener_final" \
-  "insert-arithmetic-opener-continuation" \
-  '7 0 \
-'
-assert_incremental_equals_fresh \
-  "$arithmetic_opener_final" \
-  "$arithmetic_opener_initial" \
-  "delete-arithmetic-opener-continuation" \
-  "7 2"
 
 arithmetic_negation_initial="$runtime_directory/arithmetic-negation-initial.sh"
 arithmetic_negation_final="$runtime_directory/arithmetic-negation-final.sh"
@@ -1862,13 +2524,13 @@ assert_cst_range \
   "$arithmetic_unary_bang_output"
 assert_not_contains "command_substitution" "$arithmetic_unary_bang_output"
 assert_not_contains "ERROR" "$arithmetic_unary_bang_output"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$arithmetic_unary_bang_initial" \
   "$arithmetic_unary_bang_final" \
   "insert-arithmetic-unary-bang-continuation" \
   '6 0 \
 '
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$arithmetic_unary_bang_final" \
   "$arithmetic_unary_bang_initial" \
   "delete-arithmetic-unary-bang-continuation" \
@@ -1900,14 +2562,14 @@ assert_cst_range \
   "$arithmetic_unary_plus_output"
 assert_not_contains "command_substitution" "$arithmetic_unary_plus_output"
 assert_not_contains "ERROR" "$arithmetic_unary_plus_output"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$arithmetic_unary_plus_initial" \
   "$arithmetic_unary_plus_final" \
   "insert-arithmetic-unary-plus-continuations" \
   '6 0 \
 \
 '
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$arithmetic_unary_plus_final" \
   "$arithmetic_unary_plus_initial" \
   "delete-arithmetic-unary-plus-continuations" \
@@ -1917,13 +2579,13 @@ arithmetic_unary_minus_initial="$runtime_directory/arithmetic-unary-minus-initia
 arithmetic_unary_minus_final="$runtime_directory/arithmetic-unary-minus-final.sh"
 printf '%s\n' ': $((-+a))' >"$arithmetic_unary_minus_initial"
 printf '%s\n' ': $((-\' '+a))' >"$arithmetic_unary_minus_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$arithmetic_unary_minus_initial" \
   "$arithmetic_unary_minus_final" \
   "insert-arithmetic-unary-minus-continuation" \
   '6 0 \
 '
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$arithmetic_unary_minus_final" \
   "$arithmetic_unary_minus_initial" \
   "delete-arithmetic-unary-minus-continuation" \
@@ -1933,54 +2595,17 @@ arithmetic_separated_sign_initial="$runtime_directory/arithmetic-separated-sign-
 arithmetic_separated_sign_final="$runtime_directory/arithmetic-separated-sign-final.sh"
 printf '%s\n' ': "$((+ +a))"' >"$arithmetic_separated_sign_initial"
 printf '%s\n' ': "$((+\' ' +a))"' >"$arithmetic_separated_sign_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$arithmetic_separated_sign_initial" \
   "$arithmetic_separated_sign_final" \
   "insert-arithmetic-separated-sign-continuation" \
   '7 0 \
 '
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$arithmetic_separated_sign_final" \
   "$arithmetic_separated_sign_initial" \
   "delete-arithmetic-separated-sign-continuation" \
   "7 2"
-
-io_location_initial="$runtime_directory/io-location-initial.sh"
-io_location_final="$runtime_directory/io-location-final.sh"
-io_location_boundary_output="$runtime_directory/io-location-boundary.out"
-printf '%s\n' 'printf {fd}<>x' >"$io_location_initial"
-printf '%s\n' 'printf {\' 'fd}<>x' >"$io_location_final"
-assert_cst_valid_with_output \
-  "$io_location_final" \
-  "$io_location_boundary_output"
-assert_cst_range \
-  "0:7 - 1:3" \
-  "location: io_location" \
-  "$io_location_boundary_output"
-assert_cst_range \
-  "0:7 - 0:8" \
-  '"{"' \
-  "$io_location_boundary_output"
-assert_cst_range \
-  "0:8 - 1:0" \
-  "line_continuation" \
-  "$io_location_boundary_output"
-assert_cst_range \
-  "1:2 - 1:3" \
-  '"}"' \
-  "$io_location_boundary_output"
-assert_not_contains "ERROR" "$io_location_boundary_output"
-assert_incremental_equals_fresh \
-  "$io_location_initial" \
-  "$io_location_final" \
-  "insert-io-location-opener-continuation" \
-  '8 0 \
-'
-assert_incremental_equals_fresh \
-  "$io_location_final" \
-  "$io_location_initial" \
-  "delete-io-location-opener-continuation" \
-  "8 2"
 
 backquote_initial="$runtime_directory/backquote-continuation-initial.sh"
 backquote_final="$runtime_directory/backquote-continuation-final.sh"
@@ -2007,44 +2632,140 @@ assert_incremental_equals_fresh \
   "delete-backquote-body-continuation" \
   "6 2"
 
-backquote_word_source="$runtime_directory/backquote-word-continuation.sh"
-backquote_word_output="$runtime_directory/backquote-word-continuation.out"
-printf '%s\n' 'echo `foo\' 'bar`' >"$backquote_word_source"
-assert_cst_valid_with_output \
-  "$backquote_word_source" \
-  "$backquote_word_output"
-assert_cst_range "0:6  - 1:3" "literal" "$backquote_word_output"
+tilde_percent_initial="$runtime_directory/tilde-percent-initial.sh"
+tilde_percent_final="$runtime_directory/tilde-percent-final.sh"
+printf '%s\n' ': ~alice/x' >"$tilde_percent_initial"
+printf '%s\n' ': ~alice%/x' >"$tilde_percent_final"
+assert_incremental_equals_fresh \
+  "$tilde_percent_initial" \
+  "$tilde_percent_final" \
+  "insert-percent-in-literal-tilde-user" \
+  "8 0 %"
+assert_incremental_equals_fresh \
+  "$tilde_percent_final" \
+  "$tilde_percent_initial" \
+  "delete-percent-from-literal-tilde-user" \
+  "8 1"
+tilde_percent_output="$runtime_directory/insert-percent-in-literal-tilde-user.fresh"
 assert_cst_range \
-  "0:9  - 1:0" \
-  "line_continuation" \
-  "$backquote_word_output"
-assert_not_contains "ERROR" "$backquote_word_output"
-
-tilde_initial="$runtime_directory/tilde-continuation-initial.sh"
-tilde_final="$runtime_directory/tilde-continuation-final.sh"
-tilde_output="$runtime_directory/tilde-continuation.out"
-printf '%s\n' 'printf ~user' >"$tilde_initial"
-printf '%s\n' 'printf ~\' 'user' >"$tilde_final"
-assert_cst_valid_with_output "$tilde_final" "$tilde_output"
-assert_cst_range \
-  "0:7 - 1:4" \
+  "0:2-0:9" \
   "tilde_expansion" \
-  "$tilde_output"
-assert_cst_range "0:7 - 0:8" '"~"' "$tilde_output"
-assert_cst_range "0:8 - 1:0" "line_continuation" "$tilde_output"
-assert_cst_range "1:0 - 1:4" "user: tilde_user" "$tilde_output"
-assert_not_contains "ERROR" "$tilde_output"
+  "$tilde_percent_output"
+assert_cst_range \
+  "0:3-0:9" \
+  "user: tilde_user" \
+  "$tilde_percent_output"
+assert_cst_range \
+  "0:3-0:9" \
+  "literal" \
+  "$tilde_percent_output"
+assert_cst_range "0:9-0:10" '"/"' "$tilde_percent_output"
+
+tilde_assignment_percent_initial="$runtime_directory/tilde-assignment-percent-initial.sh"
+tilde_assignment_percent_final="$runtime_directory/tilde-assignment-percent-final.sh"
+printf '%s\n' 'A=~alice:x :' >"$tilde_assignment_percent_initial"
+printf '%s\n' 'A=~alice%:x :' >"$tilde_assignment_percent_final"
 assert_incremental_equals_fresh \
-  "$tilde_initial" \
-  "$tilde_final" \
-  "insert-tilde-user-boundary-continuation" \
-  '8 0 \
-'
+  "$tilde_assignment_percent_initial" \
+  "$tilde_assignment_percent_final" \
+  "insert-percent-before-assignment-tilde-colon" \
+  "8 0 %"
 assert_incremental_equals_fresh \
-  "$tilde_final" \
-  "$tilde_initial" \
-  "delete-tilde-user-boundary-continuation" \
-  "8 2"
+  "$tilde_assignment_percent_final" \
+  "$tilde_assignment_percent_initial" \
+  "delete-percent-before-assignment-tilde-colon" \
+  "8 1"
+tilde_assignment_percent_output="$runtime_directory/insert-percent-before-assignment-tilde-colon.fresh"
+assert_cst_range \
+  "0:2-0:11" \
+  "value: assignment_value" \
+  "$tilde_assignment_percent_output"
+assert_cst_range \
+  "0:2-0:9" \
+  "tilde_expansion" \
+  "$tilde_assignment_percent_output"
+assert_cst_range \
+  "0:3-0:9" \
+  "user: tilde_user" \
+  "$tilde_assignment_percent_output"
+assert_cst_range \
+  "0:9-0:10" \
+  '":"' \
+  "$tilde_assignment_percent_output"
+
+tilde_parameter_percent_initial="$runtime_directory/tilde-parameter-percent-initial.sh"
+tilde_parameter_percent_final="$runtime_directory/tilde-parameter-percent-final.sh"
+printf '%s\n' ': ${v:-~alice/x}' >"$tilde_parameter_percent_initial"
+printf '%s\n' ': ${v:-~alice%/x}' >"$tilde_parameter_percent_final"
+assert_incremental_equals_fresh \
+  "$tilde_parameter_percent_initial" \
+  "$tilde_parameter_percent_final" \
+  "insert-percent-in-parameter-word-tilde-user" \
+  "13 0 %"
+assert_incremental_equals_fresh \
+  "$tilde_parameter_percent_final" \
+  "$tilde_parameter_percent_initial" \
+  "delete-percent-from-parameter-word-tilde-user" \
+  "13 1"
+tilde_parameter_percent_output="$runtime_directory/insert-percent-in-parameter-word-tilde-user.fresh"
+assert_cst_range \
+  "0:2-0:17" \
+  "parameter_expansion" \
+  "$tilde_parameter_percent_output"
+assert_cst_range \
+  "0:7-0:16" \
+  "word: parameter_word" \
+  "$tilde_parameter_percent_output"
+assert_cst_range \
+  "0:7-0:14" \
+  "tilde_expansion" \
+  "$tilde_parameter_percent_output"
+assert_cst_range \
+  "0:8-0:14" \
+  "user: tilde_user" \
+  "$tilde_parameter_percent_output"
+assert_cst_range \
+  "0:14-0:15" \
+  '"/"' \
+  "$tilde_parameter_percent_output"
+assert_cst_range \
+  "0:16-0:17" \
+  '"}"' \
+  "$tilde_parameter_percent_output"
+
+tilde_nested_user_initial="$runtime_directory/tilde-nested-user-initial.sh"
+tilde_nested_user_final="$runtime_directory/tilde-nested-user-final.sh"
+printf '%s\n' ': ~"$(echo ab)"/x' >"$tilde_nested_user_initial"
+printf '%s\n' ': ~"$(echo a/b)"/x' >"$tilde_nested_user_final"
+assert_incremental_equals_fresh \
+  "$tilde_nested_user_initial" \
+  "$tilde_nested_user_final" \
+  "insert-slash-in-nested-tilde-user-substitution" \
+  "12 0 /"
+assert_incremental_equals_fresh \
+  "$tilde_nested_user_final" \
+  "$tilde_nested_user_initial" \
+  "delete-slash-from-nested-tilde-user-substitution" \
+  "12 1"
+tilde_nested_user_output="$runtime_directory/insert-slash-in-nested-tilde-user-substitution.fresh"
+assert_cst_range \
+  "0:2-0:16" \
+  "tilde_expansion" \
+  "$tilde_nested_user_output"
+assert_cst_range \
+  "0:3-0:16" \
+  "user: tilde_user" \
+  "$tilde_nested_user_output"
+assert_cst_range \
+  "0:3-0:16" \
+  "double_quoted" \
+  "$tilde_nested_user_output"
+assert_cst_range \
+  "0:4-0:15" \
+  "command_substitution" \
+  "$tilde_nested_user_output"
+assert_cst_range "0:12-0:13" '"/"' "$tilde_nested_user_output"
+assert_cst_range "0:16-0:17" '"/"' "$tilde_nested_user_output"
 
 assignment_boundary_initial="$runtime_directory/assignment-boundary-initial.sh"
 assignment_boundary_final="$runtime_directory/assignment-boundary-final.sh"
@@ -2054,12 +2775,12 @@ printf '%s\n' 'name=value\' ' command' >"$assignment_boundary_final"
 assert_cst_valid_with_output \
   "$assignment_boundary_final" \
   "$assignment_boundary_output"
-assert_cst_range \
-  "0:0  - 1:0" \
+assert_occurrence_count \
+  1 \
   "assignment: assignment_word" \
   "$assignment_boundary_output"
 assert_cst_range \
-  "0:5  - 1:0" \
+  "0:5  - 0:10" \
   "value: assignment_value" \
   "$assignment_boundary_output"
 assert_cst_range \
@@ -2079,70 +2800,6 @@ assert_incremental_equals_fresh \
   "delete-assignment-boundary-continuation" \
   "10 2"
 
-name_argument_separator_initial="$runtime_directory/name-argument-separator-initial.sh"
-name_argument_separator_final="$runtime_directory/name-argument-separator-final.sh"
-printf '%s\n' "echo\\" "\\" "x" >"$name_argument_separator_initial"
-printf '%s\n' "echo\\" " \\" "x" >"$name_argument_separator_final"
-assert_valid_incremental_equals_fresh \
-  "$name_argument_separator_initial" \
-  "$name_argument_separator_final" \
-  "insert-command-name-argument-continuation-run-blank" \
-  '6 0  '
-assert_valid_incremental_equals_fresh \
-  "$name_argument_separator_final" \
-  "$name_argument_separator_initial" \
-  "delete-command-name-argument-continuation-run-blank" \
-  "6 1"
-
-argument_separator_initial="$runtime_directory/argument-separator-initial.sh"
-argument_separator_final="$runtime_directory/argument-separator-final.sh"
-printf '%s\n' "echo a\\" "\\" "\\" "b" >"$argument_separator_initial"
-printf '%s\n' "echo a\\" "\\" " \\" "b" >"$argument_separator_final"
-assert_valid_incremental_equals_fresh \
-  "$argument_separator_initial" \
-  "$argument_separator_final" \
-  "insert-argument-argument-continuation-run-blank" \
-  '10 0  '
-assert_valid_incremental_equals_fresh \
-  "$argument_separator_final" \
-  "$argument_separator_initial" \
-  "delete-argument-argument-continuation-run-blank" \
-  "10 1"
-
-redirect_command_word_separator_initial="$runtime_directory/redirect-command-word-separator-initial.sh"
-redirect_command_word_separator_final="$runtime_directory/redirect-command-word-separator-final.sh"
-printf '%s\n' ">out\\" "\\" "echo" \
-  >"$redirect_command_word_separator_initial"
-printf '%s\n' ">out\\" " \\" "echo" \
-  >"$redirect_command_word_separator_final"
-assert_valid_incremental_equals_fresh \
-  "$redirect_command_word_separator_initial" \
-  "$redirect_command_word_separator_final" \
-  "insert-redirection-command-word-continuation-run-blank" \
-  '6 0  '
-assert_valid_incremental_equals_fresh \
-  "$redirect_command_word_separator_final" \
-  "$redirect_command_word_separator_initial" \
-  "delete-redirection-command-word-continuation-run-blank" \
-  "6 1"
-
-redirect_assignment_separator_initial="$runtime_directory/redirect-assignment-separator-initial.sh"
-redirect_assignment_separator_final="$runtime_directory/redirect-assignment-separator-final.sh"
-printf '%s\n' ">out\\" "\\" "A=1 command" \
-  >"$redirect_assignment_separator_initial"
-printf '%s\n' ">out\\" " \\" "A=1 command" \
-  >"$redirect_assignment_separator_final"
-assert_valid_incremental_equals_fresh \
-  "$redirect_assignment_separator_initial" \
-  "$redirect_assignment_separator_final" \
-  "insert-redirection-assignment-continuation-run-blank" \
-  '6 0  '
-assert_valid_incremental_equals_fresh \
-  "$redirect_assignment_separator_final" \
-  "$redirect_assignment_separator_initial" \
-  "delete-redirection-assignment-continuation-run-blank" \
-  "6 1"
-
 assignment_newline_initial="$runtime_directory/assignment-newline-initial.sh"
 assignment_newline_final="$runtime_directory/assignment-newline-final.sh"
 assignment_newline_output="$runtime_directory/assignment-newline.out"
@@ -2151,12 +2808,12 @@ printf '%s\n' "x=a\\" '' >"$assignment_newline_final"
 assert_cst_valid_with_output \
   "$assignment_newline_final" \
   "$assignment_newline_output"
-assert_cst_range \
-  "0:0 - 1:0" \
+assert_occurrence_count \
+  1 \
   "assignment: assignment_word" \
   "$assignment_newline_output"
 assert_cst_range \
-  "0:2 - 1:0" \
+  "0:2 - 0:3" \
   "value: assignment_value" \
   "$assignment_newline_output"
 assert_cst_range \
@@ -2182,59 +2839,29 @@ assert_incremental_equals_fresh \
   "delete-assignment-newline-continuation" \
   "3 2"
 
-assignment_name_scope_source="$runtime_directory/assignment-name-scope.sh"
-assignment_name_scope_output="$runtime_directory/assignment-name-scope.out"
-printf '%s\n' \
-  'NAME=foo\' \
-  '=bar command' \
-  'echo NAME\' \
-  '=value' \
-  'foo-\' \
-  '=bar' \
-  >"$assignment_name_scope_source"
-assert_valid_with_output \
-  "$assignment_name_scope_source" \
-  "$assignment_name_scope_output"
-assert_contains \
-  "assignment: (assignment_word [0, 0] - [1, 4]" \
-  "$assignment_name_scope_output"
-assert_contains \
-  "word: (word [2, 5] - [3, 6]" \
-  "$assignment_name_scope_output"
-assert_contains \
-  "name: (cmd_name [4, 0] - [5, 4]" \
-  "$assignment_name_scope_output"
-assert_not_contains \
-  "assignment_word [2," \
-  "$assignment_name_scope_output"
-assert_not_contains \
-  "assignment_word [4," \
-  "$assignment_name_scope_output"
-assert_not_contains "ERROR" "$assignment_name_scope_output"
-
-quoted_character_initial="$runtime_directory/quoted-character-initial.sh"
-quoted_character_final="$runtime_directory/quoted-character-final.sh"
-quoted_character_output="$runtime_directory/quoted-character.out"
-printf '%s\n' 'X=a\q' >"$quoted_character_initial"
-printf '%s\n' 'X=a\' '\q' >"$quoted_character_final"
-assert_cst_valid_with_output \
-  "$quoted_character_final" \
-  "$quoted_character_output"
-assert_contains "assignment: assignment_word" "$quoted_character_output"
-assert_contains "escaped_character" "$quoted_character_output"
-assert_not_contains "ERROR" "$quoted_character_output"
+compound_tail_initial="$runtime_directory/compound-tail-initial.sh"
+compound_tail_final="$runtime_directory/compound-tail-final.sh"
+printf '%s\n' '(:)&' 'child_pid=$!' >"$compound_tail_initial"
+printf '%s\n' '(:) &' 'child_pid=$!' >"$compound_tail_final"
 assert_incremental_equals_fresh \
-  "$quoted_character_initial" \
-  "$quoted_character_final" \
-  "insert-noncontinuation-backslash-lookahead" \
-  '3 0 \
-'
-assert_incremental_equals_fresh \
-  "$quoted_character_final" \
-  "$quoted_character_initial" \
-  "delete-noncontinuation-backslash-lookahead" \
-  "3 2"
+  "$compound_tail_initial" \
+  "$compound_tail_final" \
+  "insert-layout-before-asynchronous-separator" \
+  '3 0  '
+for compound_tail_output in \
+  "$runtime_directory/insert-layout-before-asynchronous-separator.incremental" \
+  "$runtime_directory/insert-layout-before-asynchronous-separator.fresh"; do
+  assert_cst_range "0:0-0:3" "subshell" "$compound_tail_output"
+  assert_cst_range "0:4-0:5" "separator_op" "$compound_tail_output"
+  assert_cst_range \
+    "1:0-1:12" \
+    "command: complete_command" \
+    "$compound_tail_output"
+  assert_not_contains "ERROR" "$compound_tail_output"
+  assert_not_contains "command_recovery" "$compound_tail_output"
+done
 
+# Command separators and compound-list boundaries.
 operator_boundary_source="$runtime_directory/operator-boundaries.sh"
 operator_boundary_output="$runtime_directory/operator-boundaries.out"
 printf '%s\n' \
@@ -2349,13 +2976,13 @@ for_wordlist_initial="$runtime_directory/for-wordlist-initial.sh"
 for_wordlist_final="$runtime_directory/for-wordlist-final.sh"
 printf '%s\n' 'for i in \' 'word; do :; done' >"$for_wordlist_initial"
 printf '%s\n' 'for i in \' '\' 'word; do :; done' >"$for_wordlist_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$for_wordlist_initial" \
   "$for_wordlist_final" \
   "insert-second-for-wordlist-continuation" \
   '11 0 \
 '
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$for_wordlist_final" \
   "$for_wordlist_initial" \
   "delete-second-for-wordlist-continuation" \
@@ -2396,13 +3023,13 @@ assert_cst_range "1:0  - 2:0" "line_continuation" "$case_subject_output"
 assert_cst_range "2:0  - 2:2" "in: in" "$case_subject_output"
 assert_not_contains "ERROR" "$case_subject_output"
 assert_not_contains "MISSING" "$case_subject_output"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$case_subject_initial" \
   "$case_subject_final" \
   "insert-second-case-subject-continuation" \
   '9 0 \
 '
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$case_subject_final" \
   "$case_subject_initial" \
   "delete-second-case-subject-continuation" \
@@ -2412,13 +3039,13 @@ case_keyword_initial="$runtime_directory/case-keyword-initial.sh"
 case_keyword_final="$runtime_directory/case-keyword-final.sh"
 printf '%s\n' 'case x in esac' >"$case_keyword_initial"
 printf '%s\n' 'case\' ' x in esac' >"$case_keyword_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$case_keyword_initial" \
   "$case_keyword_final" \
   "insert-case-keyword-continuation" \
   '4 0 \
 '
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$case_keyword_final" \
   "$case_keyword_initial" \
   "delete-case-keyword-continuation" \
@@ -2533,141 +3160,112 @@ assert_incremental_equals_fresh \
   "delete-command-substitution-end-continuation" \
   "15 2"
 
-tilde_word_end_initial="$runtime_directory/tilde-word-end-initial.sh"
-tilde_word_end_final="$runtime_directory/tilde-word-end-final.sh"
-tilde_word_end_output="$runtime_directory/tilde-word-end.out"
-printf '%s\n' 'printf ~username/path' >"$tilde_word_end_initial"
-printf '%s\n' 'printf ~username\' '/path' >"$tilde_word_end_final"
-assert_cst_valid_with_output "$tilde_word_end_final" "$tilde_word_end_output"
-assert_cst_range \
-  "0:7  - 0:16" \
-  "tilde_expansion" \
-  "$tilde_word_end_output"
-assert_cst_range \
-  "0:8  - 0:16" \
-  "user: tilde_user" \
-  "$tilde_word_end_output"
-assert_cst_range \
-  "0:16 - 1:0" \
-  "line_continuation" \
-  "$tilde_word_end_output"
-assert_not_contains "ERROR" "$tilde_word_end_output"
+function_layout_initial="$runtime_directory/function-layout-initial.sh"
+function_layout_final="$runtime_directory/function-layout-final.sh"
+printf '%s\n' \
+  'f() {' \
+  ' before' \
+  ' while :; do :; done' \
+  ' value=1' \
+  ' after' \
+  '}' \
+  >"$function_layout_initial"
+printf '%s\n' \
+  'f() {' \
+  ' before' \
+  ' while :; do' \
+  '  :' \
+  ' done' \
+  ' value=1' \
+  ' after' \
+  '}' \
+  >"$function_layout_final"
 assert_incremental_equals_fresh \
-  "$tilde_word_end_initial" \
-  "$tilde_word_end_final" \
-  "insert-tilde-word-end-continuation" \
-  '16 0 \
-'
-assert_incremental_equals_fresh \
-  "$tilde_word_end_final" \
-  "$tilde_word_end_initial" \
-  "delete-tilde-word-end-continuation" \
-  "16 2"
+  "$function_layout_initial" \
+  "$function_layout_final" \
+  "expand-function-loop-layout" \
+  '25 5 o
+  :
+ '
+for function_layout_output in \
+  "$runtime_directory/expand-function-loop-layout.incremental" \
+  "$runtime_directory/expand-function-loop-layout.fresh"; do
+  assert_cst_range "0:0-7:1" "function_definition" "$function_layout_output"
+  assert_cst_range "2:1-4:5" "while_clause" "$function_layout_output"
+  assert_cst_range "5:1-5:8" "assignment_word" "$function_layout_output"
+  assert_not_contains "ERROR" "$function_layout_output"
+  assert_not_contains "command_recovery" "$function_layout_output"
+done
 
-tilde_assignment_end_initial="$runtime_directory/tilde-assignment-end-initial.sh"
-tilde_assignment_end_final="$runtime_directory/tilde-assignment-end-final.sh"
-tilde_assignment_end_output="$runtime_directory/tilde-assignment-end.out"
-printf '%s\n' 'PATH=~username:next command' >"$tilde_assignment_end_initial"
-printf '%s\n' 'PATH=~username\' ':next command' >"$tilde_assignment_end_final"
-assert_cst_valid_with_output \
-  "$tilde_assignment_end_final" \
-  "$tilde_assignment_end_output"
-assert_cst_range \
-  "0:0  - 1:5" \
-  "assignment: assignment_word" \
-  "$tilde_assignment_end_output"
-assert_cst_range \
-  "0:5  - 0:14" \
-  "tilde_expansion" \
-  "$tilde_assignment_end_output"
-assert_cst_range \
-  "0:14 - 1:0" \
-  "line_continuation" \
-  "$tilde_assignment_end_output"
-assert_not_contains "ERROR" "$tilde_assignment_end_output"
+compound_list_branch_initial="$runtime_directory/compound-list-branch-initial.sh"
+compound_list_branch_final="$runtime_directory/compound-list-branch-final.sh"
+printf '%s\n' \
+  'f() {' \
+  ' a=' \
+  ' if :; then' \
+  '  :' \
+  ' else' \
+  '  :' \
+  ' fi' \
+  ' b=' \
+  '}' \
+  >"$compound_list_branch_initial"
+printf '%s\n' \
+  'f() {' \
+  ' a=' \
+  ' if :; then' \
+  '  :' \
+  ' else' \
+  '  :' \
+  ' fi' \
+  ' while :; do :; done' \
+  ' b=' \
+  '}' \
+  >"$compound_list_branch_final"
 assert_incremental_equals_fresh \
-  "$tilde_assignment_end_initial" \
-  "$tilde_assignment_end_final" \
-  "insert-tilde-assignment-end-continuation" \
-  '14 0 \
+  "$compound_list_branch_initial" \
+  "$compound_list_branch_final" \
+  "insert-compound-list-loop" \
+  '40 0  while :; do :; done
 '
-assert_incremental_equals_fresh \
-  "$tilde_assignment_end_final" \
-  "$tilde_assignment_end_initial" \
-  "delete-tilde-assignment-end-continuation" \
-  "14 2"
-
-tilde_assignment_colon_initial="$runtime_directory/tilde-assignment-colon-initial.sh"
-tilde_assignment_colon_final="$runtime_directory/tilde-assignment-colon-final.sh"
-tilde_assignment_colon_output="$runtime_directory/tilde-assignment-colon.out"
-printf '%s\n' 'PATH=a:~user/path command' >"$tilde_assignment_colon_initial"
-printf '%s\n' 'PATH=a:\' '~user/path command' >"$tilde_assignment_colon_final"
-assert_cst_valid_with_output \
-  "$tilde_assignment_colon_final" \
-  "$tilde_assignment_colon_output"
-assert_cst_range \
-  "0:0  - 1:10" \
-  "assignment: assignment_word" \
-  "$tilde_assignment_colon_output"
-assert_cst_range \
-  "0:7  - 1:0" \
-  "line_continuation" \
-  "$tilde_assignment_colon_output"
-assert_cst_range \
-  "1:0  - 1:5" \
-  "tilde_expansion" \
-  "$tilde_assignment_colon_output"
-assert_not_contains "ERROR" "$tilde_assignment_colon_output"
-assert_incremental_equals_fresh \
-  "$tilde_assignment_colon_initial" \
-  "$tilde_assignment_colon_final" \
-  "insert-tilde-assignment-colon-continuation" \
-  '7 0 \
-'
-assert_incremental_equals_fresh \
-  "$tilde_assignment_colon_final" \
-  "$tilde_assignment_colon_initial" \
-  "delete-tilde-assignment-colon-continuation" \
-  "7 2"
-
-literal_assignment_colon_initial="$runtime_directory/literal-assignment-colon-initial.sh"
-literal_assignment_colon_final="$runtime_directory/literal-assignment-colon-final.sh"
-literal_assignment_colon_output="$runtime_directory/literal-assignment-colon.out"
-printf '%s\n' 'x=a:b :' >"$literal_assignment_colon_initial"
-printf '%s\n' "x=a:\\" 'b :' >"$literal_assignment_colon_final"
-assert_cst_valid_with_output \
-  "$literal_assignment_colon_final" \
-  "$literal_assignment_colon_output"
-assert_cst_range \
-  "0:0 - 1:1" \
-  "assignment: assignment_word" \
-  "$literal_assignment_colon_output"
-assert_cst_range \
-  "0:2 - 1:1" \
-  "value: assignment_value" \
-  "$literal_assignment_colon_output"
-assert_cst_range \
-  "0:4 - 1:0" \
-  "line_continuation" \
-  "$literal_assignment_colon_output"
-assert_cst_range \
-  "1:2 - 1:3" \
-  "word: cmd_word" \
-  "$literal_assignment_colon_output"
-assert_not_contains "name: cmd_name" "$literal_assignment_colon_output"
-assert_not_contains "ERROR" "$literal_assignment_colon_output"
-assert_not_contains "MISSING" "$literal_assignment_colon_output"
-assert_incremental_equals_fresh \
-  "$literal_assignment_colon_initial" \
-  "$literal_assignment_colon_final" \
-  "insert-literal-assignment-colon-continuation" \
-  '4 0 \
-'
-assert_incremental_equals_fresh \
-  "$literal_assignment_colon_final" \
-  "$literal_assignment_colon_initial" \
-  "delete-literal-assignment-colon-continuation" \
-  "4 2"
+for compound_list_branch_output in \
+  "$runtime_directory/insert-compound-list-loop.incremental" \
+  "$runtime_directory/insert-compound-list-loop.fresh"; do
+  assert_cst_range \
+    "0:0-9:1" \
+    "function_definition" \
+    "$compound_list_branch_output"
+  assert_cst_range "0:4-9:1" "brace_group" "$compound_list_branch_output"
+  assert_cst_direct_child_range \
+    "0:4-9:1" \
+    "brace_group" \
+    "0:5-9:0" \
+    "body: compound_list" \
+    "$compound_list_branch_output"
+  assert_cst_direct_child_range \
+    "0:5-9:0" \
+    "body: compound_list" \
+    "1:1-8:3" \
+    "body: term" \
+    "$compound_list_branch_output"
+  assert_cst_range "2:1-6:3" "if_clause" "$compound_list_branch_output"
+  assert_cst_range "7:1-7:20" "while_clause" "$compound_list_branch_output"
+  assert_occurrence_count 2 "assignment: assignment_word" \
+    "$compound_list_branch_output"
+  assert_cst_range \
+    "1:1-1:3" \
+    "assignment: assignment_word" \
+    "$compound_list_branch_output"
+  assert_cst_range \
+    "8:1-8:3" \
+    "assignment: assignment_word" \
+    "$compound_list_branch_output"
+  assert_cst_range "0:0-10:0" "program" "$compound_list_branch_output"
+  assert_not_contains "ERROR" "$compound_list_branch_output"
+  assert_not_contains "command_recovery" "$compound_list_branch_output"
+  assert_not_contains "compound_command_recovery" \
+    "$compound_list_branch_output"
+done
 
 compound_list_regression="$runtime_directory/compound-list-regression.sh"
 printf '%s\n' \
@@ -2706,16 +3304,16 @@ assert_incremental_equals_fresh \
   "compound-list-assignment-edit" \
   "46 0 s"
 
-case_and_or_sample="$repository_directory/test/runtime/case_and_or_functions.sh"
-case_and_or_output="$runtime_directory/case-and-or-functions.out"
-case_and_or_query_output="$runtime_directory/case-and-or-functions.query"
-assert_valid_with_output "$case_and_or_sample" "$case_and_or_output"
-"$tree_sitter" query \
-  "$repository_directory/test/runtime/function_definitions.scm" \
-  "$case_and_or_sample" \
-  >"$case_and_or_query_output" 2>/dev/null
-assert_contains 'sample_log' "$case_and_or_query_output"
-assert_contains 'summarize' "$case_and_or_query_output"
+function_structure_sample="$repository_directory/test/runtime/function-structure.source"
+function_structure_output="$runtime_directory/function-structure.out"
+function_structure_query="$runtime_directory/function-structure.query"
+assert_valid_with_output "$function_structure_sample" "$function_structure_output"
+run_query \
+  "$function_structure_query" \
+  "$repository_directory/test/runtime/contracts.scm" \
+  "$function_structure_sample"
+assert_contains 'sample_log' "$function_structure_query"
+assert_contains 'summarize' "$function_structure_query"
 
 case_item_layout="$runtime_directory/case-item-layout.sh"
 printf 'case value in\n  tab) left\t|| right ;;\n  tight) left||right ;;\nesac\n' \
@@ -2758,13 +3356,13 @@ printf '%s\n' 'case x in x) :\' ';; esac' \
   >"$case_item_boundary_initial"
 printf '%s\n' 'case x in x) :\' '\' ';; esac' \
   >"$case_item_boundary_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$case_item_boundary_initial" \
   "$case_item_boundary_final" \
   "insert-second-case-item-boundary-continuation" \
   '16 0 \
 '
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$case_item_boundary_final" \
   "$case_item_boundary_initial" \
   "delete-second-case-item-boundary-continuation" \
@@ -2774,13 +3372,13 @@ case_body_separator_initial="$runtime_directory/case-body-separator-initial.sh"
 case_body_separator_final="$runtime_directory/case-body-separator-final.sh"
 printf '%s\n' 'case x in x)echo z;;esac' >"$case_body_separator_initial"
 printf '%s\n' 'case x in x)echo \' 'z;;esac' >"$case_body_separator_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$case_body_separator_initial" \
   "$case_body_separator_final" \
   "insert-case-body-separator-continuation" \
   '17 0 \
 '
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$case_body_separator_final" \
   "$case_body_separator_initial" \
   "delete-case-body-separator-continuation" \
@@ -2790,13 +3388,13 @@ case_item_following_initial="$runtime_directory/case-item-following-initial.sh"
 case_item_following_final="$runtime_directory/case-item-following-final.sh"
 printf '%s\n' 'case x in x):;; y):;;esac' >"$case_item_following_initial"
 printf '%s\n' 'case x in x):;;\' ' y):;;esac' >"$case_item_following_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$case_item_following_initial" \
   "$case_item_following_final" \
   "insert-case-item-following-continuation" \
   '15 0 \
 '
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$case_item_following_final" \
   "$case_item_following_initial" \
   "delete-case-item-following-continuation" \
@@ -2806,7 +3404,7 @@ empty_case_item_initial="$runtime_directory/empty-case-item-initial.sh"
 empty_case_item_final="$runtime_directory/empty-case-item-final.sh"
 printf '%s\n' 'case x in x):;;esac' >"$empty_case_item_initial"
 printf '%s\n' 'case x in x);;esac' >"$empty_case_item_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$empty_case_item_initial" \
   "$empty_case_item_final" \
   "delete-empty-case-item-body" \
@@ -2816,12 +3414,13 @@ reserved_for_word_initial="$runtime_directory/reserved-for-word-initial.sh"
 reserved_for_word_final="$runtime_directory/reserved-for-word-final.sh"
 printf '%s\n' 'for x in ordinary; do :; done' >"$reserved_for_word_initial"
 printf '%s\n' 'for x in fi; do :; done' >"$reserved_for_word_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$reserved_for_word_initial" \
   "$reserved_for_word_final" \
   "replace-for-word-with-reserved-closer-spelling" \
   "9 8 fi"
 
+# Bracket fallback, resource bounds, and scaling guards.
 bracket_unclosed="$runtime_directory/bracket-unclosed.sh"
 bracket_closed="$runtime_directory/bracket-closed.sh"
 bracket_range="$runtime_directory/bracket-range.sh"
@@ -2860,12 +3459,12 @@ special_bracket_unclosed="$runtime_directory/special-bracket-unclosed.sh"
 special_bracket_closed="$runtime_directory/special-bracket-closed.sh"
 printf '%s\n' "printf [[." >"$special_bracket_unclosed"
 printf '%s\n' "printf [[.x.]]" >"$special_bracket_closed"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$special_bracket_unclosed" \
   "$special_bracket_closed" \
   "complete-collating-symbol-bracket-expression" \
   "10 0 x.]]"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$special_bracket_closed" \
   "$special_bracket_unclosed" \
   "unclose-collating-symbol-bracket-expression" \
@@ -2875,92 +3474,31 @@ special_suffix_initial="$runtime_directory/special-suffix-initial.sh"
 special_suffix_final="$runtime_directory/special-suffix-final.sh"
 printf '%s\n' "printf [[:alpha:]" >"$special_suffix_initial"
 printf '%s\n' "printf [[:alpha:]]" >"$special_suffix_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$special_suffix_initial" \
   "$special_suffix_final" \
   "complete-special-suffix-outer-bracket" \
   "17 0 ]"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$special_suffix_final" \
   "$special_suffix_initial" \
   "restore-special-suffix-literal-prefix" \
   "17 1"
 
-continued_bracket_initial="$runtime_directory/continued-bracket-initial.sh"
-continued_bracket_final="$runtime_directory/continued-bracket-final.sh"
-continued_bracket_output="$runtime_directory/continued-bracket.out"
-printf '%s\n' 'printf []]' >"$continued_bracket_initial"
-printf '%s\n' 'printf []\' ']' >"$continued_bracket_final"
-assert_cst_valid_with_output \
-  "$continued_bracket_final" \
-  "$continued_bracket_output"
-assert_cst_range \
-  "0:7  - 1:1" \
-  "pattern_bracket_source" \
-  "$continued_bracket_output"
-assert_cst_range \
-  "0:9  - 1:0" \
-  "line_continuation" \
-  "$continued_bracket_output"
-assert_not_contains "ERROR" "$continued_bracket_output"
-assert_valid_incremental_equals_fresh \
-  "$continued_bracket_initial" \
-  "$continued_bracket_final" \
-  "insert-bracket-closer-continuation" \
-  '9 0 \
-'
-assert_valid_incremental_equals_fresh \
-  "$continued_bracket_final" \
-  "$continued_bracket_initial" \
-  "delete-bracket-closer-continuation" \
-  "9 2"
-
-invalid_prefix_initial="$runtime_directory/invalid-prefix-initial.sh"
-invalid_prefix_final="$runtime_directory/invalid-prefix-final.sh"
-printf '%s\n' 'printf [][.]' >"$invalid_prefix_initial"
-printf '%s\n' 'printf [\' '][.]' >"$invalid_prefix_final"
-assert_valid_incremental_equals_fresh \
-  "$invalid_prefix_initial" \
-  "$invalid_prefix_final" \
-  "insert-invalid-prefix-continuation" \
-  '8 0 \
-'
-assert_valid_incremental_equals_fresh \
-  "$invalid_prefix_final" \
-  "$invalid_prefix_initial" \
-  "delete-invalid-prefix-continuation" \
-  "8 2"
-
 operator_suffix_initial="$runtime_directory/operator-suffix-initial.sh"
 operator_suffix_final="$runtime_directory/operator-suffix-final.sh"
 printf '%s\n' 'printf [a"x"[.]' >"$operator_suffix_initial"
 printf '%s\n' 'printf [a"x"*[.]' >"$operator_suffix_final"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$operator_suffix_initial" \
   "$operator_suffix_final" \
   "insert-operator-before-completed-bracket-suffix" \
   "12 0 *"
-assert_valid_incremental_equals_fresh \
+assert_incremental_equals_fresh \
   "$operator_suffix_final" \
   "$operator_suffix_initial" \
   "delete-operator-before-completed-bracket-suffix" \
   "12 1"
-
-incomplete_bracket_initial="$runtime_directory/incomplete-bracket-initial.sh"
-incomplete_bracket_final="$runtime_directory/incomplete-bracket-final.sh"
-printf '%s\n' 'echo []' >"$incomplete_bracket_initial"
-printf '%s\n' 'echo [\' ']' >"$incomplete_bracket_final"
-assert_incremental_equals_fresh \
-  "$incomplete_bracket_initial" \
-  "$incomplete_bracket_final" \
-  "insert-incomplete-bracket-continuation" \
-  '6 0 \
-'
-assert_incremental_equals_fresh \
-  "$incomplete_bracket_final" \
-  "$incomplete_bracket_initial" \
-  "delete-incomplete-bracket-continuation" \
-  "6 2"
 
 terminal_bracket_initial="$runtime_directory/terminal-bracket-initial.sh"
 terminal_bracket_final="$runtime_directory/terminal-bracket-final.sh"
@@ -2986,16 +3524,6 @@ awk 'BEGIN {
 }' >"$unmatched_brackets"
 assert_valid "$unmatched_brackets"
 
-continued_unmatched_brackets="$runtime_directory/continued-unmatched-brackets.sh"
-awk 'BEGIN {
-  printf "printf ["
-  for (counter = 0; counter < 12000; counter += 1) {
-    printf "x[*?\\\n"
-  }
-  print "tail"
-}' >"$continued_unmatched_brackets"
-assert_valid "$continued_unmatched_brackets"
-
 long_bracket_list="$runtime_directory/long-bracket-list.sh"
 awk 'BEGIN {
   printf "printf ["
@@ -3019,16 +3547,6 @@ awk 'BEGIN {
   printf "\n"
 }' >"$repeated_incomplete_special_brackets"
 assert_valid "$repeated_incomplete_special_brackets"
-
-continued_bracket_ranges="$runtime_directory/continued-bracket-ranges.sh"
-awk 'BEGIN {
-  printf "printf ["
-  for (counter = 0; counter < 4000; counter += 1) {
-    printf "a\\\n-\\\nz\\\n"
-  }
-  print "]"
-}' >"$continued_bracket_ranges"
-assert_valid "$continued_bracket_ranges"
 
 continued_blank_lines="$runtime_directory/continued-blank-lines.sh"
 awk 'BEGIN {
@@ -3067,11 +3585,23 @@ awk 'BEGIN {
   }
   print "after"
 }' >"$many_documents"
-assert_parse_with_output \
-  "$many_documents" \
-  "$runtime_directory/many-documents.out"
+assert_repeated_cold_parse resource "$many_documents" "many-documents"
 
 deep_documents="$runtime_directory/deep-documents.sh"
+awk 'BEGIN {
+  depth = 150
+  print "cat <<X"
+  for (counter = 1; counter < depth; counter += 1) print "$(cat <<X"
+  print "leaf"
+  for (counter = depth - 1; counter >= 0; counter -= 1) {
+    print "X"
+    if (counter > 0) print ")"
+  }
+  print "after"
+}' >"$deep_documents"
+assert_valid "$deep_documents"
+
+deep_documents_bounded="$runtime_directory/deep-documents-bounded.sh"
 awk 'BEGIN {
   depth = 300
   print "cat <<X"
@@ -3082,22 +3612,13 @@ awk 'BEGIN {
     if (counter > 0) print ")"
   }
   print "after"
-}' >"$deep_documents"
-assert_parse_with_output \
-  "$deep_documents" \
-  "$runtime_directory/deep-documents.out"
-
-scanner_contract="$runtime_directory/scanner-contract"
-"${CC:-cc}" \
-  -std=c11 \
-  -Wall \
-  -Wextra \
-  -Werror \
-  -pedantic \
-  -I"$repository_directory/src" \
-  "$repository_directory/test/scanner/contract.c" \
-  -o "$scanner_contract"
-"$scanner_contract"
+}' >"$deep_documents_bounded"
+parse_timeout_microseconds=30000000
+assert_repeated_cold_parse \
+  resource \
+  "$deep_documents_bounded" \
+  "deep-documents-bounded"
+parse_timeout_microseconds=10000000
 
 nested_delimiter_document="$runtime_directory/nested-delimiter-document.sh"
 nested_delimiter_output="$runtime_directory/nested-delimiter-document.out"
@@ -3133,9 +3654,9 @@ printf '%s\n' \
   "EOF" \
   "after" \
   >"$quote_recovery_final"
-parse_current \
+assert_parse_with_output \
   "$quote_recovery_initial" \
-  >"$quote_recovery_output" 2>/dev/null
+  "$quote_recovery_output"
 assert_contains \
   "(complete_command [3, 0] - [3, 5]" \
   "$quote_recovery_output"
@@ -3174,12 +3695,8 @@ small_direct_continuations="$runtime_directory/small-direct-continuations.sh"
 large_direct_continuations="$runtime_directory/large-direct-continuations.sh"
 small_arithmetic_layout="$runtime_directory/small-arithmetic-layout.sh"
 large_arithmetic_layout="$runtime_directory/large-arithmetic-layout.sh"
-small_arithmetic_opener="$runtime_directory/small-arithmetic-opener.sh"
-large_arithmetic_opener="$runtime_directory/large-arithmetic-opener.sh"
 small_dynamic_arithmetic_layout="$runtime_directory/small-dynamic-arithmetic-layout.sh"
 large_dynamic_arithmetic_layout="$runtime_directory/large-dynamic-arithmetic-layout.sh"
-small_name_continuations="$runtime_directory/small-name-continuations.sh"
-large_name_continuations="$runtime_directory/large-name-continuations.sh"
 small_bracket_suffixes="$runtime_directory/small-bracket-suffixes.sh"
 large_bracket_suffixes="$runtime_directory/large-bracket-suffixes.sh"
 awk 'BEGIN {
@@ -3213,16 +3730,6 @@ awk 'BEGIN {
   print "+ b))\""
 }' >"$large_arithmetic_layout"
 awk 'BEGIN {
-  printf ": \"$("
-  for (counter = 0; counter < 3000; counter += 1) printf "\\\n"
-  print "(a + b))\""
-}' >"$small_arithmetic_opener"
-awk 'BEGIN {
-  printf ": \"$("
-  for (counter = 0; counter < 12000; counter += 1) printf "\\\n"
-  print "(a + b))\""
-}' >"$large_arithmetic_opener"
-awk 'BEGIN {
   printf ": \"$((1"
   for (counter = 0; counter < 2000; counter += 1) printf " \\\n"
   print "$operator 2))\""
@@ -3232,16 +3739,6 @@ awk 'BEGIN {
   for (counter = 0; counter < 8000; counter += 1) printf " \\\n"
   print "$operator 2))\""
 }' >"$large_dynamic_arithmetic_layout"
-awk 'BEGIN {
-  printf "NA"
-  for (counter = 0; counter < 3000; counter += 1) printf "\\\n"
-  print "ME=value command"
-}' >"$small_name_continuations"
-awk 'BEGIN {
-  printf "NA"
-  for (counter = 0; counter < 12000; counter += 1) printf "\\\n"
-  print "ME=value command"
-}' >"$large_name_continuations"
 awk 'BEGIN {
   printf "printf "
   for (counter = 0; counter < 3000; counter += 1) {
@@ -3256,31 +3753,18 @@ awk 'BEGIN {
   }
   print ""
 }' >"$large_bracket_suffixes"
-assert_valid "$small_spaced_continuations"
-assert_valid "$large_spaced_continuations"
-assert_valid "$small_direct_continuations"
-assert_valid "$large_direct_continuations"
-assert_valid "$small_arithmetic_layout"
-assert_valid "$large_arithmetic_layout"
-assert_valid "$small_arithmetic_opener"
-assert_valid "$large_arithmetic_opener"
-assert_valid "$small_dynamic_arithmetic_layout"
-assert_valid "$large_dynamic_arithmetic_layout"
-assert_valid "$small_name_continuations"
-assert_valid "$large_name_continuations"
-assert_valid "$small_bracket_suffixes"
-assert_valid "$large_bracket_suffixes"
-
 measure_parse_milliseconds() {
   measured_source=$1
+  measured_output="$runtime_directory/measured-parse.out"
   start_nanoseconds=$(
     node -e 'process.stdout.write(String(process.hrtime.bigint()))'
   )
-  parse_current \
-    --quiet \
-    --timeout 10000000 \
-    "$measured_source" \
-    >/dev/null 2>&1
+  run_parse \
+    valid \
+    summary \
+    "$measured_output" \
+    "$measured_source performance" \
+    "$measured_source"
   end_nanoseconds=$(
     node -e 'process.stdout.write(String(process.hrtime.bigint()))'
   )
@@ -3319,14 +3803,6 @@ if [ "$large_milliseconds" -gt "$scaling_limit" ]; then
     "Arithmetic layout parsing scaled nonlinearly: ${small_milliseconds}ms to ${large_milliseconds}ms"
 fi
 
-small_milliseconds=$(measure_parse_milliseconds "$small_arithmetic_opener")
-large_milliseconds=$(measure_parse_milliseconds "$large_arithmetic_opener")
-scaling_limit=$((small_milliseconds * 8 + 100))
-if [ "$large_milliseconds" -gt "$scaling_limit" ]; then
-  fail \
-    "Arithmetic opener parsing scaled nonlinearly: ${small_milliseconds}ms to ${large_milliseconds}ms"
-fi
-
 small_milliseconds=$(
   measure_parse_milliseconds "$small_dynamic_arithmetic_layout"
 )
@@ -3337,14 +3813,6 @@ scaling_limit=$((small_milliseconds * 8 + 100))
 if [ "$large_milliseconds" -gt "$scaling_limit" ]; then
   fail \
     "Dynamic arithmetic layout parsing scaled nonlinearly: ${small_milliseconds}ms to ${large_milliseconds}ms"
-fi
-
-small_milliseconds=$(measure_parse_milliseconds "$small_name_continuations")
-large_milliseconds=$(measure_parse_milliseconds "$large_name_continuations")
-scaling_limit=$((small_milliseconds * 8 + 100))
-if [ "$large_milliseconds" -gt "$scaling_limit" ]; then
-  fail \
-    "Name continuation parsing scaled nonlinearly: ${small_milliseconds}ms to ${large_milliseconds}ms"
 fi
 
 small_milliseconds=$(measure_parse_milliseconds "$small_bracket_suffixes")

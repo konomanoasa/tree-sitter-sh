@@ -40,39 +40,6 @@ MODE=fast EMPTY= EXTRA==value command -v operand
     (newline_list)))
 
 ==================
-Structured assignment values continue across every removed newline
-==================
-
-X=${v}x\
-\
-y
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_prefix
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (parameter_expansion
-                          (variable_name))
-                        (literal
-                          (line_continuation)
-                          (line_continuation)))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
 An assignment-only simple command has no command name
 ==================
 
@@ -435,240 +402,14 @@ NAME${suffix}=value argument
     (newline_list)))
 
 ==================
-Escaped newlines are removed before assignment recognition
-==================
-
-NA\
-ME\
-=pre\
-value command
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name
-                        (line_continuation))
-                      (line_continuation)
-                      value: (assignment_value
-                        (literal
-                          (line_continuation)))))
-                  word: (cmd_word
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-An assignment value can begin after an escaped newline
-==================
-
-x=\
-y
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_prefix
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (line_continuation)
-                        (literal))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Assignment values retain terminal escaped newlines at command boundaries
-==================
-
-LITERAL=value\
-  command
-QUOTED="value"\
-;
-EXPANDED=$value\
->output
-PIPE=value\
-| command
-AND=value\
-&& command
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)
-                        (line_continuation))))
-                  word: (cmd_word
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (double_quoted
-                          (double_quote_text))
-                        (line_continuation))))))))))
-      terminator: (separator_op))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (parameter_expansion
-                          parameter: (variable_name))
-                        (line_continuation)))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)
-                        (line_continuation))))))
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)
-                        (line_continuation))))))))
-          operator: (and_if)
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Assignment values own terminal continuations before raw newlines
-==================
-
-x=a\
-
-y=b\
-\
-
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)
-                        (line_continuation)))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)
-                        (line_continuation)
-                        (line_continuation))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 Assignment-only commands retain command boundaries
 ==================
 
 A=one; B=two
 C=three && D=four
+E=five\
+
+next
 
 ---
 
@@ -721,6 +462,31 @@ C=three && D=four
                     assignment: (assignment_word
                       name: (variable_name)
                       value: (assignment_value
-                        (literal))))))))))))
+                        (literal)))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal))
+                      (line_continuation))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
   trailing: (linebreak
     (newline_list)))

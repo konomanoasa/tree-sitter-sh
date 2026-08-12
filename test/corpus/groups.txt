@@ -28,7 +28,6 @@ first; }
                 (command_recovery))))))))
   (linebreak
     (newline_list)))
-
 ==================
 Brace compound lists use terms and require a final separator
 ==================

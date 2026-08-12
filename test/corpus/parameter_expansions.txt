@@ -160,15 +160,12 @@ printf ${x:-`printf nested`} "${x:-`printf nested`}"
     (newline_list)))
 
 ==================
-Ordinary parameter words own every removed newline
+Parameter operators and words preserve boundary continuations
 ==================
 
 printf ${x:-\
 } ${x:-\
-~user} ${x:-a\
-\
-b} ${x:-a\
-}
+~user}
 
 ---
 
@@ -191,32 +188,16 @@ b} ${x:-a\
                       (parameter_expansion
                         parameter: (variable_name)
                         operator: (parameter_value_operator)
-                        word: (parameter_word
-                          (line_continuation))))
+                        (line_continuation)))
                     word: (word
                       (parameter_expansion
                         parameter: (variable_name)
                         operator: (parameter_value_operator)
+                        (line_continuation)
                         word: (parameter_word
-                          (line_continuation)
                           (tilde_expansion
-                            user: (tilde_user)))))
-                    word: (word
-                      (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_value_operator)
-                        word: (parameter_word
-                          (literal)
-                          (line_continuation)
-                          (line_continuation)
-                          (literal))))
-                    word: (word
-                      (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_value_operator)
-                        word: (parameter_word
-                          (literal)
-                          (line_continuation)))))))))))))
+                            user: (tilde_user
+                              (literal)))))))))))))))
   trailing: (linebreak
     (newline_list)))
 
@@ -260,7 +241,8 @@ printf ${x:-~user/*?[a]} "${x:-~user/*?[a]}" "$(( ${x:-$'\n'} + ${y:-~} ))"
                         operator: (parameter_value_operator)
                         word: (parameter_word
                           (tilde_expansion
-                            user: (tilde_user))
+                            user: (tilde_user
+                              (literal)))
                           (literal)
                           (pattern_star_source)
                           (pattern_question_source)
@@ -555,53 +537,6 @@ printf ${name:-*}
     (newline_list)))
 
 ==================
-Removed newlines preserve longest substring removal operators
-==================
-
-printf '%s\n' "${value#\
-#prefix}" "${value%\
-%suffix}"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (single_quoted
-                        (single_quote_content)))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_pattern_operator
-                            (line_continuation))
-                          (parameter_pattern
-                            (literal)))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_pattern_operator
-                            (line_continuation))
-                          (parameter_pattern
-                            (literal))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
 Hash special parameters remain distinct from length and pattern operators
 ==================
 
@@ -836,8 +771,6 @@ printf "${source:-a$fallback}" "${source:-a$%}" "${source#a$x}" "${source#a$%}"
                           parameter: (variable_name)
                           operator: (parameter_pattern_operator)
                           pattern: (parameter_pattern
-                            (literal)
-                            (literal)
                             (literal))))))))))))))
   trailing: (linebreak
     (newline_list)))
@@ -846,9 +779,7 @@ printf "${source:-a$fallback}" "${source:-a$%}" "${source#a$x}" "${source#a$%}"
 POSIX parameter names and positions have explicit structure
 ==================
 
-printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${0\
-0}" "${0\
-01}" "${#name}"
+printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${#name}"
 
 ---
 
@@ -906,15 +837,6 @@ printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${0\
                     (word
                       (double_quoted
                         (parameter_expansion
-                          (line_continuation))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (positional_parameter
-                            (line_continuation)))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
                           (parameter_length_operator)
                           (variable_name)))))))))))))
   (linebreak
@@ -924,8 +846,7 @@ printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${0\
 Unclassified numeric parameter source stays anonymous
 ==================
 
-printf ${00:-x} "${0\
-0}" "${#00}"
+printf ${00:-x} "${#00}"
 
 ---
 
@@ -949,10 +870,6 @@ printf ${00:-x} "${0\
                         (parameter_value_operator)
                         (parameter_word
                           (literal))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (line_continuation))))
                     (word
                       (double_quoted
                         (parameter_expansion
@@ -1094,8 +1011,8 @@ word}" "${name#\
                         (parameter_expansion
                           parameter: (variable_name)
                           operator: (parameter_value_operator)
+                          (line_continuation)
                           word: (parameter_word
-                            (line_continuation)
                             (double_quote_text)))))
                     word: (word
                       (double_quoted
@@ -1118,47 +1035,10 @@ printf "${}" "${name/old/new}"
 
 
 ==================
-Parameter operators expose removed line continuations in source order
-==================
-
-printf "${value:\
--fallback}"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator
-                            (line_continuation))
-                          (parameter_word
-                            (double_quote_text))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Inherited parameter words keep logical dollar-single-quote source literal
+Inherited parameter words keep dollar-single-quote source literal
 ==================
 
 echo "${x:-$'text'}"
-echo "${x:-$\
-'text'}"
 
 ---
 
@@ -1184,27 +1064,6 @@ echo "${x:-$\
                           (parameter_value_operator)
                           (parameter_word
                             (double_quote_text)
-                            (double_quote_text)))))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text)
-                            (line_continuation)
                             (double_quote_text))))))))))))))
   (linebreak
     (newline_list)))

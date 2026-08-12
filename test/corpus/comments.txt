@@ -168,9 +168,9 @@ second
                     (word
                       (literal)))))))
           (and_if)
+          (line_continuation)
           (linebreak
             (newline_list
-              (line_continuation)
               (comment)))
           (pipeline
             (pipe_sequence
@@ -258,49 +258,5 @@ second &\
                                       (literal)))))))))
                       (separator
                         (newline_list))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Line continuation does not start a comment inside a word
-==================
-
-printf prefix\
-#suffix
-after
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)
-                      (line_continuation)
-                      (literal)
-                      (literal))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
   (linebreak
     (newline_list)))

@@ -270,11 +270,10 @@ tool '-x' \-x "--long" --long
     (newline_list)))
 
 ==================
-Escaped newlines do not create command or word boundaries
+A continuation followed by blank separates command words
 ==================
 
-echo one\
-two \
+echo \
   three
 next
 
@@ -295,9 +294,6 @@ next
                     (word
                       (literal)))
                   suffix: (cmd_suffix
-                    word: (word
-                      (literal
-                        (line_continuation)))
                     (line_continuation)
                     word: (word
                       (literal))))))))))
@@ -311,75 +307,6 @@ next
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-A command name remains one source word across an escaped newline
-==================
-
-pri\
-ntf value
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal
-                        (line_continuation))))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Hyphen-prefixed words expose removed line continuations
-==================
-
-printf -\
-x -\
--\
-long
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal)
-                      (line_continuation)
-                      (literal))
-                    word: (word
-                      (literal)
-                      (line_continuation)
-                      (literal)
-                      (line_continuation)
                       (literal)))))))))))
   trailing: (linebreak
     (newline_list)))
@@ -561,62 +488,6 @@ case case in in) :;; esac
                                           (literal))))))))))
                         terminator: (dsemi)))
                     (esac_keyword))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Escaped newlines preserve reserved word spelling
-==================
-
-fo\
-r item in value; d\
-o
-  :
-do\
-ne
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (for_clause
-                    (for_keyword
-                      (line_continuation))
-                    name: (name)
-                    in: (in
-                      (in_keyword))
-                    words: (wordlist
-                      word: (word
-                        (literal)))
-                    separator: (sequential_sep)
-                    body: (do_group
-                      (do_keyword
-                        (line_continuation))
-                      body: (compound_list
-                        leading: (linebreak
-                          (newline_list))
-                        body: (term
-                          and_or: (and_or
-                            pipeline: (pipeline
-                              sequence: (pipe_sequence
-                                command: (command
-                                  body: (simple_command
-                                    name: (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        terminator: (separator
-                          newlines: (newline_list)))
-                      (done_keyword
-                        (line_continuation))))))))))))
   trailing: (linebreak
     (newline_list)))
 
@@ -804,5 +675,146 @@ in
               (command
                 (command_recovery
                   (in_keyword)))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Reserved closer spellings remain arguments inside compound commands
+==================
+
+if x; then echo fi done esac; fi
+while x; do echo fi done esac; done
+case x in x) echo fi done esac;; esac
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (then_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))
+                                  (cmd_suffix
+                                    (word
+                                      (literal))
+                                    (word
+                                      (literal))
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (fi_keyword)))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (while_clause
+                    (while_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (do_group
+                      (do_keyword)
+                      (compound_list
+                        (term
+                          (and_or
+                            (pipeline
+                              (pipe_sequence
+                                (command
+                                  (simple_command
+                                    (cmd_name
+                                      (word
+                                        (literal)))
+                                    (cmd_suffix
+                                      (word
+                                        (literal))
+                                      (word
+                                        (literal))
+                                      (word
+                                        (literal)))))))))
+                        (separator
+                          (separator_op)))
+                      (done_keyword))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list
+                      (case_item
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))
+                                      (cmd_suffix
+                                        (word
+                                          (literal))
+                                        (word
+                                          (literal))
+                                        (word
+                                          (literal))))))))))
+                        (dsemi)))
+                    (esac_keyword))))))))))
   (linebreak
     (newline_list)))

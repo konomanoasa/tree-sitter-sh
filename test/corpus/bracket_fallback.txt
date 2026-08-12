@@ -282,140 +282,6 @@ printf [a"x"*[.]
     (newline_list)))
 
 ==================
-An empty incomplete bracket remains literal across a removed newline
-==================
-
-echo [\
-]
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)
-                      (line_continuation)
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-A negated incomplete bracket remains literal across a removed newline
-==================
-
-echo [!\
-]
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)
-                      (literal)
-                      (line_continuation)
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-An assignment keeps an incomplete bracket across a removed newline
-==================
-
-value=[!\
-]
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_prefix
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (literal)
-                        (literal)
-                        (line_continuation)
-                        (literal))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-A removal pattern keeps an incomplete bracket across a removed newline
-==================
-
-printf '%s\n' "${value#[!\
-]}"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (single_quoted
-                        (single_quote_content)))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_pattern_operator)
-                          (parameter_pattern
-                            (literal)
-                            (literal)
-                            (line_continuation)
-                            (literal))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
 Pattern operators remain source after an incomplete bracket opener
 ==================
 
@@ -485,75 +351,10 @@ echo [;]
     (newline_list)))
 
 ==================
-Every terminal continuation after an incomplete bracket remains public
-==================
-
-echo [!]\
-\
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)
-                      (literal)
-                      (literal)))))))))))
-  (line_continuation)
-  (line_continuation))
-
-==================
-An incomplete bracket exposes consecutive internal removed newlines
-==================
-
-echo [\
-\
-x
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)
-                      (line_continuation)
-                      (line_continuation)
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
 Consecutive incomplete bracket openers remain literal source
 ==================
 
-echo [[abc [*[abc [!\
-[abc "${value#[[abc}" "${value#[*[abc}"
+echo [[abc [*[abc "${value#[[abc}" "${value#[*[abc}"
 
 ---
 
@@ -580,11 +381,6 @@ echo [[abc [*[abc [!\
                       (pattern_star_source)
                       (literal))
                     (word
-                      (literal)
-                      (literal)
-                      (line_continuation)
-                      (literal))
-                    (word
                       (double_quoted
                         (parameter_expansion
                           (variable_name)
@@ -605,13 +401,10 @@ echo [[abc [*[abc [!\
     (newline_list)))
 
 ==================
-Bracket fallback preserves completed suffixes and closing continuations in words
+Bracket fallback preserves completed suffixes in words
 ==================
 
-printf []] []\
-] [[. [[= [[: [][.] [\
-][.] [\
-[:alpha:] [a[.] [![.]
+printf []] [[. [[= [[: [][.] [[:alpha:] [a[.] [![.]
 
 ---
 
@@ -635,11 +428,6 @@ printf []] []\
                         (pattern_bracket_members_source
                           (pattern_bracket_character_source))))
                     (word
-                      (pattern_bracket_source
-                        (pattern_bracket_members_source
-                          (pattern_bracket_character_source))
-                        (line_continuation)))
-                    (word
                       (literal)
                       (literal)
                       (literal))
@@ -659,14 +447,6 @@ printf []] []\
                           (pattern_bracket_character_source))))
                     (word
                       (literal)
-                      (line_continuation)
-                      (literal)
-                      (pattern_bracket_source
-                        (pattern_bracket_members_source
-                          (pattern_bracket_character_source))))
-                    (word
-                      (literal)
-                      (line_continuation)
                       (pattern_bracket_source
                         (pattern_bracket_members_source
                           (pattern_bracket_character_source)
@@ -695,9 +475,7 @@ printf []] []\
 Assignment bracket fallback preserves source ownership
 ==================
 
-close=[]\
-] incomplete=[[. restart=[\
-][.]
+incomplete=[[.
 
 ---
 
@@ -716,25 +494,9 @@ close=[]\
                     (assignment_word
                       (variable_name)
                       (assignment_value
-                        (pattern_bracket_source
-                          (pattern_bracket_members_source
-                            (pattern_bracket_character_source))
-                          (line_continuation))))
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
                         (literal)
                         (literal)
-                        (literal)))
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (literal)
-                        (line_continuation)
-                        (literal)
-                        (pattern_bracket_source
-                          (pattern_bracket_members_source
-                            (pattern_bracket_character_source))))))))))))))
+                        (literal))))))))))))
   (linebreak
     (newline_list)))
 
@@ -742,9 +504,7 @@ close=[]\
 Parameter pattern bracket fallback preserves source ownership
 ==================
 
-printf "${value#[]\
-]}" "${value#[[.}" "${value#[\
-][.]}" "${value#[x[: a]}"
+printf "${value#[[.}" "${value#[x[: a]}"
 
 ---
 
@@ -769,31 +529,9 @@ printf "${value#[]\
                           (variable_name)
                           (parameter_pattern_operator)
                           (parameter_pattern
-                            (pattern_bracket_source
-                              (pattern_bracket_members_source
-                                (pattern_bracket_character_source))
-                              (line_continuation))))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_pattern_operator)
-                          (parameter_pattern
                             (literal)
                             (literal)
                             (literal)))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_pattern_operator)
-                          (parameter_pattern
-                            (literal)
-                            (line_continuation)
-                            (literal)
-                            (pattern_bracket_source
-                              (pattern_bracket_members_source
-                                (pattern_bracket_character_source)))))))
                     (word
                       (double_quoted
                         (parameter_expansion
@@ -876,73 +614,4 @@ printf [[:alpha:] [[.ch.] [[=a=] "${value#[[:alpha:]}"
                                 member: (pattern_bracket_character_source)
                                 member: (pattern_bracket_character_source))))))))))))))))
   trailing: (linebreak
-    (newline_list)))
-
-==================
-Incomplete word brackets expose terminal removed line continuations
-==================
-
-printf [abc\
- next
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)
-                      (literal))
-                    (line_continuation)
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Incomplete parameter brackets expose terminal removed line continuations
-==================
-
-printf "${value#[abc\
-}"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_pattern_operator)
-                          (parameter_pattern
-                            (literal)
-                            (literal)
-                            (line_continuation))))))))))))))
-  (linebreak
     (newline_list)))

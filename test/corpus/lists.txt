@@ -20,6 +20,8 @@ third three
                 body: (simple_command
                   name: (cmd_name
                     (word
+                      (literal)
+                      (literal)
                       (literal)))
                   suffix: (cmd_suffix
                     word: (word
@@ -105,16 +107,8 @@ fifth five&sixth six;seventh seven
                       (literal)))))))
           operator: (or_if)
           (linebreak
-            (newline_list))
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                recovery: (command_recovery)))))))
-    separator: (newline_list
-      (comment))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
+            (newline_list
+              (comment)))
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
@@ -287,11 +281,9 @@ Pipeline negation is distinct from literal exclamation marks
     (newline_list)))
 
 ==================
-Escaped newlines preserve negation token boundaries
+Pipeline negation permits continued layout before its command
 ==================
 
-!\
-echo
 ! \
   echo
 
@@ -301,19 +293,6 @@ echo
   leading: (linebreak
     (newline_list))
   commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)
-                      (line_continuation)
-                      (literal))))))))))
-    separator: (newline_list)
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -356,16 +335,8 @@ first |
                     (word
                       (literal)))))
               (linebreak
-                (newline_list))
-              command: (command
-                recovery: (command_recovery)))))))
-    separator: (newline_list
-      (comment))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
+                (newline_list
+                  (comment)))
               command: (command
                 body: (simple_command
                   name: (cmd_name
@@ -423,16 +394,8 @@ first && second || third &&
                       (literal)))))))
           operator: (and_if)
           (linebreak
-            (newline_list))
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                recovery: (command_recovery)))))))
-    separator: (newline_list
-      (comment))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
+            (newline_list
+              (comment)))
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
@@ -444,7 +407,7 @@ first && second || third &&
     (newline_list)))
 
 ==================
-Escaped newlines distinguish command boundaries from operator interiors
+Line continuations preserve command boundaries before operators
 ==================
 
 first\
@@ -453,10 +416,6 @@ third\
   ||fourth
 fifth\
   &&sixth
-seventh |\
-| eighth
-ninth &\
-& tenth
 
 ---
 
@@ -513,46 +472,6 @@ ninth &\
                       (literal)))))))
           (line_continuation)
           operator: (and_if)
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))
-          operator: (or_if
-            (line_continuation))
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))
-          operator: (and_if
-            (line_continuation))
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
@@ -908,9 +827,8 @@ c; d  \
  \
 | e  \
  \
-&& f; g &\
-\
-& h
+&& f
+
 
 ---
 
@@ -975,100 +893,8 @@ c; d  \
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal))))))))
-        separator: (separator_op)
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))
-          operator: (and_if
-            (line_continuation)
-            (line_continuation))
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
                       (literal)))))))))))
   trailing: (linebreak
-    (newline_list)))
-
-==================
-A newline list owns continuations immediately before its raw newline
-==================
-
-echo first\
-
-second
-echo third\
- \
-
-fourth
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal))))))))))
-    (newline_list
-      (line_continuation))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal))))))))))
-    (newline_list
-      (line_continuation)
-      (line_continuation))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
     (newline_list)))
 
 ==================
@@ -1079,10 +905,6 @@ Repeated continuations remain layout at command and connector boundaries
 \
 :
 first|\
-\
-next
-first| \
- \
 next
 first\
 \
@@ -1118,25 +940,6 @@ first\
                     (word
                       (literal)))))
               (line_continuation)
-              (line_continuation)
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))
-              (line_continuation)
-              (line_continuation)
               command: (command
                 body: (simple_command
                   name: (cmd_name
@@ -1164,43 +967,6 @@ first\
                     (word
                       (literal)))))))))))
   trailing: (linebreak
-    (newline_list)))
-
-==================
-A compound list owns a removed newline before its semicolon separator
-==================
-
-{ :\
-; }
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (brace_group
-                    (compound_list
-                      (term
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (simple_command
-                                  (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      (line_continuation)
-                      (separator
-                        (separator_op))))))))))))
-  (linebreak
     (newline_list)))
 
 ==================
@@ -1334,6 +1100,9 @@ regular_file_identity() {
                                                                     (io_file
                                                                       (filename
                                                                         (word
+                                                                          (literal)
+                                                                          (literal)
+                                                                          (literal)
                                                                           (literal)))))))))))))))))))))))
                               (or_if)
                               (pipeline
@@ -1385,6 +1154,9 @@ regular_file_identity() {
                                                                     (io_file
                                                                       (filename
                                                                         (word
+                                                                          (literal)
+                                                                          (literal)
+                                                                          (literal)
                                                                           (literal)))))))))))))))))))))))
                               (or_if)
                               (pipeline
@@ -1769,15 +1541,16 @@ after &&
               (command
                 (command_recovery)))))))))
 
-==================
-List operators expose removed line continuations in source order
-==================
+================================================================================
+Compound command tails leave horizontal layout to following separators
+================================================================================
 
-first &\
-& second |\
-| third
+if :; then :; fi & after_if
+(:)
 
----
+after_blank
+
+--------------------------------------------------------------------------------
 
 (program
   (linebreak
@@ -1789,21 +1562,67 @@ first &\
           (pipeline
             (pipe_sequence
               (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))
-          (and_if
-            (line_continuation))
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (then_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (fi_keyword)))))))
+        (separator_op)
+        (and_or
           (pipeline
             (pipe_sequence
               (command
                 (simple_command
                   (cmd_name
                     (word
-                      (literal)))))))
-          (or_if
-            (line_continuation))
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (subshell
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
           (pipeline
             (pipe_sequence
               (command

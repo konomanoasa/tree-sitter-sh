@@ -1,0 +1,7 @@
+printf '%s\n' 'single\
+quote' $'dollar\
+quote'
+cat <<'EOF'
+quoted\
+body
+EOF

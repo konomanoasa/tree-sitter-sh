@@ -373,7 +373,6 @@ fourth
                       (literal)))))))))))
   (linebreak
     (newline_list)))
-
 ==================
 A missing here-document delimiter does not capture later commands
 ==================

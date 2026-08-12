@@ -502,6 +502,62 @@ if :; then :; fi>if_output; next
     (newline_list)))
 
 ==================
+A redirect target suffix cannot become a following descriptor
+==================
+
+<""2>x
+<${x}2>y
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (double_quoted)
+                            (literal)))))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (parameter_expansion
+                              parameter: (variable_name))
+                            (literal)))))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 Every ordinary redirection operator has a structured target
 ==================
 
@@ -565,50 +621,6 @@ command < input >output >|forced >>append <&0 >&1 <>state
                           word: (word
                             (literal))))))))))))))
   trailing: (linebreak
-    (newline_list)))
-
-==================
-Removed newlines preserve descriptor duplication operators
-==================
-
-printf value <\
-&0 >\
-&1
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal))
-                    (io_redirect
-                      (io_file
-                        (lessand
-                          (line_continuation))
-                        (filename
-                          (word
-                            (literal)))))
-                    (io_redirect
-                      (io_file
-                        (greatand
-                          (line_continuation))
-                        (filename
-                          (word
-                            (literal))))))))))))))
-  (linebreak
     (newline_list)))
 
 ==================
@@ -1038,13 +1050,12 @@ command >file#suffix >\#escaped >'#quoted'
     (newline_list)))
 
 ==================
-Escaped newlines are removed before redirection recognition
+Redirection token boundaries preserve intervening continuations
 ==================
 
 2\
 >out command >\
-target <pre\
-post
+target
 
 ---
 
@@ -1076,13 +1087,7 @@ post
                         (line_continuation)
                         filename: (filename
                           word: (word
-                            (literal)))))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal
-                              (line_continuation)))))))))))))))
+                            (literal))))))))))))))
   trailing: (linebreak
     (newline_list)))
 
@@ -1436,11 +1441,10 @@ holder() { :; } 2>>
     (newline_list)))
 
 ==================
-Redirection operators expose removed line continuations in source order
+Closed compound and function commands retain trailing redirects
 ==================
 
-printf >\
->out
+printf '%s\n' "$({ :; } >group)" "$(holder() { :; } >function)"
 
 ---
 
@@ -1459,12 +1463,169 @@ printf >\
                     (word
                       (literal)))
                   (cmd_suffix
-                    (io_redirect
-                      (io_file
-                        (dgreat
-                          (line_continuation))
-                        (filename
-                          (word
-                            (literal))))))))))))))
+                    (word
+                      (single_quoted
+                        (single_quote_content)))
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (brace_group
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))))))))
+                                                (separator
+                                                  (separator_op)))))
+                                          (redirect_list
+                                            (io_redirect
+                                              (io_file
+                                                (filename
+                                                  (word
+                                                    (literal)))))))))))))))))
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (function_definition
+                                            (fname)
+                                            (function_body
+                                              (compound_command
+                                                (brace_group
+                                                  (compound_list
+                                                    (term
+                                                      (and_or
+                                                        (pipeline
+                                                          (pipe_sequence
+                                                            (command
+                                                              (simple_command
+                                                                (cmd_name
+                                                                  (word
+                                                                    (literal)))))))))
+                                                    (separator
+                                                      (separator_op)))))
+                                              (redirect_list
+                                                (io_redirect
+                                                  (io_file
+                                                    (filename
+                                                      (word
+                                                        (literal))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Redirected closed commands preserve their real reserved closers
+==================
+
+if (:) >out then :; fi
+{ (:) >out }
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (compound_command
+                                  (subshell
+                                    (compound_list
+                                      (term
+                                        (and_or
+                                          (pipeline
+                                            (pipe_sequence
+                                              (command
+                                                (simple_command
+                                                  (cmd_name
+                                                    (word
+                                                      (literal))))))))))))
+                                (redirect_list
+                                  (io_redirect
+                                    (io_file
+                                      (filename
+                                        (word
+                                          (literal))))))))))))
+                    (then_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (fi_keyword)))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (brace_group
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (compound_command
+                                  (subshell
+                                    (compound_list
+                                      (term
+                                        (and_or
+                                          (pipeline
+                                            (pipe_sequence
+                                              (command
+                                                (simple_command
+                                                  (cmd_name
+                                                    (word
+                                                      (literal))))))))))))
+                                (redirect_list
+                                  (io_redirect
+                                    (io_file
+                                      (filename
+                                        (word
+                                          (literal)))))))))))))))))))))
   (linebreak
     (newline_list)))

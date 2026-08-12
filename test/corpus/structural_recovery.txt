@@ -142,6 +142,76 @@ printf '%s\n' "${name:"
     (newline_list)))
 
 ================================================================================
+Nested EOF recovery preserves every compound command owner
+================================================================================
+
+worker() {
+  if true
+  then
+    printf yes
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (function_definition
+                  (fname)
+                  (function_body
+                    (compound_command
+                      (brace_group
+                        (compound_list
+                          (linebreak
+                            (newline_list))
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (compound_command
+                                      (if_clause
+                                        (if_keyword)
+                                        (compound_list
+                                          (term
+                                            (and_or
+                                              (pipeline
+                                                (pipe_sequence
+                                                  (command
+                                                    (simple_command
+                                                      (cmd_name
+                                                        (word
+                                                          (literal)))))))))
+                                          (separator
+                                            (newline_list)))
+                                        (then_keyword)
+                                        (compound_list
+                                          (linebreak
+                                            (newline_list))
+                                          (term
+                                            (and_or
+                                              (pipeline
+                                                (pipe_sequence
+                                                  (command
+                                                    (simple_command
+                                                      (cmd_name
+                                                        (word
+                                                          (literal)))
+                                                      (cmd_suffix
+                                                        (word
+                                                          (literal)))))))))
+                                          (separator
+                                            (newline_list)))
+                                        (compound_command_recovery)))))))))
+                        (compound_command_recovery)))))))))))))
+
+================================================================================
 A redirection without a target recovers before a raw newline
 ================================================================================
 
@@ -533,5 +603,280 @@ printf "${}"
                       (double_quoted
                         (parameter_expansion
                           (parameter_expansion_recovery)))))))))))))
+  (linebreak
+    (newline_list)))
+
+================================================================================
+An outer if owns fi after an inner loop misses done
+================================================================================
+
+if x; then while y; do z; fi
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (then_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (compound_command
+                                  (while_clause
+                                    (while_keyword)
+                                    (compound_list
+                                      (term
+                                        (and_or
+                                          (pipeline
+                                            (pipe_sequence
+                                              (command
+                                                (simple_command
+                                                  (cmd_name
+                                                    (word
+                                                      (literal)))))))))
+                                      (separator
+                                        (separator_op)))
+                                    (do_group
+                                      (do_keyword)
+                                      (compound_list
+                                        (term
+                                          (and_or
+                                            (pipeline
+                                              (pipe_sequence
+                                                (command
+                                                  (simple_command
+                                                    (cmd_name
+                                                      (word
+                                                        (literal)))))))))
+                                        (separator
+                                          (separator_op)))
+                                      (compound_command_recovery))))))))))
+                    (fi_keyword))))))))))
+  (linebreak
+    (newline_list)))
+
+================================================================================
+Outer group delimiters remain available after a nested if recovers
+================================================================================
+
+{ if x; then y; }
+(if x; then y;)
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (brace_group
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (compound_command
+                                  (if_clause
+                                    (if_keyword)
+                                    (compound_list
+                                      (term
+                                        (and_or
+                                          (pipeline
+                                            (pipe_sequence
+                                              (command
+                                                (simple_command
+                                                  (cmd_name
+                                                    (word
+                                                      (literal)))))))))
+                                      (separator
+                                        (separator_op)))
+                                    (then_keyword)
+                                    (compound_list
+                                      (term
+                                        (and_or
+                                          (pipeline
+                                            (pipe_sequence
+                                              (command
+                                                (simple_command
+                                                  (cmd_name
+                                                    (word
+                                                      (literal)))))))))
+                                      (separator
+                                        (separator_op)))
+                                    (compound_command_recovery)))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (subshell
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (compound_command
+                                  (if_clause
+                                    (if_keyword)
+                                    (compound_list
+                                      (term
+                                        (and_or
+                                          (pipeline
+                                            (pipe_sequence
+                                              (command
+                                                (simple_command
+                                                  (cmd_name
+                                                    (word
+                                                      (literal)))))))))
+                                      (separator
+                                        (separator_op)))
+                                    (then_keyword)
+                                    (compound_list
+                                      (term
+                                        (and_or
+                                          (pipeline
+                                            (pipe_sequence
+                                              (command
+                                                (simple_command
+                                                  (cmd_name
+                                                    (word
+                                                      (literal)))))))))
+                                      (separator
+                                        (separator_op)))
+                                    (compound_command_recovery))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+================================================================================
+Empty required lists recover without stealing their real closers
+================================================================================
+
+if x; then fi
+while x; do done
+for x; do done
+after
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (then_keyword)
+                    (compound_list
+                      (compound_command_recovery))
+                    (fi_keyword)))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (while_clause
+                    (while_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (do_group
+                      (do_keyword)
+                      (compound_list
+                        (compound_command_recovery))
+                      (done_keyword))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (for_clause
+                    (for_keyword)
+                    (name)
+                    (sequential_sep)
+                    (do_group
+                      (do_keyword)
+                      (compound_list
+                        (compound_command_recovery))
+                      (done_keyword))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
   (linebreak
     (newline_list)))

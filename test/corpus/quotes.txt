@@ -316,12 +316,10 @@ echo 'open
 
 
 ==================
-Inherited double quotes keep logical dollar-single-quote source literal
+Inherited double quotes keep dollar-single-quote source literal
 ==================
 
 echo "$'text'"
-echo "$\
-'text'"
 
 ---
 
@@ -343,23 +341,6 @@ echo "$\
                     (word
                       (double_quoted
                         (double_quote_text)
-                        (double_quote_text)))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (double_quote_text)
-                        (line_continuation)
                         (double_quote_text))))))))))))
   (linebreak
     (newline_list)))

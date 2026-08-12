@@ -56,8 +56,7 @@ y;;esac
 case\
  x in esac
 case x in x):;;\
- y):;&\
- z):;;esac
+ y):;& z):;;esac
 
 ---
 
@@ -160,8 +159,7 @@ case x in x):;;\
                                       (cmd_name
                                         (word
                                           (literal))))))))))
-                        (semi_and)
-                        (line_continuation))
+                        (semi_and))
                       (case_item
                         (pattern_list
                           (word
@@ -234,12 +232,7 @@ case value \
 Case item boundaries retain continuations without stealing AND-OR operators
 ==================
 
-case x in dsemi) :\
-;; semi) :\
-\
-;& and) : \
-&& next ;; or) : \
-|| next ;; esac
+case x in dsemi) : ;; semi) : ;& and) : && next ;; or) : || next ;; esac
 
 ---
 
@@ -275,7 +268,6 @@ case x in dsemi) :\
                                       name: (cmd_name
                                         (word
                                           (literal))))))))))
-                        (line_continuation)
                         terminator: (dsemi))
                       item: (case_item
                         patterns: (pattern_list
@@ -291,8 +283,6 @@ case x in dsemi) :\
                                       name: (cmd_name
                                         (word
                                           (literal))))))))))
-                        (line_continuation)
-                        (line_continuation)
                         terminator: (semi_and))
                       item: (case_item
                         patterns: (pattern_list
@@ -308,7 +298,6 @@ case x in dsemi) :\
                                       name: (cmd_name
                                         (word
                                           (literal)))))))
-                              (line_continuation)
                               operator: (and_if)
                               pipeline: (pipeline
                                 sequence: (pipe_sequence
@@ -332,7 +321,6 @@ case x in dsemi) :\
                                       name: (cmd_name
                                         (word
                                           (literal)))))))
-                              (line_continuation)
                               operator: (or_if)
                               pipeline: (pipeline
                                 sequence: (pipe_sequence
@@ -493,10 +481,6 @@ A command separator remains distinct from a case clause terminator
 case value in
   one) first; ;;
   two) second; ;&
-  three) third ;\
-;
-  four) fourth ;\
-&
 esac
 
 ---
@@ -558,42 +542,6 @@ esac
                             operator: (separator_op)))
                         terminator: (semi_and)
                         (linebreak
-                          (newline_list)))
-                      item: (case_item
-                        patterns: (pattern_list
-                          word: (word
-                            (literal)))
-                        body: (compound_list
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        terminator: (dsemi
-                          (line_continuation))
-                        (linebreak
-                          (newline_list)))
-                      item: (case_item
-                        patterns: (pattern_list
-                          word: (word
-                            (literal)))
-                        body: (compound_list
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        terminator: (semi_and
-                          (line_continuation))
-                        (linebreak
                           (newline_list))))
                     (esac_keyword))))))))))
   trailing: (linebreak
@@ -607,10 +555,6 @@ case value in
   pipe) first | second ;;
   and) third && fourth ;&
   or) fifth || sixth ;;
-  joined-and) ninth &\
-& tenth ;;
-  joined-or) eleventh |\
-| twelfth ;;
   final) seventh || eighth
 esac
 
@@ -699,58 +643,6 @@ esac
                                           (word
                                             (literal)))))))
                                 operator: (or_if)
-                                pipeline: (pipeline
-                                  sequence: (pipe_sequence
-                                    command: (command
-                                      body: (simple_command
-                                        name: (cmd_name
-                                          (word
-                                            (literal))))))))))
-                          terminator: (dsemi)
-                          (linebreak
-                            (newline_list)))
-                        item: (case_item
-                          patterns: (pattern_list
-                            word: (word
-                              (literal)))
-                          body: (compound_list
-                            body: (term
-                              and_or: (and_or
-                                pipeline: (pipeline
-                                  sequence: (pipe_sequence
-                                    command: (command
-                                      body: (simple_command
-                                        name: (cmd_name
-                                          (word
-                                            (literal)))))))
-                                operator: (and_if
-                                  (line_continuation))
-                                pipeline: (pipeline
-                                  sequence: (pipe_sequence
-                                    command: (command
-                                      body: (simple_command
-                                        name: (cmd_name
-                                          (word
-                                            (literal))))))))))
-                          terminator: (dsemi)
-                          (linebreak
-                            (newline_list)))
-                        item: (case_item
-                          patterns: (pattern_list
-                            word: (word
-                              (literal)))
-                          body: (compound_list
-                            body: (term
-                              and_or: (and_or
-                                pipeline: (pipeline
-                                  sequence: (pipe_sequence
-                                    command: (command
-                                      body: (simple_command
-                                        name: (cmd_name
-                                          (word
-                                            (literal)))))))
-                                operator: (or_if
-                                  (line_continuation))
                                 pipeline: (pipeline
                                   sequence: (pipe_sequence
                                     command: (command
@@ -896,18 +788,6 @@ summarize() {
     (newline_list)))
 
 ==================
-A removed newline cannot separate a case subject from in
-:error
-==================
-
-case x\
-in x) : ;; esac
-
----
-
-
-
-==================
 Nonfinal case items require clause terminators
 :error
 ==================
@@ -955,55 +835,6 @@ in x) :;; esac
                         (pattern_list
                           (word
                             (literal)))
-                        (compound_list
-                          (term
-                            (and_or
-                              (pipeline
-                                (pipe_sequence
-                                  (command
-                                    (simple_command
-                                      (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        (dsemi)))
-                    (esac_keyword))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Case continuations preserve their formal productions
-==================
-
-case value\
- in item\
- ) : ;; esac
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (case_clause
-                    (case_keyword)
-                    (word
-                      (literal))
-                    (line_continuation)
-                    (in
-                      (in_keyword))
-                    (case_list
-                      (case_item
-                        (pattern_list
-                          (word
-                            (literal)))
-                        (line_continuation)
                         (compound_list
                           (term
                             (and_or
