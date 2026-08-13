@@ -1,22 +1,100 @@
 ==================
-Adjacent prefix increment spelling is not nested unary arithmetic
-:error
+Adjacent prefix increment spelling leaves arithmetic for command substitution
 ==================
 
 : "$((++a))"
 
 ---
 
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (subshell
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
 ==================
-Adjacent prefix decrement spelling is not nested unary arithmetic
-:error
+Adjacent prefix decrement spelling leaves arithmetic for command substitution
 ==================
 
 : "$((--a))"
 
 ---
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (subshell
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 A removed newline does not split prefix increment spelling
@@ -808,26 +886,108 @@ printf '%s\n' "$((a ${operator} (b + c)))"
     (newline_list)))
 
 ==================
-Incomplete arithmetic expressions remain syntax errors
-:error
+A missing operand before the closers leaves arithmetic for command substitution
 ==================
 
 printf "$((1 + ))"
 
 ---
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (subshell
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            (cmd_suffix
+                                                              (word
+                                                                (literal))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
-Top-level comma is not a portable POSIX arithmetic operator
-:error
+A top-level comma leaves arithmetic for command substitution
 ==================
 
 printf "$((1, 2))"
 
 ---
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (subshell
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            (cmd_suffix
+                                                              (word
+                                                                (literal))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 Parenthesized arithmetic variables remain valid assignment left operands
@@ -881,12 +1041,217 @@ A parenthesized non-lvalue cannot become an assignment left operand
 
 ---
 
+
+
 ==================
-A missing arithmetic operand preserves its boundary continuation
-:error
+A continuation before the closers stays in the command-substitution reading
 ==================
 
 : "$((1 +\
 ))"
 
 ---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (subshell
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            (cmd_suffix
+                                                              (word
+                                                                (literal))))))))))
+                                              (line_continuation)))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Unary signs bind adjacent static operands
+==================
+
+: "$((-x))" "$((+x + y))" "$((1+-2))" "$((-x + $y))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_unary_expression
+                            (arithmetic_operator)
+                            (arithmetic_variable)))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_binary_expression
+                            (arithmetic_unary_expression
+                              (arithmetic_operator)
+                              (arithmetic_variable))
+                            (arithmetic_operator)
+                            (arithmetic_variable)))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_binary_expression
+                            (arithmetic_number)
+                            (arithmetic_operator)
+                            (arithmetic_unary_expression
+                              (arithmetic_operator)
+                              (arithmetic_number))))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_binary_expression
+                            (arithmetic_unary_expression
+                              (arithmetic_operator)
+                              (arithmetic_variable))
+                            (arithmetic_operator)
+                            (parameter_expansion
+                              (variable_name)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Sign runs adjacent to a runtime fragment stay flat source
+==================
+
+: "$((-x$y))" "$((1+x$y))" "$((-1$y))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_dynamic_expression
+                            (arithmetic_operator)
+                            (arithmetic_variable)
+                            (parameter_expansion
+                              (variable_name))))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_dynamic_expression
+                            (arithmetic_number)
+                            (arithmetic_operator)
+                            (arithmetic_variable)
+                            (parameter_expansion
+                              (variable_name))))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_dynamic_expression
+                            (arithmetic_operator)
+                            (arithmetic_number)
+                            (parameter_expansion
+                              (variable_name)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Adjacent repeated signs between operands leave arithmetic for command substitution
+==================
+
+: $((a--b))
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (command_substitution
+                        (command_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (compound_command
+                                          (subshell
+                                            (compound_list
+                                              (term
+                                                (and_or
+                                                  (pipeline
+                                                    (pipe_sequence
+                                                      (command
+                                                        (simple_command
+                                                          (cmd_name
+                                                            (word
+                                                              (literal)))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))

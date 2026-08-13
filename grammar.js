@@ -1,8 +1,6 @@
-/**
- * @author konomanoasa
- * @license MIT
- */
-
+// Tree-sitter's regex dialect requires an escaped left bracket inside a
+// character class, which Biome strips from regex literals, so these two
+// patterns stay strings.
 const LITERAL_TOKEN_PATTERN_SOURCE = "[^ \\t\\n;&|<>()/\\\\'\"$`*?\\[\\]~:#=]+";
 const PARAMETER_PATTERN_TEXT_PATTERN_SOURCE = "[^}\\n/'\"$`\\\\*?\\[\\]~]+";
 const LITERAL_TOKEN_PATTERN = RegExp(LITERAL_TOKEN_PATTERN_SOURCE);
@@ -12,13 +10,30 @@ const PARAMETER_PATTERN_TEXT_PATTERN = RegExp(
 
 const PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN = /[^ \t\n;&|<>()\\'"$`:.=\]-]/;
 const PARAMETER_DEFERRED_EXTRA_CHARACTER_PATTERN = /[ \t\n;&|<>()]/;
-// POSIX requires a complete arithmetic interpretation of `$((...))` to win
-// over the otherwise valid `$( (...) )` command-substitution interpretation.
-// `compound_list` contributes dynamic precedence at each nested subshell, so
-// the arithmetic expansion and each arithmetic grouping must do the same.
-const ARITHMETIC_AMBIGUITY_PRECEDENCE = 100;
 const ARITHMETIC_SOURCE_PRECEDENCE = 1;
 const ASSIGNMENT_WORD_PRECEDENCE = 3;
+
+// One row per POSIX binary-operator precedence level, from lowest to highest
+// binding strength. Each row derives the level's expression, binary
+// expression, operator segment, and operator token rules, plus its external
+// operator boundary reference.
+const ARITHMETIC_BINARY_LEVELS = [
+  ["logical_or", ["||"]],
+  ["logical_and", ["&&"]],
+  ["bitwise_or", ["|"]],
+  ["bitwise_xor", ["^"]],
+  ["bitwise_and", ["&"]],
+  ["equality", ["==", "!="]],
+  ["relational", ["<=", ">=", "<", ">"]],
+  ["shift", ["<<", ">>"]],
+  ["additive", ["+", "-"]],
+  ["multiplicative", ["*", "/", "%"]],
+];
+
+const arithmeticBinaryLevelSymbols = ($, suffix) =>
+  ARITHMETIC_BINARY_LEVELS.map(
+    ([level]) => $[`_arithmetic_${level}_${suffix}`],
+  );
 
 const PATTERN_PRECEDENCE = {
   literalFallback: -2,
@@ -27,6 +42,19 @@ const PATTERN_PRECEDENCE = {
   range: 3,
   specialElement: 4,
 };
+
+// The quote, escape, expansion, and substitution parts a word can contain, in
+// the one order every containing choice uses.
+const structuredSourceParts = ($) => [
+  $.escaped_character,
+  $.single_quoted,
+  $.double_quoted,
+  $.dollar_single_quoted,
+  $.parameter_expansion,
+  $.command_substitution,
+  $.arithmetic_expansion,
+  $.backquote_substitution,
+];
 
 const incompleteBracketLiteral = ($, start, part, end) =>
   prec.dynamic(
@@ -55,7 +83,7 @@ const parameterIncompleteBracketLiteralAtom = ($) =>
     $._newline,
   );
 
-const tildeExpansion = (_$, user, end = null) =>
+const tildeExpansion = (user, end = null) =>
   choice(
     prec(2, "~"),
     prec.dynamic(
@@ -84,19 +112,19 @@ const incompleteBracketLiteralPart = (
     $.pattern_star_source,
     $.pattern_question_source,
     continuation,
-    $.escaped_character,
-    $.single_quoted,
-    $.double_quoted,
-    $.dollar_single_quoted,
-    $.parameter_expansion,
-    $.command_substitution,
-    $.arithmetic_expansion,
-    $.backquote_substitution,
+    ...structuredSourceParts($),
   );
 
 const reservedWord = ($, marker) => seq(marker, $._reserved_word_source);
 
 const lineContinuationRun = ($) => prec.right(1, repeat1($.line_continuation));
+
+// A here-document body reaching its end synchronizes every construct that is
+// still open inside the body at that boundary.
+const hereDocumentBoundaryRecovery = ($) =>
+  alias($._here_document_boundary, $.here_document_end_recovery);
+
+const parameterBraceClose = ($) => choice("}", hereDocumentBoundaryRecovery($));
 
 const continuedWordSeparator = ($) =>
   seq(
@@ -146,6 +174,55 @@ const arithmeticUnaryExpression = (
     ),
   );
 
+const arithmeticBinaryLevelRules = () => {
+  const rules = {};
+  ARITHMETIC_BINARY_LEVELS.forEach(([level], index) => {
+    const following = ARITHMETIC_BINARY_LEVELS[index + 1];
+    const next = ($) =>
+      following === undefined
+        ? $._arithmetic_unary_expression
+        : $[`_arithmetic_${following[0]}_expression`];
+    rules[`_arithmetic_${level}_expression`] = ($) =>
+      choice(
+        alias(
+          $[`_arithmetic_${level}_binary_expression`],
+          $.arithmetic_binary_expression,
+        ),
+        next($),
+      );
+    rules[`_arithmetic_${level}_binary_expression`] = ($) =>
+      arithmeticBinaryExpression(
+        $,
+        $[`_arithmetic_${level}_expression`],
+        next($),
+        $[`_arithmetic_${level}_operator_segment`],
+      );
+  });
+  return rules;
+};
+
+const arithmeticBinaryOperatorSegmentRules = () => {
+  const rules = {};
+  for (const [level] of ARITHMETIC_BINARY_LEVELS) {
+    rules[`_arithmetic_${level}_operator_segment`] = ($) =>
+      arithmeticOperatorSegment(
+        $,
+        $[`_arithmetic_${level}_operator_boundary`],
+        $[`_arithmetic_${level}_operator`],
+      );
+  }
+  return rules;
+};
+
+const arithmeticBinaryOperatorRules = () => {
+  const rules = {};
+  for (const [level, operators] of ARITHMETIC_BINARY_LEVELS) {
+    rules[`_arithmetic_${level}_operator`] = (_) =>
+      operators.length === 1 ? operators[0] : choice(...operators);
+  }
+  return rules;
+};
+
 const arithmeticLayoutUnit = ($) =>
   choice($.line_continuation, $._blank, $._newline);
 
@@ -159,15 +236,12 @@ const arithmeticLvalue = ($) =>
   );
 
 const parenthesizedArithmetic = ($, expression) =>
-  prec.dynamic(
-    ARITHMETIC_AMBIGUITY_PRECEDENCE,
-    seq(
-      "(",
-      optional($._arithmetic_layout),
-      field("expression", expression),
-      arithmeticClosingLayout($),
-      ")",
-    ),
+  seq(
+    "(",
+    optional($._arithmetic_layout),
+    field("expression", expression),
+    arithmeticClosingLayout($),
+    ")",
   );
 
 const continuedBlankLineLayout = ($) =>
@@ -180,7 +254,7 @@ const continuedBlankLineLayout = ($) =>
 const arithmeticExpansionEnd = ($) =>
   choice(
     seq(")", $._arithmetic_second_right_parenthesis),
-    alias($._here_document_boundary, $.here_document_end_recovery),
+    hereDocumentBoundaryRecovery($),
   );
 
 const linebreakLayout = ($) =>
@@ -202,15 +276,8 @@ const continuedLinebreakLayout = ($) =>
     ),
   );
 
-const reservedWordSeparator = ($) => $._word_separator;
-
-const wordlistSeparator = ($) => $._word_separator;
-
 const reservedWordLinebreak = ($) =>
-  choice(
-    seq($.linebreak, optional($._horizontal_layout)),
-    reservedWordSeparator($),
-  );
+  choice(seq($.linebreak, optional($._horizontal_layout)), $._word_separator);
 
 const continuationBoundaryLayout = ($, marker) =>
   prec.right(
@@ -306,7 +373,7 @@ const backquoteDelimiter = (plain, prefix) =>
 const commandSubstitutionEnd = ($) =>
   choice(
     seq(closedCommandBoundaryLayout($), ")"),
-    alias($._here_document_boundary, $.here_document_end_recovery),
+    hereDocumentBoundaryRecovery($),
   );
 
 const commandSubstitution = ($, start) =>
@@ -326,18 +393,27 @@ const patternSpecialStart = ($, marker) =>
 const patternSpecialEnd = ($, marker) =>
   seq(marker, repeat($.line_continuation), $._literal_right_bracket);
 
-const patternCharacterClassStructuredContent = ($) =>
-  choice(
-    $.line_continuation,
-    $.escaped_character,
-    $.single_quoted,
-    $.double_quoted,
-    $.dollar_single_quoted,
-    $.parameter_expansion,
-    $.command_substitution,
-    $.arithmetic_expansion,
-    $.backquote_substitution,
+const patternSpecialClassSource = ($, marker, characterSource) =>
+  prec.dynamic(
+    PATTERN_PRECEDENCE.specialElement,
+    seq(
+      patternSpecialStart($, marker),
+      repeat1(
+        field(
+          "value",
+          choice(
+            characterSource,
+            $.line_continuation,
+            ...structuredSourceParts($),
+          ),
+        ),
+      ),
+      patternSpecialEnd($, marker),
+    ),
   );
+
+const patternCharacterClassStructuredContent = ($) =>
+  choice($.line_continuation, ...structuredSourceParts($));
 
 const patternCharacterClassBody = ($) =>
   choice(
@@ -409,14 +485,7 @@ const patternDeferredBracketRangeEndpoint = ($, character) =>
     alias(character, $.pattern_bracket_character_source),
     $.pattern_collating_symbol_source,
     $.pattern_bracket_hyphen_source,
-    $.escaped_character,
-    $.single_quoted,
-    $.double_quoted,
-    $.dollar_single_quoted,
-    $.parameter_expansion,
-    $.command_substitution,
-    $.arithmetic_expansion,
-    $.backquote_substitution,
+    ...structuredSourceParts($),
   );
 
 const patternDeferredBracketMember = ($, character, range) =>
@@ -427,14 +496,7 @@ const patternDeferredBracketMember = ($, character, range) =>
     alias(range, $.pattern_bracket_range_source),
     alias(character, $.pattern_bracket_character_source),
     $.pattern_bracket_hyphen_source,
-    $.escaped_character,
-    $.single_quoted,
-    $.double_quoted,
-    $.dollar_single_quoted,
-    $.parameter_expansion,
-    $.command_substitution,
-    $.arithmetic_expansion,
-    $.backquote_substitution,
+    ...structuredSourceParts($),
   );
 
 const bracedParameterStart = ($) => choice("${", seq(backquoteDollar($), "{"));
@@ -445,14 +507,13 @@ const parameterExpansion = ($, bracedExpansion) =>
     choice(
       seq(
         choice(seq($._unbraced_parameter_start, "$"), backquoteDollar($)),
-        repeat($.line_continuation),
         field("parameter", $._unbraced_parameter),
       ),
       seq(
         bracedParameterStart($),
         repeat($.line_continuation),
         choice(
-          alias($._here_document_boundary, $.here_document_end_recovery),
+          hereDocumentBoundaryRecovery($),
           bracedExpansion,
           prec.dynamic(
             -20,
@@ -503,10 +564,7 @@ const bracedParameterExpansion = ($, tail, tailRecoveryBoundary) =>
         repeat($.line_continuation),
         bracedParameterSource($, $._length_parameter),
         repeat($.line_continuation),
-        choice(
-          "}",
-          alias($._here_document_boundary, $.here_document_end_recovery),
-        ),
+        parameterBraceClose($),
       ),
     ),
     prec.dynamic(
@@ -532,24 +590,18 @@ const bracedParameterExpansion = ($, tail, tailRecoveryBoundary) =>
 
 const parameterExpansionTail = ($, word) =>
   choice(
-    choice("}", alias($._here_document_boundary, $.here_document_end_recovery)),
+    parameterBraceClose($),
     seq(
       field("operator", $.parameter_value_operator),
       repeat($.line_continuation),
       optional(field("word", word)),
-      choice(
-        "}",
-        alias($._here_document_boundary, $.here_document_end_recovery),
-      ),
+      parameterBraceClose($),
     ),
     seq(
       field("operator", $.parameter_pattern_operator),
       repeat($.line_continuation),
       optional(field("pattern", $.parameter_pattern)),
-      choice(
-        "}",
-        alias($._here_document_boundary, $.here_document_end_recovery),
-      ),
+      parameterBraceClose($),
     ),
   );
 
@@ -644,7 +696,7 @@ const compoundListField = ($, name) =>
 
 const terminatedCompoundList = ($) =>
   seq(
-    field("body", alias($._terminated_term, $.term)),
+    field("body", $.term),
     optional($._separator_boundary_layout),
     optional($._comment_boundary),
     field("terminator", $.separator),
@@ -708,7 +760,7 @@ const loopClause = ($, keyword) =>
 const recoveringForTail = ($) =>
   choice(
     seq(optional($._horizontal_layout), forTailRecoveryField($)),
-    seq(reservedWordSeparator($), field("body", $.do_group)),
+    seq($._word_separator, field("body", $.do_group)),
     seq(
       optional($._separator_boundary_layout),
       field("separator", $.sequential_sep),
@@ -721,7 +773,7 @@ const recoveringForTail = ($) =>
     seq(
       reservedWordLinebreak($),
       field("in", $.in),
-      optional(seq(wordlistSeparator($), field("words", $.wordlist))),
+      optional(seq($._word_separator, field("words", $.wordlist))),
       choice(
         seq(optional($._horizontal_layout), forTailRecoveryField($)),
         seq(
@@ -788,16 +840,12 @@ const redirectableCompoundCommand = ($, end = null) =>
     ),
   );
 
-const nameSource = ($) => $._name_token;
-
-const logicalPlainSource = (_$, chunk) => chunk;
-
 const plainChunk = (part) => prec.right(repeat1(part));
 
 const wordPlainChunk = ($) =>
   plainChunk(
     choice(
-      nameSource($),
+      $._name_token,
       $._literal_token,
       $._literal_right_bracket,
       $._literal_tilde,
@@ -810,7 +858,7 @@ const assignmentPlainChunk = ($) =>
   plainChunk(
     choice(
       "$",
-      nameSource($),
+      $._name_token,
       $._literal_token,
       $._literal_right_bracket,
       $._literal_equals,
@@ -973,20 +1021,12 @@ module.exports = grammar({
     $._arithmetic_assignment_operator_boundary,
     $._arithmetic_question_operator_boundary,
     $._arithmetic_colon_operator_boundary,
-    $._arithmetic_logical_or_operator_boundary,
-    $._arithmetic_logical_and_operator_boundary,
-    $._arithmetic_bitwise_or_operator_boundary,
-    $._arithmetic_bitwise_xor_operator_boundary,
-    $._arithmetic_bitwise_and_operator_boundary,
-    $._arithmetic_equality_operator_boundary,
-    $._arithmetic_relational_operator_boundary,
-    $._arithmetic_shift_operator_boundary,
-    $._arithmetic_additive_operator_boundary,
-    $._arithmetic_multiplicative_operator_boundary,
+    ...arithmeticBinaryLevelSymbols($, "operator_boundary"),
     $._arithmetic_plus_operand_boundary,
     $._arithmetic_minus_operand_boundary,
     $._arithmetic_operand_boundary,
     $._arithmetic_closing_boundary,
+    $._arithmetic_left_parenthesis,
     $._pattern_special_left_bracket,
     $._literal_hash,
     $._comment_boundary,
@@ -1007,6 +1047,7 @@ module.exports = grammar({
     $._closed_command_end,
     $._closed_simple_command_end,
     $._case_item_end,
+    $._case_item_ns_boundary,
     $._compound_command_recovery_boundary,
     $._subshell_recovery_boundary,
     $._direct_recovery_boundary,
@@ -1069,23 +1110,15 @@ module.exports = grammar({
     [$.newline_list],
     [$.here_document_sequence],
     [$.list],
-    [$._terminated_term],
-    [$.term, $._terminated_term],
-    [$.term, $._closed_term, $._terminated_term],
-    [
-      $._terminated_term,
-      $._closed_term,
-      $._recoverable_term,
-      $._boundary_recovered_term,
-    ],
+    [$.compound_list],
+    [$.compound_list, $._case_item_ns_compound_list],
+    [$.term],
+    [$.term, $._closed_term],
+    [$.term, $._closed_term, $._recoverable_term, $._boundary_recovered_term],
     [$.separator],
     [$.sequential_sep],
     [$.sequential_sep, $.linebreak],
     [$.case_list],
-    [$.case_item_ns],
-    [$.case_item_ns, $.case_item],
-    [$.compound_list, $.case_item_ns],
-    [$.compound_list, $.case_item_ns, $.case_item],
     [$.wordlist],
     [$.redirect_list],
     [$._pattern_bracket_member, $._pattern_bracket_range_endpoint],
@@ -1229,7 +1262,6 @@ module.exports = grammar({
     [$._double_quoted_braced_parameter_expansion],
     [$.case_item],
     [$._special_parameter_hash, $.parameter_length_operator],
-    [$.subshell, $._arithmetic_expansion_start],
     [$._arithmetic_source_part, $._arithmetic_primary_expression],
     [$._parenthesized_arithmetic_lvalue, $._arithmetic_primary_expression],
     [$._arithmetic_source_part, $.arithmetic_assignment_expression],
@@ -1551,19 +1583,6 @@ module.exports = grammar({
         ),
       ),
 
-    _terminated_term: ($) =>
-      seq(
-        field("and_or", $.and_or),
-        repeat(
-          seq(
-            optional($._separator_boundary_layout),
-            field("separator", $.separator),
-            optional($._horizontal_layout),
-            field("and_or", $.and_or),
-          ),
-        ),
-      ),
-
     _recoverable_term: ($) =>
       seq(
         optional($._term_prefix),
@@ -1720,9 +1739,9 @@ module.exports = grammar({
         alias($._function_body_recovery_boundary, $.compound_command_recovery),
       ),
 
-    fname: ($) => nameSource($),
+    fname: ($) => $._name_token,
 
-    name: ($) => nameSource($),
+    name: ($) => $._name_token,
 
     compound_command: ($) =>
       choice(
@@ -1937,8 +1956,33 @@ module.exports = grammar({
         patternClosingLayout($),
         ")",
         choice(
-          optional(seq(optional($._horizontal_layout), $.linebreak)),
-          prec.dynamic(10, field("body", $.compound_list)),
+          seq(
+            optional(seq(optional($._horizontal_layout), $.linebreak)),
+            $._case_item_ns_boundary,
+          ),
+          prec.dynamic(
+            10,
+            seq(
+              field(
+                "body",
+                alias($._case_item_ns_compound_list, $.compound_list),
+              ),
+              $._case_item_ns_boundary,
+            ),
+          ),
+        ),
+      ),
+
+    _case_item_ns_compound_list: ($) =>
+      prec.dynamic(
+        20,
+        seq(
+          optional(field("leading", $.linebreak)),
+          optional($._horizontal_layout),
+          choice(
+            terminatedCompoundList($),
+            prec.dynamic(300, field("body", alias($._closed_term, $.term))),
+          ),
         ),
       ),
 
@@ -2234,7 +2278,7 @@ module.exports = grammar({
         ),
       ),
 
-    variable_name: ($) => nameSource($),
+    variable_name: ($) => $._name_token,
 
     assignment_value: ($) => $._assignment_source_word,
 
@@ -2274,8 +2318,7 @@ module.exports = grammar({
         prec(-1, alias($._literal_slash, $.literal)),
       ),
 
-    _assignment_literal: ($) =>
-      prec.right(logicalPlainSource($, assignmentPlainChunk($))),
+    _assignment_literal: ($) => prec.right(assignmentPlainChunk($)),
 
     _assignment_colon_part: ($) =>
       prec.right(
@@ -2301,24 +2344,22 @@ module.exports = grammar({
     _source_word_tail: ($) =>
       repeat1(choice(alias($._literal_hash, $.literal), $._word_part)),
 
-    tilde_expansion: ($) => tildeExpansion($, $.tilde_user, $._word_tilde_end),
+    tilde_expansion: ($) => tildeExpansion($.tilde_user, $._word_tilde_end),
 
     _assignment_tilde_expansion: ($) =>
       tildeExpansion(
-        $,
         alias($._assignment_tilde_user, $.tilde_user),
         $._assignment_tilde_end,
       ),
 
     _parameter_tilde_expansion: ($) =>
       tildeExpansion(
-        $,
         alias($._parameter_tilde_user, $.tilde_user),
         $._word_tilde_end,
       ),
 
     _parameter_terminal_tilde_expansion: ($) =>
-      tildeExpansion($, alias($._parameter_tilde_user, $.tilde_user), null),
+      tildeExpansion(alias($._parameter_tilde_user, $.tilde_user), null),
 
     tilde_user: ($) =>
       seq(
@@ -2353,20 +2394,9 @@ module.exports = grammar({
         prec(-1, alias($._literal_slash, $.literal)),
       ),
 
-    _word_structured_part: ($) =>
-      choice(
-        $.escaped_character,
-        $.single_quoted,
-        $.double_quoted,
-        $.dollar_single_quoted,
-        $.parameter_expansion,
-        $.command_substitution,
-        $.arithmetic_expansion,
-        $.backquote_substitution,
-      ),
+    _word_structured_part: ($) => choice(...structuredSourceParts($)),
 
-    literal: ($) =>
-      prec.right(choice("$", logicalPlainSource($, wordPlainChunk($)))),
+    literal: ($) => prec.right(choice("$", wordPlainChunk($))),
 
     _word_bracket_part: ($) =>
       choice(
@@ -2516,14 +2546,7 @@ module.exports = grammar({
         $.pattern_bracket_character_source,
         $._pattern_operator_bracket_character,
         $.pattern_bracket_hyphen_source,
-        $.escaped_character,
-        $.single_quoted,
-        $.double_quoted,
-        $.dollar_single_quoted,
-        $.parameter_expansion,
-        $.command_substitution,
-        $.arithmetic_expansion,
-        $.backquote_substitution,
+        ...structuredSourceParts($),
       ),
 
     _parameter_pattern_bracket_member: ($) =>
@@ -2541,14 +2564,7 @@ module.exports = grammar({
         ),
         $._pattern_operator_bracket_character,
         $.pattern_bracket_hyphen_source,
-        $.escaped_character,
-        $.single_quoted,
-        $.double_quoted,
-        $.dollar_single_quoted,
-        $.parameter_expansion,
-        $.command_substitution,
-        $.arithmetic_expansion,
-        $.backquote_substitution,
+        ...structuredSourceParts($),
       ),
 
     pattern_bracket_range_source: ($) =>
@@ -2572,14 +2588,7 @@ module.exports = grammar({
         $._pattern_operator_bracket_character,
         $.pattern_collating_symbol_source,
         $.pattern_bracket_hyphen_source,
-        $.escaped_character,
-        $.single_quoted,
-        $.double_quoted,
-        $.dollar_single_quoted,
-        $.parameter_expansion,
-        $.command_substitution,
-        $.arithmetic_expansion,
-        $.backquote_substitution,
+        ...structuredSourceParts($),
       ),
 
     _parameter_pattern_bracket_range_endpoint: ($) =>
@@ -2591,14 +2600,7 @@ module.exports = grammar({
         $._pattern_operator_bracket_character,
         $.pattern_collating_symbol_source,
         $.pattern_bracket_hyphen_source,
-        $.escaped_character,
-        $.single_quoted,
-        $.double_quoted,
-        $.dollar_single_quoted,
-        $.parameter_expansion,
-        $.command_substitution,
-        $.arithmetic_expansion,
-        $.backquote_substitution,
+        ...structuredSourceParts($),
       ),
 
     pattern_bracket_character_source: ($) =>
@@ -2725,29 +2727,10 @@ module.exports = grammar({
     _pattern_character_class_colon: (_) => token.immediate(prec(-3, ":")),
 
     pattern_collating_symbol_source: ($) =>
-      prec.dynamic(
-        PATTERN_PRECEDENCE.specialElement,
-        seq(
-          patternSpecialStart($, $._pattern_collating_dot),
-          repeat1(
-            field(
-              "value",
-              choice(
-                $.pattern_collating_symbol_character_source,
-                $.line_continuation,
-                $.escaped_character,
-                $.single_quoted,
-                $.double_quoted,
-                $.dollar_single_quoted,
-                $.parameter_expansion,
-                $.command_substitution,
-                $.arithmetic_expansion,
-                $.backquote_substitution,
-              ),
-            ),
-          ),
-          patternSpecialEnd($, $._pattern_collating_dot),
-        ),
+      patternSpecialClassSource(
+        $,
+        $._pattern_collating_dot,
+        $.pattern_collating_symbol_character_source,
       ),
 
     pattern_collating_symbol_character_source: ($) =>
@@ -2762,29 +2745,10 @@ module.exports = grammar({
     _pattern_collating_dot: (_) => token.immediate(prec(-2, ".")),
 
     pattern_equivalence_class_source: ($) =>
-      prec.dynamic(
-        PATTERN_PRECEDENCE.specialElement,
-        seq(
-          patternSpecialStart($, $._pattern_equivalence_equals),
-          repeat1(
-            field(
-              "value",
-              choice(
-                $.pattern_equivalence_class_character_source,
-                $.line_continuation,
-                $.escaped_character,
-                $.single_quoted,
-                $.double_quoted,
-                $.dollar_single_quoted,
-                $.parameter_expansion,
-                $.command_substitution,
-                $.arithmetic_expansion,
-                $.backquote_substitution,
-              ),
-            ),
-          ),
-          patternSpecialEnd($, $._pattern_equivalence_equals),
-        ),
+      patternSpecialClassSource(
+        $,
+        $._pattern_equivalence_equals,
+        $.pattern_equivalence_class_character_source,
       ),
 
     pattern_equivalence_class_character_source: ($) =>
@@ -2803,10 +2767,7 @@ module.exports = grammar({
       seq(
         "'",
         optional($.single_quote_content),
-        choice(
-          "'",
-          alias($._here_document_boundary, $.here_document_end_recovery),
-        ),
+        choice("'", hereDocumentBoundaryRecovery($)),
       ),
 
     single_quote_content: ($) =>
@@ -2816,16 +2777,11 @@ module.exports = grammar({
       seq(
         '"',
         repeat(doubleQuotedPart($)),
-        choice(
-          '"',
-          alias($._here_document_boundary, $.here_document_end_recovery),
-        ),
+        choice('"', hereDocumentBoundaryRecovery($)),
       ),
 
     double_quote_text: ($) =>
-      prec.right(
-        choice("$", logicalPlainSource($, $._double_quote_text_chunk)),
-      ),
+      prec.right(choice("$", $._double_quote_text_chunk)),
 
     _double_quote_text_chunk: (_) =>
       prec.right(
@@ -2847,10 +2803,7 @@ module.exports = grammar({
               alias($._newline, $.dollar_single_quote_text),
             ),
           ),
-          choice(
-            "'",
-            alias($._here_document_boundary, $.here_document_end_recovery),
-          ),
+          choice("'", hereDocumentBoundaryRecovery($)),
         ),
       ),
 
@@ -2947,7 +2900,11 @@ module.exports = grammar({
 
     _special_parameter_hash: (_) => "#",
 
-    _special_parameter_except_hash: (_) => /[0*@?$!-]/,
+    // Spelled as string tokens: a regex token here loses the lexical
+    // preference contest against the operator strings in states where both
+    // are valid, which discards the string-length reading of "${#-}".
+    _special_parameter_except_hash: (_) =>
+      choice("0", "*", "@", "?", "$", "!", "-"),
 
     special_parameter: ($) =>
       choice($._special_parameter_except_hash, $._special_parameter_hash),
@@ -3149,17 +3106,10 @@ module.exports = grammar({
         ),
       ),
 
-    _parameter_pattern_literal: ($) =>
-      prec.right(logicalPlainSource($, parameterPlainChunk($))),
+    _parameter_pattern_literal: ($) => prec.right(parameterPlainChunk($)),
 
     _double_quoted_parameter_text: ($) =>
-      prec.right(
-        choice(
-          "$",
-          "\\",
-          logicalPlainSource($, $._double_quoted_parameter_text_chunk),
-        ),
-      ),
+      prec.right(choice("$", "\\", $._double_quoted_parameter_text_chunk)),
 
     _double_quoted_parameter_text_chunk: (_) =>
       token.immediate(prec(-1, /[^}"$`\\\n]+/)),
@@ -3212,28 +3162,28 @@ module.exports = grammar({
     _substitution_body: ($) => prec.left(commandSequenceBody($)),
 
     _arithmetic_expansion_start: ($) =>
-      seq($._command_or_arithmetic_substitution_start, "("),
+      seq(
+        $._command_or_arithmetic_substitution_start,
+        alias($._arithmetic_left_parenthesis, "("),
+      ),
 
     arithmetic_expansion: ($) =>
-      prec.dynamic(
-        ARITHMETIC_AMBIGUITY_PRECEDENCE,
-        seq(
-          $._arithmetic_expansion_start,
-          optional($._arithmetic_layout),
-          choice(
-            seq(
-              field(
-                "expression",
-                choice(
-                  prec.dynamic(2, $._arithmetic_assignment_expression),
-                  $.arithmetic_dynamic_expression,
-                ),
+      seq(
+        $._arithmetic_expansion_start,
+        optional($._arithmetic_layout),
+        choice(
+          seq(
+            field(
+              "expression",
+              choice(
+                prec.dynamic(2, $._arithmetic_assignment_expression),
+                $.arithmetic_dynamic_expression,
               ),
-              arithmeticClosingLayout($),
-              arithmeticExpansionEnd($),
             ),
-            alias($._here_document_boundary, $.here_document_end_recovery),
+            arithmeticClosingLayout($),
+            arithmeticExpansionEnd($),
           ),
+          hereDocumentBoundaryRecovery($),
         ),
       ),
 
@@ -3277,16 +3227,7 @@ module.exports = grammar({
     _arithmetic_source_operator: ($) =>
       choice(
         $._arithmetic_assignment_operator,
-        $._arithmetic_logical_or_operator,
-        $._arithmetic_logical_and_operator,
-        $._arithmetic_bitwise_or_operator,
-        $._arithmetic_bitwise_xor_operator,
-        $._arithmetic_bitwise_and_operator,
-        $._arithmetic_equality_operator,
-        $._arithmetic_relational_operator,
-        $._arithmetic_shift_operator,
-        $._arithmetic_additive_operator,
-        $._arithmetic_multiplicative_operator,
+        ...arithmeticBinaryLevelSymbols($, "operator"),
         "!",
         "~",
         "?",
@@ -3361,175 +3302,7 @@ module.exports = grammar({
         ),
       ),
 
-    _arithmetic_logical_or_expression: ($) =>
-      choice(
-        alias(
-          $._arithmetic_logical_or_binary_expression,
-          $.arithmetic_binary_expression,
-        ),
-        $._arithmetic_logical_and_expression,
-      ),
-
-    _arithmetic_logical_or_binary_expression: ($) =>
-      arithmeticBinaryExpression(
-        $,
-        $._arithmetic_logical_or_expression,
-        $._arithmetic_logical_and_expression,
-        $._arithmetic_logical_or_operator_segment,
-      ),
-
-    _arithmetic_logical_and_expression: ($) =>
-      choice(
-        alias(
-          $._arithmetic_logical_and_binary_expression,
-          $.arithmetic_binary_expression,
-        ),
-        $._arithmetic_bitwise_or_expression,
-      ),
-
-    _arithmetic_logical_and_binary_expression: ($) =>
-      arithmeticBinaryExpression(
-        $,
-        $._arithmetic_logical_and_expression,
-        $._arithmetic_bitwise_or_expression,
-        $._arithmetic_logical_and_operator_segment,
-      ),
-
-    _arithmetic_bitwise_or_expression: ($) =>
-      choice(
-        alias(
-          $._arithmetic_bitwise_or_binary_expression,
-          $.arithmetic_binary_expression,
-        ),
-        $._arithmetic_bitwise_xor_expression,
-      ),
-
-    _arithmetic_bitwise_or_binary_expression: ($) =>
-      arithmeticBinaryExpression(
-        $,
-        $._arithmetic_bitwise_or_expression,
-        $._arithmetic_bitwise_xor_expression,
-        $._arithmetic_bitwise_or_operator_segment,
-      ),
-
-    _arithmetic_bitwise_xor_expression: ($) =>
-      choice(
-        alias(
-          $._arithmetic_bitwise_xor_binary_expression,
-          $.arithmetic_binary_expression,
-        ),
-        $._arithmetic_bitwise_and_expression,
-      ),
-
-    _arithmetic_bitwise_xor_binary_expression: ($) =>
-      arithmeticBinaryExpression(
-        $,
-        $._arithmetic_bitwise_xor_expression,
-        $._arithmetic_bitwise_and_expression,
-        $._arithmetic_bitwise_xor_operator_segment,
-      ),
-
-    _arithmetic_bitwise_and_expression: ($) =>
-      choice(
-        alias(
-          $._arithmetic_bitwise_and_binary_expression,
-          $.arithmetic_binary_expression,
-        ),
-        $._arithmetic_equality_expression,
-      ),
-
-    _arithmetic_bitwise_and_binary_expression: ($) =>
-      arithmeticBinaryExpression(
-        $,
-        $._arithmetic_bitwise_and_expression,
-        $._arithmetic_equality_expression,
-        $._arithmetic_bitwise_and_operator_segment,
-      ),
-
-    _arithmetic_equality_expression: ($) =>
-      choice(
-        alias(
-          $._arithmetic_equality_binary_expression,
-          $.arithmetic_binary_expression,
-        ),
-        $._arithmetic_relational_expression,
-      ),
-
-    _arithmetic_equality_binary_expression: ($) =>
-      arithmeticBinaryExpression(
-        $,
-        $._arithmetic_equality_expression,
-        $._arithmetic_relational_expression,
-        $._arithmetic_equality_operator_segment,
-      ),
-
-    _arithmetic_relational_expression: ($) =>
-      choice(
-        alias(
-          $._arithmetic_relational_binary_expression,
-          $.arithmetic_binary_expression,
-        ),
-        $._arithmetic_shift_expression,
-      ),
-
-    _arithmetic_relational_binary_expression: ($) =>
-      arithmeticBinaryExpression(
-        $,
-        $._arithmetic_relational_expression,
-        $._arithmetic_shift_expression,
-        $._arithmetic_relational_operator_segment,
-      ),
-
-    _arithmetic_shift_expression: ($) =>
-      choice(
-        alias(
-          $._arithmetic_shift_binary_expression,
-          $.arithmetic_binary_expression,
-        ),
-        $._arithmetic_additive_expression,
-      ),
-
-    _arithmetic_shift_binary_expression: ($) =>
-      arithmeticBinaryExpression(
-        $,
-        $._arithmetic_shift_expression,
-        $._arithmetic_additive_expression,
-        $._arithmetic_shift_operator_segment,
-      ),
-
-    _arithmetic_additive_expression: ($) =>
-      choice(
-        alias(
-          $._arithmetic_additive_binary_expression,
-          $.arithmetic_binary_expression,
-        ),
-        $._arithmetic_multiplicative_expression,
-      ),
-
-    _arithmetic_additive_binary_expression: ($) =>
-      arithmeticBinaryExpression(
-        $,
-        $._arithmetic_additive_expression,
-        $._arithmetic_multiplicative_expression,
-        $._arithmetic_additive_operator_segment,
-      ),
-
-    _arithmetic_multiplicative_expression: ($) =>
-      choice(
-        alias(
-          $._arithmetic_multiplicative_binary_expression,
-          $.arithmetic_binary_expression,
-        ),
-        $._arithmetic_unary_expression,
-      ),
-
-    _arithmetic_multiplicative_binary_expression: ($) =>
-      arithmeticBinaryExpression(
-        $,
-        $._arithmetic_multiplicative_expression,
-        $._arithmetic_unary_expression,
-        $._arithmetic_multiplicative_operator_segment,
-      ),
+    ...arithmeticBinaryLevelRules(),
 
     _arithmetic_unary_expression: ($) =>
       choice($.arithmetic_unary_expression, $._arithmetic_primary_expression),
@@ -3563,7 +3336,7 @@ module.exports = grammar({
       ),
 
     arithmetic_variable: ($) =>
-      seq(optional($._name_equals_begin), nameSource($)),
+      seq(optional($._name_equals_begin), $._name_token),
 
     _arithmetic_assignment_operator_segment: ($) =>
       arithmeticOperatorSegment(
@@ -3582,99 +3355,12 @@ module.exports = grammar({
     _arithmetic_colon_operator_segment: ($) =>
       arithmeticOperatorSegment($, $._arithmetic_colon_operator_boundary, ":"),
 
-    _arithmetic_logical_or_operator_segment: ($) =>
-      arithmeticOperatorSegment(
-        $,
-        $._arithmetic_logical_or_operator_boundary,
-        $._arithmetic_logical_or_operator,
-      ),
-
-    _arithmetic_logical_and_operator_segment: ($) =>
-      arithmeticOperatorSegment(
-        $,
-        $._arithmetic_logical_and_operator_boundary,
-        $._arithmetic_logical_and_operator,
-      ),
-
-    _arithmetic_bitwise_or_operator_segment: ($) =>
-      arithmeticOperatorSegment(
-        $,
-        $._arithmetic_bitwise_or_operator_boundary,
-        $._arithmetic_bitwise_or_operator,
-      ),
-
-    _arithmetic_bitwise_xor_operator_segment: ($) =>
-      arithmeticOperatorSegment(
-        $,
-        $._arithmetic_bitwise_xor_operator_boundary,
-        $._arithmetic_bitwise_xor_operator,
-      ),
-
-    _arithmetic_bitwise_and_operator_segment: ($) =>
-      arithmeticOperatorSegment(
-        $,
-        $._arithmetic_bitwise_and_operator_boundary,
-        $._arithmetic_bitwise_and_operator,
-      ),
-
-    _arithmetic_equality_operator_segment: ($) =>
-      arithmeticOperatorSegment(
-        $,
-        $._arithmetic_equality_operator_boundary,
-        $._arithmetic_equality_operator,
-      ),
-
-    _arithmetic_relational_operator_segment: ($) =>
-      arithmeticOperatorSegment(
-        $,
-        $._arithmetic_relational_operator_boundary,
-        $._arithmetic_relational_operator,
-      ),
-
-    _arithmetic_shift_operator_segment: ($) =>
-      arithmeticOperatorSegment(
-        $,
-        $._arithmetic_shift_operator_boundary,
-        $._arithmetic_shift_operator,
-      ),
-
-    _arithmetic_additive_operator_segment: ($) =>
-      arithmeticOperatorSegment(
-        $,
-        $._arithmetic_additive_operator_boundary,
-        $._arithmetic_additive_operator,
-      ),
-
-    _arithmetic_multiplicative_operator_segment: ($) =>
-      arithmeticOperatorSegment(
-        $,
-        $._arithmetic_multiplicative_operator_boundary,
-        $._arithmetic_multiplicative_operator,
-      ),
+    ...arithmeticBinaryOperatorSegmentRules(),
 
     _arithmetic_assignment_operator: (_) =>
       choice("<<=", ">>=", "*=", "/=", "%=", "+=", "-=", "&=", "^=", "|=", "="),
 
-    _arithmetic_logical_or_operator: (_) => "||",
-
-    _arithmetic_logical_and_operator: (_) => "&&",
-
-    _arithmetic_bitwise_or_operator: (_) => "|",
-
-    _arithmetic_bitwise_xor_operator: (_) => "^",
-
-    _arithmetic_bitwise_and_operator: (_) => "&",
-
-    _arithmetic_equality_operator: (_) => choice("==", "!="),
-
-    _arithmetic_relational_operator: (_) =>
-      prec.right(1, choice("<=", ">=", "<", ">")),
-
-    _arithmetic_shift_operator: (_) => choice("<<", ">>"),
-
-    _arithmetic_additive_operator: (_) => choice("+", "-"),
-
-    _arithmetic_multiplicative_operator: (_) => choice("*", "/", "%"),
+    ...arithmeticBinaryOperatorRules(),
 
     _arithmetic_closing_layout: ($) => $._arithmetic_layout,
 
@@ -3683,16 +3369,7 @@ module.exports = grammar({
         $._arithmetic_assignment_operator_boundary,
         $._arithmetic_question_operator_boundary,
         $._arithmetic_colon_operator_boundary,
-        $._arithmetic_logical_or_operator_boundary,
-        $._arithmetic_logical_and_operator_boundary,
-        $._arithmetic_bitwise_or_operator_boundary,
-        $._arithmetic_bitwise_xor_operator_boundary,
-        $._arithmetic_bitwise_and_operator_boundary,
-        $._arithmetic_equality_operator_boundary,
-        $._arithmetic_relational_operator_boundary,
-        $._arithmetic_shift_operator_boundary,
-        $._arithmetic_additive_operator_boundary,
-        $._arithmetic_multiplicative_operator_boundary,
+        ...arithmeticBinaryLevelSymbols($, "operator_boundary"),
       ),
 
     _arithmetic_source_layout: ($) =>

@@ -805,14 +805,27 @@ echo $(first;)
     (newline_list)))
 
 ==================
-Pipeline negation requires a following command
-:error
+Pipeline negation without a following command recovers in place
 ==================
 
 !
 
 ---
 
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            negation: (bang)
+            sequence: (pipe_sequence
+              command: (command
+                recovery: (command_recovery))))))))
+  trailing: (linebreak
+    (newline_list)))
 
 
 ==================

@@ -7,6 +7,10 @@
 
 set -eu
 
+# tree-sitter colors parse output even when redirected; the text assertions
+# below require plain output.
+export NO_COLOR=1
+
 repository_directory=$(
   CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd
 )
@@ -582,40 +586,6 @@ assert_same_logical_projection() {
     diff -u "$logical_projection" "$physical_projection" >&2 || true
     fail "Physical source changes the logical CST: $projection_name"
   fi
-}
-
-assert_continued_parse_equivalent() {
-  equivalence_name=$1
-  expected_status=$2
-  logical_source=$3
-  physical_source=$4
-  logical_cst="$runtime_directory/$equivalence_name.logical.cst"
-  physical_cst="$runtime_directory/$equivalence_name.physical.cst"
-
-  run_parse \
-    recovery \
-    cst \
-    "$logical_cst" \
-    "$equivalence_name logical source" \
-    "$logical_source"
-  logical_status=$parse_status
-  run_parse \
-    recovery \
-    cst \
-    "$physical_cst" \
-    "$equivalence_name physical source" \
-    "$physical_source"
-  physical_status=$parse_status
-
-  if [ "$logical_status" -ne "$expected_status" ] ||
-    [ "$physical_status" -ne "$expected_status" ]; then
-    fail "$equivalence_name parse statuses: expected $expected_status, logical $logical_status, physical $physical_status"
-  fi
-  assert_occurrence_count 1 "line_continuation" "$physical_cst"
-  assert_same_logical_projection \
-    "$equivalence_name" \
-    "$logical_cst" \
-    "$physical_cst"
 }
 
 extract_line_continuation_manifest() {
@@ -2314,71 +2284,150 @@ assert_incremental_equals_fresh \
   "delete-arithmetic-operand-operator-boundary-continuation" \
   "7 2"
 
+# A missing operand before the closers leaves arithmetic for the
+# command-substitution reading, and a continuation between complete tokens
+# keeps the classification of the removed-newline source.
 arithmetic_missing_operand_source="$runtime_directory/arithmetic-missing-operand.sh"
 arithmetic_missing_operand_output="$runtime_directory/arithmetic-missing-operand.cst"
 printf '%s\n' ': "$((1 +\' '))"' >"$arithmetic_missing_operand_source"
 run_parse \
-  recovery \
+  valid \
   cst \
   "$arithmetic_missing_operand_output" \
   "arithmetic missing operand after continuation" \
   "$arithmetic_missing_operand_source"
-assert_cst_range \
-  "0:3-0:9" \
-  "ERROR" \
+assert_contains "command_substitution" "$arithmetic_missing_operand_output"
+assert_contains "subshell" "$arithmetic_missing_operand_output"
+assert_not_contains \
+  "arithmetic_expansion" \
   "$arithmetic_missing_operand_output"
 assert_cst_range \
   "0:9-1:0" \
   "line_continuation" \
-  "$arithmetic_missing_operand_output"
-assert_cst_range \
-  "1:0-1:2" \
-  "double_quote_text" \
   "$arithmetic_missing_operand_output"
 assert_occurrence_count \
   1 \
   "line_continuation" \
   "$arithmetic_missing_operand_output"
 
+# The adjacent prefix repeated sign spells the C increment or decrement
+# token, which POSIX arithmetic does not provide, so the logical source
+# leaves arithmetic for the command-substitution reading. The physical
+# spelling splits the fallback word, which the lexical-split exception
+# leaves unspecified beyond never producing a nested unary reading.
 arithmetic_prefix_increment_logical="$runtime_directory/arithmetic-prefix-increment-logical.sh"
 arithmetic_prefix_increment_physical="$runtime_directory/arithmetic-prefix-increment-physical.sh"
+arithmetic_prefix_increment_logical_output="$runtime_directory/arithmetic-prefix-increment-logical.cst"
+arithmetic_prefix_increment_physical_output="$runtime_directory/arithmetic-prefix-increment-physical.cst"
 printf '%s\n' ': "$((++a))"' >"$arithmetic_prefix_increment_logical"
 printf '%s\n' ': "$((+\' '+a))"' >"$arithmetic_prefix_increment_physical"
-assert_continued_parse_equivalent \
-  "arithmetic-prefix-increment" \
-  1 \
-  "$arithmetic_prefix_increment_logical" \
+run_parse \
+  valid \
+  cst \
+  "$arithmetic_prefix_increment_logical_output" \
+  "prefix increment spelling falls back to command substitution" \
+  "$arithmetic_prefix_increment_logical"
+assert_contains \
+  "command_substitution" \
+  "$arithmetic_prefix_increment_logical_output"
+assert_contains "subshell" "$arithmetic_prefix_increment_logical_output"
+assert_not_contains \
+  "arithmetic_unary_expression" \
+  "$arithmetic_prefix_increment_logical_output"
+run_parse \
+  recovery \
+  cst \
+  "$arithmetic_prefix_increment_physical_output" \
+  "split prefix increment spelling" \
   "$arithmetic_prefix_increment_physical"
+assert_not_contains \
+  "arithmetic_unary_expression" \
+  "$arithmetic_prefix_increment_physical_output"
 
 arithmetic_prefix_decrement_logical="$runtime_directory/arithmetic-prefix-decrement-logical.sh"
 arithmetic_prefix_decrement_physical="$runtime_directory/arithmetic-prefix-decrement-physical.sh"
+arithmetic_prefix_decrement_logical_output="$runtime_directory/arithmetic-prefix-decrement-logical.cst"
+arithmetic_prefix_decrement_physical_output="$runtime_directory/arithmetic-prefix-decrement-physical.cst"
 printf '%s\n' ': "$((--a))"' >"$arithmetic_prefix_decrement_logical"
 printf '%s\n' ': "$((-\' '-a))"' >"$arithmetic_prefix_decrement_physical"
-assert_continued_parse_equivalent \
-  "arithmetic-prefix-decrement" \
-  1 \
-  "$arithmetic_prefix_decrement_logical" \
+run_parse \
+  valid \
+  cst \
+  "$arithmetic_prefix_decrement_logical_output" \
+  "prefix decrement spelling falls back to command substitution" \
+  "$arithmetic_prefix_decrement_logical"
+assert_contains \
+  "command_substitution" \
+  "$arithmetic_prefix_decrement_logical_output"
+assert_contains "subshell" "$arithmetic_prefix_decrement_logical_output"
+assert_not_contains \
+  "arithmetic_unary_expression" \
+  "$arithmetic_prefix_decrement_logical_output"
+run_parse \
+  recovery \
+  cst \
+  "$arithmetic_prefix_decrement_physical_output" \
+  "split prefix decrement spelling" \
   "$arithmetic_prefix_decrement_physical"
+assert_not_contains \
+  "arithmetic_unary_expression" \
+  "$arithmetic_prefix_decrement_physical_output"
 
+# A repeated sign between operands spells the C increment or decrement token,
+# which POSIX arithmetic does not provide. The logical source therefore leaves
+# arithmetic for the command-substitution reading, and a removed newline inside
+# the repeated sign must not create a nested unary reading either.
 arithmetic_infix_increment_logical="$runtime_directory/arithmetic-infix-increment-logical.sh"
 arithmetic_infix_increment_physical="$runtime_directory/arithmetic-infix-increment-physical.sh"
+arithmetic_infix_increment_logical_output="$runtime_directory/arithmetic-infix-increment-logical.cst"
+arithmetic_infix_increment_physical_output="$runtime_directory/arithmetic-infix-increment-physical.cst"
 printf '%s\n' ': "$((a++b))"' >"$arithmetic_infix_increment_logical"
 printf '%s\n' ': "$((a+\' '+b))"' >"$arithmetic_infix_increment_physical"
-assert_continued_parse_equivalent \
-  "arithmetic-infix-increment" \
-  0 \
-  "$arithmetic_infix_increment_logical" \
+run_parse \
+  valid \
+  cst \
+  "$arithmetic_infix_increment_logical_output" \
+  "infix increment spelling falls back to command substitution" \
+  "$arithmetic_infix_increment_logical"
+assert_contains "command_substitution" \
+  "$arithmetic_infix_increment_logical_output"
+assert_contains "subshell" "$arithmetic_infix_increment_logical_output"
+assert_not_contains "arithmetic_unary_expression" \
+  "$arithmetic_infix_increment_logical_output"
+run_parse \
+  recovery \
+  cst \
+  "$arithmetic_infix_increment_physical_output" \
+  "split infix increment spelling" \
   "$arithmetic_infix_increment_physical"
+assert_not_contains "arithmetic_unary_expression" \
+  "$arithmetic_infix_increment_physical_output"
 
 arithmetic_infix_decrement_logical="$runtime_directory/arithmetic-infix-decrement-logical.sh"
 arithmetic_infix_decrement_physical="$runtime_directory/arithmetic-infix-decrement-physical.sh"
+arithmetic_infix_decrement_logical_output="$runtime_directory/arithmetic-infix-decrement-logical.cst"
+arithmetic_infix_decrement_physical_output="$runtime_directory/arithmetic-infix-decrement-physical.cst"
 printf '%s\n' ': "$((a--b))"' >"$arithmetic_infix_decrement_logical"
 printf '%s\n' ': "$((a-\' '-b))"' >"$arithmetic_infix_decrement_physical"
-assert_continued_parse_equivalent \
-  "arithmetic-infix-decrement" \
-  0 \
-  "$arithmetic_infix_decrement_logical" \
+run_parse \
+  valid \
+  cst \
+  "$arithmetic_infix_decrement_logical_output" \
+  "infix decrement spelling falls back to command substitution" \
+  "$arithmetic_infix_decrement_logical"
+assert_contains "command_substitution" \
+  "$arithmetic_infix_decrement_logical_output"
+assert_contains "subshell" "$arithmetic_infix_decrement_logical_output"
+assert_not_contains "arithmetic_unary_expression" \
+  "$arithmetic_infix_decrement_logical_output"
+run_parse \
+  recovery \
+  cst \
+  "$arithmetic_infix_decrement_physical_output" \
+  "split infix decrement spelling" \
   "$arithmetic_infix_decrement_physical"
+assert_not_contains "arithmetic_unary_expression" \
+  "$arithmetic_infix_decrement_physical_output"
 
 arithmetic_parenthesized_initial="$runtime_directory/arithmetic-parenthesized-initial.sh"
 arithmetic_parenthesized_final="$runtime_directory/arithmetic-parenthesized-final.sh"
@@ -2451,20 +2500,21 @@ assert_incremental_equals_fresh \
   "$arithmetic_non_lvalue_initial" \
   "restore-parenthesized-arithmetic-lvalue" \
   "11 4"
+# A non-lvalue before "=" rules out the arithmetic reading, so the source
+# falls back to the command substitution that starts with a subshell.
 for arithmetic_non_lvalue_output in \
   "$runtime_directory/make-parenthesized-arithmetic-non-lvalue.incremental" \
   "$runtime_directory/make-parenthesized-arithmetic-non-lvalue.fresh"; do
   assert_cst_range \
     "0:3-0:22" \
-    "ERROR" \
+    "command_substitution" \
     "$arithmetic_non_lvalue_output"
   assert_cst_range \
-    "0:6-0:16" \
-    "parenthesized_arithmetic_source" \
+    "0:5-0:21" \
+    "subshell" \
     "$arithmetic_non_lvalue_output"
-  assert_cst_range \
-    "0:17-0:18" \
-    '"="' \
+  assert_not_contains \
+    "arithmetic_expansion" \
     "$arithmetic_non_lvalue_output"
   assert_not_contains \
     "arithmetic_assignment_expression" \
@@ -3265,6 +3315,87 @@ for compound_list_branch_output in \
   assert_not_contains "command_recovery" "$compound_list_branch_output"
   assert_not_contains "compound_command_recovery" \
     "$compound_list_branch_output"
+done
+
+case_branch_initial="$runtime_directory/case-branch-initial.sh"
+case_branch_final="$runtime_directory/case-branch-final.sh"
+printf '%s\n' \
+  '{' \
+  '  if :; then' \
+  '    :' \
+  '  else' \
+  '    :' \
+  '  fi' \
+  '  case x in' \
+  '    a) ;;' \
+  '    b) a= ;;' \
+  '  esac' \
+  '}' \
+  >"$case_branch_initial"
+printf '%s\n' \
+  '{' \
+  '  if :; then' \
+  '    :' \
+  '  else' \
+  '    :' \
+  '  fi' \
+  '  :' \
+  '  case x in' \
+  '    a) ;;' \
+  '    b) a= ;;' \
+  '  esac' \
+  '}' \
+  >"$case_branch_final"
+assert_incremental_equals_fresh \
+  "$case_branch_initial" \
+  "$case_branch_final" \
+  "insert-command-before-case-branch" \
+  '39 0   :
+'
+for case_branch_output in \
+  "$runtime_directory/insert-command-before-case-branch.incremental" \
+  "$runtime_directory/insert-command-before-case-branch.fresh"; do
+  assert_cst_direct_child_range \
+    "0:1-11:0" \
+    "body: compound_list" \
+    "1:2-10:6" \
+    "body: term" \
+    "$case_branch_output"
+  assert_cst_range "7:2-10:6" "case_clause" "$case_branch_output"
+  assert_cst_direct_child_range \
+    "7:2-10:6" \
+    "case_clause" \
+    "8:4-10:2" \
+    "items: case_list" \
+    "$case_branch_output"
+  assert_cst_direct_child_range \
+    "8:4-10:2" \
+    "items: case_list" \
+    "9:4-10:2" \
+    "item: case_item" \
+    "$case_branch_output"
+  assert_cst_direct_child_range \
+    "9:4-10:2" \
+    "item: case_item" \
+    "9:6-9:9" \
+    "body: compound_list" \
+    "$case_branch_output"
+  assert_cst_direct_child_range \
+    "9:4-10:2" \
+    "item: case_item" \
+    "9:10-9:12" \
+    "terminator: dsemi" \
+    "$case_branch_output"
+  assert_cst_direct_child_range \
+    "7:2-10:6" \
+    "case_clause" \
+    "10:2-10:6" \
+    "esac_keyword" \
+    "$case_branch_output"
+  assert_occurrence_count 2 "terminator: dsemi" "$case_branch_output"
+  assert_not_contains "ERROR" "$case_branch_output"
+  assert_not_contains "command_recovery" "$case_branch_output"
+  assert_not_contains "compound_command_recovery" "$case_branch_output"
 done
 
 compound_list_regression="$runtime_directory/compound-list-regression.sh"

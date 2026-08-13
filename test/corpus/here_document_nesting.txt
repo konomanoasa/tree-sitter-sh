@@ -172,29 +172,17 @@ BACK
                                                 operator: (dless)
                                                 end: (here_end
                                                   word: (word
-                                                    (literal)))))))))))))
-                            separator: (newline_list
+                                                    (literal))))))))))))))
+                          (linebreak
+                            (newline_list
                               (here_document_sequence
                                 line_end: (here_document_line_end)
                                 document: (here_document
                                   body: (here_document_body
                                     (here_document_text))
-                                  end: (here_document_end))))
-                            command: (complete_command
-                              body: (list
-                                and_or: (and_or
-                                  pipeline: (pipeline
-                                    sequence: (pipe_sequence
-                                      command: (command
-                                        body: (simple_command
-                                          name: (cmd_name
-                                            (word
-                                              (backquote_substitution
-                                                body: (backquote_substitution_body
-                                                  (linebreak
-                                                    (newline_list)))
-                                                (backquote_end_recovery)))))))))))))
-                        (backquote_end_recovery)))))))))))))
+                                  end: (here_document_end)))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
 
 ==================
 A nested substitution can suspend and resume an outer here-document

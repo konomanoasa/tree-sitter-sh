@@ -978,3 +978,336 @@ echo `if x; then y`; next
                       (literal)))))))))))
   (linebreak
     (newline_list)))
+
+==================
+A backquote closer ends a substitution at every command position
+==================
+
+x=`
+foo
+`
+echo `a;`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (backquote_substitution
+                          body: (backquote_substitution_body
+                            (linebreak
+                              (newline_list))
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (simple_command
+                                            name: (cmd_name
+                                              (word
+                                                (literal)))))))))))
+                            (linebreak
+                              (newline_list))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))))))))
+                              terminator: (separator_op)))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+A backquote closer ends a tilde prefix
+==================
+
+echo `echo ~user`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (tilde_expansion
+                                                user: (tilde_user
+                                                  (literal)))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+A backquote closer ends a compound command reserved word
+==================
+
+echo `if a; then b; fi`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (compound_command
+                                          (if_clause
+                                            (if_keyword)
+                                            condition: (compound_list
+                                              body: (term
+                                                and_or: (and_or
+                                                  pipeline: (pipeline
+                                                    sequence: (pipe_sequence
+                                                      command: (command
+                                                        body: (simple_command
+                                                          name: (cmd_name
+                                                            (word
+                                                              (literal)))))))))
+                                              terminator: (separator
+                                                operator: (separator_op)))
+                                            (then_keyword)
+                                            consequence: (compound_list
+                                              body: (term
+                                                and_or: (and_or
+                                                  pipeline: (pipeline
+                                                    sequence: (pipe_sequence
+                                                      command: (command
+                                                        body: (simple_command
+                                                          name: (cmd_name
+                                                            (word
+                                                              (literal)))))))))
+                                              terminator: (separator
+                                                operator: (separator_op)))
+                                            (fi_keyword))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+A backquote closer ends a case clause
+==================
+
+echo `case x in a) :;; esac`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (compound_command
+                                          (case_clause
+                                            (case_keyword)
+                                            word: (word
+                                              (literal))
+                                            in: (in
+                                              (in_keyword))
+                                            items: (case_list
+                                              item: (case_item
+                                                patterns: (pattern_list
+                                                  word: (word
+                                                    (literal)))
+                                                body: (compound_list
+                                                  body: (term
+                                                    and_or: (and_or
+                                                      pipeline: (pipeline
+                                                        sequence: (pipe_sequence
+                                                          command: (command
+                                                            body: (simple_command
+                                                              name: (cmd_name
+                                                                (word
+                                                                  (literal))))))))))
+                                                terminator: (dsemi)))
+                                            (esac_keyword))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+A backquote closer ends a brace group and a function body
+==================
+
+echo `{ :; }`
+echo `f() { :; }`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (compound_command
+                                          (brace_group
+                                            body: (compound_list
+                                              body: (term
+                                                and_or: (and_or
+                                                  pipeline: (pipeline
+                                                    sequence: (pipe_sequence
+                                                      command: (command
+                                                        body: (simple_command
+                                                          name: (cmd_name
+                                                            (word
+                                                              (literal)))))))))
+                                              terminator: (separator
+                                                operator: (separator_op)))))))))))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (function_definition
+                                          name: (fname)
+                                          body: (function_body
+                                            body: (compound_command
+                                              (brace_group
+                                                body: (compound_list
+                                                  body: (term
+                                                    and_or: (and_or
+                                                      pipeline: (pipeline
+                                                        sequence: (pipe_sequence
+                                                          command: (command
+                                                            body: (simple_command
+                                                              name: (cmd_name
+                                                                (word
+                                                                  (literal)))))))))
+                                                  terminator: (separator
+                                                    operator: (separator_op))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))

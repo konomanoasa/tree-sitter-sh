@@ -45,7 +45,7 @@ done
 
 state_limit=30500
 parser_size_limit=37500000
-external_token_limit=105
+external_token_limit=107
 state_count=$(
   awk '/^#define STATE_COUNT / { print $3; exit }' \
     "$generated_directory/parser.c"
