@@ -2416,6 +2416,10 @@
           {
             "type": "separator_op",
             "named": true
+          },
+          {
+            "type": "separator_recovery",
+            "named": true
           }
         ]
       }

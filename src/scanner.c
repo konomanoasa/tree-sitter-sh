@@ -47,7 +47,7 @@ enum TokenType {
   HERE_DOCUMENT_CONTENT_LINE_START,
   NEWLINE,
   LINE_CONTINUATION,
-  CONNECTOR_LINE_CONTINUATION,
+  BOUNDARY_LINE_CONTINUATION,
   WORD_SEPARATOR_LINE_CONTINUATION,
   ARITHMETIC_ASSIGNMENT_OPERATOR_BOUNDARY,
   ARITHMETIC_QUESTION_OPERATOR_BOUNDARY,
@@ -121,18 +121,19 @@ enum TokenType {
   WORD_TILDE_END,
   ASSIGNMENT_TILDE_END,
   NAME_EQUALS_BEGIN,
+  OPERATOR_LINE_CONTINUATION,
   TOKEN_COUNT,
 };
 
 _Static_assert(
-  CONNECTOR_LINE_CONTINUATION == LINE_CONTINUATION + 1,
-  "connector continuation must follow the public continuation token"
+  BOUNDARY_LINE_CONTINUATION == LINE_CONTINUATION + 1,
+  "boundary continuation must follow the public continuation token"
 );
 _Static_assert(
-  WORD_SEPARATOR_LINE_CONTINUATION == CONNECTOR_LINE_CONTINUATION + 1,
-  "word-separator continuation must follow the connector continuation"
+  WORD_SEPARATOR_LINE_CONTINUATION == BOUNDARY_LINE_CONTINUATION + 1,
+  "word-separator continuation must follow the boundary continuation"
 );
-_Static_assert(TOKEN_COUNT <= 107, "external token count exceeds the contract");
+_Static_assert(TOKEN_COUNT <= 108, "external token count exceeds the contract");
 
 enum ArithmeticOperatorCategory {
   ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT,
@@ -2747,6 +2748,9 @@ static bool scan_horizontal_blanks(TSLexer *lexer);
 static bool scan_horizontal_layout(TSLexer *lexer);
 
 static bool
+scan_horizontal_layout_with_blanks(TSLexer *lexer, bool *crossed_blank);
+
+static bool
 scan_compound_list_boundary(const struct Scanner *scanner, TSLexer *lexer) {
   lexer->mark_end(lexer);
 
@@ -3118,9 +3122,13 @@ static bool scan_horizontal_blanks(TSLexer *lexer) {
   return found;
 }
 
-static bool scan_horizontal_layout(TSLexer *lexer) {
+static bool
+scan_horizontal_layout_with_blanks(TSLexer *lexer, bool *crossed_blank) {
   while (true) {
-    scan_horizontal_blanks(lexer);
+    bool found_blank = scan_horizontal_blanks(lexer);
+    if (found_blank && crossed_blank != NULL) {
+      *crossed_blank = true;
+    }
     if (lexer->lookahead != '\\') {
       return true;
     }
@@ -3132,6 +3140,10 @@ static bool scan_horizontal_layout(TSLexer *lexer) {
 
     lexer->advance(lexer, false);
   }
+}
+
+static bool scan_horizontal_layout(TSLexer *lexer) {
+  return scan_horizontal_layout_with_blanks(lexer, NULL);
 }
 
 static bool scan_command_continuation_operator(TSLexer *lexer) {
@@ -3326,18 +3338,12 @@ static bool scan_case_item_terminator(TSLexer *lexer) {
   return lexer->lookahead == ';' || lexer->lookahead == '&';
 }
 
-static bool scan_shell_boundary(
+static bool classify_shell_boundary(
   const struct Scanner *scanner,
   TSLexer *lexer,
-  const bool *valid_symbols
+  const bool *valid_symbols,
+  bool crossed_layout
 ) {
-  lexer->mark_end(lexer);
-  bool crossed_layout = is_horizontal_blank(lexer->lookahead) ||
-    (lexer->lookahead == '\\' && valid_symbols[REDIRECT_LIST_BEGIN]);
-  if (crossed_layout && !scan_horizontal_layout(lexer)) {
-    return false;
-  }
-
   int32_t character = lexer->lookahead;
   if (crossed_layout && valid_symbols[COMPOUND_LIST_BOUNDARY]) {
     if (
@@ -3484,6 +3490,21 @@ static bool scan_shell_boundary(
   return false;
 }
 
+static bool scan_shell_boundary(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  const bool *valid_symbols
+) {
+  lexer->mark_end(lexer);
+  bool crossed_layout = is_horizontal_blank(lexer->lookahead) ||
+    (lexer->lookahead == '\\' && valid_symbols[REDIRECT_LIST_BEGIN]);
+  if (crossed_layout && !scan_horizontal_layout(lexer)) {
+    return false;
+  }
+
+  return classify_shell_boundary(scanner, lexer, valid_symbols, crossed_layout);
+}
+
 static bool
 scan_here_document_line_end(struct Scanner *scanner, TSLexer *lexer) {
   if (scanner->pending_count == 0 || scanner->sequence_end_pending) {
@@ -3595,14 +3616,90 @@ static bool scan_line_continuation(TSLexer *lexer, const bool *valid_symbols) {
 }
 
 static bool
-scan_exact_line_continuation(TSLexer *lexer, enum TokenType symbol) {
+boundary_line_continuation_marker_is_valid(const bool *valid_symbols) {
+  return valid_symbols[CLOSED_COMMAND_END] ||
+    valid_symbols[CLOSED_SIMPLE_COMMAND_END];
+}
+
+static bool finish_boundary_line_continuation(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  const bool *valid_symbols,
+  bool crossed_blank,
+  bool at_boundary
+) {
+  if (valid_symbols[BOUNDARY_LINE_CONTINUATION]) {
+    bool marker_is_valid =
+      boundary_line_continuation_marker_is_valid(valid_symbols);
+    if (
+      (!marker_is_valid && !valid_symbols[OPERATOR_LINE_CONTINUATION]) ||
+      (marker_is_valid &&
+        at_boundary &&
+        classify_shell_boundary(scanner, lexer, valid_symbols, crossed_blank))
+    ) {
+      lexer->result_symbol = BOUNDARY_LINE_CONTINUATION;
+      return true;
+    }
+  }
+
+  if (valid_symbols[OPERATOR_LINE_CONTINUATION]) {
+    lexer->result_symbol = OPERATOR_LINE_CONTINUATION;
+    return true;
+  }
+
+  if (!valid_symbols[LINE_CONTINUATION]) {
+    return false;
+  }
+  lexer->result_symbol = LINE_CONTINUATION;
+  return true;
+}
+
+static bool scan_boundary_line_continuation(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  const bool *valid_symbols
+) {
   if (lexer->lookahead != '\\') {
     return false;
   }
 
   lexer->advance(lexer, false);
-  return finish_line_continuation(lexer, symbol);
+  if (lexer->lookahead != '\n') {
+    return false;
+  }
+  lexer->advance(lexer, false);
+  lexer->mark_end(lexer);
+
+  if (
+    !valid_symbols[BOUNDARY_LINE_CONTINUATION] ||
+    !boundary_line_continuation_marker_is_valid(valid_symbols)
+  ) {
+    return finish_boundary_line_continuation(
+      scanner,
+      lexer,
+      valid_symbols,
+      false,
+      false
+    );
+  }
+
+  /*
+   * A closed command and an ownerless list recovery can both accept removed
+   * newlines before a right parenthesis. Keep this token's range to the first
+   * pair while probing the remaining logical layout, so only a real closed
+   * boundary retains this parse branch.
+   */
+  bool crossed_blank = false;
+  bool at_boundary = scan_horizontal_layout_with_blanks(lexer, &crossed_blank);
+  return finish_boundary_line_continuation(
+    scanner,
+    lexer,
+    valid_symbols,
+    crossed_blank,
+    at_boundary
+  );
 }
+
 static enum ArithmeticOperatorCategory
 classify_arithmetic_operator(int32_t first, int32_t second, int32_t third) {
   switch (first) {
@@ -5110,9 +5207,13 @@ static bool scan_word_separator_line_continuation(
   lexer->advance(lexer, false);
   lexer->mark_end(lexer);
 
+  bool at_boundary = true;
+  bool crossed_blank = false;
+
   while (lexer->lookahead == '\\') {
     lexer->advance(lexer, false);
     if (lexer->lookahead != '\n') {
+      at_boundary = false;
       goto generic_line_continuation;
     }
     lexer->advance(lexer, false);
@@ -5121,6 +5222,7 @@ static bool scan_word_separator_line_continuation(
   if (!scan_horizontal_blanks(lexer)) {
     goto generic_line_continuation;
   }
+  crossed_blank = true;
 
   while (lexer->lookahead == '\\') {
     lexer->advance(lexer, false);
@@ -5129,10 +5231,13 @@ static bool scan_word_separator_line_continuation(
         lexer->result_symbol = WORD_SEPARATOR_LINE_CONTINUATION;
         return true;
       }
+      at_boundary = false;
       goto generic_line_continuation;
     }
     lexer->advance(lexer, false);
-    scan_horizontal_blanks(lexer);
+    if (scan_horizontal_blanks(lexer)) {
+      crossed_blank = true;
+    }
   }
 
   if (is_word_separator_element_start(scanner, lexer, valid_symbols)) {
@@ -5141,15 +5246,13 @@ static bool scan_word_separator_line_continuation(
   }
 
 generic_line_continuation:
-  if (valid_symbols[CONNECTOR_LINE_CONTINUATION]) {
-    lexer->result_symbol = CONNECTOR_LINE_CONTINUATION;
-    return true;
-  }
-  if (!valid_symbols[LINE_CONTINUATION]) {
-    return false;
-  }
-  lexer->result_symbol = LINE_CONTINUATION;
-  return true;
+  return finish_boundary_line_continuation(
+    scanner,
+    lexer,
+    valid_symbols,
+    crossed_blank,
+    at_boundary
+  );
 }
 
 static bool scan_here_document_end_line(
@@ -5970,14 +6073,18 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     return scan_backquote_end(scanner, lexer);
   }
 
+  if (lexer->lookahead == '\\' && valid_symbols[OPERATOR_LINE_CONTINUATION]) {
+    return scan_boundary_line_continuation(scanner, lexer, valid_symbols);
+  }
+
   if (
     lexer->lookahead == '\\' && valid_symbols[WORD_SEPARATOR_LINE_CONTINUATION]
   ) {
     return scan_word_separator_line_continuation(scanner, lexer, valid_symbols);
   }
 
-  if (lexer->lookahead == '\\' && valid_symbols[CONNECTOR_LINE_CONTINUATION]) {
-    return scan_exact_line_continuation(lexer, CONNECTOR_LINE_CONTINUATION);
+  if (lexer->lookahead == '\\' && valid_symbols[BOUNDARY_LINE_CONTINUATION]) {
+    return scan_boundary_line_continuation(scanner, lexer, valid_symbols);
   }
 
   if (

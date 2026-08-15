@@ -784,6 +784,52 @@ Outer group delimiters remain available after a nested if recovers
     (newline_list)))
 
 ================================================================================
+An ownerless right parenthesis stops before the next complete command
+================================================================================
+
+printf )
+printf hi
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))
+        (separator_recovery)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (command_recovery)))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+================================================================================
 Empty required lists recover without stealing their real closers
 ================================================================================
 

@@ -1209,12 +1209,12 @@ static void assert_generic_line_continuation_contract(void) {
   assert(continuation.lexer.lookahead == 'x');
 }
 
-static void assert_connector_line_continuation_contract(void) {
+static void assert_boundary_line_continuation_contract(void) {
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
 
   bool valid_symbols[TOKEN_COUNT] = {false};
-  valid_symbols[CONNECTOR_LINE_CONTINUATION] = true;
+  valid_symbols[BOUNDARY_LINE_CONTINUATION] = true;
 
   const int32_t repeated_input[] = {
     '\\',
@@ -1237,11 +1237,33 @@ static void assert_connector_line_continuation_contract(void) {
       &continuation.lexer,
       valid_symbols
     ));
-    assert(continuation.lexer.result_symbol == CONNECTOR_LINE_CONTINUATION);
+    assert(continuation.lexer.result_symbol == BOUNDARY_LINE_CONTINUATION);
     assert(continuation.mark == 2);
     assert(continuation.offset == 2);
     assert(continuation.lexer.lookahead == (index < 2 ? '\\' : 'x'));
   }
+
+  bool operator_symbols[TOKEN_COUNT] = {false};
+  operator_symbols[OPERATOR_LINE_CONTINUATION] = true;
+  operator_symbols[WORD_SEPARATOR_LINE_CONTINUATION] = true;
+  const int32_t indented_operator_input[] = {'\\', '\n', ' ', 'x'};
+  struct MockLexer operator_continuation;
+  init_mock_lexer(
+    &operator_continuation,
+    indented_operator_input,
+    sizeof(indented_operator_input) / sizeof(indented_operator_input[0])
+  );
+  assert(tree_sitter_posix_sh_external_scanner_scan(
+    scanner,
+    &operator_continuation.lexer,
+    operator_symbols
+  ));
+  assert(
+    operator_continuation.lexer.result_symbol == OPERATOR_LINE_CONTINUATION
+  );
+  assert(operator_continuation.mark == 2);
+  assert(operator_continuation.offset == 2);
+  assert(operator_continuation.lexer.lookahead == ' ');
 
   const int32_t wrong_follower_input[] = {'\\', 'x'};
   struct MockLexer wrong_follower;
@@ -1266,9 +1288,10 @@ static void assert_connector_line_continuation_contract(void) {
     non_continuation_input,
     sizeof(non_continuation_input) / sizeof(non_continuation_input[0])
   );
-  assert(!scan_exact_line_continuation(
+  assert(!scan_boundary_line_continuation(
+    scanner,
     &non_continuation.lexer,
-    CONNECTOR_LINE_CONTINUATION
+    valid_symbols
   ));
   assert(non_continuation.mark == 0);
   assert(non_continuation.offset == 0);
@@ -1278,43 +1301,43 @@ static void assert_connector_line_continuation_contract(void) {
   valid_symbols[WORD_SEPARATOR_LINE_CONTINUATION] = true;
 
   const int32_t direct_follower_input[] = {'\\', '\n', 'x'};
-  struct MockLexer connector_before_direct_follower;
+  struct MockLexer boundary_before_direct_follower;
   init_mock_lexer(
-    &connector_before_direct_follower,
+    &boundary_before_direct_follower,
     direct_follower_input,
     sizeof(direct_follower_input) / sizeof(direct_follower_input[0])
   );
   assert(tree_sitter_posix_sh_external_scanner_scan(
     scanner,
-    &connector_before_direct_follower.lexer,
+    &boundary_before_direct_follower.lexer,
     valid_symbols
   ));
   assert(
-    connector_before_direct_follower.lexer.result_symbol ==
-    CONNECTOR_LINE_CONTINUATION
+    boundary_before_direct_follower.lexer.result_symbol ==
+    BOUNDARY_LINE_CONTINUATION
   );
-  assert(connector_before_direct_follower.mark == 2);
-  assert(connector_before_direct_follower.offset == 2);
-  assert(connector_before_direct_follower.lexer.lookahead == 'x');
+  assert(boundary_before_direct_follower.mark == 2);
+  assert(boundary_before_direct_follower.offset == 2);
+  assert(boundary_before_direct_follower.lexer.lookahead == 'x');
 
-  struct MockLexer connector_before_repeated_continuation;
+  struct MockLexer boundary_before_repeated_continuation;
   init_mock_lexer(
-    &connector_before_repeated_continuation,
+    &boundary_before_repeated_continuation,
     repeated_input,
     sizeof(repeated_input) / sizeof(repeated_input[0])
   );
   assert(tree_sitter_posix_sh_external_scanner_scan(
     scanner,
-    &connector_before_repeated_continuation.lexer,
+    &boundary_before_repeated_continuation.lexer,
     valid_symbols
   ));
   assert(
-    connector_before_repeated_continuation.lexer.result_symbol ==
-    CONNECTOR_LINE_CONTINUATION
+    boundary_before_repeated_continuation.lexer.result_symbol ==
+    BOUNDARY_LINE_CONTINUATION
   );
-  assert(connector_before_repeated_continuation.mark == 2);
-  assert(connector_before_repeated_continuation.offset == 6);
-  assert(connector_before_repeated_continuation.lexer.lookahead == 'x');
+  assert(boundary_before_repeated_continuation.mark == 2);
+  assert(boundary_before_repeated_continuation.offset == 6);
+  assert(boundary_before_repeated_continuation.lexer.lookahead == 'x');
 
   const int32_t blank_follower_input[] = {'\\', '\n', ' ', 'x'};
   struct MockLexer word_separator_before_blank_follower;
@@ -1337,23 +1360,90 @@ static void assert_connector_line_continuation_contract(void) {
   assert(word_separator_before_blank_follower.lexer.lookahead == 'x');
 
   const int32_t comment_follower_input[] = {'\\', '\n', ' ', '#'};
-  struct MockLexer connector_before_comment;
+  struct MockLexer boundary_before_comment;
   init_mock_lexer(
-    &connector_before_comment,
+    &boundary_before_comment,
     comment_follower_input,
     sizeof(comment_follower_input) / sizeof(comment_follower_input[0])
   );
   assert(tree_sitter_posix_sh_external_scanner_scan(
     scanner,
-    &connector_before_comment.lexer,
+    &boundary_before_comment.lexer,
     valid_symbols
   ));
   assert(
-    connector_before_comment.lexer.result_symbol == CONNECTOR_LINE_CONTINUATION
+    boundary_before_comment.lexer.result_symbol == BOUNDARY_LINE_CONTINUATION
   );
-  assert(connector_before_comment.mark == 2);
-  assert(connector_before_comment.offset == 3);
-  assert(connector_before_comment.lexer.lookahead == '#');
+  assert(boundary_before_comment.mark == 2);
+  assert(boundary_before_comment.offset == 3);
+  assert(boundary_before_comment.lexer.lookahead == '#');
+
+  const enum TokenType closed_markers[] = {
+    CLOSED_COMMAND_END,
+    CLOSED_SIMPLE_COMMAND_END,
+  };
+  const int32_t closed_input[] = {'\\', '\n', ')'};
+  const int32_t ordinary_input[] = {'\\', '\n', 'x'};
+  for (
+    size_t index = 0;
+    index < sizeof(closed_markers) / sizeof(closed_markers[0]);
+    index += 1
+  ) {
+    bool closed_symbols[TOKEN_COUNT] = {false};
+    closed_symbols[LINE_CONTINUATION] = true;
+    closed_symbols[OPERATOR_LINE_CONTINUATION] = true;
+    closed_symbols[BOUNDARY_LINE_CONTINUATION] = true;
+    closed_symbols[closed_markers[index]] = true;
+
+    struct MockLexer closed_boundary;
+    init_mock_lexer(
+      &closed_boundary,
+      closed_input,
+      sizeof(closed_input) / sizeof(closed_input[0])
+    );
+    assert(tree_sitter_posix_sh_external_scanner_scan(
+      scanner,
+      &closed_boundary.lexer,
+      closed_symbols
+    ));
+    assert(closed_boundary.lexer.result_symbol == BOUNDARY_LINE_CONTINUATION);
+    assert(closed_boundary.mark == 2);
+    assert(closed_boundary.offset == 2);
+    assert(closed_boundary.lexer.lookahead == ')');
+
+    struct MockLexer ordinary_follower;
+    init_mock_lexer(
+      &ordinary_follower,
+      ordinary_input,
+      sizeof(ordinary_input) / sizeof(ordinary_input[0])
+    );
+    assert(tree_sitter_posix_sh_external_scanner_scan(
+      scanner,
+      &ordinary_follower.lexer,
+      closed_symbols
+    ));
+    assert(ordinary_follower.lexer.result_symbol == OPERATOR_LINE_CONTINUATION);
+    assert(ordinary_follower.mark == 2);
+  }
+
+  bool recovery_symbols[TOKEN_COUNT] = {false};
+  recovery_symbols[LINE_CONTINUATION] = true;
+  recovery_symbols[SEPARATOR_RECOVERY] = true;
+  struct MockLexer ownerless_recovery;
+  init_mock_lexer(
+    &ownerless_recovery,
+    closed_input,
+    sizeof(closed_input) / sizeof(closed_input[0])
+  );
+  assert(tree_sitter_posix_sh_external_scanner_scan(
+    scanner,
+    &ownerless_recovery.lexer,
+    recovery_symbols
+  ));
+  assert(ownerless_recovery.lexer.result_symbol == LINE_CONTINUATION);
+  assert(ownerless_recovery.mark == 2);
+  assert(ownerless_recovery.offset == 2);
+  assert(ownerless_recovery.lexer.lookahead == ')');
 
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
@@ -3692,7 +3782,7 @@ int main(void) {
   assert_recursive_backquote_delimiters();
   assert_dollar_single_quote_delimiter_bytes();
   assert_generic_line_continuation_contract();
-  assert_connector_line_continuation_contract();
+  assert_boundary_line_continuation_contract();
   assert_word_separator_line_continuation_contract();
   assert_backquote_prefix_scanner_contract();
   assert_function_body_boundary_classifies_after_horizontal_layout();

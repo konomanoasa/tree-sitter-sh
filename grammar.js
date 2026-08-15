@@ -119,6 +119,15 @@ const reservedWord = ($, marker) => seq(marker, $._reserved_word_source);
 
 const lineContinuationRun = ($) => prec.right(1, repeat1($.line_continuation));
 
+const boundaryLineContinuationRun = ($) =>
+  prec.right(
+    1,
+    seq(
+      alias($._boundary_line_continuation, $.line_continuation),
+      repeat($.line_continuation),
+    ),
+  );
+
 // A here-document body reaching its end synchronizes every construct that is
 // still open inside the body at that boundary.
 const hereDocumentBoundaryRecovery = ($) =>
@@ -260,12 +269,14 @@ const arithmeticExpansionEnd = ($) =>
 const linebreakLayout = ($) =>
   seq(optional($.linebreak), optional($._horizontal_layout));
 
-const continuedLinebreakLayout = ($) =>
+const continuedLinebreakLayout = ($, continuation) =>
   choice(
     prec.right(
       2,
       seq(
-        repeat1(alias($._connector_line_continuation, $.line_continuation)),
+        optional($._blank),
+        repeat1(alias(continuation, $.line_continuation)),
+        optional($._horizontal_layout),
         optional(seq($.linebreak, optional($._horizontal_layout))),
       ),
     ),
@@ -276,6 +287,12 @@ const continuedLinebreakLayout = ($) =>
     ),
   );
 
+const operatorContinuedLinebreakLayout = ($) =>
+  continuedLinebreakLayout($, $._operator_line_continuation);
+
+const boundaryContinuedLinebreakLayout = ($) =>
+  continuedLinebreakLayout($, $._boundary_line_continuation);
+
 const reservedWordLinebreak = ($) =>
   choice(seq($.linebreak, optional($._horizontal_layout)), $._word_separator);
 
@@ -284,6 +301,16 @@ const continuationBoundaryLayout = ($, marker) =>
     1,
     seq(
       optional(lineContinuationRun($)),
+      marker,
+      optional($._horizontal_layout),
+    ),
+  );
+
+const ownedContinuationBoundaryLayout = ($, marker) =>
+  prec.right(
+    1,
+    seq(
+      optional(boundaryLineContinuationRun($)),
       marker,
       optional($._horizontal_layout),
     ),
@@ -362,7 +389,7 @@ const commandSubstitutionSequenceBody = ($) =>
   );
 
 const closedCommandBoundaryLayout = ($) =>
-  continuationBoundaryLayout($, $._closed_command_end);
+  ownedContinuationBoundaryLayout($, $._closed_command_end);
 
 const backquoteDollar = ($) =>
   seq(alias($._backquote_dollar_prefix, "\\"), token.immediate("$"));
@@ -1016,7 +1043,7 @@ module.exports = grammar({
     $._here_document_content_line_start,
     $._newline,
     $.line_continuation,
-    $._connector_line_continuation,
+    $._boundary_line_continuation,
     $._word_separator_line_continuation,
     $._arithmetic_assignment_operator_boundary,
     $._arithmetic_question_operator_boundary,
@@ -1081,6 +1108,7 @@ module.exports = grammar({
     $._word_tilde_end,
     $._assignment_tilde_end,
     $._name_equals_begin,
+    $._operator_line_continuation,
   ],
 
   extras: ($) => [$._here_document_content_line_start],
@@ -1096,7 +1124,6 @@ module.exports = grammar({
     [$.pipe_sequence],
     [$.pipe_sequence, $._closed_pipe_sequence],
     [$.pipe_sequence, $._closed_pipe_sequence, $._recoverable_pipe_sequence],
-    [$.command, $._recoverable_command],
     [$.and_or],
     [$.and_or, $._closed_and_or],
     [
@@ -1318,7 +1345,29 @@ module.exports = grammar({
             field("and_or", $.and_or),
           ),
         ),
+        optional(
+          prec.dynamic(
+            -50,
+            seq(
+              optional($._separator_boundary_layout),
+              field("separator", prec(100, $.separator_recovery)),
+              field("and_or", alias($._invalid_list_and_or, $.and_or)),
+            ),
+          ),
+        ),
       ),
+
+    _invalid_list_and_or: ($) =>
+      field("pipeline", alias($._invalid_list_pipeline, $.pipeline)),
+
+    _invalid_list_pipeline: ($) =>
+      field("sequence", alias($._invalid_list_pipe_sequence, $.pipe_sequence)),
+
+    _invalid_list_pipe_sequence: ($) =>
+      field("command", alias($._invalid_list_command, $.command)),
+
+    _invalid_list_command: ($) =>
+      invalidCommandRecoveryField($, $._stray_right_parenthesis),
 
     and_or: ($) =>
       seq(
@@ -1327,7 +1376,7 @@ module.exports = grammar({
           seq(
             commandBoundaryLayout($),
             field("operator", choice($.and_if, $.or_if)),
-            continuedLinebreakLayout($),
+            operatorContinuedLinebreakLayout($),
             field(
               "pipeline",
               choice($.pipeline, alias($._recovering_pipeline, $.pipeline)),
@@ -1364,7 +1413,7 @@ module.exports = grammar({
           seq(
             commandBoundaryLayout($),
             "|",
-            continuedLinebreakLayout($),
+            operatorContinuedLinebreakLayout($),
             field(
               "command",
               choice($.command, alias($._recovering_command, $.command)),
@@ -1406,6 +1455,8 @@ module.exports = grammar({
         seq($._invalid_case_terminator_start, choice($.dsemi, $.semi_and)),
         $._invalid_command_character_source,
       ),
+
+    _stray_right_parenthesis: (_) => token(prec(-1, ")")),
 
     _reserved_word_source: (_) =>
       choice(
@@ -1613,7 +1664,7 @@ module.exports = grammar({
           field("pipeline", $.pipeline),
           commandBoundaryLayout($),
           field("operator", choice($.and_if, $.or_if)),
-          continuedLinebreakLayout($),
+          boundaryContinuedLinebreakLayout($),
         ),
       ),
 
@@ -1657,7 +1708,7 @@ module.exports = grammar({
           field("command", $.command),
           commandBoundaryLayout($),
           "|",
-          continuedLinebreakLayout($),
+          boundaryContinuedLinebreakLayout($),
         ),
       ),
 
@@ -1678,7 +1729,7 @@ module.exports = grammar({
         -50,
         seq(
           field("body", $.simple_command),
-          continuationBoundaryLayout($, $._closed_simple_command_end),
+          ownedContinuationBoundaryLayout($, $._closed_simple_command_end),
         ),
       ),
 

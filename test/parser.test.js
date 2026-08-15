@@ -736,6 +736,169 @@ test("line-continuation and comment contracts", () => {
   );
 });
 
+test("list recovery stops before raw command separators", () => {
+  const rawBoundary = writeSource(
+    "list-recovery-raw-boundary",
+    lines("printf )", "printf hi"),
+  );
+  const rawOutput = runParse({
+    description: "ownerless right parenthesis before a raw newline",
+    mode: "recovery",
+    source: rawBoundary,
+  }).output;
+  assertCstRange(rawOutput, "0:7-0:7", "separator: separator_recovery");
+  assertCstRange(rawOutput, "0:7-0:8", "recovery: command_recovery");
+  assertCstRange(rawOutput, "1:0-1:9", "command: complete_command");
+  assertOccurrenceCount(rawOutput, "command: complete_command", 2);
+  assertNotContains(rawOutput, "ERROR");
+  assertRepeatedColdParse(
+    "recovery",
+    rawBoundary,
+    "ownerless right parenthesis raw boundary",
+  );
+
+  const hierarchyBoundaries = writeSource(
+    "list-recovery-command-hierarchies",
+    lines(
+      "printf x | printf )",
+      "true && printf )",
+      "if :; then :; fi )",
+      "after",
+    ),
+  );
+  const hierarchyOutput = runParse({
+    description: "ownerless right parentheses after command hierarchies",
+    mode: "recovery",
+    source: hierarchyBoundaries,
+  }).output;
+  for (const range of ["0:18-0:19", "1:15-1:16", "2:17-2:18"]) {
+    assertCstRange(hierarchyOutput, range, "recovery: command_recovery");
+  }
+  assertOccurrenceCount(hierarchyOutput, "recovery: command_recovery", 3);
+  assertCstRange(hierarchyOutput, "3:0-3:5", "command: complete_command");
+  assertNotContains(hierarchyOutput, "ERROR");
+
+  const commentInitial = writeSource(
+    "list-recovery-comment-initial",
+    lines("printf )", "printf hi", "after"),
+  );
+  const commentFinal = writeSource(
+    "list-recovery-comment-final",
+    lines("printf )", "# printf hi", "after"),
+  );
+  for (const output of parseIncrementalAndFresh(
+    commentInitial,
+    commentFinal,
+    "insert-comment-after-ownerless-right-parenthesis",
+    "9 0 # ",
+  )) {
+    assertCstRange(output, "0:7-0:8", "recovery: command_recovery");
+    assertCstRange(output, "1:0-1:11", "comment");
+    assertCstRange(output, "2:0-2:5", "command: complete_command");
+    assertNotContains(output, "ERROR");
+  }
+
+  const escapedBoundary = writeSource(
+    "list-recovery-escaped-boundary",
+    lines("printf \\", ")", "after"),
+  );
+  const escapedOutput = runParse({
+    description: "ownerless right parenthesis after a line continuation",
+    mode: "recovery",
+    source: escapedBoundary,
+  }).output;
+  assertCstRange(escapedOutput, "0:7-1:0", "line_continuation");
+  assertOccurrenceCount(escapedOutput, "line_continuation", 1);
+  assertCstRange(escapedOutput, "1:0-1:1", "recovery: command_recovery");
+  assertCstRange(escapedOutput, "2:0-2:5", "command: complete_command");
+  assertNotContains(escapedOutput, "ERROR");
+
+  const nestedBoundary = writeSource(
+    "list-recovery-nested-boundary",
+    lines("echo $(printf x\\", ") )", "after"),
+  );
+  const nestedOutput = runParse({
+    description: "formal and ownerless right parentheses retain owners",
+    mode: "recovery",
+    source: nestedBoundary,
+  }).output;
+  assertCstRange(nestedOutput, "0:5-1:1", "command_substitution");
+  assertCstRange(nestedOutput, "0:15-1:0", "line_continuation");
+  assertCstRange(nestedOutput, "1:2-1:3", "recovery: command_recovery");
+  assertCstRange(nestedOutput, "2:0-2:5", "command: complete_command");
+  assertNotContains(nestedOutput, "ERROR");
+});
+
+test("formal right-parenthesis ownership survives boundary continuations", () => {
+  const logical = writeSource(
+    "formal-right-parenthesis-logical",
+    lines("(printf )", "after"),
+  );
+  const physical = writeSource(
+    "formal-right-parenthesis-physical",
+    lines("(printf \\", ")", "after"),
+  );
+  const logicalOutput = parseValidCst(logical);
+  const physicalOutput = parseValidCst(physical);
+  assertSameLogicalProjection(
+    "formal right parenthesis boundary continuation",
+    logicalOutput,
+    physicalOutput,
+  );
+  assertCstRange(physicalOutput, "0:0-1:1", "subshell");
+  assertCstRange(physicalOutput, "0:8-1:0", "line_continuation");
+  assertOccurrenceCount(physicalOutput, "line_continuation", 1);
+  assertCstDirectChildRange(
+    physicalOutput,
+    "0:0-1:1",
+    "subshell",
+    "1:0-1:1",
+    '")"',
+  );
+  assertCstRange(physicalOutput, "2:0-2:5", "command: complete_command");
+  assertNotContains(physicalOutput, "ERROR");
+  assertNotContains(physicalOutput, "command_recovery");
+  assertIncrementalEqualsFresh(
+    logical,
+    physical,
+    "insert-formal-right-parenthesis-boundary-continuation",
+    "8 0 \\\n",
+  );
+
+  const repeatedLogical = writeSource(
+    "formal-right-parenthesis-repeated-logical",
+    lines("(printf  )", "after"),
+  );
+  const repeatedPhysical = writeSource(
+    "formal-right-parenthesis-repeated-physical",
+    lines("(printf \\", " \\", ")", "after"),
+  );
+  const repeatedLogicalOutput = parseValidCst(repeatedLogical);
+  const repeatedPhysicalOutput = parseValidCst(repeatedPhysical);
+  assertSameLogicalProjection(
+    "formal right parenthesis repeated boundary continuations",
+    repeatedLogicalOutput,
+    repeatedPhysicalOutput,
+  );
+  assertCstRange(repeatedPhysicalOutput, "0:8-1:0", "line_continuation");
+  assertCstRange(repeatedPhysicalOutput, "1:1-2:0", "line_continuation");
+  assertOccurrenceCount(repeatedPhysicalOutput, "line_continuation", 2);
+  assertCstDirectChildRange(
+    repeatedPhysicalOutput,
+    "0:0-2:1",
+    "subshell",
+    "2:0-2:1",
+    '")"',
+  );
+  assertCstRange(
+    repeatedPhysicalOutput,
+    "3:0-3:5",
+    "command: complete_command",
+  );
+  assertNotContains(repeatedPhysicalOutput, "ERROR");
+  assertNotContains(repeatedPhysicalOutput, "command_recovery");
+});
+
 test("structural recovery preserves closer ownership", () => {
   const redirectionRecovery = writeSource(
     "recovery-redirection",
@@ -1579,12 +1742,38 @@ test("substitution, redirection, and token boundaries retain ownership", () => {
     "recovery: (command_recovery [0, 10] - [0, 10])",
     "(complete_command [1, 0] - [1, 21]",
   );
+  const missingCommandCst = parseValidCst(missingCommand);
   assertCstDirectChildRange(
-    parseValidCst(missingCommand),
+    missingCommandCst,
     "0:0-0:11",
     "subshell",
     "0:10-0:11",
     '")"',
+  );
+  const continuedMissingCommand = writeSource(
+    "recovery-missing-command-parenthesis-continuation",
+    lines("(first && \\", ")", "after_missing_command"),
+  );
+  const continuedMissingCommandCst = parseValidCst(continuedMissingCommand);
+  assertSameLogicalProjection(
+    "missing command before a continued parenthesis",
+    missingCommandCst,
+    continuedMissingCommandCst,
+  );
+  assertCstRange(continuedMissingCommandCst, "0:10-1:0", "line_continuation");
+  assertCstRange(continuedMissingCommandCst, "1:0-1:0", "command_recovery");
+  assertCstDirectChildRange(
+    continuedMissingCommandCst,
+    "0:0-1:1",
+    "subshell",
+    "1:0-1:1",
+    '")"',
+  );
+  assertIncrementalEqualsFresh(
+    missingCommand,
+    continuedMissingCommand,
+    "insert-missing-command-boundary-continuation",
+    "10 0 \\\n",
   );
 
   const outerSubshellInitial = writeSource(
@@ -2695,28 +2884,41 @@ test("command separators and continuation boundaries remain stable", () => {
     "5 6",
   );
 
-  const pipeLinebreakInitial = writeSource(
-    "pipe-linebreak-initial",
-    lines("first|next"),
+  const closedAndOrContinuationInitial = writeSource(
+    "closed-and-or-continuation-initial",
+    lines("{ a && b; }"),
   );
-  const pipeLinebreakFinal = writeSource(
-    "pipe-linebreak-final",
-    lines("first| \\", "next"),
+  const closedAndOrContinuationFinal = writeSource(
+    "closed-and-or-continuation-final",
+    lines("{ a && \\", "b; }"),
   );
-  const pipeLinebreakOutput = parseValidCst(pipeLinebreakFinal);
-  assertCstRange(pipeLinebreakOutput, "0:7-1:0", "line_continuation");
-  assertNotContains(pipeLinebreakOutput, "ERROR");
+  const closedAndOrLogicalOutput = parseValidCst(
+    closedAndOrContinuationInitial,
+  );
+  const closedAndOrPhysicalOutput = parseValidCst(closedAndOrContinuationFinal);
+  assertSameLogicalProjection(
+    "closed AND-OR continuation",
+    closedAndOrLogicalOutput,
+    closedAndOrPhysicalOutput,
+  );
+  assertCstRange(closedAndOrPhysicalOutput, "0:0-1:4", "brace_group");
+  assertCstRange(closedAndOrPhysicalOutput, "0:4-0:6", "operator: and_if");
+  assertCstRange(closedAndOrPhysicalOutput, "0:7-1:0", "line_continuation");
+  assertOccurrenceCount(closedAndOrPhysicalOutput, "line_continuation", 1);
+  for (const recovery of ["ERROR", "MISSING", "_recovery"]) {
+    assertNotContains(closedAndOrPhysicalOutput, recovery);
+  }
   assertIncrementalEqualsFresh(
-    pipeLinebreakInitial,
-    pipeLinebreakFinal,
-    "insert-pipe-linebreak-continuation",
-    "6 0  \\\n",
+    closedAndOrContinuationInitial,
+    closedAndOrContinuationFinal,
+    "insert-closed-and-or-continuation",
+    "7 0 \\\n",
   );
   assertIncrementalEqualsFresh(
-    pipeLinebreakFinal,
-    pipeLinebreakInitial,
-    "delete-pipe-linebreak-continuation",
-    "6 3",
+    closedAndOrContinuationFinal,
+    closedAndOrContinuationInitial,
+    "delete-closed-and-or-continuation",
+    "7 2",
   );
 
   const compoundLayoutInitial = writeSource(

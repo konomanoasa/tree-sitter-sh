@@ -30,12 +30,14 @@ first; }
     (newline_list)))
 
 ==================
-Brace compound lists use terms and require a final separator
+Brace compound lists preserve continued operators and final separators
 ==================
 
 holder() {
-  first && second
-  third | fourth;
+  first && \
+second
+  third | \
+  fourth;
 }
 
 ---
@@ -68,6 +70,7 @@ holder() {
                                         (word
                                           (literal)))))))
                               operator: (and_if)
+                              (line_continuation)
                               pipeline: (pipeline
                                 sequence: (pipe_sequence
                                   command: (command
@@ -85,6 +88,7 @@ holder() {
                                       name: (cmd_name
                                         (word
                                           (literal)))))
+                                  (line_continuation)
                                   command: (command
                                     body: (simple_command
                                       name: (cmd_name
