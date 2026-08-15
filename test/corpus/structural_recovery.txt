@@ -926,3 +926,205 @@ after
                       (literal)))))))))))
   (linebreak
     (newline_list)))
+
+================================================================================
+An unterminated braced parameter word recovers only at the end of input
+================================================================================
+
+echo ${x:-$y z
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (parameter_expansion
+                            (variable_name))
+                          (literal))
+                        (parameter_expansion_recovery)))))))))))))
+
+================================================================================
+An unterminated case item body keeps its formal clause
+================================================================================
+
+case x in a) b
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list_ns
+                      (case_item_ns
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        (compound_command_recovery)))))))))))))
+
+================================================================================
+A closed case pattern keeps its formal clause without a body
+================================================================================
+
+case x in a)
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list_ns
+                      (case_item_ns
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (compound_command_recovery)))))))))))))
+
+================================================================================
+An incomplete arithmetic expansion holds its flat source parts
+================================================================================
+
+echo $((1 +
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_number)
+                        (arithmetic_operator)))))))))))))
+
+================================================================================
+An empty incomplete arithmetic expansion keeps its classification
+================================================================================
+
+echo $((
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion))))))))))))
+
+
+
+================================================================================
+A case terminator after a complete list stays one recovered token
+================================================================================
+
+a;;
+b
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))
+        (separator_recovery)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (command_recovery
+                  (dsemi))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))

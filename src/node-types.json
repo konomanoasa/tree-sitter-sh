@@ -554,11 +554,47 @@
       "required": false,
       "types": [
         {
+          "type": "arithmetic_expansion",
+          "named": true
+        },
+        {
+          "type": "arithmetic_number",
+          "named": true
+        },
+        {
+          "type": "arithmetic_operator",
+          "named": true
+        },
+        {
+          "type": "arithmetic_variable",
+          "named": true
+        },
+        {
+          "type": "backquote_substitution",
+          "named": true
+        },
+        {
+          "type": "command_substitution",
+          "named": true
+        },
+        {
           "type": "here_document_end_recovery",
           "named": true
         },
         {
           "type": "line_continuation",
+          "named": true
+        },
+        {
+          "type": "parameter_expansion",
+          "named": true
+        },
+        {
+          "type": "parenthesized_arithmetic_dynamic_source",
+          "named": true
+        },
+        {
+          "type": "parenthesized_arithmetic_source",
           "named": true
         }
       ]

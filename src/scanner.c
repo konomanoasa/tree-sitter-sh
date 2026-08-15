@@ -101,7 +101,7 @@ enum TokenType {
   PARAMETER_OPERATOR_RECOVERY_BOUNDARY,
   PARAMETER_TAIL_RECOVERY_BOUNDARY,
   DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY,
-  PARAMETER_EXPANSION_RECOVERY_BOUNDARY,
+  INPUT_END_RECOVERY,
   BOUNDARY_COMMAND_RECOVERY,
   MISSING_COMMAND_RECOVERY_BOUNDARY,
   INVALID_RESERVED_COMMAND_START,
@@ -754,18 +754,6 @@ static bool is_bracket_scan_boundary(
   );
 }
 
-static bool scan_bracket_line_continuation(TSLexer *lexer) {
-  if (lexer->lookahead != '\\') {
-    return false;
-  }
-  lexer->advance(lexer, false);
-  if (lexer->lookahead != '\n') {
-    return false;
-  }
-  lexer->advance(lexer, false);
-  return true;
-}
-
 static bool scan_bracket_literal_start(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -790,7 +778,7 @@ static bool scan_bracket_literal_start(
     int32_t character = lexer->lookahead;
 
     if (character == '\\') {
-      if (!scan_bracket_line_continuation(lexer)) {
+      if (!skip_line_continuations(lexer)) {
         return false;
       }
       continue;
@@ -826,10 +814,8 @@ static bool scan_bracket_literal_start(
 
     if (character == '[') {
       lexer->advance(lexer, false);
-      while (lexer->lookahead == '\\') {
-        if (!scan_bracket_line_continuation(lexer)) {
-          return false;
-        }
+      if (!skip_line_continuations(lexer)) {
+        return false;
       }
       int32_t nested_marker = lexer->lookahead;
       bool is_nested_special =
@@ -841,7 +827,7 @@ static bool scan_bracket_literal_start(
         while (!is_bracket_scan_boundary(scanner, lexer, parameter_pattern)) {
           int32_t nested_character = lexer->lookahead;
           if (nested_character == '\\') {
-            if (!scan_bracket_line_continuation(lexer)) {
+            if (!skip_line_continuations(lexer)) {
               return false;
             }
             continue;
@@ -864,10 +850,8 @@ static bool scan_bracket_literal_start(
 
           lexer->advance(lexer, false);
           if (nested_character == nested_marker && content_length > 0) {
-            while (lexer->lookahead == '\\') {
-              if (!scan_bracket_line_continuation(lexer)) {
-                return false;
-              }
+            if (!skip_line_continuations(lexer)) {
+              return false;
             }
             if (lexer->lookahead == ']') {
               lexer->advance(lexer, false);
@@ -1790,6 +1774,48 @@ static bool scan_nested_here_document_sequence(
   return true;
 }
 
+/*
+ * Read the "(" or "{" that follows a dollar sign in a here-document
+ * delimiter, pushing the group frame and upgrading "$((" to its arithmetic
+ * pair. The caller has already consumed the dollar sign.
+ */
+static bool push_dollar_delimiter_group(
+  TSLexer *lexer,
+  struct ByteBuffer *delimiter,
+  struct DelimiterGroupBuffer *groups,
+  enum DelimiterQuote parent_quote
+) {
+  int32_t opening = lexer->lookahead;
+  char closing = opening == '(' ? ')' : '}';
+  enum DelimiterGroupKind kind =
+    opening == '(' ? DELIMITER_GROUP_COMMAND : DELIMITER_GROUP_PARAMETER;
+  if (
+    !push_delimiter_group(groups, closing, kind, parent_quote) ||
+    !append_codepoint(delimiter, opening)
+  ) {
+    return false;
+  }
+  lexer->advance(lexer, false);
+
+  if (opening == '(' && lexer->lookahead == '(') {
+    groups->data[groups->length - 1].kind = DELIMITER_GROUP_ARITHMETIC;
+    groups->data[groups->length - 1].command_start = false;
+    if (
+      !push_delimiter_group(
+        groups,
+        ')',
+        DELIMITER_GROUP_ARITHMETIC,
+        DELIMITER_UNQUOTED
+      ) ||
+      !append_byte(delimiter, '(')
+    ) {
+      return false;
+    }
+    lexer->advance(lexer, false);
+  }
+  return true;
+}
+
 static bool scan_here_document_delimiter(
   struct Scanner *scanner,
   TSLexer *lexer,
@@ -1855,37 +1881,14 @@ static bool scan_here_document_delimiter(
         lexer->advance(lexer, false);
         valid = append_byte(&delimiter, '$');
         if (valid && (lexer->lookahead == '(' || lexer->lookahead == '{')) {
-          int32_t opening = lexer->lookahead;
-          char closing = opening == '(' ? ')' : '}';
-          enum DelimiterGroupKind kind = opening == '('
-            ? DELIMITER_GROUP_COMMAND
-            : DELIMITER_GROUP_PARAMETER;
-          valid = push_delimiter_group(
-                    &groups,
-                    closing,
-                    kind,
-                    DELIMITER_DOUBLE_QUOTED
-                  ) &&
-            append_codepoint(&delimiter, opening);
-          if (!valid) {
-            continue;
-          }
-
-          lexer->advance(lexer, false);
-          quote = DELIMITER_UNQUOTED;
-          if (opening == '(' && lexer->lookahead == '(') {
-            groups.data[groups.length - 1].kind = DELIMITER_GROUP_ARITHMETIC;
-            groups.data[groups.length - 1].command_start = false;
-            valid = push_delimiter_group(
-                      &groups,
-                      ')',
-                      DELIMITER_GROUP_ARITHMETIC,
-                      DELIMITER_UNQUOTED
-                    ) &&
-              append_byte(&delimiter, '(');
-            if (valid) {
-              lexer->advance(lexer, false);
-            }
+          valid = push_dollar_delimiter_group(
+            lexer,
+            &delimiter,
+            &groups,
+            DELIMITER_DOUBLE_QUOTED
+          );
+          if (valid) {
+            quote = DELIMITER_UNQUOTED;
           }
         }
       } else if (character == '`') {
@@ -2249,37 +2252,7 @@ static bool scan_here_document_delimiter(
       }
 
       if (lexer->lookahead == '(' || lexer->lookahead == '{') {
-        int32_t opening = lexer->lookahead;
-        char closing = opening == '(' ? ')' : '}';
-        enum DelimiterGroupKind kind =
-          opening == '(' ? DELIMITER_GROUP_COMMAND : DELIMITER_GROUP_PARAMETER;
-        if (
-          !push_delimiter_group(&groups, closing, kind, quote) ||
-          !append_codepoint(&delimiter, opening)
-        ) {
-          valid = false;
-          continue;
-        }
-
-        lexer->advance(lexer, false);
-
-        if (opening == '(' && lexer->lookahead == '(') {
-          groups.data[groups.length - 1].kind = DELIMITER_GROUP_ARITHMETIC;
-          groups.data[groups.length - 1].command_start = false;
-          if (
-            !push_delimiter_group(
-              &groups,
-              ')',
-              DELIMITER_GROUP_ARITHMETIC,
-              DELIMITER_UNQUOTED
-            ) ||
-            !append_byte(&delimiter, '(')
-          ) {
-            valid = false;
-            continue;
-          }
-          lexer->advance(lexer, false);
-        }
+        valid = push_dollar_delimiter_group(lexer, &delimiter, &groups, quote);
       }
       continue;
     }
@@ -2814,21 +2787,26 @@ scan_case_item_ns_boundary(const struct Scanner *scanner, TSLexer *lexer) {
 static bool scan_direct_recovery_boundary(
   const struct Scanner *scanner,
   TSLexer *lexer,
-  enum TokenType symbol
+  enum TokenType symbol,
+  const bool *valid_symbols
 ) {
   lexer->mark_end(lexer);
 
   /*
    * These recoveries synchronize from word positions, where a right brace is
    * ordinary word source rather than a closer, so they never stop at one.
+   * A raw newline or comment marks a boundary only where no rule accepts the
+   * newline or comment itself; anywhere a linebreak or trailing comment may
+   * follow, that source must remain available to the grammar.
    */
   bool is_boundary = lexer_at_eof(lexer) ||
     lexer->lookahead ==
     ')' ||
     is_active_backquote_boundary(scanner, lexer->lookahead);
   if (symbol != FOR_TAIL_RECOVERY_BOUNDARY) {
-    is_boundary =
-      is_boundary || lexer->lookahead == '\n' || lexer->lookahead == '#';
+    is_boundary = is_boundary ||
+      (lexer->lookahead == '\n' && !valid_symbols[NEWLINE]) ||
+      (lexer->lookahead == '#' && !valid_symbols[COMMENT_BOUNDARY]);
   }
   if (symbol == HEADER_RECOVERY_BOUNDARY) {
     is_boundary =
@@ -3057,29 +3035,36 @@ static bool scan_parameter_expansion_recovery_boundary(
   enum TokenType symbol
 ) {
   lexer->mark_end(lexer);
-
-  if (symbol == PARAMETER_EXPANSION_RECOVERY_BOUNDARY) {
-    if (!lexer_at_eof(lexer)) {
-      return false;
-    }
-    lexer->result_symbol = PARAMETER_EXPANSION_RECOVERY_BOUNDARY;
-    return true;
-  }
-
   int32_t character = lexer->lookahead;
-  bool is_outer_boundary = lexer_at_eof(lexer) ||
-    character ==
-    '\n' ||
-    character ==
-    ' ' ||
-    character ==
-    '\t' ||
-    character ==
-    ')' ||
-    is_active_backquote_boundary(scanner, character) ||
-    character ==
-    ';' ||
-    character == '&';
+
+  /*
+   * POSIX reads a braced expansion up to the matching right brace, so behind
+   * an operator every character is ordinary word content and only real
+   * terminators end the expansion there: the end of input, the closing
+   * backquote of an enclosing substitution, and inside double quotes an
+   * unterminated inner double quote. The parameter, operator, and
+   * pre-operator positions additionally synchronize at layout and control
+   * characters, which can never continue a valid expansion.
+   */
+  bool at_word_position = symbol ==
+    INPUT_END_RECOVERY ||
+    symbol == DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY;
+  bool is_outer_boundary =
+    lexer_at_eof(lexer) || is_active_backquote_boundary(scanner, character);
+  if (!at_word_position) {
+    is_outer_boundary = is_outer_boundary ||
+      character ==
+      '\n' ||
+      character ==
+      ' ' ||
+      character ==
+      '\t' ||
+      character ==
+      ')' ||
+      character ==
+      ';' ||
+      character == '&';
+  }
   bool includes_closing_brace = symbol ==
     PARAMETER_MISSING_RECOVERY_BOUNDARY ||
     symbol == PARAMETER_OPERATOR_RECOVERY_BOUNDARY;
@@ -3089,11 +3074,10 @@ static bool scan_parameter_expansion_recovery_boundary(
   }
 
   /*
-   * Inside a double-quoted expansion an inner double quote opens an ordinary
-   * quoted string, so it ends the expansion for recovery only when that
-   * quoted string never terminates.
+   * An inner double quote opens an ordinary quoted string, so it ends the
+   * expansion for recovery only when that quoted string never terminates.
    */
-  bool includes_double_quote = symbol != PARAMETER_TAIL_RECOVERY_BOUNDARY;
+  bool includes_double_quote = symbol != INPUT_END_RECOVERY;
   if (includes_double_quote && character == '"') {
     lexer->advance(lexer, false);
     while (!lexer_at_eof(lexer) && lexer->lookahead != '"') {
@@ -5535,15 +5519,15 @@ static bool write_state_size(struct StateWriter *writer, size_t value) {
   return true;
 }
 
-static bool serialize_document(
+static uint8_t document_flags(const struct HereDocument *document) {
+  return (uint8_t)((document->quoted ? 1 : 0) | (document->strip_tabs ? 2 : 0));
+}
+
+static bool write_document_delimiter(
   struct StateWriter *writer,
   const struct HereDocument *document
 ) {
   return (
-    write_state_byte(
-      writer,
-      (document->quoted ? 1 : 0) | (document->strip_tabs ? 2 : 0)
-    ) &&
     write_state_size(writer, document->delimiter_length) &&
     write_state_bytes(
       writer,
@@ -5553,23 +5537,24 @@ static bool serialize_document(
   );
 }
 
+static bool serialize_document(
+  struct StateWriter *writer,
+  const struct HereDocument *document
+) {
+  return (
+    write_state_byte(writer, document_flags(document)) &&
+    write_document_delimiter(writer, document)
+  );
+}
+
 static bool serialize_captured_document(
   struct StateWriter *writer,
   const struct CapturedHereDocument *captured
 ) {
-  const struct HereDocument *document = &captured->document;
   return (
-    write_state_byte(
-      writer,
-      (document->quoted ? 1 : 0) | (document->strip_tabs ? 2 : 0)
-    ) &&
+    write_state_byte(writer, document_flags(&captured->document)) &&
     write_state_size(writer, captured->source_end_column) &&
-    write_state_size(writer, document->delimiter_length) &&
-    write_state_bytes(
-      writer,
-      (const char *)document->delimiter,
-      document->delimiter_length
-    )
+    write_document_delimiter(writer, &captured->document)
   );
 }
 
@@ -5707,14 +5692,13 @@ static bool read_size(struct SerializedScannerState *state, size_t *value) {
   }
 }
 
-static bool deserialize_document(
+static bool read_document_body(
   struct SerializedScannerState *state,
+  uint8_t flags,
   struct HereDocument *document
 ) {
-  uint8_t flags;
   size_t delimiter_length;
   if (
-    !read_byte(state, &flags) ||
     (flags & ~UINT8_C(3)) !=
     0 ||
     !read_size(state, &delimiter_length) ||
@@ -5744,48 +5728,31 @@ static bool deserialize_document(
   return true;
 }
 
+static bool deserialize_document(
+  struct SerializedScannerState *state,
+  struct HereDocument *document
+) {
+  uint8_t flags;
+  return read_byte(state, &flags) && read_document_body(state, flags, document);
+}
+
 static bool deserialize_captured_document(
   struct SerializedScannerState *state,
   struct CapturedHereDocument *captured
 ) {
   uint8_t flags;
   size_t source_end_column;
-  size_t delimiter_length;
   if (
     !read_byte(state, &flags) ||
-    (flags & ~UINT8_C(3)) !=
-    0 ||
     !read_size(state, &source_end_column) ||
     source_end_column >
     UINT32_MAX ||
-    !read_size(state, &delimiter_length) ||
-    delimiter_length >
-    state->length -
-    state->offset
+    !read_document_body(state, flags, &captured->document)
   ) {
     return false;
   }
 
-  uint8_t *delimiter = NULL;
-  if (delimiter_length > 0) {
-    delimiter = ts_malloc(delimiter_length);
-    if (delimiter == NULL) {
-      return false;
-    }
-    memcpy(delimiter, state->data + state->offset, delimiter_length);
-  }
-  state->offset += delimiter_length;
-
-  *captured = (struct CapturedHereDocument){
-    .document =
-      {
-        .delimiter = delimiter,
-        .delimiter_length = delimiter_length,
-        .quoted = (flags & 1) != 0,
-        .strip_tabs = (flags & 2) != 0,
-      },
-    .source_end_column = (uint32_t)source_end_column,
-  };
+  captured->source_end_column = (uint32_t)source_end_column;
   return true;
 }
 
@@ -6201,6 +6168,27 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     return scan_function_body_boundary(scanner, lexer, valid_symbols);
   }
 
+  /*
+   * A case terminator where only a formal case_item_end may own it stays with
+   * the item; in a list position the recovery start claims it before the
+   * closed-command boundaries below can, so the terminator stays one token
+   * inside the list recovery variant and an enclosing substitution keeps its
+   * real closer.
+   */
+  if (
+    lexer->lookahead ==
+    ';' &&
+    valid_symbols[INVALID_CASE_TERMINATOR_START] &&
+    !valid_symbols[CASE_ITEM_END]
+  ) {
+    lexer->mark_end(lexer);
+    if (!scan_case_item_terminator(lexer)) {
+      return false;
+    }
+    lexer->result_symbol = INVALID_CASE_TERMINATOR_START;
+    return true;
+  }
+
   bool shell_boundary_is_valid = valid_symbols[PATTERN_CONTINUATION] ||
     valid_symbols[PATTERN_END] ||
     valid_symbols[COMMAND_CONTINUATION] ||
@@ -6263,34 +6251,25 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     return scan_shell_boundary(scanner, lexer, valid_symbols);
   }
 
-  if (valid_symbols[INVALID_CASE_TERMINATOR_START] && lexer->lookahead == ';') {
-    lexer->mark_end(lexer);
-    if (!scan_case_item_terminator(lexer)) {
-      return false;
-    }
-    lexer->result_symbol = INVALID_CASE_TERMINATOR_START;
-    return true;
-  }
-
-  if (
-    (valid_symbols[PARAMETER_MISSING_RECOVERY_BOUNDARY] ||
-      valid_symbols[PARAMETER_OPERATOR_RECOVERY_BOUNDARY] ||
-      valid_symbols[PARAMETER_TAIL_RECOVERY_BOUNDARY] ||
-      valid_symbols[DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY] ||
-      valid_symbols[PARAMETER_EXPANSION_RECOVERY_BOUNDARY])
+  static const enum TokenType parameter_recovery_symbols[] = {
+    PARAMETER_MISSING_RECOVERY_BOUNDARY,
+    PARAMETER_OPERATOR_RECOVERY_BOUNDARY,
+    PARAMETER_TAIL_RECOVERY_BOUNDARY,
+    DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY,
+    INPUT_END_RECOVERY,
+  };
+  for (
+    size_t index = 0; index <
+    sizeof(parameter_recovery_symbols) /
+    sizeof(parameter_recovery_symbols[0]);
+    index += 1
   ) {
-    enum TokenType symbol = valid_symbols[PARAMETER_MISSING_RECOVERY_BOUNDARY]
-      ? PARAMETER_MISSING_RECOVERY_BOUNDARY
-      : (valid_symbols[PARAMETER_OPERATOR_RECOVERY_BOUNDARY]
-            ? PARAMETER_OPERATOR_RECOVERY_BOUNDARY
-            : (valid_symbols[PARAMETER_TAIL_RECOVERY_BOUNDARY]
-                  ? PARAMETER_TAIL_RECOVERY_BOUNDARY
-                  : (valid_symbols
-                          [DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY]
-                        ? DOUBLE_QUOTED_PARAMETER_TAIL_RECOVERY_BOUNDARY
-                        : PARAMETER_EXPANSION_RECOVERY_BOUNDARY)));
-    if (scan_parameter_expansion_recovery_boundary(scanner, lexer, symbol)) {
-      return true;
+    enum TokenType symbol = parameter_recovery_symbols[index];
+    if (valid_symbols[symbol]) {
+      if (scan_parameter_expansion_recovery_boundary(scanner, lexer, symbol)) {
+        return true;
+      }
+      break;
     }
   }
 
@@ -6335,7 +6314,12 @@ bool tree_sitter_posix_sh_external_scanner_scan(
   bool suppress_broad_recovery = false;
   if (valid_symbols[HEADER_RECOVERY_BOUNDARY]) {
     if (
-      scan_direct_recovery_boundary(scanner, lexer, HEADER_RECOVERY_BOUNDARY)
+      scan_direct_recovery_boundary(
+        scanner,
+        lexer,
+        HEADER_RECOVERY_BOUNDARY,
+        valid_symbols
+      )
     ) {
       return true;
     }
@@ -6343,7 +6327,12 @@ bool tree_sitter_posix_sh_external_scanner_scan(
   }
   if (valid_symbols[DIRECT_RECOVERY_BOUNDARY]) {
     if (
-      scan_direct_recovery_boundary(scanner, lexer, DIRECT_RECOVERY_BOUNDARY)
+      scan_direct_recovery_boundary(
+        scanner,
+        lexer,
+        DIRECT_RECOVERY_BOUNDARY,
+        valid_symbols
+      )
     ) {
       return true;
     }
@@ -6351,7 +6340,12 @@ bool tree_sitter_posix_sh_external_scanner_scan(
   }
   if (valid_symbols[FOR_TAIL_RECOVERY_BOUNDARY]) {
     if (
-      scan_direct_recovery_boundary(scanner, lexer, FOR_TAIL_RECOVERY_BOUNDARY)
+      scan_direct_recovery_boundary(
+        scanner,
+        lexer,
+        FOR_TAIL_RECOVERY_BOUNDARY,
+        valid_symbols
+      )
     ) {
       return true;
     }

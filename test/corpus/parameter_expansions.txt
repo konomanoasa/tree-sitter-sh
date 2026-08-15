@@ -1147,3 +1147,222 @@ echo "${x#*"}"}"
                               (double_quote_text)))))))))))))))
   (linebreak
     (newline_list)))
+
+================================================================================
+A double-quoted parameter word nests quoted regions
+================================================================================
+
+echo "${x:-"a b"}"
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quoted
+                              (double_quote_text)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+================================================================================
+A nested quoted region hides its right brace from the closer search
+================================================================================
+
+echo "${x:-"a}b"}"
+echo ${x:-"a}b"}
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quoted
+                              (double_quote_text))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (double_quoted
+                            (double_quote_text))))))))))))))
+  (linebreak
+    (newline_list)))
+
+================================================================================
+Blanks control characters and closers stay inside braced parameter words
+================================================================================
+
+echo ${x:-$y z}
+echo ${x:-$y)z}
+echo ${x#* y}
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (parameter_expansion
+                            (variable_name))
+                          (literal))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (parameter_expansion
+                            (variable_name))
+                          (literal))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (pattern_star_source)
+                          (literal)))))))))))))
+  (linebreak
+    (newline_list)))
+
+================================================================================
+Raw newlines stay inside braced parameter words
+================================================================================
+
+echo ${x:-a
+b}
+echo "${y:-c
+d}"
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)
+                            (double_quote_text)
+                            (double_quote_text))))))))))))))
+  (linebreak
+    (newline_list)))
