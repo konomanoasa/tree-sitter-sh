@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../src/scanner.c"
+#include "../src/scanner.c"
 
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
 static size_t reuse_malloc_calls;

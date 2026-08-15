@@ -1,0 +1,205 @@
+const childProcess = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const {
+  createEnvironmentDirectory,
+  grammarDirectory,
+  repositoryDirectory,
+} = require("./tree-sitter");
+
+function run(command, arguments_, options = {}) {
+  const result = childProcess.spawnSync(command, arguments_, {
+    cwd: repositoryDirectory,
+    encoding: "utf8",
+    env: process.env,
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: options.stdio,
+  });
+  if (result.error !== undefined) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    const diagnostics = result.stderr || result.stdout || "";
+    throw new Error(
+      `${command} ${arguments_.join(" ")} failed with status ${result.status}\n${diagnostics}`,
+    );
+  }
+  return result;
+}
+
+function resolveTools() {
+  if (process.platform !== "darwin") {
+    return {
+      clang: process.env.CLANG ?? "clang",
+      clangd: process.env.CLANGD ?? "clangd",
+      clangFormat: process.env.CLANG_FORMAT ?? "clang-format",
+    };
+  }
+
+  const llvmDirectory = path.join(
+    run("brew", ["--prefix", "llvm"]).stdout.trim(),
+    "bin",
+  );
+  return {
+    clang: path.join(llvmDirectory, "clang"),
+    clangd: path.join(llvmDirectory, "clangd"),
+    clangFormat: path.join(llvmDirectory, "clang-format"),
+  };
+}
+
+function undefinedSymbols(output) {
+  const symbols = new Set();
+  for (const line of output.split("\n")) {
+    const fields = line.trim().split(" ").filter(Boolean);
+    if (fields.length === 0) {
+      continue;
+    }
+    const symbol = fields.at(-1);
+    symbols.add(symbol.startsWith("_") ? symbol.slice(1) : symbol);
+  }
+  return symbols;
+}
+
+const temporaryDirectory = createEnvironmentDirectory(
+  "tree-sitter-posix-sh-scanner",
+);
+
+try {
+  const requestedArguments = process.argv.slice(2);
+  if (
+    requestedArguments.length > 1 ||
+    (requestedArguments.length === 1 && requestedArguments[0] !== "--write")
+  ) {
+    throw new Error("Usage: node scripts/check-scanner.js [--write]");
+  }
+
+  const { clang, clangd, clangFormat } = resolveTools();
+  const scannerSource = path.join(grammarDirectory, "src/scanner.c");
+  const scannerContractSource = path.join(
+    repositoryDirectory,
+    "test/scanner.c",
+  );
+
+  if (requestedArguments[0] === "--write") {
+    run(clangFormat, ["-i", scannerSource, scannerContractSource], {
+      stdio: "inherit",
+    });
+  } else {
+    run(
+      clangFormat,
+      ["--dry-run", "--Werror", scannerSource, scannerContractSource],
+      { stdio: "inherit" },
+    );
+
+    const scannerContract = path.join(temporaryDirectory, "scanner-contract");
+    const scannerReuseContract = path.join(
+      temporaryDirectory,
+      "scanner-reuse-contract",
+    );
+    const scannerReuseObject = path.join(temporaryDirectory, "scanner-reuse.o");
+    const commonArguments = [
+      "-std=c11",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-pedantic",
+      `-I${path.join(grammarDirectory, "src")}`,
+    ];
+
+    run(clang, [...commonArguments, "-fsyntax-only", scannerSource], {
+      stdio: "inherit",
+    });
+
+    const compileCommands = [
+      {
+        arguments: [clang, ...commonArguments, "-fsyntax-only", scannerSource],
+        directory: repositoryDirectory,
+        file: scannerSource,
+      },
+      {
+        // The contract includes scanner.c to exercise private helpers. Clangd
+        // otherwise reports unused helpers from that non-main file; the real
+        // contract compilation below still treats every warning as an error.
+        arguments: [
+          clang,
+          ...commonArguments,
+          "-Wno-unused-function",
+          "-fsyntax-only",
+          scannerContractSource,
+        ],
+        directory: repositoryDirectory,
+        file: scannerContractSource,
+      },
+    ];
+    fs.writeFileSync(
+      path.join(temporaryDirectory, "compile_commands.json"),
+      `${JSON.stringify(compileCommands)}\n`,
+    );
+
+    for (const source of [scannerSource, scannerContractSource]) {
+      run(
+        clangd,
+        [
+          "--log=error",
+          `--compile-commands-dir=${temporaryDirectory}`,
+          `--check=${source}`,
+        ],
+        { stdio: "inherit" },
+      );
+    }
+
+    run(
+      clang,
+      [...commonArguments, scannerContractSource, "-o", scannerContract],
+      {
+        stdio: "inherit",
+      },
+    );
+    run(scannerContract, [], { stdio: "inherit" });
+
+    run(
+      clang,
+      [
+        ...commonArguments,
+        "-DTREE_SITTER_REUSE_ALLOCATOR",
+        scannerContractSource,
+        "-o",
+        scannerReuseContract,
+      ],
+      { stdio: "inherit" },
+    );
+    run(scannerReuseContract, [], { stdio: "inherit" });
+
+    run(
+      clang,
+      [
+        ...commonArguments,
+        "-DTREE_SITTER_REUSE_ALLOCATOR",
+        "-c",
+        scannerSource,
+        "-o",
+        scannerReuseObject,
+      ],
+      { stdio: "inherit" },
+    );
+
+    const symbols = undefinedSymbols(
+      run("nm", ["-u", scannerReuseObject]).stdout,
+    );
+    const allocators = ["malloc", "calloc", "realloc", "free"];
+    if (allocators.some((allocator) => symbols.has(allocator))) {
+      throw new Error("Scanner bypasses the Tree-sitter allocator");
+    }
+    if (
+      !allocators.some((allocator) => symbols.has(`ts_current_${allocator}`))
+    ) {
+      throw new Error("Scanner does not reference the Tree-sitter allocator");
+    }
+  }
+} catch (error) {
+  process.stderr.write(`${error.message}\n`);
+  process.exitCode = 1;
+} finally {
+  fs.rmSync(temporaryDirectory, { force: true, recursive: true });
+}
