@@ -432,6 +432,48 @@ a+1))"
     (newline_list)))
 
 ==================
+Arithmetic layout spans raw newlines in the committed readings
+==================
+
+: "$(($x
+y))" "$((1 +
+2))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_dynamic_expression
+                            (parameter_expansion
+                              (variable_name))
+                            (arithmetic_variable)))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_binary_expression
+                            (arithmetic_number)
+                            (arithmetic_operator)
+                            (arithmetic_number))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
 Arithmetic unary negation remains arithmetic after horizontal layout
 ==================
 
