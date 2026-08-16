@@ -116,16 +116,10 @@ const incompleteBracketLiteralPart = (
 
 const reservedWord = ($, marker) => seq(marker, $._reserved_word_source);
 
-const lineContinuationRun = ($) => prec.right(1, repeat1($.line_continuation));
+const wordSeparator = ($, marker) =>
+  prec.right(2, seq(marker, repeat(choice($._blank, $.line_continuation))));
 
-const boundaryLineContinuationRun = ($) =>
-  prec.right(
-    1,
-    seq(
-      alias($._boundary_line_continuation, $.line_continuation),
-      repeat($.line_continuation),
-    ),
-  );
+const lineContinuationRun = ($) => prec.right(1, repeat1($.line_continuation));
 
 // A here-document body reaching its end synchronizes every construct that is
 // still open inside the body at that boundary.
@@ -134,12 +128,14 @@ const hereDocumentBoundaryRecovery = ($) =>
 
 const parameterBraceClose = ($) => choice("}", hereDocumentBoundaryRecovery($));
 
-const continuedWordSeparator = ($) =>
-  seq(
-    alias($._word_separator_line_continuation, $.line_continuation),
-    repeat($.line_continuation),
-    $._blank,
-    repeat(choice($._blank, $.line_continuation)),
+// Layout after a committed operator, where a command must follow: at most one
+// linebreak run and trailing blanks. Blanks before a newline belong to the
+// newline_list's blank-line element, so no horizontal layout precedes the
+// linebreak.
+const postOperatorLayout = ($) =>
+  choice(
+    seq($.linebreak, optional($._horizontal_layout)),
+    optional($._horizontal_layout),
   );
 
 const arithmeticBinaryExpression = ($, left, right, operatorSegment) =>
@@ -248,7 +244,7 @@ const parenthesizedArithmetic = ($, expression) =>
 
 const continuedBlankLineLayout = ($) =>
   seq(
-    repeat($._blank),
+    optional($._pre_newline_blank),
     $.line_continuation,
     repeat(choice($._blank, $.line_continuation)),
   );
@@ -279,32 +275,11 @@ const closedArithmeticExpansion = ($, start, expression, closing) =>
 const linebreakLayout = ($) =>
   seq(optional($.linebreak), optional($._horizontal_layout));
 
-const continuedLinebreakLayout = ($, continuation) =>
-  choice(
-    prec.right(
-      2,
-      seq(
-        optional($._blank),
-        repeat1(alias(continuation, $.line_continuation)),
-        optional($._horizontal_layout),
-        optional(seq($.linebreak, optional($._horizontal_layout))),
-      ),
-    ),
-    continuedWordSeparator($),
-    seq(
-      optional($._horizontal_layout),
-      optional(seq($.linebreak, optional($._horizontal_layout))),
-    ),
-  );
-
-const operatorContinuedLinebreakLayout = ($) =>
-  continuedLinebreakLayout($, $._operator_line_continuation);
-
-const boundaryContinuedLinebreakLayout = ($) =>
-  continuedLinebreakLayout($, $._boundary_line_continuation);
-
 const reservedWordLinebreak = ($) =>
-  choice(seq($.linebreak, optional($._horizontal_layout)), $._word_separator);
+  choice(
+    seq($.linebreak, optional($._horizontal_layout)),
+    $._horizontal_layout,
+  );
 
 const continuationBoundaryLayout = ($, marker) =>
   prec.right(
@@ -316,19 +291,6 @@ const continuationBoundaryLayout = ($, marker) =>
     ),
   );
 
-const ownedContinuationBoundaryLayout = ($, marker) =>
-  prec.right(
-    1,
-    seq(
-      optional(boundaryLineContinuationRun($)),
-      marker,
-      optional($._horizontal_layout),
-    ),
-  );
-
-const commandBoundaryLayout = ($) =>
-  continuationBoundaryLayout($, $._command_continuation);
-
 const patternBoundaryLayout = ($) =>
   continuationBoundaryLayout($, $._pattern_continuation);
 
@@ -336,17 +298,18 @@ const patternClosingLayout = ($) =>
   continuationBoundaryLayout($, $._pattern_end);
 
 const caseItemFollowingLayout = ($) =>
-  prec.right(
-    1,
-    choice(
-      continuedWordSeparator($),
-      seq($.linebreak, optional($._horizontal_layout)),
-      $._horizontal_layout,
-    ),
+  choice(
+    seq($.linebreak, optional($._horizontal_layout)),
+    $._horizontal_layout,
   );
 
 const lineComment = ($, comment) =>
   seq(continuationBoundaryLayout($, $._comment_boundary), comment);
+
+// A comment whose position follows completed structure: the comment boundary
+// leads, so no line continuation belongs to the comment side.
+const boundaryLineComment = ($, comment) =>
+  seq($._comment_boundary, optional($._horizontal_layout), comment);
 
 const doubleQuotedPart = ($) =>
   choice(
@@ -364,7 +327,7 @@ const completeCommandsBody = ($, leading) =>
   seq(
     leading,
     $.complete_commands,
-    optional($.linebreak),
+    optional(alias($._trailing_linebreak, $.linebreak)),
     optional($._free_trailing_layout),
   );
 
@@ -398,9 +361,6 @@ const commandSubstitutionSequenceBody = ($) =>
     prec(2, $._blank),
   );
 
-const closedCommandBoundaryLayout = ($) =>
-  ownedContinuationBoundaryLayout($, $._closed_command_end);
-
 const backquoteDollar = ($) =>
   seq(alias($._backquote_dollar_prefix, "\\"), token.immediate("$"));
 
@@ -409,7 +369,7 @@ const backquoteDelimiter = (plain, prefix) =>
 
 const commandSubstitutionEnd = ($) =>
   choice(
-    seq(closedCommandBoundaryLayout($), ")"),
+    seq(optional($._closing_layout), alias($._command_substitution_close, ")")),
     hereDocumentBoundaryRecovery($),
   );
 
@@ -753,24 +713,15 @@ const caseClauseItems = ($) =>
     $.esac_keyword,
     caseItemsRecoveryField($),
     field("items", alias($._recovering_case_list_ns, $.case_list_ns)),
+    seq(field("items", $.case_list), choice($.esac_keyword, recoveryField($))),
     seq(
-      field("items", choice($.case_list, $.case_list_ns)),
-      optional($._horizontal_layout),
+      field("items", $.case_list_ns),
+      optional($._closing_layout),
       choice($.esac_keyword, recoveryField($)),
     ),
   );
 
-const compoundListField = ($, name) =>
-  field(name, alias($._reserved_compound_list, $.compound_list));
-
-const terminatedCompoundList = ($) =>
-  seq(
-    field("body", $.term),
-    optional($._separator_boundary_layout),
-    optional($._comment_boundary),
-    field("terminator", $.separator),
-    $._compound_list_boundary,
-  );
+const compoundListField = ($, name) => field(name, $.compound_list);
 
 const emptyCompoundListField = ($, name) =>
   field(name, alias($._recovering_empty_compound_list, $.compound_list));
@@ -779,7 +730,7 @@ const recoverableCompoundListField = ($, name) =>
   field(
     name,
     choice(
-      alias($._reserved_compound_list, $.compound_list),
+      $.compound_list,
       alias($._recovering_empty_compound_list, $.compound_list),
     ),
   );
@@ -791,13 +742,13 @@ const conditionalThenBranch = ($, keyword, tail) =>
       recoveryField($),
       seq(
         recoverableCompoundListField($, "condition"),
-        optional($._horizontal_layout),
+        optional($._closing_layout),
         choice(
           recoveryField($),
           seq(
             $.then_keyword,
             recoverableCompoundListField($, "consequence"),
-            optional($._horizontal_layout),
+            optional($._closing_layout),
             tail,
           ),
         ),
@@ -814,7 +765,7 @@ const ifClause = ($) =>
       recoveryField($),
       seq(
         field("alternative", $.else_part),
-        optional($._horizontal_layout),
+        optional($._closing_layout),
         choice($.fi_keyword, recoveryField($)),
       ),
     ),
@@ -827,7 +778,7 @@ const loopClause = ($, keyword) =>
       recoveryField($),
       seq(
         recoverableCompoundListField($, "condition"),
-        optional($._horizontal_layout),
+        optional($._closing_layout),
         choice(recoveryField($), field("body", $.do_group)),
       ),
     ),
@@ -835,8 +786,19 @@ const loopClause = ($, keyword) =>
 
 const separatedForBody = ($) =>
   seq(
-    optional($._separator_boundary_layout),
-    field("separator", $.sequential_sep),
+    choice(
+      seq(
+        optional($._horizontal_layout),
+        field(
+          "separator",
+          alias($._sequential_operator_separator, $.sequential_sep),
+        ),
+      ),
+      field(
+        "separator",
+        alias($._sequential_newline_separator, $.sequential_sep),
+      ),
+    ),
     optional($._horizontal_layout),
     choice(
       field("recovery", $.compound_command_recovery),
@@ -847,12 +809,12 @@ const separatedForBody = ($) =>
 const recoveringForTail = ($) =>
   choice(
     seq(optional($._horizontal_layout), forTailRecoveryField($)),
-    seq($._word_separator, field("body", $.do_group)),
+    seq($._horizontal_layout, field("body", $.do_group)),
     separatedForBody($),
     seq(
       reservedWordLinebreak($),
       field("in", $.in),
-      optional(seq($._word_separator, field("words", $.wordlist))),
+      optional(seq($._horizontal_layout, field("words", $.wordlist))),
       choice(
         seq(optional($._horizontal_layout), forTailRecoveryField($)),
         separatedForBody($),
@@ -873,7 +835,7 @@ const strayParenthesisTail = ($) =>
   prec.dynamic(
     -50,
     seq(
-      optional($._separator_boundary_layout),
+      optional($._closing_layout),
       field("separator", prec(100, $.separator_recovery)),
       field("and_or", alias($._invalid_list_and_or, $.and_or)),
     ),
@@ -883,7 +845,7 @@ const caseTerminatorTail = ($) =>
   prec.dynamic(
     -50,
     seq(
-      optional($._separator_boundary_layout),
+      optional($._closing_layout),
       field(
         "separator",
         alias($._invalid_case_terminator_start, $.separator_recovery),
@@ -893,15 +855,12 @@ const caseTerminatorTail = ($) =>
   );
 
 // A redirection continues a simple command directly after the previous
-// element, after line continuations alone, or after a word separator that
-// lets it carry its own descriptor.
+// element or after a word separator that lets it carry its own descriptor.
+// Standalone line continuations stay ordinary elements of the sequence.
 const commandRedirectContinuations = ($) => [
   field("redirect", alias($._io_redirect_without_descriptor, $.io_redirect)),
-  seq(
-    repeat1($.line_continuation),
-    field("redirect", alias($._io_redirect_without_descriptor, $.io_redirect)),
-  ),
-  seq($._word_separator, field("redirect", $.io_redirect)),
+  seq($._redirect_separator, field("redirect", $.io_redirect)),
+  $.line_continuation,
 ];
 
 const redirectList = ($) =>
@@ -913,45 +872,24 @@ const redirectList = ($) =>
           "redirect",
           alias($._io_redirect_without_descriptor, $.io_redirect),
         ),
-        prec.dynamic(
-          3,
-          seq(
-            repeat1($.line_continuation),
-            field(
-              "redirect",
-              alias($._io_redirect_without_descriptor, $.io_redirect),
-            ),
-          ),
-        ),
-        seq($._word_separator, field("redirect", $.io_redirect)),
+        seq($._redirect_separator, field("redirect", $.io_redirect)),
+        $.line_continuation,
       ),
     ),
   );
 
-const redirectableCompoundCommand = ($, end = null) =>
+const redirectableCompoundCommand = ($) =>
   prec.right(
     seq(
       field("body", $.compound_command),
-      end === null
-        ? optional(
-            seq(
-              $._redirect_list_begin,
-              optional($._horizontal_layout),
-              field("redirects", $.redirect_list),
-            ),
-          )
-        : seq(
-            choice(
-              seq(optional($._horizontal_layout), end),
-              seq(
-                $._redirect_list_begin,
-                optional($._horizontal_layout),
-                field("redirects", $.redirect_list),
-                optional($._horizontal_layout),
-                end,
-              ),
-            ),
-          ),
+      repeat($.line_continuation),
+      optional(
+        seq(
+          $._redirect_list_begin,
+          optional($._horizontal_layout),
+          field("redirects", $.redirect_list),
+        ),
+      ),
     ),
   );
 
@@ -1008,13 +946,12 @@ const functionDefinitionWithBody = ($, body) =>
     field("body", body),
   );
 
-const recoveringFunctionDefinition = ($, end = null) =>
+const recoveringFunctionDefinition = ($) =>
   prec.dynamic(
     -50,
     seq(
       functionDefinitionHeader($),
       field("body", alias($._recovering_function_body, $.function_body)),
-      ...(end === null ? [] : [optional($._horizontal_layout), end]),
     ),
   );
 
@@ -1131,8 +1068,6 @@ module.exports = grammar({
     $._here_document_content_line_start,
     $._newline,
     $.line_continuation,
-    $._boundary_line_continuation,
-    $._word_separator_line_continuation,
     $._arithmetic_assignment_operator_boundary,
     $._arithmetic_question_operator_boundary,
     $._arithmetic_colon_operator_boundary,
@@ -1159,10 +1094,8 @@ module.exports = grammar({
     $._backquote_end_prefix,
     $._pattern_continuation,
     $._pattern_end,
-    $._command_continuation,
+    $._pipe_continuation,
     $._redirect_list_begin,
-    $._closed_command_end,
-    $._closed_simple_command_end,
     $._case_item_end,
     $._case_item_ns_boundary,
     $._compound_command_recovery_boundary,
@@ -1179,7 +1112,6 @@ module.exports = grammar({
     $._parameter_tail_recovery_boundary,
     $._double_quoted_parameter_tail_recovery_boundary,
     $._input_end_recovery,
-    $._boundary_command_recovery,
     $._missing_command_recovery_boundary,
     $._invalid_reserved_command_start,
     $._invalid_case_terminator_start,
@@ -1198,46 +1130,34 @@ module.exports = grammar({
     $._word_tilde_end,
     $._assignment_tilde_end,
     $._name_equals_begin,
-    $._operator_line_continuation,
+    $._fname_begin,
+    $._and_or_continuation,
+    $._word_separator_begin,
+    $._list_continuation,
+    $._term_continuation,
+    $._terminator_ahead,
+    $._assignment_separator_begin,
+    $._redirect_separator_begin,
+    $._pre_newline_blank,
+    $._command_substitution_close,
+    $._separator_newline,
   ],
 
   extras: ($) => [$._here_document_content_line_start],
 
   conflicts: ($) => [
-    [$.simple_command],
-    [$.cmd_prefix],
-    [$.cmd_suffix],
-    [$.fname, $.literal],
-    [$._horizontal_layout, $._blank_line],
-    [$._horizontal_layout, $._continued_blank_line],
-    [$._separator_boundary_layout, $.here_document_sequence],
-    [$.pipe_sequence],
-    [$.pipe_sequence, $._closed_pipe_sequence],
-    [$.pipe_sequence, $._closed_pipe_sequence, $._recoverable_pipe_sequence],
-    [$.and_or],
-    [$.and_or, $._closed_and_or],
-    [
-      $.and_or,
-      $._closed_and_or,
-      $._recoverable_and_or,
-      $._boundary_recovered_and_or,
-    ],
-    [$.complete_commands],
-    [$.complete_command],
     [$.newline_list],
-    [$.here_document_sequence],
-    [$.list],
-    [$.compound_list],
-    [$.compound_list, $._case_item_ns_compound_list],
     [$.term],
-    [$.term, $._closed_term],
-    [$.term, $._closed_term, $._recoverable_term, $._boundary_recovered_term],
-    [$.separator],
-    [$.sequential_sep],
-    [$.sequential_sep, $.linebreak],
+    [$.compound_list],
+    [$.complete_commands],
+    [$.list],
+    [$._continued_blank_line, $._free_comment],
+    [$._continued_blank_line],
+
+    [$._operator_separator],
+    [$._sequential_operator_separator],
+    [$._sequential_newline_separator, $.linebreak],
     [$.case_list],
-    [$.wordlist],
-    [$.redirect_list],
     [$._pattern_bracket_member, $._pattern_bracket_range_endpoint],
     [$._pattern_deferred_member, $._pattern_deferred_range_endpoint],
     [
@@ -1377,7 +1297,6 @@ module.exports = grammar({
     [$._double_quoted_parameter_expansion_tail],
     [$._braced_parameter_expansion],
     [$._double_quoted_braced_parameter_expansion],
-    [$.case_item],
     [$._special_parameter_hash, $.parameter_length_operator],
     [$._parenthesized_arithmetic_lvalue, $._arithmetic_primary_expression],
     [$.arithmetic_dynamic_expression],
@@ -1390,7 +1309,9 @@ module.exports = grammar({
           optional(field("leading", $.linebreak)),
           optional($._horizontal_layout),
           field("commands", $.complete_commands),
-          optional(field("trailing", $.linebreak)),
+          optional(
+            field("trailing", alias($._trailing_linebreak, $.linebreak)),
+          ),
           optional($._free_trailing_layout),
         ),
         seq(
@@ -1404,7 +1325,17 @@ module.exports = grammar({
         field("command", $.complete_command),
         repeat(
           seq(
-            field("separator", $.newline_list),
+            choice(
+              field(
+                "separator",
+                alias($._separator_led_newline_list, $.newline_list),
+              ),
+              seq($._term_continuation, field("separator", $.newline_list)),
+              field(
+                "separator",
+                alias($._here_document_led_newline_list, $.newline_list),
+              ),
+            ),
             optional($._horizontal_layout),
             field("command", $.complete_command),
           ),
@@ -1416,7 +1347,8 @@ module.exports = grammar({
         field("body", $.list),
         optional(
           seq(
-            optional($._separator_boundary_layout),
+            $._terminator_ahead,
+            optional($._horizontal_layout),
             field("terminator", $.separator_op),
           ),
         ),
@@ -1427,7 +1359,8 @@ module.exports = grammar({
         field("and_or", $.and_or),
         repeat(
           seq(
-            optional($._separator_boundary_layout),
+            $._list_continuation,
+            optional($._horizontal_layout),
             field("separator", $.separator_op),
             optional($._horizontal_layout),
             field("and_or", $.and_or),
@@ -1451,9 +1384,10 @@ module.exports = grammar({
         field("pipeline", $.pipeline),
         repeat(
           seq(
-            commandBoundaryLayout($),
+            $._and_or_continuation,
+            optional($._horizontal_layout),
             field("operator", choice($.and_if, $.or_if)),
-            operatorContinuedLinebreakLayout($),
+            postOperatorLayout($),
             field(
               "pipeline",
               choice($.pipeline, alias($._recovering_pipeline, $.pipeline)),
@@ -1488,9 +1422,10 @@ module.exports = grammar({
         field("command", $.command),
         repeat(
           seq(
-            commandBoundaryLayout($),
+            $._pipe_continuation,
+            optional($._horizontal_layout),
             "|",
-            operatorContinuedLinebreakLayout($),
+            postOperatorLayout($),
             field(
               "command",
               choice($.command, alias($._recovering_command, $.command)),
@@ -1508,9 +1443,6 @@ module.exports = grammar({
       ),
 
     _redirectable_compound_command: ($) => redirectableCompoundCommand($),
-
-    _closed_redirectable_compound_command: ($) =>
-      redirectableCompoundCommand($, $._closed_command_end),
 
     command_recovery: ($) => $._missing_command_recovery_boundary,
 
@@ -1556,52 +1488,87 @@ module.exports = grammar({
       field("recovery", $.command_recovery),
     ),
 
-    ...recoveryCommandChainRules("boundary_recovering", "pipeline", ($) =>
-      field(
-        "recovery",
-        alias($._boundary_command_recovery, $.command_recovery),
-      ),
-    ),
-
     separator_op: (_) => choice("&", ";"),
 
-    _separator_boundary_layout: ($) => $._horizontal_layout,
-
-    separator: ($) =>
-      choice(
-        seq(
-          field("operator", $.separator_op),
-          optional(
-            seq(
-              optional($._horizontal_layout),
-              field("linebreak", $.linebreak),
-            ),
-          ),
-        ),
-        field("newlines", $.newline_list),
+    _operator_separator: ($) =>
+      seq(
+        field("operator", $.separator_op),
+        repeat(prec(1, $.line_continuation)),
+        optional(field("linebreak", $.linebreak)),
       ),
+
+    _newline_separator: ($) => field("newlines", $.newline_list),
+
+    _trailing_newline_separator: ($) =>
+      field("newlines", alias($._trailing_newline_list, $.newline_list)),
+
+    _separator_led_newline_separator: ($) =>
+      field("newlines", alias($._separator_led_newline_list, $.newline_list)),
+
+    _here_document_led_separator: ($) =>
+      field(
+        "newlines",
+        alias($._here_document_led_newline_list, $.newline_list),
+      ),
+
+    _here_document_led_linebreak: ($) =>
+      alias($._here_document_led_newline_list, $.newline_list),
+
+    _here_document_led_operator_separator: ($) =>
+      seq(
+        field("operator", $.separator_op),
+        field("linebreak", alias($._here_document_led_linebreak, $.linebreak)),
+      ),
+
+    _sequential_operator_separator: ($) =>
+      seq(
+        ";",
+        repeat(prec(2, $.line_continuation)),
+        optional(field("linebreak", $.linebreak)),
+      ),
+
+    _sequential_newline_separator: ($) => field("newlines", $.newline_list),
 
     sequential_sep: ($) =>
-      choice(
-        seq(
-          ";",
-          optional(
-            seq(
-              optional($._horizontal_layout),
-              field("linebreak", $.linebreak),
-            ),
-          ),
-        ),
-        field("newlines", $.newline_list),
-      ),
+      choice($._sequential_operator_separator, $._sequential_newline_separator),
+
+    separator: ($) => choice($._operator_separator, $._newline_separator),
 
     term: ($) =>
       seq(
         field("and_or", $.and_or),
         repeat(
           seq(
-            optional($._separator_boundary_layout),
-            field("separator", $.separator),
+            choice(
+              field(
+                "separator",
+                alias($._separator_led_newline_separator, $.separator),
+              ),
+              seq(
+                $._term_continuation,
+                choice(
+                  seq(
+                    optional($._horizontal_layout),
+                    field(
+                      "separator",
+                      alias($._operator_separator, $.separator),
+                    ),
+                  ),
+                  field("separator", alias($._newline_separator, $.separator)),
+                ),
+              ),
+              seq(
+                optional($._closing_layout),
+                field(
+                  "separator",
+                  alias($._here_document_led_operator_separator, $.separator),
+                ),
+              ),
+              field(
+                "separator",
+                alias($._here_document_led_separator, $.separator),
+              ),
+            ),
             optional($._horizontal_layout),
             field("and_or", $.and_or),
           ),
@@ -1609,60 +1576,32 @@ module.exports = grammar({
       ),
 
     compound_list: ($) =>
-      choice(
-        prec.dynamic(
-          50,
-          seq(
-            field("leading", $.linebreak),
-            optional($._horizontal_layout),
-            terminatedCompoundList($),
-          ),
-        ),
-        seq(
-          field("leading", $.linebreak),
-          optional($._horizontal_layout),
-          field("body", $.term),
-        ),
-        prec.dynamic(
-          50,
-          seq(optional($._horizontal_layout), terminatedCompoundList($)),
-        ),
-        seq(optional($._horizontal_layout), field("body", $.term)),
-        prec.dynamic(
-          10,
-          seq(
-            field("leading", $.linebreak),
-            optional($._horizontal_layout),
-            field("body", alias($._closed_term, $.term)),
-          ),
-        ),
-        prec.dynamic(
-          10,
-          seq(
-            optional($._horizontal_layout),
-            field("body", alias($._closed_term, $.term)),
-          ),
-        ),
-      ),
-
-    _reserved_compound_list: ($) =>
-      prec.dynamic(
-        20,
-        seq(
-          optional(field("leading", $.linebreak)),
-          optional($._horizontal_layout),
+      seq(
+        optional(field("leading", $.linebreak)),
+        optional($._horizontal_layout),
+        field("body", $.term),
+        optional(
           choice(
-            terminatedCompoundList($),
-            prec.dynamic(300, field("body", alias($._closed_term, $.term))),
-            prec.dynamic(
-              200,
-              field("body", alias($._boundary_recovered_term, $.term)),
+            seq(
+              $._terminator_ahead,
+              optional($._horizontal_layout),
+              field("terminator", alias($._operator_separator, $.separator)),
+            ),
+            seq(
+              optional($._closing_layout),
+              field(
+                "terminator",
+                alias($._here_document_led_operator_separator, $.separator),
+              ),
+            ),
+            field(
+              "terminator",
+              alias($._trailing_newline_separator, $.separator),
             ),
             prec.dynamic(
-              100,
+              -50,
               seq(
-                field("body", alias($._recoverable_term, $.term)),
-                optional($._horizontal_layout),
+                optional($._closing_layout),
                 field("terminator", prec(100, $.separator_recovery)),
               ),
             ),
@@ -1676,125 +1615,11 @@ module.exports = grammar({
         prec.right(
           seq(
             optional(field("leading", $.linebreak)),
+            optional($._horizontal_layout),
             $._compound_list_boundary,
             optional($._horizontal_layout),
             recoveryField($),
           ),
-        ),
-      ),
-
-    _closed_term: ($) =>
-      seq(
-        optional($._term_prefix),
-        field("and_or", alias($._closed_and_or, $.and_or)),
-      ),
-
-    _term_prefix: ($) =>
-      repeat1(
-        seq(
-          field("and_or", $.and_or),
-          optional($._separator_boundary_layout),
-          field("separator", $.separator),
-          optional($._horizontal_layout),
-        ),
-      ),
-
-    _recoverable_term: ($) =>
-      seq(
-        optional($._term_prefix),
-        field("and_or", alias($._recoverable_and_or, $.and_or)),
-      ),
-
-    _boundary_recovered_term: ($) =>
-      seq(
-        optional($._term_prefix),
-        field("and_or", alias($._boundary_recovered_and_or, $.and_or)),
-      ),
-
-    _closed_and_or: ($) =>
-      seq(
-        optional($._and_or_prefix),
-        field("pipeline", alias($._closed_pipeline, $.pipeline)),
-      ),
-
-    _recoverable_and_or: ($) =>
-      seq(
-        optional($._and_or_prefix),
-        field("pipeline", alias($._recoverable_pipeline, $.pipeline)),
-      ),
-
-    _and_or_prefix: ($) =>
-      repeat1(
-        seq(
-          field("pipeline", $.pipeline),
-          commandBoundaryLayout($),
-          field("operator", choice($.and_if, $.or_if)),
-          boundaryContinuedLinebreakLayout($),
-        ),
-      ),
-
-    _boundary_recovered_and_or: ($) =>
-      seq(
-        $._and_or_prefix,
-        field("pipeline", alias($._boundary_recovering_pipeline, $.pipeline)),
-      ),
-
-    _closed_pipeline: ($) =>
-      seq(
-        optional(
-          seq(field("negation", $.bang), optional($._horizontal_layout)),
-        ),
-        field("sequence", alias($._closed_pipe_sequence, $.pipe_sequence)),
-      ),
-
-    _recoverable_pipeline: ($) =>
-      seq(
-        optional(
-          seq(field("negation", $.bang), optional($._horizontal_layout)),
-        ),
-        field("sequence", alias($._recoverable_pipe_sequence, $.pipe_sequence)),
-      ),
-
-    _closed_pipe_sequence: ($) =>
-      seq(
-        optional($._pipe_sequence_prefix),
-        field("command", alias($._closed_command, $.command)),
-      ),
-
-    _recoverable_pipe_sequence: ($) =>
-      seq(
-        optional($._pipe_sequence_prefix),
-        field("command", alias($._recoverable_command, $.command)),
-      ),
-
-    _pipe_sequence_prefix: ($) =>
-      repeat1(
-        seq(
-          field("command", $.command),
-          commandBoundaryLayout($),
-          "|",
-          boundaryContinuedLinebreakLayout($),
-        ),
-      ),
-
-    _closed_command: ($) =>
-      prec.dynamic(
-        5,
-        choice(
-          $._closed_redirectable_compound_command,
-          field(
-            "body",
-            alias($._closed_function_definition, $.function_definition),
-          ),
-        ),
-      ),
-
-    _recoverable_command: ($) =>
-      prec.dynamic(
-        -50,
-        seq(
-          field("body", $.simple_command),
-          ownedContinuationBoundaryLayout($, $._closed_simple_command_end),
         ),
       ),
 
@@ -1836,18 +1661,7 @@ module.exports = grammar({
         recoveringFunctionDefinition($),
       ),
 
-    _closed_function_definition: ($) =>
-      choice(
-        functionDefinitionWithBody(
-          $,
-          alias($._closed_function_body, $.function_body),
-        ),
-        prec.right(1, recoveringFunctionDefinition($, $._closed_command_end)),
-      ),
-
     function_body: ($) => $._redirectable_compound_command,
-
-    _closed_function_body: ($) => $._closed_redirectable_compound_command,
 
     _recovering_function_body: ($) =>
       field(
@@ -1855,7 +1669,7 @@ module.exports = grammar({
         alias($._function_body_recovery_boundary, $.compound_command_recovery),
       ),
 
-    fname: ($) => $._name_token,
+    fname: ($) => seq($._fname_begin, $._name_token),
 
     name: ($) => $._name_token,
 
@@ -1879,29 +1693,16 @@ module.exports = grammar({
       seq(
         alias($._left_brace, "{"),
         choice(
-          prec(
-            100,
-            seq(
-              field("body", alias($._reserved_compound_list, $.compound_list)),
-              optional($._horizontal_layout),
-              alias($._right_brace, "}"),
-            ),
+          seq(
+            compoundListField($, "body"),
+            optional($._closing_layout),
+            choice(alias($._right_brace, "}"), recoveryField($)),
           ),
-          prec.dynamic(
-            -50,
-            choice(
-              prec.right(
-                20,
-                seq(
-                  emptyCompoundListField($, "body"),
-                  choice(alias($._right_brace, "}"), recoveryField($)),
-                ),
-              ),
-              seq(
-                compoundListField($, "body"),
-                optional($._horizontal_layout),
-                recoveryField($),
-              ),
+          prec.right(
+            20,
+            seq(
+              emptyCompoundListField($, "body"),
+              choice(alias($._right_brace, "}"), recoveryField($)),
             ),
           ),
         ),
@@ -1911,30 +1712,21 @@ module.exports = grammar({
       seq(
         "(",
         choice(
-          prec(
-            100,
-            seq(
-              field("body", $.compound_list),
-              optional($._horizontal_layout),
-              ")",
+          seq(
+            field("body", $.compound_list),
+            optional($._closing_layout),
+            choice(
+              alias($._command_substitution_close, ")"),
+              subshellRecoveryField($),
             ),
           ),
-          prec.dynamic(
-            -50,
-            prec.right(
+          prec.right(
+            20,
+            seq(
+              emptyCompoundListField($, "body"),
               choice(
-                prec.right(
-                  20,
-                  seq(
-                    emptyCompoundListField($, "body"),
-                    choice(")", subshellRecoveryField($)),
-                  ),
-                ),
-                seq(
-                  field("body", $.compound_list),
-                  optional($._horizontal_layout),
-                  subshellRecoveryField($),
-                ),
+                alias($._command_substitution_close, ")"),
+                subshellRecoveryField($),
               ),
             ),
           ),
@@ -1959,9 +1751,16 @@ module.exports = grammar({
     in: ($) => $.in_keyword,
 
     wordlist: ($) =>
-      seq(
-        field("word", $.word),
-        repeat(seq($._word_separator, field("word", $.word))),
+      prec.right(
+        seq(
+          field("word", $.word),
+          repeat(
+            choice(
+              seq($._word_separator, field("word", $.word)),
+              prec(1, $.line_continuation),
+            ),
+          ),
+        ),
       ),
 
     do_group: ($) =>
@@ -1980,7 +1779,7 @@ module.exports = grammar({
           ),
           seq(
             compoundListField($, "body"),
-            optional($._horizontal_layout),
+            optional($._closing_layout),
             choice(
               prec(20, $.done_keyword),
               prec.dynamic(-50, recoveryField($)),
@@ -2059,31 +1858,17 @@ module.exports = grammar({
         ")",
         choice(
           seq(
-            optional(seq(optional($._horizontal_layout), $.linebreak)),
+            optional($.linebreak),
+            optional($._closing_layout),
             $._case_item_ns_boundary,
           ),
           prec.dynamic(
             10,
             seq(
-              field(
-                "body",
-                alias($._case_item_ns_compound_list, $.compound_list),
-              ),
+              field("body", $.compound_list),
+              optional($._closing_layout),
               $._case_item_ns_boundary,
             ),
-          ),
-        ),
-      ),
-
-    _case_item_ns_compound_list: ($) =>
-      prec.dynamic(
-        20,
-        seq(
-          optional(field("leading", $.linebreak)),
-          optional($._horizontal_layout),
-          choice(
-            terminatedCompoundList($),
-            prec.dynamic(300, field("body", alias($._closed_term, $.term))),
           ),
         ),
       ),
@@ -2092,7 +1877,7 @@ module.exports = grammar({
       seq(
         field("patterns", $.pattern_list),
         choice(
-          seq(optional($._horizontal_layout), directRecoveryField($)),
+          seq(optional($._closing_layout), directRecoveryField($)),
           seq(
             patternClosingLayout($),
             ")",
@@ -2116,9 +1901,9 @@ module.exports = grammar({
           linebreakLayout($),
           prec.dynamic(10, field("body", $.compound_list)),
         ),
-        continuationBoundaryLayout($, $._case_item_end),
+        seq($._case_item_end, optional($._horizontal_layout)),
         field("terminator", choice($.dsemi, $.semi_and)),
-        prec.right(1, optional(caseItemFollowingLayout($))),
+        optional(caseItemFollowingLayout($)),
       ),
 
     pattern_list: ($) =>
@@ -2168,7 +1953,10 @@ module.exports = grammar({
         ),
         repeat(
           choice(
-            seq($._word_separator, field("assignment", $.assignment_word)),
+            seq(
+              $._assignment_separator,
+              field("assignment", $.assignment_word),
+            ),
             ...commandRedirectContinuations($),
           ),
         ),
@@ -2280,8 +2068,11 @@ module.exports = grammar({
       seq(
         optional(
           choice(
-            lineComment($, field("comment", $.comment)),
-            $._horizontal_layout,
+            boundaryLineComment($, field("comment", $.comment)),
+            seq(
+              $._pre_newline_blank,
+              repeat(choice($._blank, $.line_continuation)),
+            ),
           ),
         ),
         field("line_end", $.here_document_line_end),
@@ -3234,7 +3025,7 @@ module.exports = grammar({
         optional(field("body", $.backquote_substitution_body)),
         choice(
           seq(
-            closedCommandBoundaryLayout($),
+            optional($._closing_layout),
             backquoteDelimiter($._backquote_end, $._backquote_end_prefix),
           ),
           $.backquote_end_recovery,
@@ -3515,10 +3306,68 @@ module.exports = grammar({
       repeat1(
         choice(
           $.here_document_sequence,
-          $._newline,
+          $._layout_newline,
           $._blank_line,
           $._continued_blank_line,
           $._comment_line,
+        ),
+      ),
+
+    _separator_led_newline_list: ($) =>
+      prec.right(
+        seq(
+          choice(
+            $._separator_newline,
+            seq($._pre_newline_blank, $._separator_newline),
+          ),
+          repeat(
+            choice(
+              $.here_document_sequence,
+              $._layout_newline,
+              $._blank_line,
+              $._continued_blank_line,
+              $._comment_line,
+            ),
+          ),
+        ),
+      ),
+
+    _trailing_newline_list: ($) =>
+      prec.right(
+        seq(
+          choice(
+            $.here_document_sequence,
+            $._layout_newline,
+            $._blank_line,
+            seq(boundaryLineComment($, $.comment), $._layout_newline),
+          ),
+          repeat(
+            choice(
+              $.here_document_sequence,
+              $._layout_newline,
+              $._blank_line,
+              $._continued_blank_line,
+              $._comment_line,
+            ),
+          ),
+        ),
+      ),
+
+    _trailing_linebreak: ($) => alias($._trailing_newline_list, $.newline_list),
+
+    _here_document_led_newline_list: ($) =>
+      prec.right(
+        seq(
+          $.here_document_sequence,
+          repeat(
+            choice(
+              $.here_document_sequence,
+              $._layout_newline,
+              $._blank_line,
+              $._continued_blank_line,
+              $._comment_line,
+            ),
+          ),
         ),
       ),
 
@@ -3527,26 +3376,35 @@ module.exports = grammar({
     _horizontal_layout: ($) =>
       prec.right(1, repeat1(choice($._blank, prec(2, $.line_continuation)))),
 
-    _word_separator: ($) =>
+    _closing_layout: ($) =>
       prec.right(
-        2,
-        choice(
-          seq($._blank, repeat(choice($._blank, $.line_continuation))),
-          continuedWordSeparator($),
-        ),
+        1,
+        seq($._blank, repeat(choice($._blank, prec(2, $.line_continuation)))),
       ),
 
-    _free_trailing_layout: ($) =>
-      prec.right(1, choice($._horizontal_layout, $._free_comment)),
+    _word_separator: ($) => wordSeparator($, $._word_separator_begin),
 
-    _comment_line: ($) => seq($._free_comment, $._newline),
+    _assignment_separator: ($) =>
+      wordSeparator($, $._assignment_separator_begin),
+
+    _redirect_separator: ($) => wordSeparator($, $._redirect_separator_begin),
+
+    _free_trailing_layout: ($) =>
+      prec.right(
+        1,
+        choice($._closing_layout, boundaryLineComment($, $.comment)),
+      ),
+
+    _comment_line: ($) => seq($._free_comment, $._layout_newline),
 
     _continued_blank_line: ($) =>
-      prec.dynamic(2, seq(continuedBlankLineLayout($), $._newline)),
+      prec.dynamic(2, seq(continuedBlankLineLayout($), $._layout_newline)),
 
-    _blank_line: ($) => seq($._blank, $._newline),
+    _blank_line: ($) => seq($._pre_newline_blank, $._layout_newline),
 
     _free_comment: ($) => prec.right(1, lineComment($, $.comment)),
+
+    _layout_newline: (_) => "\n",
 
     _blank: (_) => /[ \t]+/,
   },

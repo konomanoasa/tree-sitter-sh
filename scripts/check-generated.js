@@ -17,7 +17,7 @@ const generatedFiles = [
 ];
 
 const limits = {
-  EXTERNAL_TOKEN_COUNT: 110,
+  EXTERNAL_TOKEN_COUNT: 115,
   STATE_COUNT: 30_500,
   parserSize: 37_500_000,
 };

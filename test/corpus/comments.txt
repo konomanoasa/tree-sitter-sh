@@ -168,9 +168,9 @@ second
                     (word
                       (literal)))))))
           (and_if)
-          (line_continuation)
           (linebreak
             (newline_list
+              (line_continuation)
               (comment)))
           (pipeline
             (pipe_sequence

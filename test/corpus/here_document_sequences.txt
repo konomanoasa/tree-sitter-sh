@@ -303,10 +303,10 @@ fourth
                       (literal)))
                   (cmd_suffix
                     (word
-                      (literal))))))))))
+                      (literal))
+                    (line_continuation)))))))))
     (newline_list
       (here_document_sequence
-        (line_continuation)
         (here_document_line_end)
         (here_document
           (here_document_body
@@ -351,10 +351,10 @@ fourth
                       (literal)))
                   (cmd_suffix
                     (word
-                      (literal))))))))))
+                      (literal))
+                    (line_continuation)))))))))
     (newline_list
       (here_document_sequence
-        (line_continuation)
         (line_continuation)
         (here_document_line_end)
         (here_document
@@ -373,6 +373,7 @@ fourth
                       (literal)))))))))))
   (linebreak
     (newline_list)))
+
 ==================
 A missing here-document delimiter does not capture later commands
 ==================

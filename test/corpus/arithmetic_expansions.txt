@@ -1134,8 +1134,8 @@ A continuation before the closers stays in the command-substitution reading
                                                                 (literal)))
                                                             (cmd_suffix
                                                               (word
-                                                                (literal))))))))))
-                                              (line_continuation)))))))))))))))))))))))
+                                                                (literal))
+                                                              (line_continuation)))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 

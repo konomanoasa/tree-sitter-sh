@@ -3931,3 +3931,147 @@ test("parser scaling remains linear within the existing guard", () => {
     );
   }
 });
+
+test("incremental parsing reuses unchanged commands", () => {
+  function parseArguments(source, edit, ...extra) {
+    return [
+      "parse",
+      "--lib-path",
+      parserLibrary,
+      "--lang-name",
+      grammarName,
+      "--edits",
+      edit,
+      ...extra,
+      "--",
+      source,
+    ];
+  }
+
+  function debugIncrementalParse(source, edit) {
+    const result = runTreeSitter(parseArguments(source, edit, "--cst", "-d"), {
+      allowedStatuses: [0, 1],
+      environmentDirectory: runtimeDirectory,
+    });
+    const reusedCommands = (
+      result.stderr.match(/^reuse_node symbol:complete_command$/gm) ?? []
+    ).length;
+    const fragileTrees = new Set();
+    for (const line of result.stderr.matchAll(
+      /^cant_reuse_node_is_fragile tree:(.+)$/gm,
+    )) {
+      fragileTrees.add(line[1]);
+    }
+    let versionsMax = 0;
+    for (const line of result.stderr.matchAll(/version_count:([0-9]+)/g)) {
+      versionsMax = Math.max(versionsMax, Number(line[1]));
+    }
+    return {
+      fingerprint: cstFingerprint(result.stdout),
+      fragileTrees,
+      reusedCommands,
+      versionsMax,
+    };
+  }
+
+  function assertIncrementalTimeRatio(name, source, edit, maximumRatio) {
+    let bestRatio = Number.POSITIVE_INFINITY;
+    for (
+      let attempt = 0;
+      attempt < 3 && bestRatio > maximumRatio;
+      attempt += 1
+    ) {
+      const result = runTreeSitter(
+        parseArguments(source, edit, "--time", "--quiet"),
+        { allowedStatuses: [0, 1], environmentDirectory: runtimeDirectory },
+      );
+      const freshMilliseconds = Number(
+        result.stdout.match(/Parse:[ ]+([0-9.]+) ms/)?.[1],
+      );
+      const editMilliseconds = Number(
+        result.stdout.match(/Edit:[ ]+([0-9.]+) ms/)?.[1],
+      );
+      assert.ok(
+        Number.isFinite(freshMilliseconds) &&
+          freshMilliseconds > 0 &&
+          Number.isFinite(editMilliseconds),
+        `${name}: parse timings are unreadable\n${result.stdout}`,
+      );
+      bestRatio = Math.min(bestRatio, editMilliseconds / freshMilliseconds);
+    }
+    assert.ok(
+      bestRatio <= maximumRatio,
+      `${name}: incremental parse took ${bestRatio.toFixed(2)}x fresh, over ${maximumRatio}x`,
+    );
+  }
+
+  function freshFingerprint(name, initialContents, edit) {
+    const finalContents = applyEdits(Buffer.from(initialContents), [edit]);
+    const finalSource = writeSource(`${name}-fresh`, finalContents);
+    const result = runTreeSitter(
+      [
+        "parse",
+        "--lib-path",
+        parserLibrary,
+        "--lang-name",
+        grammarName,
+        "--cst",
+        "--",
+        finalSource,
+      ],
+      { allowedStatuses: [0, 1], environmentDirectory: runtimeDirectory },
+    );
+    return cstFingerprint(result.stdout);
+  }
+
+  const commandLine = "/bin/echo aaaa\n";
+  const commandCount = 1200;
+  const commandSource = writeSource(
+    "reuse-commands",
+    commandLine.repeat(commandCount),
+  );
+  const commandEdits = [
+    ["head", "10 1 b"],
+    ["middle", `${commandLine.length * 600 + 10} 1 b`],
+    ["tail", `${commandLine.length * 1199 + 10} 1 b`],
+  ];
+  for (const [position, edit] of commandEdits) {
+    const name = `${position}-command-replace`;
+    const parse = debugIncrementalParse(commandSource, edit);
+    assert.equal(
+      parse.fingerprint,
+      freshFingerprint(name, commandLine.repeat(commandCount), edit),
+      `${name}: incremental and fresh CSTs differ`,
+    );
+    assert.ok(
+      parse.reusedCommands >= commandCount - 2,
+      `${name}: reused ${parse.reusedCommands} of ${commandCount - 1} unchanged complete_commands`,
+    );
+    parse.fragileTrees.delete("complete_commands_repeat1");
+    assert.deepEqual(
+      [...parse.fragileTrees],
+      [],
+      `${name}: fragile nodes block command reuse`,
+    );
+    assert.equal(
+      parse.versionsMax,
+      1,
+      `${name}: parser forked on plain commands`,
+    );
+    assertIncrementalTimeRatio(name, commandSource, edit, 0.25);
+  }
+
+  const functionLine = "alpha() { : beta; }\n";
+  const functionSource = writeSource(
+    "reuse-functions",
+    functionLine.repeat(commandCount),
+  );
+  const closerEdit = `${functionLine.length * 3 + 18} 1`;
+  const closerName = "function-closer-delete";
+  assert.equal(
+    debugIncrementalParse(functionSource, closerEdit).fingerprint,
+    freshFingerprint(closerName, functionLine.repeat(commandCount), closerEdit),
+    `${closerName}: incremental and fresh CSTs differ`,
+  );
+  assertIncrementalTimeRatio(closerName, functionSource, closerEdit, 1.5);
+});

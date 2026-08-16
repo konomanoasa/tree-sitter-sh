@@ -579,8 +579,8 @@ echo $(printf x\
                                               (literal)))
                                           (cmd_suffix
                                             (word
-                                              (literal))))))))))))
-                        (line_continuation))))))))))))
+                                              (literal))
+                                            (line_continuation))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -624,8 +624,8 @@ echo `printf x\
                                               (literal)))
                                           (cmd_suffix
                                             (word
-                                              (literal))))))))))))
-                        (line_continuation))))))))))))
+                                              (literal))
+                                            (line_continuation))))))))))))))))))))))
   (linebreak
     (newline_list)))
 

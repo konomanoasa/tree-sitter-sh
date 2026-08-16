@@ -152,9 +152,9 @@ then :; fi
                                                     (word
                                                       (literal)))))))))
                                       terminator: (separator
-                                        operator: (separator_op)))))
-                                (line_continuation)
-                                (line_continuation)))))))
+                                        operator: (separator_op)))))))))))
+                    (line_continuation)
+                    (line_continuation)
                     (then_keyword)
                     consequence: (compound_list
                       body: (term

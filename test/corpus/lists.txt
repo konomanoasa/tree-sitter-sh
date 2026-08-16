@@ -432,8 +432,9 @@ fifth\
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)))))
-              (line_continuation)
+                      (literal)))
+                  suffix: (cmd_suffix
+                    (line_continuation))))
               command: (command
                 body: (simple_command
                   name: (cmd_name
@@ -449,8 +450,9 @@ fifth\
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)))))))
-          (line_continuation)
+                      (literal)))
+                  suffix: (cmd_suffix
+                    (line_continuation))))))
           operator: (or_if)
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -469,8 +471,9 @@ fifth\
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)))))))
-          (line_continuation)
+                      (literal)))
+                  suffix: (cmd_suffix
+                    (line_continuation))))))
           operator: (and_if)
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -827,7 +830,6 @@ Pipeline negation without a following command recovers in place
   trailing: (linebreak
     (newline_list)))
 
-
 ==================
 Command layout preserves leading separator and connector continuations
 ==================
@@ -968,9 +970,10 @@ first\
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)))))))
-          (line_continuation)
-          (line_continuation)
+                      (literal)))
+                  suffix: (cmd_suffix
+                    (line_continuation)
+                    (line_continuation))))))
           operator: (and_if)
           pipeline: (pipeline
             sequence: (pipe_sequence
