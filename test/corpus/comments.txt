@@ -260,3 +260,61 @@ second &\
                         (newline_list))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+A trailing comment after a completed line may end the input
+==================
+
+printf value
+# comment at EOF
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list))
+  (comment))
+
+==================
+A blank-led trailing comment may end the input
+==================
+
+printf value
+  # comment at EOF
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list))
+  (comment))

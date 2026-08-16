@@ -1094,3 +1094,88 @@ esac
                     (esac_keyword))))))))))
   (linebreak
     (newline_list)))
+
+==================
+An esac after a closed pattern ends the case without a body
+==================
+
+case x in x) esac
+case y in y) ;; z) esac
+case w in w)
+esac
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list_ns
+                      (case_item_ns
+                        (pattern_list
+                          (word
+                            (literal)))))
+                    (esac_keyword)))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list_ns
+                      (case_list
+                        (case_item
+                          (pattern_list
+                            (word
+                              (literal)))
+                          (dsemi)))
+                      (case_item_ns
+                        (pattern_list
+                          (word
+                            (literal)))))
+                    (esac_keyword)))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list_ns
+                      (case_item_ns
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  (linebreak
+    (newline_list)))

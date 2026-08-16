@@ -1411,6 +1411,24 @@ static void assert_word_separator_classification_contract(void) {
   assert(pair_after_blank.offset == 4);
   assert(pair_after_blank.lexer.lookahead == 0);
 
+  const int32_t location_redirect_input[] =
+    {' ', '{', 'x', '}', '\\', '\n', '>'};
+  struct MockLexer location_redirect;
+  init_mock_lexer(
+    &location_redirect,
+    location_redirect_input,
+    sizeof(location_redirect_input) / sizeof(location_redirect_input[0])
+  );
+  assert(tree_sitter_posix_sh_external_scanner_scan(
+    scanner,
+    &location_redirect.lexer,
+    valid_symbols
+  ));
+  assert(location_redirect.lexer.result_symbol == REDIRECT_SEPARATOR_BEGIN);
+  assert(location_redirect.mark == 1);
+  assert(location_redirect.offset == 6);
+  assert(location_redirect.lexer.lookahead == '>');
+
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
 
@@ -2033,6 +2051,45 @@ static void assert_case_item_boundary_contract(void) {
   );
   assert_scanner_matches_snapshot(scanner, before, before_length);
 
+  // An empty case-item body keeps the first-command classifications valid, so
+  // a real esac must end the item ahead of the invalid-command reading.
+  memset(valid_symbols, 0, sizeof(valid_symbols));
+  valid_symbols[CASE_ITEM_NS_BOUNDARY] = true;
+  valid_symbols[NAME_EQUALS_BEGIN] = true;
+  valid_symbols[FNAME_BEGIN] = true;
+  valid_symbols[INVALID_RESERVED_COMMAND_START] = true;
+
+  const int32_t empty_body_esac_input[] = {'e', 's', 'a', 'c', ' '};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    empty_body_esac_input,
+    sizeof(empty_body_esac_input) / sizeof(empty_body_esac_input[0]),
+    true,
+    CASE_ITEM_NS_BOUNDARY,
+    0,
+    4,
+    ' '
+  );
+  assert_scanner_matches_snapshot(scanner, before, before_length);
+
+  const int32_t esac_assignment_input[] = {'e', 's', 'a', 'c', '='};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    esac_assignment_input,
+    sizeof(esac_assignment_input) / sizeof(esac_assignment_input[0]),
+    true,
+    NAME_EQUALS_BEGIN,
+    0,
+    4,
+    '='
+  );
+  assert_scanner_matches_snapshot(scanner, before, before_length);
+
+  memset(valid_symbols, 0, sizeof(valid_symbols));
+  valid_symbols[CASE_ITEM_NS_BOUNDARY] = true;
+
   const int32_t ordinary_word_input[] = {'e', 's', 'a', 'c', 'x', ' '};
   const int32_t other_closer_input[] = {'f', 'i', ' '};
   const int32_t terminator_input[] = {';', ';'};
@@ -2064,6 +2121,130 @@ static void assert_case_item_boundary_contract(void) {
     assert(rejected_boundary.mark == 0);
     assert_scanner_matches_snapshot(scanner, before, before_length);
   }
+
+  tree_sitter_posix_sh_external_scanner_destroy(scanner);
+}
+
+// After a for or case keyword only a word or the header recovery may follow,
+// so a separator operator there settles on the header recovery boundary.
+static void assert_header_separator_recovery_contract(void) {
+  struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[HEADER_RECOVERY_BOUNDARY] = true;
+  valid_symbols[WORD_SEPARATOR_BEGIN] = true;
+
+  const int32_t semicolon_input[] = {';'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    semicolon_input,
+    sizeof(semicolon_input) / sizeof(semicolon_input[0]),
+    true,
+    HEADER_RECOVERY_BOUNDARY,
+    0,
+    1,
+    0
+  );
+
+  // The continuation read runs regardless of which symbols are valid, so the
+  // recovery token records the same lookahead extent as any fresh state at
+  // the same position.
+  const int32_t ampersand_input[] = {'&', ' ', 'b'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    ampersand_input,
+    sizeof(ampersand_input) / sizeof(ampersand_input[0]),
+    true,
+    HEADER_RECOVERY_BOUNDARY,
+    0,
+    3,
+    0
+  );
+
+  const int32_t terminator_input[] = {';', ';'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    terminator_input,
+    sizeof(terminator_input) / sizeof(terminator_input[0]),
+    true,
+    HEADER_RECOVERY_BOUNDARY,
+    0,
+    1,
+    ';'
+  );
+
+  tree_sitter_posix_sh_external_scanner_destroy(scanner);
+}
+
+// A lone separator operator after a completed and_or can begin neither a
+// command nor a recovery command, so the list closes at its terminator; a
+// case-item terminator ahead still continues the list into its recovery.
+static void assert_lone_separator_ends_the_list(void) {
+  struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[LIST_CONTINUATION] = true;
+  valid_symbols[TERMINATOR_AHEAD] = true;
+
+  // The term-continuation read past the command's first word keeps the
+  // token's lookahead extent a function of the source alone.
+  const int32_t command_input[] = {';', ' ', 'b'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    command_input,
+    sizeof(command_input) / sizeof(command_input[0]),
+    true,
+    LIST_CONTINUATION,
+    0,
+    3,
+    0
+  );
+
+  const int32_t lone_separator_input[] = {';', ' ', ';'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    lone_separator_input,
+    sizeof(lone_separator_input) / sizeof(lone_separator_input[0]),
+    true,
+    TERMINATOR_AHEAD,
+    0,
+    3,
+    0
+  );
+
+  const int32_t case_terminator_input[] = {';', ' ', ';', ';'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    case_terminator_input,
+    sizeof(case_terminator_input) / sizeof(case_terminator_input[0]),
+    true,
+    LIST_CONTINUATION,
+    0,
+    3,
+    ';'
+  );
+
+  const int32_t fallthrough_terminator_input[] = {';', ' ', ';', '&'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    fallthrough_terminator_input,
+    sizeof(fallthrough_terminator_input) /
+      sizeof(fallthrough_terminator_input[0]),
+    true,
+    LIST_CONTINUATION,
+    0,
+    3,
+    '&'
+  );
 
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
@@ -2853,6 +3034,100 @@ static void assert_comment_boundary_contract(void) {
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
 
+// A comment that reaches the end of input takes the trailing boundary; a
+// newline-terminated comment keeps the comment-line boundary. Both probes
+// read the comment without consuming it into the token.
+static void assert_trailing_comment_boundary_contract(void) {
+  struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[COMMENT_BOUNDARY] = true;
+  valid_symbols[TRAILING_COMMENT_BOUNDARY] = true;
+
+  const int32_t input_end_comment[] = {'#', 'x'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    input_end_comment,
+    sizeof(input_end_comment) / sizeof(input_end_comment[0]),
+    true,
+    TRAILING_COMMENT_BOUNDARY,
+    0,
+    2,
+    0
+  );
+
+  const int32_t terminated_comment[] = {'#', 'x', '\n'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    terminated_comment,
+    sizeof(terminated_comment) / sizeof(terminated_comment[0]),
+    true,
+    COMMENT_BOUNDARY,
+    0,
+    2,
+    '\n'
+  );
+
+  // Where only the comment-line boundary is valid the classification does
+  // not read the comment at all.
+  valid_symbols[TRAILING_COMMENT_BOUNDARY] = false;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    input_end_comment,
+    sizeof(input_end_comment) / sizeof(input_end_comment[0]),
+    true,
+    COMMENT_BOUNDARY,
+    0,
+    0,
+    '#'
+  );
+
+  tree_sitter_posix_sh_external_scanner_destroy(scanner);
+}
+
+// The newline ending a comment line reads ahead to the run's continuation
+// horizon, so the recorded lookahead invalidates the run when a later edit
+// changes what follows it.
+static void assert_comment_line_end_contract(void) {
+  struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[COMMENT_LINE_END] = true;
+
+  const int32_t command_ahead[] = {'\n', 'n', 'e', 'x', 't'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    command_ahead,
+    sizeof(command_ahead) / sizeof(command_ahead[0]),
+    true,
+    COMMENT_LINE_END,
+    1,
+    5,
+    0
+  );
+
+  const int32_t input_end[] = {'\n'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    input_end,
+    sizeof(input_end) / sizeof(input_end[0]),
+    true,
+    COMMENT_LINE_END,
+    1,
+    1,
+    0
+  );
+
+  tree_sitter_posix_sh_external_scanner_destroy(scanner);
+}
+
 static void assert_arithmetic_boundary_contract(void) {
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -3560,8 +3835,12 @@ int main(void) {
   assert_exact_substitution_closers_precede_recovery();
   assert_compound_list_boundary_precedes_horizontal_layout();
   assert_case_item_boundary_contract();
+  assert_header_separator_recovery_contract();
+  assert_lone_separator_ends_the_list();
   assert_closing_reserved_words_classify_deterministically();
   assert_comment_boundary_contract();
+  assert_trailing_comment_boundary_contract();
+  assert_comment_line_end_contract();
   assert_arithmetic_boundary_contract();
   assert_arithmetic_left_parenthesis_classification();
   assert_tilde_end_marker_contract();

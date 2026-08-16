@@ -70,7 +70,9 @@ enum TokenType {
   PATTERN_SPECIAL_LEFT_BRACKET,
   LITERAL_HASH,
   COMMENT_BOUNDARY,
+  TRAILING_COMMENT_BOUNDARY,
   COMMENT,
+  COMMENT_LINE_END,
   HERE_DOCUMENT_BOUNDARY,
   UNBRACED_PARAMETER_START,
   BRACED_PARAMETER_NUMBER_START,
@@ -133,7 +135,7 @@ enum TokenType {
 };
 
 _Static_assert(
-  TOKEN_COUNT == 115,
+  TOKEN_COUNT == 117,
   "external token enum diverges from the grammar externals"
 );
 
@@ -1565,10 +1567,10 @@ scan_dollar_single_quote_escape(TSLexer *lexer, struct ByteBuffer *delimiter) {
       return control_escape_byte('\\', &value) && append_byte(delimiter, value);
     }
 
-    int32_t character = lexer->lookahead;
+    int32_t control_character = lexer->lookahead;
     lexer->advance(lexer, false);
     uint8_t value;
-    return control_escape_byte(character, &value) &&
+    return control_escape_byte(control_character, &value) &&
       append_byte(delimiter, value);
   }
 
@@ -2554,6 +2556,22 @@ static bool is_recovery_reserved_word(const char *word) {
   );
 }
 
+// POSIX case-statement termination ends the open case item at a real "esac"
+// even where the item body could still begin its first command, so the closer
+// reaches its formal owner instead of an in-body recovery reading.
+static bool classify_case_item_ns_end(
+  const char *word,
+  const bool *valid_symbols,
+  TSSymbol *symbol
+) {
+  if (!valid_symbols[CASE_ITEM_NS_BOUNDARY] || strcmp(word, "esac") != 0) {
+    return false;
+  }
+
+  *symbol = CASE_ITEM_NS_BOUNDARY;
+  return true;
+}
+
 static bool classify_lowercase_recovery(
   const char *word,
   const bool *valid_symbols,
@@ -2592,6 +2610,11 @@ static bool scan_lowercase_dispatch(
 
   TSSymbol symbol;
   if (classify_reserved_word(word, valid_symbols, &symbol)) {
+    lexer->result_symbol = symbol;
+    return true;
+  }
+
+  if (classify_case_item_ns_end(word, valid_symbols, &symbol)) {
     lexer->result_symbol = symbol;
     return true;
   }
@@ -2705,6 +2728,10 @@ static bool scan_name_equals_begin_or_reserved_word(
     lexer->result_symbol = symbol;
     return true;
   }
+  if (classify_case_item_ns_end(word, valid_symbols, &symbol)) {
+    lexer->result_symbol = symbol;
+    return true;
+  }
   if (
     valid_symbols[COMPOUND_LIST_BOUNDARY] && is_recovery_reserved_word(word)
   ) {
@@ -2728,12 +2755,16 @@ static bool scan_name_equals_begin_or_reserved_word(
 
 static bool scan_case_item_terminator(TSLexer *lexer);
 
-static bool scan_horizontal_blanks(TSLexer *lexer);
-
 static bool scan_horizontal_layout(TSLexer *lexer);
 
 static bool
-scan_horizontal_layout_with_blanks(TSLexer *lexer, bool *crossed_blank);
+classify_comment_boundary(TSLexer *lexer, const bool *valid_symbols);
+
+static bool classify_scanned_comment_boundary(
+  TSLexer *lexer,
+  const bool *valid_symbols,
+  bool comment_reaches_input_end
+);
 
 static bool
 scan_compound_list_boundary(const struct Scanner *scanner, TSLexer *lexer) {
@@ -3123,28 +3154,18 @@ static bool scan_horizontal_blanks(TSLexer *lexer) {
   return found;
 }
 
-static bool
-scan_horizontal_layout_with_blanks(TSLexer *lexer, bool *crossed_blank) {
+// Skips horizontal blanks and line-continuation pairs. Returns false only
+// when a backslash is not part of a continuation pair.
+static bool scan_horizontal_layout(TSLexer *lexer) {
   while (true) {
-    bool found_blank = scan_horizontal_blanks(lexer);
-    if (found_blank && crossed_blank != NULL) {
-      *crossed_blank = true;
-    }
+    scan_horizontal_blanks(lexer);
     if (lexer->lookahead != '\\') {
       return true;
     }
-
-    lexer->advance(lexer, false);
-    if (lexer->lookahead != '\n') {
+    if (!skip_line_continuations(lexer)) {
       return false;
     }
-
-    lexer->advance(lexer, false);
   }
-}
-
-static bool scan_horizontal_layout(TSLexer *lexer) {
-  return scan_horizontal_layout_with_blanks(lexer, NULL);
 }
 
 // The command-continuation markers settle which hierarchy level owns the
@@ -3180,20 +3201,6 @@ scan_command_continuation_operator(TSLexer *lexer, const bool *valid_symbols) {
 
   lexer->result_symbol = AND_OR_CONTINUATION;
   return true;
-}
-
-// Skips horizontal blanks and line-continuation pairs. Returns false only
-// when a backslash is not part of a continuation pair.
-static bool skip_blanks_and_continuations(TSLexer *lexer) {
-  while (true) {
-    scan_horizontal_blanks(lexer);
-    if (lexer->lookahead != '\\') {
-      return true;
-    }
-    if (!skip_line_continuations(lexer)) {
-      return false;
-    }
-  }
 }
 
 static bool
@@ -3256,12 +3263,6 @@ static bool is_closing_reserved_word_ahead(
 }
 
 static bool scan_separator_operator_continuation(
-  const struct Scanner *scanner,
-  TSLexer *lexer,
-  const bool *valid_symbols
-);
-
-static bool scan_term_continuation(
   const struct Scanner *scanner,
   TSLexer *lexer,
   const bool *valid_symbols
@@ -3384,8 +3385,6 @@ static bool scan_element_boundary(
       }
       return false;
     }
-    // A pair at the very start of the boundary is its own token; markers and
-    // separators classify from the position after it.
     if (pair_is_first && valid_symbols[LINE_CONTINUATION]) {
       lexer->advance(lexer, false);
       lexer->mark_end(lexer);
@@ -3404,29 +3403,21 @@ static bool scan_element_boundary(
       lexer->result_symbol = PATTERN_CONTINUATION;
       return true;
     }
-    lexer->advance(lexer, false);
-    if (lexer->lookahead == '|') {
-      if (!valid_symbols[AND_OR_CONTINUATION]) {
-        return false;
-      }
-      lexer->result_symbol = AND_OR_CONTINUATION;
-      return true;
-    }
-    if (!valid_symbols[PIPE_CONTINUATION]) {
-      return false;
-    }
-    lexer->result_symbol = PIPE_CONTINUATION;
-    return true;
+    return scan_command_continuation_operator(lexer, valid_symbols);
   }
 
   if (character == '&') {
     lexer->advance(lexer, false);
     if (lexer->lookahead == '&') {
-      if (!valid_symbols[AND_OR_CONTINUATION]) {
-        return false;
+      if (valid_symbols[AND_OR_CONTINUATION]) {
+        lexer->result_symbol = AND_OR_CONTINUATION;
+        return true;
       }
-      lexer->result_symbol = AND_OR_CONTINUATION;
-      return true;
+      if (valid_symbols[HEADER_RECOVERY_BOUNDARY]) {
+        lexer->result_symbol = HEADER_RECOVERY_BOUNDARY;
+        return true;
+      }
+      return false;
     }
     return scan_separator_operator_continuation(scanner, lexer, valid_symbols);
   }
@@ -3448,14 +3439,16 @@ static bool scan_element_boundary(
         lexer->result_symbol = SEPARATOR_RECOVERY;
         return true;
       }
+      if (valid_symbols[HEADER_RECOVERY_BOUNDARY]) {
+        lexer->result_symbol = HEADER_RECOVERY_BOUNDARY;
+        return true;
+      }
       return false;
     }
     return scan_separator_operator_continuation(scanner, lexer, valid_symbols);
   }
 
   if (character == '\n') {
-    // A blank run before the newline is its own token; the newline itself is
-    // classified on the next scan.
     bool blank_run_before_newline = crossed_layout && !crossed_pairs;
     if (
       (blank_run_before_newline || blank_mark_committed) &&
@@ -3513,7 +3506,31 @@ static bool scan_element_boundary(
   }
 
   if (character == '#') {
-    if (scan_term_continuation(scanner, lexer, valid_symbols)) {
+    bool term_continuation_is_scannable =
+      valid_symbols[TERM_CONTINUATION] && scanner->pending_count == 0;
+    if (!term_continuation_is_scannable) {
+      if (valid_symbols[HEADER_RECOVERY_BOUNDARY]) {
+        return scan_direct_recovery_boundary(
+          scanner,
+          lexer,
+          HEADER_RECOVERY_BOUNDARY,
+          valid_symbols
+        );
+      }
+      return classify_comment_boundary(lexer, valid_symbols);
+    }
+    // One probe serves both decisions: the comment's own line settles the
+    // trailing classification, and the run after its newline settles the
+    // term continuation.
+    do {
+      lexer->advance(lexer, false);
+    } while (!lexer_at_eof(lexer) && lexer->lookahead != '\n');
+    bool comment_reaches_input_end = lexer_at_eof(lexer);
+    if (
+      !comment_reaches_input_end &&
+      finish_term_continuation(scanner, lexer, valid_symbols)
+    ) {
+      lexer->result_symbol = TERM_CONTINUATION;
       return true;
     }
     if (valid_symbols[HEADER_RECOVERY_BOUNDARY]) {
@@ -3524,11 +3541,11 @@ static bool scan_element_boundary(
         valid_symbols
       );
     }
-    if (valid_symbols[COMMENT_BOUNDARY]) {
-      lexer->result_symbol = COMMENT_BOUNDARY;
-      return true;
-    }
-    return false;
+    return classify_scanned_comment_boundary(
+      lexer,
+      valid_symbols,
+      comment_reaches_input_end
+    );
   }
 
   if (
@@ -3607,6 +3624,7 @@ static bool classify_word_separator(
     redirect_ahead = character_count >=
       2 &&
       ends_with_right_brace &&
+      skip_line_continuations(lexer) &&
       (lexer->lookahead == '<' || lexer->lookahead == '>');
   }
 
@@ -3625,9 +3643,6 @@ static bool classify_word_separator(
   return false;
 }
 
-// The word-separator marker owns the blank run that separates the elements,
-// so reusable subtrees anchor on a non-empty first token.
-
 // After a consumed separator operator, decides whether the enclosing
 // sequence continues with another command. Where a list is open the operator
 // belongs to the list or to the complete_command terminator, and only the
@@ -3638,20 +3653,44 @@ static bool scan_separator_operator_continuation(
   TSLexer *lexer,
   const bool *valid_symbols
 ) {
-  if (!skip_blanks_and_continuations(lexer)) {
+  if (!scan_horizontal_layout(lexer)) {
     return false;
   }
 
+  /*
+   * Every decision input is read before any symbol is chosen, so the token's
+   * lookahead extent is a function of the source alone. An edit history that
+   * resumes in a state where only a terminator or recovery symbol is valid
+   * then records the same extent as a fresh parse, and a later edit
+   * invalidates the same nodes in both.
+   */
+  int32_t character = lexer->lookahead;
+  // A lone separator operator can neither begin a command nor a recovery
+  // command, so the list ends and its terminator keeps its formal owner.
+  bool lone_separator_ahead = false;
+  if (character == ';') {
+    lexer->advance(lexer, false);
+    lone_separator_ahead = lexer->lookahead != ';' && lexer->lookahead != '&';
+  }
+  bool at_input_end = lexer_at_eof(lexer);
+  // With pending here-documents the separator's newline run extent depends
+  // on the document bodies, so neither continuation nor terminator commits
+  // here; the grammar races its here-document variants instead.
+  bool term_continues = scanner->pending_count ==
+    0 &&
+    !lone_separator_ahead &&
+    finish_term_continuation(scanner, lexer, valid_symbols);
+
   if (valid_symbols[LIST_CONTINUATION]) {
-    int32_t character = lexer->lookahead;
     // A closer belongs to the enclosing substitution where one is open;
     // elsewhere it begins a recovery command that continues the list.
     if (
-      !lexer_at_eof(lexer) &&
+      !at_input_end &&
       character !=
       '\n' &&
       character !=
       '#' &&
+      !lone_separator_ahead &&
       !(character == ')' && valid_symbols[COMMAND_SUBSTITUTION_CLOSE]) &&
       !(is_active_backquote_boundary(scanner, character) &&
         valid_symbols[BACKQUOTE_END])
@@ -3660,13 +3699,10 @@ static bool scan_separator_operator_continuation(
       return true;
     }
   } else if (valid_symbols[TERM_CONTINUATION]) {
-    // With pending here-documents the separator's newline run extent depends
-    // on the document bodies, so neither continuation nor terminator commits
-    // here; the grammar races its here-document variants instead.
     if (scanner->pending_count > 0) {
       return false;
     }
-    if (finish_term_continuation(scanner, lexer, valid_symbols)) {
+    if (term_continues) {
       lexer->result_symbol = TERM_CONTINUATION;
       return true;
     }
@@ -3677,10 +3713,13 @@ static bool scan_separator_operator_continuation(
     return true;
   }
 
-  // A separator operator directly after a connecting operator marks the
-  // missing command position.
   if (valid_symbols[MISSING_COMMAND_RECOVERY_BOUNDARY]) {
     lexer->result_symbol = MISSING_COMMAND_RECOVERY_BOUNDARY;
+    return true;
+  }
+
+  if (valid_symbols[HEADER_RECOVERY_BOUNDARY]) {
+    lexer->result_symbol = HEADER_RECOVERY_BOUNDARY;
     return true;
   }
 
@@ -3691,27 +3730,6 @@ static bool scan_separator_operator_continuation(
 // newline_list may own, then reports whether another command begins. Pending
 // here-documents make the run's extent depend on document bodies, so those
 // runs are left to the grammar's raced here-document variant.
-static bool scan_term_continuation(
-  const struct Scanner *scanner,
-  TSLexer *lexer,
-  const bool *valid_symbols
-) {
-  if (!valid_symbols[TERM_CONTINUATION]) {
-    return false;
-  }
-  if (lexer->lookahead != '\n' && lexer->lookahead != '#') {
-    return false;
-  }
-  if (scanner->pending_count > 0) {
-    return false;
-  }
-  if (!finish_term_continuation(scanner, lexer, valid_symbols)) {
-    return false;
-  }
-  lexer->result_symbol = TERM_CONTINUATION;
-  return true;
-}
-
 static bool finish_term_continuation(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -3722,7 +3740,7 @@ static bool finish_term_continuation(
   }
 
   while (true) {
-    if (!skip_blanks_and_continuations(lexer)) {
+    if (!scan_horizontal_layout(lexer)) {
       return false;
     }
     if (lexer->lookahead == '#') {
@@ -4011,11 +4029,13 @@ static bool classify_shell_boundary(
     return true;
   }
 
-  if (character == '#' && (crossed_layout || !valid_symbols[LITERAL_HASH])) {
-    if (valid_symbols[COMMENT_BOUNDARY]) {
-      lexer->result_symbol = COMMENT_BOUNDARY;
-      return true;
-    }
+  if (
+    character ==
+    '#' &&
+    (crossed_layout || !valid_symbols[LITERAL_HASH]) &&
+    classify_comment_boundary(lexer, valid_symbols)
+  ) {
+    return true;
   }
 
   if (
@@ -4099,6 +4119,56 @@ static bool scan_comment(TSLexer *lexer) {
   lexer->mark_end(lexer);
   lexer->result_symbol = COMMENT;
   return true;
+}
+
+/*
+ * Classifies the boundary before a comment. A comment that reaches the end of
+ * input has no terminating newline, so only trailing layout may own it; a
+ * comment a newline terminates is a comment line of the enclosing newline
+ * run. Where only the comment-line boundary is valid the trailing comment
+ * degrades to that reading.
+ */
+static bool classify_scanned_comment_boundary(
+  TSLexer *lexer,
+  const bool *valid_symbols,
+  bool comment_reaches_input_end
+) {
+  if (comment_reaches_input_end && valid_symbols[TRAILING_COMMENT_BOUNDARY]) {
+    lexer->result_symbol = TRAILING_COMMENT_BOUNDARY;
+    return true;
+  }
+  if (valid_symbols[COMMENT_BOUNDARY]) {
+    lexer->result_symbol = COMMENT_BOUNDARY;
+    return true;
+  }
+  return false;
+}
+
+/*
+ * Classifies the boundary at a comment's first character. The lookahead past
+ * the committed token end reads the comment without consuming it, so the
+ * caller must not rely on the lookahead position afterward.
+ */
+static bool
+classify_comment_boundary(TSLexer *lexer, const bool *valid_symbols) {
+  if (
+    !valid_symbols[COMMENT_BOUNDARY] &&
+    !valid_symbols[TRAILING_COMMENT_BOUNDARY]
+  ) {
+    return false;
+  }
+  bool comment_reaches_input_end = false;
+  if (valid_symbols[TRAILING_COMMENT_BOUNDARY]) {
+    while (!lexer_at_eof(lexer) && lexer->lookahead != '\n') {
+      lexer->advance(lexer, false);
+    }
+    comment_reaches_input_end = lexer_at_eof(lexer);
+  }
+  return classify_scanned_comment_boundary(
+    lexer,
+    valid_symbols,
+    comment_reaches_input_end
+  );
 }
 
 static enum ArithmeticOperatorCategory
@@ -6355,6 +6425,25 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     return scan_here_document_line_end(scanner, lexer);
   }
 
+  if (valid_symbols[COMMENT_LINE_END] && lexer->lookahead == '\n') {
+    lexer->advance(lexer, false);
+    lexer->mark_end(lexer);
+    /*
+     * The newline ends a comment line of a newline run, which continues with
+     * further layout lines or ends before the next command or closer.
+     * Reading to that horizon records the run's decisive lookahead on its
+     * own final token, so an edit at the horizon invalidates the run instead
+     * of leaving a stale shape for reuse. With pending here-documents the
+     * run's extent depends on the document bodies and stays with the raced
+     * here-document variants.
+     */
+    if (scanner->pending_count == 0) {
+      finish_term_continuation(scanner, lexer, valid_symbols);
+    }
+    lexer->result_symbol = COMMENT_LINE_END;
+    return true;
+  }
+
   if (
     valid_symbols[HERE_DOCUMENT_END_COMMIT] &&
     scanner->active_count >
@@ -6488,9 +6577,8 @@ bool tree_sitter_posix_sh_external_scanner_scan(
         lexer->result_symbol = PRE_NEWLINE_BLANK;
         return true;
       }
-      if (lexer->lookahead == '#' && valid_symbols[COMMENT_BOUNDARY]) {
-        lexer->result_symbol = COMMENT_BOUNDARY;
-        return true;
+      if (lexer->lookahead == '#') {
+        return classify_comment_boundary(lexer, valid_symbols);
       }
       if (lexer->lookahead == ';' && valid_symbols[CASE_ITEM_END]) {
         lexer->advance(lexer, false);
@@ -6514,6 +6602,8 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     }
   }
 
+  bool comment_boundary_is_valid =
+    valid_symbols[COMMENT_BOUNDARY] || valid_symbols[TRAILING_COMMENT_BOUNDARY];
   bool shell_boundary_is_valid = valid_symbols[PATTERN_CONTINUATION] ||
     valid_symbols[PATTERN_END] ||
     valid_symbols[PIPE_CONTINUATION] ||
@@ -6521,12 +6611,12 @@ bool tree_sitter_posix_sh_external_scanner_scan(
     valid_symbols[REDIRECT_LIST_BEGIN] ||
     valid_symbols[CASE_ITEM_END] ||
     valid_symbols[CASE_ITEM_NS_BOUNDARY] ||
-    valid_symbols[COMMENT_BOUNDARY] ||
+    comment_boundary_is_valid ||
     valid_symbols[COMPOUND_LIST_BOUNDARY];
   bool direct_hash_boundary_is_valid = lexer->lookahead ==
     '#' &&
     !valid_symbols[LITERAL_HASH] &&
-    valid_symbols[COMMENT_BOUNDARY];
+    comment_boundary_is_valid;
   if (
     shell_boundary_is_valid &&
     (is_horizontal_blank(lexer->lookahead) ||
@@ -6688,7 +6778,10 @@ bool tree_sitter_posix_sh_external_scanner_scan(
       valid_symbols[REDIRECTION_TARGET_RECOVERY]) &&
     !suppress_broad_recovery &&
     !(lexer->lookahead == '}' && valid_symbols[RIGHT_BRACE]) &&
-    !(lexer->lookahead == '#' && valid_symbols[COMMENT_BOUNDARY]) &&
+    !(lexer->lookahead ==
+      '#' &&
+      (valid_symbols[COMMENT_BOUNDARY] ||
+        valid_symbols[TRAILING_COMMENT_BOUNDARY])) &&
     (lexer_at_eof(lexer) ||
       lexer->lookahead ==
       ')' ||

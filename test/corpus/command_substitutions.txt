@@ -1311,3 +1311,129 @@ echo `f() { :; }`
                                                     operator: (separator_op))))))))))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+Blanks after a substitution linebreak stay interior layout
+==================
+
+first=$(
+  printf value)
+second=`
+  printf value`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (command_substitution
+                          (command_substitution_body
+                            (linebreak
+                              (newline_list))
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))
+                                            (cmd_suffix
+                                              (word
+                                                (literal)))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (backquote_substitution
+                          (backquote_substitution_body
+                            (linebreak
+                              (newline_list))
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))
+                                            (cmd_suffix
+                                              (word
+                                                (literal))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Blanks between a substitution linebreak and its closer stay in the body
+==================
+
+first=$(
+  )
+second=`
+  `
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (command_substitution
+                          (command_substitution_body
+                            (linebreak
+                              (newline_list))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (backquote_substitution
+                          (backquote_substitution_body
+                            (linebreak
+                              (newline_list)))))))))))))))
+  (linebreak
+    (newline_list)))

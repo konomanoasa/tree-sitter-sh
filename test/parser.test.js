@@ -734,6 +734,51 @@ test("line-continuation and comment contracts", () => {
     "delete-comment-boundary-continuation",
     "9 2",
   );
+
+  // The newline ending a comment line records the run's continuation horizon,
+  // so an edit that turns the following closer into ordinary source
+  // invalidates the run instead of reusing its terminator shape.
+  const commentHorizonInitial = writeSource(
+    "comment-horizon-initial",
+    lines("while read line; do", '  echo "$line" # note', "done < file"),
+  );
+  const commentHorizonFinal = writeSource(
+    "comment-horizon-final",
+    lines("while read line; do", '  echo "$line" # note', "don& < file"),
+  );
+  assertIncrementalEqualsFresh(
+    commentHorizonInitial,
+    commentHorizonFinal,
+    "comment-line-horizon-closer-loss",
+    "45 1 &",
+  );
+  assertIncrementalEqualsFresh(
+    commentHorizonFinal,
+    commentHorizonInitial,
+    "comment-line-horizon-closer-return",
+    "45 1 e",
+  );
+
+  const trailingCommentInitial = writeSource(
+    "trailing-comment-initial",
+    "printf x\n",
+  );
+  const trailingCommentFinal = writeSource(
+    "trailing-comment-final",
+    "printf x\n# c",
+  );
+  assertIncrementalEqualsFresh(
+    trailingCommentInitial,
+    trailingCommentFinal,
+    "append-trailing-comment-at-input-end",
+    "9 0 # c",
+  );
+  assertIncrementalEqualsFresh(
+    trailingCommentFinal,
+    trailingCommentInitial,
+    "delete-trailing-comment-at-input-end",
+    "9 3",
+  );
 });
 
 test("list recovery stops before raw command separators", () => {
@@ -827,6 +872,87 @@ test("list recovery stops before raw command separators", () => {
   assertCstRange(nestedOutput, "1:2-1:3", "recovery: command_recovery");
   assertCstRange(nestedOutput, "2:0-2:5", "command: complete_command");
   assertNotContains(nestedOutput, "ERROR");
+});
+
+test("case closers, IO locations, and keyword headers survive edits", () => {
+  const emptyNsItem = writeSource(
+    "case-esac-after-closed-pattern",
+    lines("case x in x) esac"),
+  );
+  const emptyNsItemOutput = parseValidCst(emptyNsItem);
+  assertCstRange(emptyNsItemOutput, "0:10-0:13", "item: case_item_ns");
+  assertCstRange(emptyNsItemOutput, "0:13-0:17", "esac_keyword");
+  assertNotContains(emptyNsItemOutput, "recovery");
+
+  const emptyNsItemBodyInitial = writeSource(
+    "case-ns-item-body-initial",
+    lines("case x in x) run", "esac"),
+  );
+  const emptyNsItemBodyFinal = writeSource(
+    "case-ns-item-body-final",
+    lines("case x in x)", "esac"),
+  );
+  parseIncrementalAndFresh(
+    emptyNsItemBodyInitial,
+    emptyNsItemBodyFinal,
+    "delete-ns-item-body",
+    "12 4",
+  );
+
+  const headerSeparatorInitial = writeSource(
+    "for-header-separator-initial",
+    lines("for x; do :; done", "after"),
+  );
+  const headerSeparatorFinal = writeSource(
+    "for-header-separator-final",
+    lines("for; do :; done", "after"),
+  );
+  parseIncrementalAndFresh(
+    headerSeparatorInitial,
+    headerSeparatorFinal,
+    "delete-for-name-before-separator",
+    "3 2",
+  );
+
+  const caseHeaderOutput = parseContainsAll(
+    writeSource("case-header-separator", lines("case; :")),
+    "case header before a separator",
+    "recovery: (compound_command_recovery [0, 4] - [0, 4])",
+    "separator: (separator_op [0, 4] - [0, 5])",
+  );
+  assertNotContains(caseHeaderOutput, "ERROR");
+
+  const loneSeparatorInitial = writeSource(
+    "lone-separator-initial",
+    lines("a; b"),
+  );
+  const loneSeparatorFinal = writeSource("lone-separator-final", lines("a; ;"));
+  for (const output of parseIncrementalAndFresh(
+    loneSeparatorInitial,
+    loneSeparatorFinal,
+    "replace-command-with-lone-separator",
+    "3 1 ;",
+  )) {
+    assertCstRange(output, "0:1-0:2", "terminator: separator_op");
+  }
+
+  const locationContinuationInitial = writeSource(
+    "io-location-continuation-initial",
+    lines("printf {x}\\", ">file", "after"),
+  );
+  const locationContinuationFinal = writeSource(
+    "io-location-continuation-final",
+    lines("printf {x}>file", "after"),
+  );
+  for (const output of parseIncrementalAndFresh(
+    locationContinuationInitial,
+    locationContinuationFinal,
+    "join-io-location-and-operator",
+    "10 2",
+  )) {
+    assertContains(output, "location: io_location");
+    assertNotContains(output, "ERROR");
+  }
 });
 
 test("formal right-parenthesis ownership survives boundary continuations", () => {
@@ -1858,6 +1984,29 @@ test("substitution, redirection, and token boundaries retain ownership", () => {
   ]) {
     assertCstRange(delimiterOutput, range, item);
   }
+
+  // Blanks after a substitution linebreak are interior layout of the body,
+  // both freshly and when an edit introduces or removes them.
+  const interiorBlankInitial = writeSource(
+    "substitution-interior-blank-initial",
+    lines("x=$(", "echo hi)"),
+  );
+  const interiorBlankFinal = writeSource(
+    "substitution-interior-blank-final",
+    lines("x=$(", " echo hi)"),
+  );
+  assertIncrementalEqualsFresh(
+    interiorBlankInitial,
+    interiorBlankFinal,
+    "substitution-interior-blank-insert",
+    "5 0  ",
+  );
+  assertIncrementalEqualsFresh(
+    interiorBlankFinal,
+    interiorBlankInitial,
+    "substitution-interior-blank-delete",
+    "5 1",
+  );
 
   const parameterDelimiterInitial = writeSource(
     "parameter-delimiter-initial",

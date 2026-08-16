@@ -297,12 +297,6 @@ const patternBoundaryLayout = ($) =>
 const patternClosingLayout = ($) =>
   continuationBoundaryLayout($, $._pattern_end);
 
-const caseItemFollowingLayout = ($) =>
-  choice(
-    seq($.linebreak, optional($._horizontal_layout)),
-    $._horizontal_layout,
-  );
-
 const lineComment = ($, comment) =>
   seq(continuationBoundaryLayout($, $._comment_boundary), comment);
 
@@ -310,6 +304,12 @@ const lineComment = ($, comment) =>
 // leads, so no line continuation belongs to the comment side.
 const boundaryLineComment = ($, comment) =>
   seq($._comment_boundary, optional($._horizontal_layout), comment);
+
+// A comment that ends the input. The scanner classifies its boundary by the
+// missing terminating newline, so this reading never competes with the
+// comment-line elements of an open newline_list.
+const trailingComment = ($) =>
+  seq($._trailing_comment_boundary, optional($._horizontal_layout), $.comment);
 
 const doubleQuotedPart = ($) =>
   choice(
@@ -323,42 +323,40 @@ const doubleQuotedPart = ($) =>
     $.backquote_substitution,
   );
 
-const completeCommandsBody = ($, leading) =>
+const completeCommandsTail = ($) =>
   seq(
-    leading,
     $.complete_commands,
     optional(alias($._trailing_linebreak, $.linebreak)),
     optional($._free_trailing_layout),
   );
 
-const commandSequenceBody = ($) =>
-  choice(
-    completeCommandsBody(
-      $,
-      seq(optional($.linebreak), optional($._horizontal_layout)),
-    ),
-    seq($.linebreak, optional($._free_trailing_layout)),
-    $._free_trailing_layout,
+// A linebreak-led body owns every layout unit through to the closer, so a
+// blank run after the linebreak stays an interior layout token: the decision
+// between further commands and the closing delimiter waits for the token
+// after the run instead of forcing an early reduction the closer side would
+// win statically.
+const linebreakLedCommandsBody = ($) =>
+  seq(
+    $.linebreak,
+    optional($._horizontal_layout),
+    optional(choice(completeCommandsTail($), trailingComment($))),
   );
 
-// A leading line continuation has to remain visible until the next byte is
-// known: `$(\\\n(` can begin either an arithmetic expansion or a command
-// substitution whose first command is a subshell.  Raw linebreaks already
-// settle that choice, so only the initial, no-linebreak layout is narrowed to
-// blanks here. A continuation-prefixed start is factored as one complete run
-// below so the next byte, rather than an arbitrary prefix of the run, chooses
-// arithmetic expansion or command substitution.
-const commandSubstitutionSequenceBody = ($) =>
+// Each leading layout run has exactly one owning variant, so the decision
+// between further commands and the closing delimiter waits for the token
+// after the run. The leading layout differs per substitution form: a leading
+// line continuation after `$(` has to remain visible until the next byte is
+// known — `$(\\\n(` can begin either an arithmetic expansion or a command
+// substitution whose first command is a subshell — so the command
+// substitution start owns leading continuation pairs and its body layout is
+// blank-led. A backquote body has no such race and owns continuation-led
+// layout itself.
+const substitutionCommandsBody = ($, leadingLayout) =>
   choice(
-    completeCommandsBody(
-      $,
-      choice(
-        optional($._blank),
-        seq($.linebreak, optional($._horizontal_layout)),
-      ),
-    ),
-    seq($.linebreak, optional($._free_trailing_layout)),
-    prec(2, $._blank),
+    seq(leadingLayout, optional(completeCommandsTail($))),
+    completeCommandsTail($),
+    linebreakLedCommandsBody($),
+    trailingComment($),
   );
 
 const backquoteDollar = ($) =>
@@ -367,17 +365,14 @@ const backquoteDollar = ($) =>
 const backquoteDelimiter = (plain, prefix) =>
   choice(alias(plain, "`"), seq(alias(prefix, "\\"), token.immediate("`")));
 
-const commandSubstitutionEnd = ($) =>
-  choice(
-    seq(optional($._closing_layout), alias($._command_substitution_close, ")")),
-    hereDocumentBoundaryRecovery($),
-  );
-
 const commandSubstitution = ($, start) =>
   seq(
     start,
     optional(field("body", $.command_substitution_body)),
-    commandSubstitutionEnd($),
+    choice(
+      alias($._command_substitution_close, ")"),
+      hereDocumentBoundaryRecovery($),
+    ),
   );
 
 const patternSpecialStart = ($, marker) =>
@@ -866,16 +861,7 @@ const commandRedirectContinuations = ($) => [
 const redirectList = ($) =>
   seq(
     field("redirect", $.io_redirect),
-    repeat(
-      choice(
-        field(
-          "redirect",
-          alias($._io_redirect_without_descriptor, $.io_redirect),
-        ),
-        seq($._redirect_separator, field("redirect", $.io_redirect)),
-        $.line_continuation,
-      ),
-    ),
+    repeat(choice(...commandRedirectContinuations($))),
   );
 
 const redirectableCompoundCommand = ($) =>
@@ -1082,7 +1068,9 @@ module.exports = grammar({
     $._pattern_special_left_bracket,
     $._literal_hash,
     $._comment_boundary,
+    $._trailing_comment_boundary,
     $.comment,
+    $._comment_line_end,
     $._here_document_boundary,
     $._unbraced_parameter_start,
     $._braced_parameter_number_start,
@@ -1903,7 +1891,7 @@ module.exports = grammar({
         ),
         seq($._case_item_end, optional($._horizontal_layout)),
         field("terminator", choice($.dsemi, $.semi_and)),
-        optional(caseItemFollowingLayout($)),
+        optional(reservedWordLinebreak($)),
       ),
 
     pattern_list: ($) =>
@@ -3017,24 +3005,22 @@ module.exports = grammar({
       ),
 
     command_substitution_body: ($) =>
-      prec.left(commandSubstitutionSequenceBody($)),
+      prec.left(substitutionCommandsBody($, $._closing_layout)),
 
     backquote_substitution: ($) =>
       seq(
         backquoteDelimiter($._backquote_start, $._backquote_start_prefix),
         optional(field("body", $.backquote_substitution_body)),
         choice(
-          seq(
-            optional($._closing_layout),
-            backquoteDelimiter($._backquote_end, $._backquote_end_prefix),
-          ),
+          backquoteDelimiter($._backquote_end, $._backquote_end_prefix),
           $.backquote_end_recovery,
         ),
       ),
 
     backquote_substitution_body: ($) => $._substitution_body,
 
-    _substitution_body: ($) => prec.left(commandSequenceBody($)),
+    _substitution_body: ($) =>
+      prec.left(substitutionCommandsBody($, $._horizontal_layout)),
 
     _arithmetic_expansion_start: ($) =>
       arithmeticExpansionStart($, $._arithmetic_left_parenthesis),
@@ -3339,7 +3325,7 @@ module.exports = grammar({
             $.here_document_sequence,
             $._layout_newline,
             $._blank_line,
-            seq(boundaryLineComment($, $.comment), $._layout_newline),
+            seq(boundaryLineComment($, $.comment), $._comment_line_end),
           ),
           repeat(
             choice(
@@ -3376,6 +3362,10 @@ module.exports = grammar({
     _horizontal_layout: ($) =>
       prec.right(1, repeat1(choice($._blank, prec(2, $.line_continuation)))),
 
+    // A blank-led horizontal run: the same units as _horizontal_layout, but a
+    // blank must lead. Positions before closers and the leading layout of a
+    // command substitution body use this shape so a continuation-led run
+    // keeps its own owner there.
     _closing_layout: ($) =>
       prec.right(
         1,
@@ -3390,12 +3380,13 @@ module.exports = grammar({
     _redirect_separator: ($) => wordSeparator($, $._redirect_separator_begin),
 
     _free_trailing_layout: ($) =>
-      prec.right(
-        1,
-        choice($._closing_layout, boundaryLineComment($, $.comment)),
-      ),
+      prec.right(1, choice($._closing_layout, trailingComment($))),
 
-    _comment_line: ($) => seq($._free_comment, $._layout_newline),
+    // The newline ending a comment line is the run's rightmost token, so the
+    // scanner reads ahead to the run's continuation horizon there and the
+    // recorded lookahead invalidates the run when a later edit changes what
+    // follows it.
+    _comment_line: ($) => seq($._free_comment, $._comment_line_end),
 
     _continued_blank_line: ($) =>
       prec.dynamic(2, seq(continuedBlankLineLayout($), $._layout_newline)),

@@ -1177,3 +1177,58 @@ b
                       (literal)))))))))))
   (linebreak
     (newline_list)))
+
+================================================================================
+A separator after a for or case keyword recovers the header
+================================================================================
+
+for& :
+case; :
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (for_clause
+                    (for_keyword)
+                    (compound_command_recovery)))))))
+        (separator_op)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (compound_command_recovery)))))))
+        (separator_op)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))

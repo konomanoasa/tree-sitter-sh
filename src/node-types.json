@@ -798,15 +798,11 @@
       }
     },
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": false,
       "types": [
         {
           "type": "backquote_end_recovery",
-          "named": true
-        },
-        {
-          "type": "line_continuation",
           "named": true
         }
       ]
