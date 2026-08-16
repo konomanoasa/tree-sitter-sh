@@ -9,6 +9,11 @@ const PARAMETER_PATTERN_TEXT_PATTERN = RegExp(
 );
 
 const PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN = /[^ \t\n;&|<>()\\'"$`:.=\]-]/;
+// POSIX 2.6.2 examines every unescaped, unquoted, non-embedded right brace
+// when finding the matching "}", so inside a parameter expansion the special
+// pattern constructs never own one.
+const PARAMETER_PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN =
+  /[^ \t\n;&|<>()\\'"$`:.=\]}-]/;
 const PARAMETER_DEFERRED_EXTRA_CHARACTER_PATTERN = /[ \t\n;&|<>()]/;
 const ASSIGNMENT_WORD_PRECEDENCE = 3;
 
@@ -54,6 +59,114 @@ const structuredSourceParts = ($) => [
   $.arithmetic_expansion,
   $.backquote_substitution,
 ];
+
+// The class, collating-symbol, and equivalence-class constructs, in the one
+// order every containing choice uses. The word variants may own a right
+// brace; the parameter variants end at the matching "}" instead.
+const wordPatternSpecialSources = ($) => [
+  $.pattern_character_class_source,
+  $.pattern_collating_symbol_source,
+  $.pattern_equivalence_class_source,
+];
+
+const parameterPatternSpecialSources = ($) => [
+  alias(
+    $._parameter_pattern_character_class_source,
+    $.pattern_character_class_source,
+  ),
+  alias(
+    $._parameter_pattern_collating_symbol_source,
+    $.pattern_collating_symbol_source,
+  ),
+  alias(
+    $._parameter_pattern_equivalence_class_source,
+    $.pattern_equivalence_class_source,
+  ),
+];
+
+const parameterPatternCollatingSymbolSource = ($) =>
+  alias(
+    $._parameter_pattern_collating_symbol_source,
+    $.pattern_collating_symbol_source,
+  );
+
+// The characters a class, collating-symbol, or equivalence-class construct
+// owns directly, parameterized over the context's plain-character token.
+const patternSpecialContentCharacters = ($, plain) => [
+  plain,
+  $._pattern_special_marker_character,
+  $._pattern_bracket_hyphen_token,
+  $._pattern_special_left_bracket,
+];
+
+const patternCharacterClassContent = ($, plain) =>
+  prec.right(1, repeat1(choice(...patternSpecialContentCharacters($, plain))));
+
+// The bracket sources a word-context bracket literal may resume with, and the
+// parameter-context equivalents.
+const wordPatternBracketSources = ($) =>
+  choice(
+    $.pattern_bracket_source,
+    alias($._word_special_prefixed_bracket_source, $.pattern_bracket_source),
+  );
+
+const parameterPatternBracketSources = ($) =>
+  choice(
+    alias($._parameter_pattern_bracket_expression, $.pattern_bracket_source),
+    alias(
+      $._parameter_special_prefixed_bracket_source,
+      $.pattern_bracket_source,
+    ),
+  );
+
+const incompleteBracketLiteralRun = ($, atom) =>
+  prec.dynamic(
+    PATTERN_PRECEDENCE.literalFallback,
+    prec.right(
+      1,
+      seq(
+        $._pattern_bracket_left,
+        repeat(choice($._pattern_bracket_left, atom)),
+      ),
+    ),
+  );
+
+const bracketLiteralRun = ($, characterToken) =>
+  repeat1(
+    choice(
+      characterToken,
+      $._pattern_bracket_hyphen_token,
+      $._pattern_bracket_left,
+      $._pattern_bracket_exclamation,
+      $._pattern_character_class_colon,
+      $._pattern_collating_dot,
+      $._pattern_equivalence_equals,
+    ),
+  );
+
+const bracketLiteralFallback = ($, part, end) =>
+  prec.dynamic(
+    PATTERN_PRECEDENCE.literalFallback,
+    prec.right(
+      1,
+      seq(
+        alias($._literal_left_bracket, $.literal),
+        optional(alias($._pattern_initial_right_bracket, $.literal)),
+        repeat1(part),
+        choice(end, alias($._literal_right_bracket, $.literal)),
+      ),
+    ),
+  );
+
+const patternBracketCharacter = ($, characterToken) =>
+  choice(
+    characterToken,
+    $._pattern_bracket_left,
+    $._pattern_bracket_exclamation,
+    $._pattern_character_class_colon,
+    $._pattern_collating_dot,
+    $._pattern_equivalence_equals,
+  );
 
 const incompleteBracketLiteral = ($, start, part, end) =>
   prec.dynamic(
@@ -300,6 +413,19 @@ const patternClosingLayout = ($) =>
 const lineComment = ($, comment) =>
   seq(continuationBoundaryLayout($, $._comment_boundary), comment);
 
+// The layout lines a newline run may contain, in the one order every
+// newline-list variant uses. Each led variant swaps in its own lead element.
+const newlineListElements = ($) => [
+  $.here_document_sequence,
+  $._layout_newline,
+  $._blank_line,
+  $._continued_blank_line,
+  $._comment_line,
+];
+
+const ledNewlineList = ($, lead) =>
+  prec.right(seq(lead, repeat(choice(...newlineListElements($)))));
+
 // A comment whose position follows completed structure: the comment boundary
 // leads, so no line continuation belongs to the comment side.
 const boundaryLineComment = ($, comment) =>
@@ -407,17 +533,27 @@ const patternSpecialClassSource = ($, marker, characterSource) =>
 const patternCharacterClassStructuredContent = ($) =>
   choice($.line_continuation, ...structuredSourceParts($));
 
-const patternCharacterClassBody = ($) =>
+const patternCharacterClassBody = ($, content) =>
   choice(
-    field("content", $.pattern_character_class_content_source),
+    field("content", content),
     seq(
-      optional(field("content", $.pattern_character_class_content_source)),
+      optional(field("content", content)),
       repeat1(
         seq(
           field("content", patternCharacterClassStructuredContent($)),
-          optional(field("content", $.pattern_character_class_content_source)),
+          optional(field("content", content)),
         ),
       ),
+    ),
+  );
+
+const patternCharacterClassSource = ($, content) =>
+  prec.dynamic(
+    PATTERN_PRECEDENCE.specialElement,
+    seq(
+      patternSpecialStart($, $._pattern_character_class_colon),
+      patternCharacterClassBody($, content),
+      patternSpecialEnd($, $._pattern_character_class_colon),
     ),
   );
 
@@ -472,19 +608,17 @@ const patternSpecialPrefixedExpression = ($, list) =>
     ),
   );
 
-const patternDeferredBracketRangeEndpoint = ($, character) =>
+const patternDeferredBracketRangeEndpoint = ($, character, collatingSymbol) =>
   choice(
     alias(character, $.pattern_bracket_character_source),
-    $.pattern_collating_symbol_source,
+    collatingSymbol,
     $.pattern_bracket_hyphen_source,
     ...structuredSourceParts($),
   );
 
-const patternDeferredBracketMember = ($, character, range) =>
+const patternDeferredBracketMember = ($, character, range, specialSources) =>
   choice(
-    $.pattern_character_class_source,
-    $.pattern_collating_symbol_source,
-    $.pattern_equivalence_class_source,
+    ...specialSources,
     alias(range, $.pattern_bracket_range_source),
     alias(character, $.pattern_bracket_character_source),
     $.pattern_bracket_hyphen_source,
@@ -1163,6 +1297,18 @@ module.exports = grammar({
     [$.pattern_character_class_source, $._pattern_special_marker_character],
     [$.pattern_collating_symbol_source, $._pattern_special_marker_character],
     [$.pattern_equivalence_class_source, $._pattern_special_marker_character],
+    [
+      $._parameter_pattern_character_class_source,
+      $._pattern_special_marker_character,
+    ],
+    [
+      $._parameter_pattern_collating_symbol_source,
+      $._pattern_special_marker_character,
+    ],
+    [
+      $._parameter_pattern_equivalence_class_source,
+      $._pattern_special_marker_character,
+    ],
     [$._word_special_prefixed_bracket_source, $._pattern_special_literal_left],
     [
       $._parameter_special_prefixed_bracket_source,
@@ -1185,17 +1331,17 @@ module.exports = grammar({
     ],
     [
       $._parameter_special_prefixed_bracket_source,
-      $.pattern_character_class_source,
+      $._parameter_pattern_character_class_source,
       $._pattern_special_literal_left,
     ],
     [
       $._parameter_special_prefixed_bracket_source,
-      $.pattern_collating_symbol_source,
+      $._parameter_pattern_collating_symbol_source,
       $._pattern_special_literal_left,
     ],
     [
       $._parameter_special_prefixed_bracket_source,
-      $.pattern_equivalence_class_source,
+      $._parameter_pattern_equivalence_class_source,
       $._pattern_special_literal_left,
     ],
     [
@@ -1207,9 +1353,9 @@ module.exports = grammar({
     ],
     [
       $._parameter_special_prefixed_bracket_source,
-      $.pattern_character_class_source,
-      $.pattern_collating_symbol_source,
-      $.pattern_equivalence_class_source,
+      $._parameter_pattern_character_class_source,
+      $._parameter_pattern_collating_symbol_source,
+      $._parameter_pattern_equivalence_class_source,
       $._pattern_special_literal_left,
     ],
     [$._word_bracket_literal_fallback_part, $.pattern_bracket_source],
@@ -2284,13 +2430,7 @@ module.exports = grammar({
     _word_incomplete_bracket_literal_part: ($) =>
       incompleteBracketLiteralPart(
         $,
-        choice(
-          $.pattern_bracket_source,
-          alias(
-            $._word_special_prefixed_bracket_source,
-            $.pattern_bracket_source,
-          ),
-        ),
+        wordPatternBracketSources($),
         $._word_incomplete_bracket_literal_run,
         [
           $._pattern_special_literal_start,
@@ -2306,54 +2446,24 @@ module.exports = grammar({
       prec.right(1, repeat1(wordIncompleteBracketLiteralAtom($))),
 
     _word_incomplete_bracket_literal_run: ($) =>
-      prec.dynamic(
-        PATTERN_PRECEDENCE.literalFallback,
-        prec.right(
-          1,
-          seq(
-            $._pattern_bracket_left,
-            repeat(
-              choice(
-                $._pattern_bracket_left,
-                wordIncompleteBracketLiteralAtom($),
-              ),
-            ),
-          ),
-        ),
-      ),
+      incompleteBracketLiteralRun($, wordIncompleteBracketLiteralAtom($)),
 
     pattern_star_source: (_) => token(prec(-1, "*")),
 
     pattern_question_source: (_) => token(prec(-1, "?")),
 
     _word_bracket_literal_fallback: ($) =>
-      prec.dynamic(
-        PATTERN_PRECEDENCE.literalFallback,
-        prec.right(
-          1,
-          seq(
-            alias($._literal_left_bracket, $.literal),
-            optional(alias($._pattern_initial_right_bracket, $.literal)),
-            repeat1($._word_bracket_literal_fallback_part),
-            choice(
-              $._word_bracket_fallback_end,
-              alias($._literal_right_bracket, $.literal),
-            ),
-          ),
-        ),
+      bracketLiteralFallback(
+        $,
+        $._word_bracket_literal_fallback_part,
+        $._word_bracket_fallback_end,
       ),
 
     _word_bracket_literal_fallback_part: ($) =>
       prec.right(
         incompleteBracketLiteralPart(
           $,
-          choice(
-            $.pattern_bracket_source,
-            alias(
-              $._word_special_prefixed_bracket_source,
-              $.pattern_bracket_source,
-            ),
-          ),
+          wordPatternBracketSources($),
           $._word_bracket_literal_run,
           [$._pattern_special_literal_start],
           $.line_continuation,
@@ -2361,17 +2471,7 @@ module.exports = grammar({
       ),
 
     _word_bracket_literal_run: ($) =>
-      repeat1(
-        choice(
-          $._pattern_bracket_character_token,
-          $._pattern_bracket_hyphen_token,
-          $._pattern_bracket_left,
-          $._pattern_bracket_exclamation,
-          $._pattern_character_class_colon,
-          $._pattern_collating_dot,
-          $._pattern_equivalence_equals,
-        ),
-      ),
+      bracketLiteralRun($, $._pattern_bracket_character_token),
 
     pattern_bracket_source: ($) =>
       patternBracketExpression($, $.pattern_bracket_members_source),
@@ -2407,9 +2507,7 @@ module.exports = grammar({
 
     _pattern_bracket_member: ($) =>
       choice(
-        $.pattern_character_class_source,
-        $.pattern_collating_symbol_source,
-        $.pattern_equivalence_class_source,
+        ...wordPatternSpecialSources($),
         $.pattern_bracket_range_source,
         $.pattern_bracket_character_source,
         $._pattern_operator_bracket_character,
@@ -2419,9 +2517,7 @@ module.exports = grammar({
 
     _parameter_pattern_bracket_member: ($) =>
       choice(
-        $.pattern_character_class_source,
-        $.pattern_collating_symbol_source,
-        $.pattern_equivalence_class_source,
+        ...parameterPatternSpecialSources($),
         alias(
           $._parameter_pattern_bracket_range,
           $.pattern_bracket_range_source,
@@ -2466,30 +2562,16 @@ module.exports = grammar({
           $.pattern_bracket_character_source,
         ),
         $._pattern_operator_bracket_character,
-        $.pattern_collating_symbol_source,
+        parameterPatternCollatingSymbolSource($),
         $.pattern_bracket_hyphen_source,
         ...structuredSourceParts($),
       ),
 
     pattern_bracket_character_source: ($) =>
-      choice(
-        $._pattern_bracket_character_token,
-        $._pattern_bracket_left,
-        $._pattern_bracket_exclamation,
-        $._pattern_character_class_colon,
-        $._pattern_collating_dot,
-        $._pattern_equivalence_equals,
-      ),
+      patternBracketCharacter($, $._pattern_bracket_character_token),
 
     _parameter_pattern_bracket_character: ($) =>
-      choice(
-        $._parameter_pattern_bracket_character_token,
-        $._pattern_bracket_left,
-        $._pattern_bracket_exclamation,
-        $._pattern_character_class_colon,
-        $._pattern_collating_dot,
-        $._pattern_equivalence_equals,
-      ),
+      patternBracketCharacter($, $._parameter_pattern_bracket_character_token),
 
     _pattern_operator_bracket_character: ($) =>
       choice(
@@ -2507,6 +2589,7 @@ module.exports = grammar({
       patternDeferredBracketRangeEndpoint(
         $,
         $._pattern_deferred_bracket_character,
+        $.pattern_collating_symbol_source,
       ),
 
     _pattern_deferred_range: ($) =>
@@ -2520,6 +2603,7 @@ module.exports = grammar({
         $,
         $._pattern_deferred_bracket_character,
         $._pattern_deferred_range,
+        wordPatternSpecialSources($),
       ),
 
     _pattern_special_prefixed_members: ($) =>
@@ -2531,7 +2615,8 @@ module.exports = grammar({
 
     _parameter_pattern_deferred_bracket_character: ($) =>
       choice(
-        $._pattern_deferred_bracket_character,
+        $._parameter_pattern_special_plain_character,
+        $._pattern_special_marker_character,
         $._parameter_deferred_extra_character,
       ),
 
@@ -2539,6 +2624,7 @@ module.exports = grammar({
       patternDeferredBracketRangeEndpoint(
         $,
         $._parameter_pattern_deferred_bracket_character,
+        parameterPatternCollatingSymbolSource($),
       ),
 
     _parameter_pattern_deferred_range: ($) =>
@@ -2555,6 +2641,7 @@ module.exports = grammar({
         $,
         $._parameter_pattern_deferred_bracket_character,
         $._parameter_pattern_deferred_range,
+        parameterPatternSpecialSources($),
       ),
 
     _parameter_pattern_special_prefixed_members: ($) =>
@@ -2570,26 +2657,24 @@ module.exports = grammar({
     pattern_bracket_hyphen_source: ($) => $._pattern_bracket_hyphen_token,
 
     pattern_character_class_source: ($) =>
-      prec.dynamic(
-        PATTERN_PRECEDENCE.specialElement,
-        seq(
-          patternSpecialStart($, $._pattern_character_class_colon),
-          patternCharacterClassBody($),
-          patternSpecialEnd($, $._pattern_character_class_colon),
+      patternCharacterClassSource($, $.pattern_character_class_content_source),
+
+    _parameter_pattern_character_class_source: ($) =>
+      patternCharacterClassSource(
+        $,
+        alias(
+          $._parameter_pattern_character_class_content_source,
+          $.pattern_character_class_content_source,
         ),
       ),
 
     pattern_character_class_content_source: ($) =>
-      prec.right(
-        1,
-        repeat1(
-          choice(
-            $._pattern_special_plain_character,
-            $._pattern_special_marker_character,
-            $._pattern_bracket_hyphen_token,
-            $._pattern_special_left_bracket,
-          ),
-        ),
+      patternCharacterClassContent($, $._pattern_special_plain_character),
+
+    _parameter_pattern_character_class_content_source: ($) =>
+      patternCharacterClassContent(
+        $,
+        $._parameter_pattern_special_plain_character,
       ),
 
     _pattern_character_class_colon: (_) => token.immediate(prec(-3, ":")),
@@ -2601,12 +2686,31 @@ module.exports = grammar({
         $.pattern_collating_symbol_character_source,
       ),
 
+    _parameter_pattern_collating_symbol_source: ($) =>
+      patternSpecialClassSource(
+        $,
+        $._pattern_collating_dot,
+        alias(
+          $._parameter_pattern_collating_symbol_character_source,
+          $.pattern_collating_symbol_character_source,
+        ),
+      ),
+
     pattern_collating_symbol_character_source: ($) =>
       choice(
-        $._pattern_special_plain_character,
-        $._pattern_special_marker_character,
-        $._pattern_bracket_hyphen_token,
-        $._pattern_special_left_bracket,
+        ...patternSpecialContentCharacters(
+          $,
+          $._pattern_special_plain_character,
+        ),
+        $._literal_right_bracket,
+      ),
+
+    _parameter_pattern_collating_symbol_character_source: ($) =>
+      choice(
+        ...patternSpecialContentCharacters(
+          $,
+          $._parameter_pattern_special_plain_character,
+        ),
         $._literal_right_bracket,
       ),
 
@@ -2619,12 +2723,30 @@ module.exports = grammar({
         $.pattern_equivalence_class_character_source,
       ),
 
+    _parameter_pattern_equivalence_class_source: ($) =>
+      patternSpecialClassSource(
+        $,
+        $._pattern_equivalence_equals,
+        alias(
+          $._parameter_pattern_equivalence_class_character_source,
+          $.pattern_equivalence_class_character_source,
+        ),
+      ),
+
     pattern_equivalence_class_character_source: ($) =>
       choice(
-        $._pattern_special_plain_character,
-        $._pattern_special_marker_character,
-        $._pattern_bracket_hyphen_token,
-        $._pattern_special_left_bracket,
+        ...patternSpecialContentCharacters(
+          $,
+          $._pattern_special_plain_character,
+        ),
+      ),
+
+    _parameter_pattern_equivalence_class_character_source: ($) =>
+      choice(
+        ...patternSpecialContentCharacters(
+          $,
+          $._parameter_pattern_special_plain_character,
+        ),
       ),
 
     _pattern_equivalence_equals: (_) => token.immediate(prec(-2, "=")),
@@ -2875,16 +2997,7 @@ module.exports = grammar({
     _parameter_incomplete_bracket_literal_part: ($) =>
       incompleteBracketLiteralPart(
         $,
-        choice(
-          alias(
-            $._parameter_pattern_bracket_expression,
-            $.pattern_bracket_source,
-          ),
-          alias(
-            $._parameter_special_prefixed_bracket_source,
-            $.pattern_bracket_source,
-          ),
-        ),
+        parameterPatternBracketSources($),
         $._parameter_incomplete_bracket_literal_run,
         [
           $._pattern_special_literal_start,
@@ -2903,53 +3016,20 @@ module.exports = grammar({
       prec.right(1, repeat1(parameterIncompleteBracketLiteralAtom($))),
 
     _parameter_incomplete_bracket_literal_run: ($) =>
-      prec.dynamic(
-        PATTERN_PRECEDENCE.literalFallback,
-        prec.right(
-          1,
-          seq(
-            $._pattern_bracket_left,
-            repeat(
-              choice(
-                $._pattern_bracket_left,
-                parameterIncompleteBracketLiteralAtom($),
-              ),
-            ),
-          ),
-        ),
-      ),
+      incompleteBracketLiteralRun($, parameterIncompleteBracketLiteralAtom($)),
 
     _parameter_bracket_literal_fallback: ($) =>
-      prec.dynamic(
-        PATTERN_PRECEDENCE.literalFallback,
-        prec.right(
-          1,
-          seq(
-            alias($._literal_left_bracket, $.literal),
-            optional(alias($._pattern_initial_right_bracket, $.literal)),
-            repeat1($._parameter_bracket_literal_fallback_part),
-            choice(
-              $._parameter_bracket_fallback_end,
-              alias($._literal_right_bracket, $.literal),
-            ),
-          ),
-        ),
+      bracketLiteralFallback(
+        $,
+        $._parameter_bracket_literal_fallback_part,
+        $._parameter_bracket_fallback_end,
       ),
 
     _parameter_bracket_literal_fallback_part: ($) =>
       prec.right(
         incompleteBracketLiteralPart(
           $,
-          choice(
-            alias(
-              $._parameter_pattern_bracket_expression,
-              $.pattern_bracket_source,
-            ),
-            alias(
-              $._parameter_special_prefixed_bracket_source,
-              $.pattern_bracket_source,
-            ),
-          ),
+          parameterPatternBracketSources($),
           $._parameter_bracket_literal_run,
           [$._pattern_special_literal_start],
           $.line_continuation,
@@ -2957,17 +3037,7 @@ module.exports = grammar({
       ),
 
     _parameter_bracket_literal_run: ($) =>
-      repeat1(
-        choice(
-          $._parameter_pattern_bracket_character_token,
-          $._pattern_bracket_hyphen_token,
-          $._pattern_bracket_left,
-          $._pattern_bracket_exclamation,
-          $._pattern_character_class_colon,
-          $._pattern_collating_dot,
-          $._pattern_equivalence_equals,
-        ),
-      ),
+      bracketLiteralRun($, $._parameter_pattern_bracket_character_token),
 
     _parameter_pattern_literal: ($) => prec.right(parameterPlainChunk($)),
 
@@ -3274,6 +3344,11 @@ module.exports = grammar({
     _pattern_special_plain_character: (_) =>
       token.immediate(prec(-2, PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN)),
 
+    _parameter_pattern_special_plain_character: (_) =>
+      token.immediate(
+        prec(-2, PARAMETER_PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN),
+      ),
+
     _parameter_deferred_extra_character: (_) =>
       token.immediate(prec(-2, PARAMETER_DEFERRED_EXTRA_CHARACTER_PATTERN)),
 
@@ -3288,74 +3363,32 @@ module.exports = grammar({
 
     _name_token: (_) => token(prec(1, /[A-Za-z_][A-Za-z0-9_]*/)),
 
-    newline_list: ($) =>
-      repeat1(
-        choice(
-          $.here_document_sequence,
-          $._layout_newline,
-          $._blank_line,
-          $._continued_blank_line,
-          $._comment_line,
-        ),
-      ),
+    newline_list: ($) => repeat1(choice(...newlineListElements($))),
 
     _separator_led_newline_list: ($) =>
-      prec.right(
-        seq(
-          choice(
-            $._separator_newline,
-            seq($._pre_newline_blank, $._separator_newline),
-          ),
-          repeat(
-            choice(
-              $.here_document_sequence,
-              $._layout_newline,
-              $._blank_line,
-              $._continued_blank_line,
-              $._comment_line,
-            ),
-          ),
+      ledNewlineList(
+        $,
+        choice(
+          $._separator_newline,
+          seq($._pre_newline_blank, $._separator_newline),
         ),
       ),
 
     _trailing_newline_list: ($) =>
-      prec.right(
-        seq(
-          choice(
-            $.here_document_sequence,
-            $._layout_newline,
-            $._blank_line,
-            seq(boundaryLineComment($, $.comment), $._comment_line_end),
-          ),
-          repeat(
-            choice(
-              $.here_document_sequence,
-              $._layout_newline,
-              $._blank_line,
-              $._continued_blank_line,
-              $._comment_line,
-            ),
-          ),
+      ledNewlineList(
+        $,
+        choice(
+          $.here_document_sequence,
+          $._layout_newline,
+          $._blank_line,
+          seq(boundaryLineComment($, $.comment), $._comment_line_end),
         ),
       ),
 
     _trailing_linebreak: ($) => alias($._trailing_newline_list, $.newline_list),
 
     _here_document_led_newline_list: ($) =>
-      prec.right(
-        seq(
-          $.here_document_sequence,
-          repeat(
-            choice(
-              $.here_document_sequence,
-              $._layout_newline,
-              $._blank_line,
-              $._continued_blank_line,
-              $._comment_line,
-            ),
-          ),
-        ),
-      ),
+      ledNewlineList($, $.here_document_sequence),
 
     linebreak: ($) => $.newline_list,
 

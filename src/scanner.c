@@ -707,6 +707,12 @@ static bool lexer_at_eof(const TSLexer *lexer) {
   return lexer->lookahead == 0 && lexer->eof(lexer);
 }
 
+static void advance_to_line_end(TSLexer *lexer) {
+  while (!lexer_at_eof(lexer) && lexer->lookahead != '\n') {
+    lexer->advance(lexer, false);
+  }
+}
+
 // POSIX satisfies the search for the matching backquote with the first
 // unquoted, non-escaped backquote, so inside an open backquote substitution
 // that character ends whatever token is being recognized.
@@ -2905,9 +2911,7 @@ static bool scan_function_body_boundary(
     }
 
     if (lexer->lookahead == '#') {
-      do {
-        lexer->advance(lexer, false);
-      } while (!lexer_at_eof(lexer) && lexer->lookahead != '\n');
+      advance_to_line_end(lexer);
     }
 
     if (lexer->lookahead != '\n') {
@@ -3522,9 +3526,7 @@ static bool scan_element_boundary(
     // One probe serves both decisions: the comment's own line settles the
     // trailing classification, and the run after its newline settles the
     // term continuation.
-    do {
-      lexer->advance(lexer, false);
-    } while (!lexer_at_eof(lexer) && lexer->lookahead != '\n');
+    advance_to_line_end(lexer);
     bool comment_reaches_input_end = lexer_at_eof(lexer);
     if (
       !comment_reaches_input_end &&
@@ -3565,6 +3567,61 @@ static bool scan_element_boundary(
   return classify_shell_boundary(scanner, lexer, valid_symbols, crossed_layout);
 }
 
+/*
+ * Reads the "{location}" body after a consumed left brace and reports whether
+ * a redirection operator follows: at least one plain character, a closing
+ * right brace, then '<' or '>' across line continuations. Quotes, escapes,
+ * and token delimiters inside the braces disprove the location. When
+ * commit_location is set the token end tracks the final right brace.
+ */
+static bool scan_io_location_body(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  bool commit_location
+) {
+  unsigned character_count = 0;
+  bool ends_with_right_brace = false;
+
+  while (
+    lexer->lookahead !=
+    '<' &&
+    lexer->lookahead !=
+    '>' &&
+    lexer->lookahead != '\\'
+  ) {
+    if (is_token_delimiter(scanner, lexer)) {
+      return false;
+    }
+
+    if (
+      lexer->lookahead ==
+      '\'' ||
+      lexer->lookahead ==
+      '"' ||
+      lexer->lookahead == '`'
+    ) {
+      return false;
+    }
+
+    ends_with_right_brace = lexer->lookahead == '}';
+    character_count += 1;
+    lexer->advance(lexer, false);
+    if (commit_location && ends_with_right_brace) {
+      lexer->mark_end(lexer);
+    }
+  }
+
+  if (character_count < 2 || !ends_with_right_brace) {
+    return false;
+  }
+
+  if (!skip_line_continuations(lexer)) {
+    return false;
+  }
+
+  return lexer->lookahead == '<' || lexer->lookahead == '>';
+}
+
 // Decides which kind of simple-command element follows a word separator: an
 // assignment word, a redirection, or an ordinary word. The decision repeats
 // the adjacency checks that commit those elements, so the parser can pick
@@ -3600,32 +3657,7 @@ static bool classify_word_separator(
     }
   } else if (character == '{' && valid_symbols[REDIRECT_SEPARATOR_BEGIN]) {
     lexer->advance(lexer, false);
-    unsigned character_count = 0;
-    bool ends_with_right_brace = false;
-    while (
-      lexer->lookahead !=
-      '<' &&
-      lexer->lookahead !=
-      '>' &&
-      lexer->lookahead !=
-      '\\' &&
-      lexer->lookahead !=
-      '\'' &&
-      lexer->lookahead !=
-      '"' &&
-      lexer->lookahead !=
-      '`' &&
-      !is_token_delimiter(scanner, lexer)
-    ) {
-      ends_with_right_brace = lexer->lookahead == '}';
-      character_count += 1;
-      lexer->advance(lexer, false);
-    }
-    redirect_ahead = character_count >=
-      2 &&
-      ends_with_right_brace &&
-      skip_line_continuations(lexer) &&
-      (lexer->lookahead == '<' || lexer->lookahead == '>');
+    redirect_ahead = scan_io_location_body(scanner, lexer, false);
   }
 
   if (assignment_ahead && valid_symbols[ASSIGNMENT_SEPARATOR_BEGIN]) {
@@ -3744,9 +3776,7 @@ static bool finish_term_continuation(
       return false;
     }
     if (lexer->lookahead == '#') {
-      do {
-        lexer->advance(lexer, false);
-      } while (!lexer_at_eof(lexer) && lexer->lookahead != '\n');
+      advance_to_line_end(lexer);
       continue;
     }
     if (lexer->lookahead == '\n') {
@@ -3860,47 +3890,7 @@ static bool scan_left_brace_or_io_location(
     return false;
   }
 
-  unsigned character_count = 0;
-  bool ends_with_right_brace = false;
-
-  while (
-    lexer->lookahead !=
-    '<' &&
-    lexer->lookahead !=
-    '>' &&
-    lexer->lookahead != '\\'
-  ) {
-    if (is_token_delimiter(scanner, lexer)) {
-      return false;
-    }
-
-    if (
-      lexer->lookahead ==
-      '\'' ||
-      lexer->lookahead ==
-      '"' ||
-      lexer->lookahead == '`'
-    ) {
-      return false;
-    }
-
-    ends_with_right_brace = lexer->lookahead == '}';
-    character_count += 1;
-    lexer->advance(lexer, false);
-    if (ends_with_right_brace) {
-      lexer->mark_end(lexer);
-    }
-  }
-
-  if (character_count < 2 || !ends_with_right_brace) {
-    return false;
-  }
-
-  if (!skip_line_continuations(lexer)) {
-    return false;
-  }
-
-  if (lexer->lookahead != '<' && lexer->lookahead != '>') {
+  if (!scan_io_location_body(scanner, lexer, true)) {
     return false;
   }
 
@@ -4112,9 +4102,7 @@ static bool scan_comment(TSLexer *lexer) {
     return false;
   }
 
-  do {
-    lexer->advance(lexer, false);
-  } while (!lexer_at_eof(lexer) && lexer->lookahead != '\n');
+  advance_to_line_end(lexer);
 
   lexer->mark_end(lexer);
   lexer->result_symbol = COMMENT;
@@ -4159,9 +4147,7 @@ classify_comment_boundary(TSLexer *lexer, const bool *valid_symbols) {
   }
   bool comment_reaches_input_end = false;
   if (valid_symbols[TRAILING_COMMENT_BOUNDARY]) {
-    while (!lexer_at_eof(lexer) && lexer->lookahead != '\n') {
-      lexer->advance(lexer, false);
-    }
+    advance_to_line_end(lexer);
     comment_reaches_input_end = lexer_at_eof(lexer);
   }
   return classify_scanned_comment_boundary(
@@ -4630,9 +4616,7 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
     }
 
     if (character == '#' && closer == ')' && !at_word) {
-      while (!lexer_at_eof(lexer) && lexer->lookahead != '\n') {
-        lexer->advance(lexer, false);
-      }
+      advance_to_line_end(lexer);
       continue;
     }
 

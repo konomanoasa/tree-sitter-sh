@@ -1366,3 +1366,112 @@ d}"
                             (double_quote_text))))))))))))))
   (linebreak
     (newline_list)))
+
+================================================================================
+A right brace inside pattern special constructs closes the expansion
+================================================================================
+
+printf ${x#[[:a}b:]]} ${y%[[.}.]]} ${z%%[[=c}=]]}
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal)
+                          (literal)
+                          (literal)
+                          (literal)))
+                      (literal))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal)
+                          (literal)
+                          (literal)))
+                      (literal))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal)
+                          (literal)
+                          (literal)
+                          (literal)))
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+================================================================================
+Complete pattern special constructs stay inside parameter patterns
+================================================================================
+
+printf ${x#[[:alpha:]]} ${y%[[.ch.]]} ${z%%[[=a=]]}
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (pattern_bracket_source
+                            (pattern_bracket_members_source
+                              (pattern_character_class_source
+                                (pattern_character_class_content_source)))))))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (pattern_bracket_source
+                            (pattern_bracket_members_source
+                              (pattern_collating_symbol_source
+                                (pattern_collating_symbol_character_source)
+                                (pattern_collating_symbol_character_source)))))))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (pattern_bracket_source
+                            (pattern_bracket_members_source
+                              (pattern_equivalence_class_source
+                                (pattern_equivalence_class_character_source))))))))))))))))
+  (linebreak
+    (newline_list)))
