@@ -303,10 +303,10 @@ fourth
                       (literal)))
                   (cmd_suffix
                     (word
-                      (literal))
-                    (line_continuation)))))))))
+                      (literal))))))))))
     (newline_list
       (here_document_sequence
+        (line_continuation)
         (here_document_line_end)
         (here_document
           (here_document_body
@@ -351,10 +351,10 @@ fourth
                       (literal)))
                   (cmd_suffix
                     (word
-                      (literal))
-                    (line_continuation)))))))))
+                      (literal))))))))))
     (newline_list
       (here_document_sequence
+        (line_continuation)
         (line_continuation)
         (here_document_line_end)
         (here_document
@@ -439,4 +439,56 @@ last
                     (word
                       (literal)))))))))))
   (linebreak
+    (newline_list)))
+
+==================
+A trailing blank stays with its here-document sequence
+==================
+
+cat <<END 
+body
+END
+second
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (here_document_text))
+          end: (here_document_end))))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
     (newline_list)))

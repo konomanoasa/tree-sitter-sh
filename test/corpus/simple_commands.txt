@@ -203,8 +203,8 @@ NAME=value
                       body: (io_file
                         filename: (filename
                           word: (word
-                            (literal)))))
-                    (line_continuation))
+                            (literal))))))
+                  (line_continuation)
                   (line_continuation)
                   word: (cmd_word
                     (word

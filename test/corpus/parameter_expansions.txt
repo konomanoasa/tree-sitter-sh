@@ -202,15 +202,37 @@ printf ${x:-\
     (newline_list)))
 
 ==================
-An unclosed ordinary parameter quote remains invalid
-:error
+An unclosed ordinary parameter quote synchronizes at the end of input
 ==================
 
 printf ${x:-'}
 
 ---
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (single_quoted
+                            (single_quote_content)
+                            (input_end_recovery)))
+                        (parameter_expansion_recovery)))))))))))))
 
 ==================
 Parameter value words follow unquoted and double-quote-like contexts
@@ -1069,15 +1091,40 @@ word}" "${name#\
     (newline_list)))
 
 ==================
-Unsupported parameter expansion forms remain syntax errors
-:error
+Unsupported parameter expansion forms recover inside their expansion
 ==================
 
 printf "${}" "${name/old/new}"
 
 ---
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (parameter_expansion_recovery))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_expansion_recovery))
+                        (double_quote_text))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 Inherited parameter words keep dollar-single-quote source literal
@@ -1473,5 +1520,118 @@ printf ${x#[[:alpha:]]} ${y%[[.ch.]]} ${z%%[[=a=]]}
                             (pattern_bracket_members_source
                               (pattern_equivalence_class_source
                                 (pattern_equivalence_class_character_source))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Expansion words keep escaped newlines before their closers
+==================
+
+echo ${a:-w\
+} ${b#p\
+} "${c:-x\
+y}" "${d%q\
+}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (literal))
+                        (line_continuation)))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (literal))
+                        (line_continuation)))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text)
+                            (line_continuation)
+                            (double_quote_text)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal))
+                          (line_continuation)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+A missing parameter keeps its operator word and closer
+==================
+
+x ${:-w} ${:=w} ${%p} ${+w} y
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (parameter_expansion_recovery)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal))))
+                    (word
+                      (parameter_expansion
+                        (parameter_expansion_recovery)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal))))
+                    (word
+                      (parameter_expansion
+                        (parameter_expansion_recovery)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal))))
+                    (word
+                      (parameter_expansion
+                        (parameter_expansion_recovery)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal))))
+                    (word
+                      (literal)))))))))))
   (linebreak
     (newline_list)))

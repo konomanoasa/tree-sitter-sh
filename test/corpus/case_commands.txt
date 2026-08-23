@@ -1179,3 +1179,50 @@ esac
                     (esac_keyword))))))))))
   (linebreak
     (newline_list)))
+
+================================================================================
+An esac spelling in an assignment value leaves the real esac
+================================================================================
+
+case x in p) y=esac ;; esac
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list
+                      (case_item
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_prefix
+                                        (assignment_word
+                                          (variable_name)
+                                          (assignment_value
+                                            (literal)))))))))))
+                        (dsemi)))
+                    (esac_keyword))))))))))
+  (linebreak
+    (newline_list)))

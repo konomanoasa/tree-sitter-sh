@@ -98,7 +98,6 @@ Adjacent prefix decrement spelling leaves arithmetic for command substitution
 
 ==================
 A removed newline does not split prefix increment spelling
-:error
 ==================
 
 : "$((+\
@@ -106,11 +105,53 @@ A removed newline does not split prefix increment spelling
 
 ---
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (subshell
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            (cmd_suffix
+                                                              (line_continuation)
+                                                              (word
+                                                                (literal))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 A removed newline does not split prefix decrement spelling
-:error
 ==================
 
 : "$((-\
@@ -118,7 +159,50 @@ A removed newline does not split prefix decrement spelling
 
 ---
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (subshell
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            (cmd_suffix
+                                                              (line_continuation)
+                                                              (word
+                                                                (literal))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 Arithmetic expansion preserves balanced and nested source
@@ -247,15 +331,58 @@ Arithmetic layout remains at operators and closing delimiters
     (newline_list)))
 
 ==================
-Unterminated arithmetic expansion remains a syntax error
-:error
+An unterminated arithmetic expansion recovers at the end of input
 ==================
 
 echo $((1 + 2)
 
 ---
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (command_substitution
+                        (command_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (compound_command
+                                          (subshell
+                                            (compound_list
+                                              (term
+                                                (and_or
+                                                  (pipeline
+                                                    (pipe_sequence
+                                                      (command
+                                                        (simple_command
+                                                          (cmd_name
+                                                            (word
+                                                              (literal)))
+                                                          (cmd_suffix
+                                                            (word
+                                                              (literal))
+                                                            (word
+                                                              (literal)))))))))))))))))))
+                          (linebreak
+                            (newline_list)))
+                        (input_end_recovery)))))))))))))
 
 ==================
 Every POSIX arithmetic operator category remains structured after horizontal layout
@@ -1134,8 +1261,8 @@ A continuation before the closers stays in the command-substitution reading
                                                                 (literal)))
                                                             (cmd_suffix
                                                               (word
-                                                                (literal))
-                                                              (line_continuation)))))))))))))))))))))))))))))))
+                                                                (literal))))))))))
+                                              (line_continuation)))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -1295,5 +1422,100 @@ Adjacent repeated signs between operands leave arithmetic for command substituti
                                                           (cmd_name
                                                             (word
                                                               (literal)))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+An incomplete arithmetic expansion may keep a stray parenthesis
+==================
+
+: $((1+2)
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (arithmetic_expansion
+                        (arithmetic_number)
+                        (arithmetic_operator)
+                        (arithmetic_number)))))))))))))
+
+==================
+A case pattern inside an embedded substitution stays inside the arithmetic reading
+==================
+
+echo $(( $(case x in a) echo 1;; esac) + 1 ))
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_binary_expression
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (compound_command
+                                              (case_clause
+                                                (case_keyword)
+                                                (word
+                                                  (literal))
+                                                (in
+                                                  (in_keyword))
+                                                (case_list
+                                                  (case_item
+                                                    (pattern_list
+                                                      (word
+                                                        (literal)))
+                                                    (compound_list
+                                                      (term
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (literal))))))))))
+                                                    (dsemi)))
+                                                (esac_keyword))))))))))))
+                          (arithmetic_operator)
+                          (arithmetic_number)))))))))))))
   (linebreak
     (newline_list)))

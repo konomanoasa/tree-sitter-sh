@@ -1629,3 +1629,94 @@ if (:) >out then :; fi
                                           (literal)))))))))))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+A redirection or pipe operator ends a missing redirect target
+==================
+
+cmd > <in
+cmd 2> | filter
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_file
+                        (filename
+                          (redirection_target_recovery))))
+                    (io_redirect
+                      (io_file
+                        (filename
+                          (word
+                            (literal)))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_number)
+                      (io_file
+                        (filename
+                          (redirection_target_recovery)))))))
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+A pure digit redirection target is the next redirection's IO number
+==================
+
+> 2>f
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (io_redirect
+                      (io_file
+                        (filename
+                          (redirection_target_recovery))))
+                    (io_redirect
+                      (io_number)
+                      (io_file
+                        (filename
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list)))

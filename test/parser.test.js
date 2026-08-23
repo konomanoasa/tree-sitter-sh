@@ -1985,8 +1985,6 @@ test("substitution, redirection, and token boundaries retain ownership", () => {
     assertCstRange(delimiterOutput, range, item);
   }
 
-  // Blanks after a substitution linebreak are interior layout of the body,
-  // both freshly and when an edit introduces or removes them.
   const interiorBlankInitial = writeSource(
     "substitution-interior-blank-initial",
     lines("x=$(", "echo hi)"),
@@ -2048,7 +2046,7 @@ test("here-document state, delimiters, and bodies remain deterministic", () => {
   const boundaryOutput = parseRecovery(boundary);
   assertContains(
     boundaryOutput,
-    "(here_document_end_recovery [1, 2] - [2, 0])",
+    "(here_document_end_recovery [1, 2] - [1, 2])",
   );
   assertContains(boundaryOutput, "end: (here_document_end [2, 0] - [3, 0])");
   assertContains(boundaryOutput, "(complete_command [5, 0] - [5, 5]");
@@ -2303,6 +2301,50 @@ test("here-document state, delimiters, and bodies remain deterministic", () => {
     "4109 0 after",
   )) {
     assertCstRange(output, "3:0-3:5", "complete_command");
+  }
+
+  const bodySeparatorInitial = writeSource(
+    "body-substitution-separator-initial",
+    lines("cat <<E", "$(a", "E"),
+  );
+  const bodySeparatorFinal = writeSource(
+    "body-substitution-separator-final",
+    lines("cat <<E", "$(a", "b", "E"),
+  );
+  for (const output of parseIncrementalAndFresh(
+    bodySeparatorInitial,
+    bodySeparatorFinal,
+    "insert-body-substitution-command-line",
+    "12 0 b\n",
+  )) {
+    assertCstRange(output, "1:3-2:0", "separator: newline_list");
+    assertCstRange(output, "2:1-2:1", "here_document_end_recovery");
+    assertCstRange(output, "3:0-4:0", "end: here_document_end");
+  }
+  parseIncrementalAndFresh(
+    bodySeparatorFinal,
+    bodySeparatorInitial,
+    "delete-body-substitution-command-line",
+    "12 2",
+  );
+
+  const bodyCloserInitial = writeSource(
+    "body-substitution-closer-initial",
+    lines("cat <<E", "$(a", "b", "E"),
+  );
+  const bodyCloserFinal = writeSource(
+    "body-substitution-closer-final",
+    lines("cat <<E", "$(a", "b)", "E"),
+  );
+  for (const output of parseIncrementalAndFresh(
+    bodyCloserInitial,
+    bodyCloserFinal,
+    "close-body-substitution-after-separator",
+    "13 0 )",
+  )) {
+    assertCstRange(output, "1:3-2:0", "separator: newline_list");
+    assertNotContains(output, "here_document_end_recovery");
+    assertCstRange(output, "3:0-4:0", "end: here_document_end");
   }
 });
 
@@ -3395,6 +3437,154 @@ test("command separators and continuation boundaries remain stable", () => {
   }
 });
 
+test("trailing blanks before separating newlines stay layout", () => {
+  const blankSeparatorsInitial = writeSource(
+    "trailing-blank-separators-initial",
+    lines("first one", "second two", "third three"),
+  );
+  const blankSeparatorsFinal = writeSource(
+    "trailing-blank-separators-final",
+    lines("first one ", "second two\t", "third three"),
+  );
+  const blankSeparatorsOutput = parseValidCst(blankSeparatorsFinal);
+  assertCstRange(blankSeparatorsOutput, "0:0-0:9", "command: complete_command");
+  assertCstRange(blankSeparatorsOutput, "0:10-1:0", "separator: newline_list");
+  assertCstRange(
+    blankSeparatorsOutput,
+    "1:0-1:10",
+    "command: complete_command",
+  );
+  assertCstRange(blankSeparatorsOutput, "1:11-2:0", "separator: newline_list");
+  assertCstRange(
+    blankSeparatorsOutput,
+    "2:0-2:11",
+    "command: complete_command",
+  );
+  for (const recovery of ["ERROR", "MISSING", "_recovery"]) {
+    assertNotContains(blankSeparatorsOutput, recovery);
+  }
+  assertSameLogicalProjection(
+    "trailing blanks before separating newlines",
+    parseValidCst(blankSeparatorsInitial),
+    blankSeparatorsOutput,
+  );
+  assertIncrementalEqualsFresh(
+    blankSeparatorsInitial,
+    blankSeparatorsFinal,
+    "insert-trailing-blank-separators",
+    "9 0  ",
+    "21 0 \t",
+  );
+  assertIncrementalEqualsFresh(
+    blankSeparatorsFinal,
+    blankSeparatorsInitial,
+    "delete-trailing-blank-separators",
+    "9 1",
+    "20 1",
+  );
+
+  const blankTrailingOnly = writeSource(
+    "trailing-blank-final-line",
+    lines("first one "),
+  );
+  const blankThenCommand = writeSource(
+    "trailing-blank-then-command",
+    lines("first one ", "second two"),
+  );
+  assertIncrementalEqualsFresh(
+    blankTrailingOnly,
+    blankThenCommand,
+    "append-command-after-trailing-blank",
+    "11 0 second two\n",
+  );
+  assertIncrementalEqualsFresh(
+    blankThenCommand,
+    blankTrailingOnly,
+    "delete-command-after-trailing-blank",
+    "11 11",
+  );
+
+  const blankIfBodyInitial = writeSource(
+    "trailing-blank-if-body-initial",
+    lines("if :; then", "first one", "second two", "fi"),
+  );
+  const blankIfBodyFinal = writeSource(
+    "trailing-blank-if-body-final",
+    lines("if :; then", "first one ", "second two ", "fi"),
+  );
+  const blankIfBodyOutput = parseValidCst(blankIfBodyFinal);
+  assertCstRange(blankIfBodyOutput, "1:10-2:0", "separator: separator");
+  assertCstRange(blankIfBodyOutput, "2:10-3:0", "terminator: separator");
+  assertCstRange(blankIfBodyOutput, "3:0-3:2", "fi_keyword");
+  for (const recovery of ["ERROR", "MISSING", "_recovery"]) {
+    assertNotContains(blankIfBodyOutput, recovery);
+  }
+  assertSameLogicalProjection(
+    "trailing blanks inside an if body",
+    parseValidCst(blankIfBodyInitial),
+    blankIfBodyOutput,
+  );
+  assertIncrementalEqualsFresh(
+    blankIfBodyInitial,
+    blankIfBodyFinal,
+    "insert-trailing-blank-if-body",
+    "20 0  ",
+    "32 0  ",
+  );
+
+  const blankRecoveryInitial = writeSource(
+    "trailing-blank-recovery-initial",
+    lines("first one", "fi"),
+  );
+  const blankRecoveryFinal = writeSource(
+    "trailing-blank-recovery-final",
+    lines("first one ", "fi"),
+  );
+  assertSameLogicalProjection(
+    "trailing blank before a stray closing word",
+    runParse({
+      description: "stray-closer-without-trailing-blank",
+      mode: "recovery",
+      source: blankRecoveryInitial,
+    }).output,
+    runParse({
+      description: "stray-closer-with-trailing-blank",
+      mode: "recovery",
+      source: blankRecoveryFinal,
+    }).output,
+  );
+  parseIncrementalAndFresh(
+    blankRecoveryInitial,
+    blankRecoveryFinal,
+    "insert-trailing-blank-before-stray-closer",
+    "9 0  ",
+  );
+
+  const blankHereDocumentInitial = writeSource(
+    "trailing-blank-here-document-initial",
+    lines("cat <<END", "body", "END", "second"),
+  );
+  const blankHereDocumentFinal = writeSource(
+    "trailing-blank-here-document-final",
+    lines("cat <<END ", "body", "END", "second"),
+  );
+  const blankHereDocumentOutput = parseValidCst(blankHereDocumentFinal);
+  assertCstRange(blankHereDocumentOutput, "0:9-3:0", "here_document_sequence");
+  assertNotContains(blankHereDocumentOutput, "ERROR");
+  assertIncrementalEqualsFresh(
+    blankHereDocumentInitial,
+    blankHereDocumentFinal,
+    "insert-trailing-blank-before-here-document",
+    "9 0  ",
+  );
+  assertIncrementalEqualsFresh(
+    blankHereDocumentFinal,
+    blankHereDocumentInitial,
+    "delete-trailing-blank-before-here-document",
+    "9 1",
+  );
+});
+
 test("compound-list and case branches retain their public structure", () => {
   const branchInitial = writeSource(
     "compound-list-branch-initial",
@@ -4223,4 +4413,211 @@ test("incremental parsing reuses unchanged commands", () => {
     `${closerName}: incremental and fresh CSTs differ`,
   );
   assertIncrementalTimeRatio(closerName, functionSource, closerEdit, 1.5);
+});
+
+test("substitution newlines, continuations, and narrowed recoveries stay deterministic", () => {
+  const hereSubstitutionInitial = writeSource(
+    "here-substitution-initial",
+    lines("cmd <<E $(x y)", "body", "E"),
+  );
+  const hereSubstitutionFinal = writeSource(
+    "here-substitution-final",
+    lines("cmd <<E $(x", "y)", "body", "E"),
+  );
+  const hereSubstitutionOutput = parseValidCst(hereSubstitutionFinal);
+  assertCstRange(hereSubstitutionOutput, "2:0-3:0", "body: here_document_body");
+  assertCstRange(hereSubstitutionOutput, "0:8-1:2", "command_substitution");
+  assertIncrementalEqualsFresh(
+    hereSubstitutionInitial,
+    hereSubstitutionFinal,
+    "split-substitution-before-here-document",
+    "11 1 \n",
+  );
+  assertValid(
+    writeSource("here-backquote-final", lines("cmd <<E `x", "y`", "body", "E")),
+  );
+  assertValid(
+    writeSource("here-escape-final", lines("echo $(cat <<E) x", "body", "E")),
+  );
+
+  const pipeInitial = writeSource(
+    "continuation-pipe-initial",
+    lines("first  |second"),
+  );
+  const pipeFinal = writeSource(
+    "continuation-pipe-final",
+    lines("first\\", "  |second"),
+  );
+  for (const output of assertIncrementalEqualsFresh(
+    pipeInitial,
+    pipeFinal,
+    "insert-boundary-continuation-before-pipe",
+    "5 0 \\\n",
+  )) {
+    assertNotContains(output, "cmd_suffix");
+    assertCstRange(output, "0:5-1:0", "line_continuation");
+  }
+
+  const eofInitial = writeSource("continuation-eof-initial", lines("first"));
+  const eofFinal = writeSource("continuation-eof-final", "first\\\n");
+  for (const output of assertIncrementalEqualsFresh(
+    eofInitial,
+    eofFinal,
+    "insert-trailing-continuation-at-input-end",
+    "5 0 \\",
+  )) {
+    assertNotContains(output, "cmd_suffix");
+    assertOccurrenceCount(output, "line_continuation", 1);
+  }
+
+  const closerInitial = writeSource(
+    "continuation-closer-initial",
+    lines("x=$( a )"),
+  );
+  const closerFinal = writeSource(
+    "continuation-closer-final",
+    lines("x=$( a\\", ")"),
+  );
+  for (const output of assertIncrementalEqualsFresh(
+    closerInitial,
+    closerFinal,
+    "replace-blank-with-continuation-before-closer",
+    "6 1 \\\n",
+  )) {
+    assertNotContains(output, "cmd_suffix");
+    assertOccurrenceCount(output, "line_continuation", 1);
+  }
+
+  const groupQuoteInitial = writeSource(
+    "group-quote-initial",
+    lines('{ echo "x"', "}", "echo after"),
+  );
+  const groupQuoteFinal = writeSource(
+    "group-quote-final",
+    lines('{ echo "x', "}", "echo after"),
+  );
+  for (const output of parseIncrementalAndFresh(
+    groupQuoteInitial,
+    groupQuoteFinal,
+    "delete-closing-quote-inside-group",
+    "9 1",
+  )) {
+    assertContains(output, "brace_group");
+    assertContains(output, "input_end_recovery");
+    assertContains(output, "compound_command_recovery");
+    assertNotContains(output, "ERROR");
+  }
+
+  const conditionalInitial = writeSource(
+    "conditional-substitution-initial",
+    lines("if x; then $(y)", "fi", "echo after"),
+  );
+  const conditionalFinal = writeSource(
+    "conditional-substitution-final",
+    lines("if x; then $(y", "fi", "echo after"),
+  );
+  for (const output of parseIncrementalAndFresh(
+    conditionalInitial,
+    conditionalFinal,
+    "delete-substitution-closer-inside-conditional",
+    "14 1",
+  )) {
+    assertContains(output, "if_clause");
+    assertContains(output, "then_keyword");
+    assertContains(output, "input_end_recovery");
+    assertNotContains(output, "ERROR");
+  }
+
+  let nestedBackquotes = "a ";
+  for (let depth = 1; depth <= 6; depth += 1) {
+    nestedBackquotes += `${"\\".repeat(2 ** (depth - 1) - 1)}\`x${depth} `;
+  }
+  const nestedBackquoteSource = writeSource(
+    "nested-backquote-recovery",
+    `${nestedBackquotes}\n`,
+  );
+  const nestedBackquoteOutput = parseRecovery(nestedBackquoteSource);
+  assertOccurrenceCount(nestedBackquoteOutput, "(backquote_substitution [", 6);
+  assertOccurrenceCount(nestedBackquoteOutput, "(backquote_end_recovery", 6);
+  assertNotContains(nestedBackquoteOutput, "ERROR");
+  assertRepeatedColdParse(
+    "recovery",
+    nestedBackquoteSource,
+    "nested-backquote-recovery",
+  );
+
+  const digitTargetInitial = writeSource(
+    "digit-target-initial",
+    lines("> x 2>f"),
+  );
+  const digitTargetFinal = writeSource("digit-target-final", lines("> 2>f"));
+  for (const output of parseIncrementalAndFresh(
+    digitTargetInitial,
+    digitTargetFinal,
+    "delete-filename-before-io-number",
+    "2 2",
+  )) {
+    assertCstRange(output, "0:2-0:2", "recovery: redirection_target_recovery");
+    assertCstRange(output, "0:2-0:3", "number: io_number");
+    assertNotContains(output, "ERROR");
+  }
+
+  const missingParameterInitial = writeSource(
+    "missing-parameter-initial",
+    lines("x $" + "{p:-w} y"),
+  );
+  const missingParameterFinal = writeSource(
+    "missing-parameter-final",
+    lines("x $" + "{:-w} y"),
+  );
+  for (const output of parseIncrementalAndFresh(
+    missingParameterInitial,
+    missingParameterFinal,
+    "delete-parameter-before-operator",
+    "4 1",
+  )) {
+    assertCstRange(output, "0:4-0:4", "recovery: parameter_expansion_recovery");
+    assertCstRange(output, "0:4-0:6", "operator: parameter_value_operator");
+    assertCstRange(output, "0:6-0:7", "word: parameter_word");
+    assertNotContains(output, "ERROR");
+  }
+
+  let nestedSubstitutions = "'a'";
+  for (let depth = 0; depth < 24; depth += 1) {
+    nestedSubstitutions = `$(${nestedSubstitutions} )`;
+  }
+  const nestedSubstitutionSource = writeSource(
+    "nested-substitution-closers",
+    `x=${nestedSubstitutions}\n`,
+  );
+  assertValid(nestedSubstitutionSource);
+  assertRepeatedColdParse(
+    "valid",
+    nestedSubstitutionSource,
+    "nested-substitution-closers",
+  );
+
+  const deepArithmetic = writeSource(
+    "deep-parenthesized-arithmetic",
+    `echo $((${"(".repeat(257)}1${")".repeat(257)} + 1))\n`,
+  );
+  const deepArithmeticOutput = parseValidCst(deepArithmetic);
+  assertContains(deepArithmeticOutput, "arithmetic_expansion");
+  assertNotContains(deepArithmeticOutput, "command_substitution");
+
+  const embeddedCase = writeSource(
+    "embedded-case-inside-arithmetic",
+    lines("echo $(( $(case x in a) echo 1;; esac) + 1 ))"),
+  );
+  const embeddedCaseOutput = parseValidCst(embeddedCase);
+  assertContains(embeddedCaseOutput, "arithmetic_expansion");
+  assertContains(embeddedCaseOutput, "command_substitution");
+
+  const embeddedDocument = writeSource(
+    "embedded-document-inside-arithmetic",
+    lines("echo $(( $(cat <<E", " x ) y", "E", ") + 1 ))"),
+  );
+  const embeddedDocumentOutput = parseValidCst(embeddedDocument);
+  assertContains(embeddedDocumentOutput, "arithmetic_expansion");
+  assertContains(embeddedDocumentOutput, "here_document_body");
 });

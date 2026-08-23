@@ -1101,3 +1101,68 @@ holder() { :; }>function_output & holder
                       (literal)))))))))))
   (linebreak
     (newline_list)))
+
+==================
+A function body follows the pending here-document bodies
+==================
+
+cat <<E; f()
+body
+E
+{ :; }
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal)))))))))))
+        separator: (separator_op)
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (function_definition
+                  name: (fname)
+                  linebreak: (linebreak
+                    (newline_list
+                      (here_document_sequence
+                        line_end: (here_document_line_end)
+                        document: (here_document
+                          body: (here_document_body
+                            (here_document_text))
+                          end: (here_document_end)))))
+                  body: (function_body
+                    body: (compound_command
+                      (brace_group
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))))))))
+                          terminator: (separator
+                            operator: (separator_op))))))))))))))
+  trailing: (linebreak
+    (newline_list)))

@@ -1330,6 +1330,10 @@
           "named": true
         },
         {
+          "type": "input_end_recovery",
+          "named": true
+        },
+        {
           "type": "line_continuation",
           "named": true
         }
@@ -1622,6 +1626,10 @@
         {
           "type": "here_document_end_recovery",
           "named": true
+        },
+        {
+          "type": "input_end_recovery",
+          "named": true
         }
       ]
     }
@@ -1666,6 +1674,10 @@
         },
         {
           "type": "here_document_end_recovery",
+          "named": true
+        },
+        {
+          "type": "input_end_recovery",
           "named": true
         },
         {
@@ -2561,7 +2573,7 @@
         ]
       },
       "recovery": {
-        "multiple": false,
+        "multiple": true,
         "required": false,
         "types": [
           {
@@ -3707,6 +3719,10 @@
           "named": true
         },
         {
+          "type": "input_end_recovery",
+          "named": true
+        },
+        {
           "type": "single_quote_content",
           "named": true
         }
@@ -4389,6 +4405,10 @@
   {
     "type": "in",
     "named": false
+  },
+  {
+    "type": "input_end_recovery",
+    "named": true
   },
   {
     "type": "lessand",

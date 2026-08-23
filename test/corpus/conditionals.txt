@@ -359,3 +359,127 @@ if first then second; fi
                       (separator
                         (newline_list)))
                     (compound_command_recovery)))))))))))
+
+==================
+Trailing blanks separate and terminate an if body
+==================
+
+if :; then
+first one 
+second two 
+fi
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (if_clause
+                    (if_keyword)
+                    condition: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        operator: (separator_op)))
+                    (then_keyword)
+                    consequence: (compound_list
+                      leading: (linebreak
+                        (newline_list))
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))
+                                  suffix: (cmd_suffix
+                                    word: (word
+                                      (literal))))))))
+                        separator: (separator
+                          newlines: (newline_list))
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))
+                                  suffix: (cmd_suffix
+                                    word: (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        newlines: (newline_list)))
+                    (fi_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+================================================================================
+A closing spelling in an assignment value leaves the real closer
+================================================================================
+
+if a; then y=fi
+fi
+
+--------------------------------------------------------------------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (then_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_prefix
+                                    (assignment_word
+                                      (variable_name)
+                                      (assignment_value
+                                        (literal))))))))))
+                      (separator
+                        (newline_list)))
+                    (fi_keyword))))))))))
+  (linebreak
+    (newline_list)))

@@ -278,7 +278,7 @@ static void assert_scanner_matches_snapshot(
 static struct Scanner *make_exact_fit_scanner(void) {
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
-  assert(append_captured_document(scanner, make_repeated_document(1013), 0));
+  assert(append_captured_document(scanner, make_repeated_document(1009), 0));
   return scanner;
 }
 
@@ -314,13 +314,18 @@ static void assert_state_round_trip(void) {
   scanner->delimiter_strips_tabs = true;
   scanner->sequence_end_pending = true;
   scanner->at_here_document_line_start = true;
+  scanner->redirect_follows_target_recovery = true;
   scanner->backquote_depth = 7;
+  scanner->substitution_depth = 5;
+  scanner->body_substitution_depth = 2;
+  scanner->body_backquote_depth = 3;
 
   assert(append_captured_document(
     scanner,
     make_document("captured", true, false),
     11
   ));
+  scanner->captured_documents[0].document.declaration_depth = 12;
   assert(
     append_captured_document(scanner, make_document("second", false, true), 19)
   );
@@ -337,11 +342,14 @@ static void assert_state_round_trip(void) {
   assert(scanner->suspended_frames != NULL);
   scanner->suspended_frame_count = 1;
   scanner->suspended_frames[0].at_line_start = true;
+  scanner->suspended_frames[0].body_substitution_depth = 4;
+  scanner->suspended_frames[0].body_backquote_depth = 6;
   assert(append_document(
     &scanner->suspended_frames[0].documents,
     &scanner->suspended_frames[0].count,
     make_document("suspended", false, true)
   ));
+  scanner->pending_documents[0].declaration_depth = 9;
 
   char serialized[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
   unsigned length = snapshot_scanner(scanner, serialized);
@@ -357,7 +365,11 @@ static void assert_state_round_trip(void) {
   assert(restored->delimiter_strips_tabs);
   assert(restored->sequence_end_pending);
   assert(restored->at_here_document_line_start);
+  assert(restored->redirect_follows_target_recovery);
   assert(restored->backquote_depth == 7);
+  assert(restored->substitution_depth == 5);
+  assert(restored->body_substitution_depth == 2);
+  assert(restored->body_backquote_depth == 3);
   assert(restored->captured_count == 2);
   assert_captured_document(
     &restored->captured_documents[0],
@@ -366,6 +378,8 @@ static void assert_state_round_trip(void) {
     true,
     false
   );
+  assert(restored->captured_documents[0].document.declaration_depth == 12);
+  assert(restored->captured_documents[1].document.declaration_depth == 12);
   assert_captured_document(
     &restored->captured_documents[1],
     "second",
@@ -375,10 +389,13 @@ static void assert_state_round_trip(void) {
   );
   assert(restored->pending_count == 1);
   assert_document(&restored->pending_documents[0], "pending", false, false);
+  assert(restored->pending_documents[0].declaration_depth == 9);
   assert(restored->active_count == 1);
   assert_document(&restored->active_documents[0], "active", true, true);
   assert(restored->suspended_frame_count == 1);
   assert(restored->suspended_frames[0].at_line_start);
+  assert(restored->suspended_frames[0].body_substitution_depth == 4);
+  assert(restored->suspended_frames[0].body_backquote_depth == 6);
   assert(restored->suspended_frames[0].count == 1);
   assert_document(
     &restored->suspended_frames[0].documents[0],
@@ -436,7 +453,7 @@ static void assert_exact_fit_state_round_trip(void) {
   assert_repeated_document(
     &restored->captured_documents[0].document,
     'D',
-    1013
+    1009
   );
   assert_scanner_matches_snapshot(restored, serialized, length);
 
@@ -490,7 +507,7 @@ static void assert_active_suspend_rejects_oversized_state(void) {
   assert(append_document(
     &scanner->active_documents,
     &scanner->active_count,
-    make_repeated_document(1014)
+    make_repeated_document(1011)
   ));
 
   char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
@@ -1214,9 +1231,12 @@ static void assert_boundary_line_continuation_contract(void) {
   assert(scanner != NULL);
 
   bool valid_symbols[TOKEN_COUNT] = {false};
-  valid_symbols[LINE_CONTINUATION] = true;
   valid_symbols[WORD_SEPARATOR_BEGIN] = true;
 
+  // Without a completed structure owning a trailing run, a continuation-led
+  // run before a further word classifies as the word separator first, as a
+  // zero-width marker; the pairs lex individually once the marker is
+  // consumed.
   const int32_t repeated_input[] = {
     '\\',
     '\n',
@@ -1226,6 +1246,40 @@ static void assert_boundary_line_continuation_contract(void) {
     '\n',
     'x',
   };
+  struct MockLexer classified;
+  init_mock_lexer(
+    &classified,
+    repeated_input,
+    sizeof(repeated_input) / sizeof(repeated_input[0])
+  );
+  assert(tree_sitter_posix_sh_external_scanner_scan(
+    scanner,
+    &classified.lexer,
+    valid_symbols
+  ));
+  assert(classified.lexer.result_symbol == WORD_SEPARATOR_BEGIN);
+  assert(classified.mark == 0);
+
+  // A valid line continuation at the same boundary marks a trailing run of
+  // the completed element, which owns the pair directly.
+  valid_symbols[LINE_CONTINUATION] = true;
+  struct MockLexer owned;
+  init_mock_lexer(
+    &owned,
+    repeated_input,
+    sizeof(repeated_input) / sizeof(repeated_input[0])
+  );
+  assert(tree_sitter_posix_sh_external_scanner_scan(
+    scanner,
+    &owned.lexer,
+    valid_symbols
+  ));
+  assert(owned.lexer.result_symbol == LINE_CONTINUATION);
+  assert(owned.mark == 2);
+  valid_symbols[LINE_CONTINUATION] = false;
+
+  bool continuation_symbols[TOKEN_COUNT] = {false};
+  continuation_symbols[LINE_CONTINUATION] = true;
   for (size_t index = 0; index < 3; index += 1) {
     struct MockLexer continuation;
     init_mock_lexer(
@@ -1236,7 +1290,7 @@ static void assert_boundary_line_continuation_contract(void) {
     assert(tree_sitter_posix_sh_external_scanner_scan(
       scanner,
       &continuation.lexer,
-      valid_symbols
+      continuation_symbols
     ));
     assert(continuation.lexer.result_symbol == LINE_CONTINUATION);
     assert(continuation.mark == 2);
@@ -1256,10 +1310,8 @@ static void assert_boundary_line_continuation_contract(void) {
     &pair_before_blank.lexer,
     valid_symbols
   ));
-  assert(pair_before_blank.lexer.result_symbol == LINE_CONTINUATION);
-  assert(pair_before_blank.mark == 2);
-  assert(pair_before_blank.offset == 2);
-  assert(pair_before_blank.lexer.lookahead == ' ');
+  assert(pair_before_blank.lexer.result_symbol == WORD_SEPARATOR_BEGIN);
+  assert(pair_before_blank.mark == 0);
 
   const int32_t wrong_follower_input[] = {'\\', 'x'};
   struct MockLexer wrong_follower;
@@ -1277,9 +1329,11 @@ static void assert_boundary_line_continuation_contract(void) {
   assert(wrong_follower.offset == 1);
   assert(wrong_follower.lexer.lookahead == 'x');
 
+  // A run only a stray closer follows classifies as the separator recovery
+  // at the boundary; the recovery's own layout then owns the pairs.
   bool recovery_symbols[TOKEN_COUNT] = {false};
-  recovery_symbols[LINE_CONTINUATION] = true;
   recovery_symbols[SEPARATOR_RECOVERY] = true;
+  recovery_symbols[WORD_SEPARATOR_BEGIN] = true;
   const int32_t closer_follower_input[] = {'\\', '\n', ')'};
   struct MockLexer ownerless_recovery;
   init_mock_lexer(
@@ -1292,10 +1346,8 @@ static void assert_boundary_line_continuation_contract(void) {
     &ownerless_recovery.lexer,
     recovery_symbols
   ));
-  assert(ownerless_recovery.lexer.result_symbol == LINE_CONTINUATION);
-  assert(ownerless_recovery.mark == 2);
-  assert(ownerless_recovery.offset == 2);
-  assert(ownerless_recovery.lexer.lookahead == ')');
+  assert(ownerless_recovery.lexer.result_symbol == SEPARATOR_RECOVERY);
+  assert(ownerless_recovery.mark == 0);
 
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
@@ -1442,6 +1494,9 @@ static void assert_backquote_prefix_scanner_contract(void) {
   valid_symbols[WORD_SEPARATOR_BEGIN] = true;
   valid_symbols[BACKQUOTE_START_PREFIX] = true;
 
+  // A valid line continuation keeps the pair with the completed element's
+  // own trailing run; without one the pair classifies the boundary as the
+  // zero-width word separator before it lexes.
   const int32_t continuation_input[] = {'\\', '\n', 'x'};
   struct MockLexer continuation;
   init_mock_lexer(
@@ -1457,6 +1512,24 @@ static void assert_backquote_prefix_scanner_contract(void) {
   assert(continuation.lexer.result_symbol == LINE_CONTINUATION);
   assert(continuation.mark == 2);
   assert(continuation.lexer.lookahead == 'x');
+  assert(scanner->backquote_depth == 1);
+
+  bool separator_symbols[TOKEN_COUNT] = {false};
+  separator_symbols[WORD_SEPARATOR_BEGIN] = true;
+  separator_symbols[BACKQUOTE_START_PREFIX] = true;
+  struct MockLexer classified_pair;
+  init_mock_lexer(
+    &classified_pair,
+    continuation_input,
+    sizeof(continuation_input) / sizeof(continuation_input[0])
+  );
+  assert(tree_sitter_posix_sh_external_scanner_scan(
+    scanner,
+    &classified_pair.lexer,
+    separator_symbols
+  ));
+  assert(classified_pair.lexer.result_symbol == WORD_SEPARATOR_BEGIN);
+  assert(classified_pair.mark == 0);
   assert(scanner->backquote_depth == 1);
 
   const int32_t nested_input[] = {'\\', '`'};
@@ -2125,8 +2198,6 @@ static void assert_case_item_boundary_contract(void) {
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
 
-// After a for or case keyword only a word or the header recovery may follow,
-// so a separator operator there settles on the header recovery boundary.
 static void assert_header_separator_recovery_contract(void) {
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -2180,9 +2251,6 @@ static void assert_header_separator_recovery_contract(void) {
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
 
-// A lone separator operator after a completed and_or can begin neither a
-// command nor a recovery command, so the list closes at its terminator; a
-// case-item terminator ahead still continues the list into its recovery.
 static void assert_lone_separator_ends_the_list(void) {
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -2228,8 +2296,8 @@ static void assert_lone_separator_ends_the_list(void) {
     true,
     LIST_CONTINUATION,
     0,
-    3,
-    ';'
+    4,
+    0
   );
 
   const int32_t fallthrough_terminator_input[] = {';', ' ', ';', '&'};
@@ -2242,8 +2310,8 @@ static void assert_lone_separator_ends_the_list(void) {
     true,
     LIST_CONTINUATION,
     0,
-    3,
-    '&'
+    4,
+    0
   );
 
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
@@ -3034,9 +3102,6 @@ static void assert_comment_boundary_contract(void) {
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
 
-// A comment that reaches the end of input takes the trailing boundary; a
-// newline-terminated comment keeps the comment-line boundary. Both probes
-// read the comment without consuming it into the token.
 static void assert_trailing_comment_boundary_contract(void) {
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -3071,8 +3136,6 @@ static void assert_trailing_comment_boundary_contract(void) {
     '\n'
   );
 
-  // Where only the comment-line boundary is valid the classification does
-  // not read the comment at all.
   valid_symbols[TRAILING_COMMENT_BOUNDARY] = false;
   assert_scan_result(
     scanner,
@@ -3209,7 +3272,7 @@ static void assert_arithmetic_left_parenthesis_classification(void) {
     sizeof(structured) / sizeof(structured[0]),
     true,
     ARITHMETIC_LEFT_PARENTHESIS,
-    1,
+    0,
     7,
     ')'
   );
@@ -3223,7 +3286,7 @@ static void assert_arithmetic_left_parenthesis_classification(void) {
     sizeof(fragment_structured) / sizeof(fragment_structured[0]),
     true,
     ARITHMETIC_LEFT_PARENTHESIS,
-    1,
+    0,
     8,
     ')'
   );
@@ -3236,7 +3299,7 @@ static void assert_arithmetic_left_parenthesis_classification(void) {
     sizeof(dynamic) / sizeof(dynamic[0]),
     true,
     ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS,
-    1,
+    0,
     7,
     ')'
   );
@@ -3249,7 +3312,7 @@ static void assert_arithmetic_left_parenthesis_classification(void) {
     sizeof(incomplete) / sizeof(incomplete[0]),
     true,
     ARITHMETIC_INCOMPLETE_LEFT_PARENTHESIS,
-    1,
+    0,
     4,
     0
   );
@@ -3262,7 +3325,7 @@ static void assert_arithmetic_left_parenthesis_classification(void) {
     sizeof(substitution) / sizeof(substitution[0]),
     false,
     0,
-    1,
+    0,
     4,
     ')'
   );
@@ -3276,7 +3339,7 @@ static void assert_arithmetic_left_parenthesis_classification(void) {
     sizeof(dynamic) / sizeof(dynamic[0]),
     false,
     0,
-    1,
+    0,
     7,
     ')'
   );
@@ -3410,8 +3473,6 @@ static void assert_an_open_backquote_ends_tokens(void) {
     &backquote.lexer
   ));
 
-  // A nested opener is spelled with an escaped backquote, so a plain backquote
-  // inside an open substitution never starts another one.
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
   scanner->backquote_depth = 1;

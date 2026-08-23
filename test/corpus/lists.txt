@@ -432,9 +432,8 @@ fifth\
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    (line_continuation))))
+                      (literal)))))
+              (line_continuation)
               command: (command
                 body: (simple_command
                   name: (cmd_name
@@ -450,9 +449,8 @@ fifth\
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    (line_continuation))))))
+                      (literal)))))))
+          (line_continuation)
           operator: (or_if)
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -471,9 +469,8 @@ fifth\
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    (line_continuation))))))
+                      (literal)))))))
+          (line_continuation)
           operator: (and_if)
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -634,6 +631,103 @@ third
                     (word
                       (literal))))))))))
     separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Trailing blanks before separating newlines stay layout
+==================
+
+first one 
+second two	
+third three
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+A blank and line continuation before a separating newline share its run
+==================
+
+first \
+
+second
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal))))))))))
+    separator: (newline_list
+      (line_continuation))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -849,8 +943,8 @@ c; d  \
 
 (program
   leading: (linebreak
-    (newline_list))
-  (line_continuation)
+    (newline_list
+      (line_continuation)))
   commands: (complete_commands
     command: (complete_command
       body: (list
@@ -929,9 +1023,9 @@ first\
 
 (program
   leading: (linebreak
-    (newline_list))
-  (line_continuation)
-  (line_continuation)
+    (newline_list
+      (line_continuation)
+      (line_continuation)))
   commands: (complete_commands
     command: (complete_command
       body: (list
@@ -970,10 +1064,9 @@ first\
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    (line_continuation)
-                    (line_continuation))))))
+                      (literal)))))))
+          (line_continuation)
+          (line_continuation)
           operator: (and_if)
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -1646,5 +1739,188 @@ after_blank
                   (cmd_name
                     (word
                       (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Escaped characters begin commands after separators
+==================
+
+cd x; \rm -f y
+a
+\x
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))))))))
+        separator: (separator_op)
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (escaped_character)
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (escaped_character)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Trailing continuation runs stay layout at the end of input
+==================
+
+a \
+
+b;\
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal))))))))))
+    separator: (newline_list
+      (line_continuation))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))
+      terminator: (separator_op)))
+  (line_continuation))
+
+==================
+A continuation-only program stays layout
+==================
+\
+\
+
+---
+
+(program
+  (line_continuation)
+  (line_continuation))
+
+==================
+A trailing continuation after a command stays layout at the end of input
+==================
+
+first\
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (line_continuation))
+
+==================
+A continuation before a substitution closer stays layout
+==================
+
+x=$( a\
+)
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))))))))))
+                            (line_continuation))))))))))))))
   (linebreak
     (newline_list)))

@@ -543,3 +543,64 @@ Bracket expressions delegate nested parameter syntax to the grammar
 (program
   (linebreak
     (newline_list)))
+
+==================
+Initial negation outranks ranges and braces stay members
+==================
+
+printf [!-a] [!-] [!!-a] [{] [}] ${v#[)]}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        negation: (pattern_bracket_negation_source)
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_hyphen_source)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (pattern_bracket_source
+                        negation: (pattern_bracket_negation_source)
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_hyphen_source))))
+                    word: (word
+                      (pattern_bracket_source
+                        negation: (pattern_bracket_negation_source)
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_range_source
+                            start: (pattern_bracket_character_source)
+                            operator: (pattern_bracket_range_operator_source)
+                            end: (pattern_bracket_character_source)))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (pattern_bracket_source
+                            members: (pattern_bracket_members_source
+                              member: (pattern_bracket_character_source)))))))))))))))
+  trailing: (linebreak
+    (newline_list)))

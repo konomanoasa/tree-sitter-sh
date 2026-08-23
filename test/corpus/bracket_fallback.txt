@@ -615,3 +615,43 @@ printf [[:alpha:] [[.ch.] [[=a=] "${value#[[:alpha:]}"
                                 member: (pattern_bracket_character_source))))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+Incomplete bracket literals keep slashes
+==================
+
+printf [a/b ${v#[a/b}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (literal)
+                      (literal)
+                      (literal))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (literal)
+                          (literal)
+                          (literal)
+                          (literal)))))))))))))
+  trailing: (linebreak
+    (newline_list)))

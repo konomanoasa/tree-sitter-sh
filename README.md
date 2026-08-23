@@ -1,6 +1,6 @@
 # tree-sitter-posix-sh
 
-A [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for the
+[Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for the
 POSIX.1-2024 Shell Command Language.
 
 ## Specification

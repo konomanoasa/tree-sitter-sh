@@ -286,3 +286,60 @@ esac
                     (esac_keyword))))))))))
   trailing: (linebreak
     (newline_list)))
+==================
+Case pattern words absorb interior number signs
+==================
+
+case x in
+  p#q | "r"#s) : ;;
+esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (literal)
+                            (literal)
+                            (literal))
+                          word: (word
+                            (double_quoted
+                              (double_quote_text))
+                            (literal)
+                            (literal)))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))

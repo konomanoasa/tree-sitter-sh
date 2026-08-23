@@ -579,8 +579,8 @@ echo $(printf x\
                                               (literal)))
                                           (cmd_suffix
                                             (word
-                                              (literal))
-                                            (line_continuation))))))))))))))))))))))
+                                              (literal)))))))))))
+                          (line_continuation)))))))))))))
   (linebreak
     (newline_list)))
 
@@ -624,8 +624,8 @@ echo `printf x\
                                               (literal)))
                                           (cmd_suffix
                                             (word
-                                              (literal))
-                                            (line_continuation))))))))))))))))))))))
+                                              (literal)))))))))))
+                          (line_continuation)))))))))))))
   (linebreak
     (newline_list)))
 
@@ -896,15 +896,45 @@ printf "$((echo one; echo two))"
     (newline_list)))
 
 ==================
-Unterminated command substitution remains a syntax error
-:error
+An unterminated command substitution recovers at the end of input
 ==================
 
 echo $(open
 
 ---
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (command_substitution
+                        (command_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))))))))))
+                          (linebreak
+                            (newline_list)))
+                        (input_end_recovery)))))))))))))
 
 ==================
 A backquote closer remains available after an incomplete if
@@ -1436,4 +1466,49 @@ second=`
                             (linebreak
                               (newline_list)))))))))))))))
   (linebreak
+    (newline_list)))
+
+==================
+An escaped-backslash word precedes the closing backquote
+==================
+
+echo `p \\` end
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (escaped_character))))))))))))))
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
     (newline_list)))

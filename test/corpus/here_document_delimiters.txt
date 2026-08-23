@@ -1240,3 +1240,108 @@ echo `cat <<A`
         line_end: (here_document_line_end)
         document: (here_document
           end: (here_document_end_recovery))))))
+
+==================
+Backquote delimiter backslashes fold to the owning level
+==================
+
+echo `cat <<\\E
+x
+E
+`
+echo `cat <<\$v
+y
+$v
+`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            redirect: (io_redirect
+                                              body: (io_here
+                                                operator: (dless)
+                                                end: (here_end
+                                                  word: (word
+                                                    (escaped_character)
+                                                    (literal))))))))))))))
+                          (linebreak
+                            (newline_list
+                              (here_document_sequence
+                                line_end: (here_document_line_end)
+                                document: (here_document
+                                  body: (quoted_here_document_body
+                                    (quoted_here_document_text))
+                                  end: (here_document_end))))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            redirect: (io_redirect
+                                              body: (io_here
+                                                operator: (dless)
+                                                end: (here_end
+                                                  word: (word
+                                                    (parameter_expansion
+                                                      parameter: (variable_name)))))))))))))))
+                          (linebreak
+                            (newline_list
+                              (here_document_sequence
+                                line_end: (here_document_line_end)
+                                document: (here_document
+                                  body: (here_document_body
+                                    (here_document_text))
+                                  end: (here_document_end)))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))

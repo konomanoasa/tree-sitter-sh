@@ -61,6 +61,65 @@ function undefinedSymbols(output) {
   return symbols;
 }
 
+// The scanner names these tokens after their classification rather than
+// their grammar spelling; every other enumerator is the grammar name
+// uppercased without its leading underscore.
+const externalEnumeratorExceptions = new Map([
+  ["_io_number_token", "FILE_DESCRIPTOR"],
+  ["_io_location_token", "IO_LOCATION"],
+  ["_bang_token", "PIPELINE_NEGATION"],
+  ["_dless_commit", "DLESS"],
+  ["_dlessdash_commit", "DLESSDASH"],
+  ["input_end_recovery", "QUOTE_INPUT_END_RECOVERY"],
+  ["_pattern_bracket_character_token", "PATTERN_BRACKET_CHARACTER"],
+  [
+    "_parameter_pattern_bracket_character_token",
+    "PARAMETER_PATTERN_BRACKET_CHARACTER",
+  ],
+  ["_pattern_bracket_hyphen_token", "PATTERN_BRACKET_HYPHEN"],
+]);
+
+// The external scanner reads tokens by enum position, so the TokenType
+// enumerators must list every grammar external in declaration order,
+// followed only by the TOKEN_COUNT sentinel.
+function checkExternalTokenOrder(scannerSource) {
+  const grammar = JSON.parse(
+    fs.readFileSync(path.join(grammarDirectory, "src/grammar.json"), "utf8"),
+  );
+  const externals = grammar.externals.map((external) => external.name);
+
+  const enumMatch = fs
+    .readFileSync(scannerSource, "utf8")
+    .match(/enum TokenType \{([^}]*)\}/);
+  if (enumMatch === null) {
+    throw new Error("Scanner does not declare enum TokenType");
+  }
+  const enumerators = enumMatch[1]
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("//"))
+    .map((line) => line.replace(/,.*$/, ""));
+
+  if (enumerators.at(-1) !== "TOKEN_COUNT") {
+    throw new Error("enum TokenType must end with the TOKEN_COUNT sentinel");
+  }
+  if (enumerators.length - 1 !== externals.length) {
+    throw new Error(
+      `enum TokenType has ${enumerators.length - 1} tokens for ${externals.length} grammar externals`,
+    );
+  }
+  for (const [index, external] of externals.entries()) {
+    const expected =
+      externalEnumeratorExceptions.get(external) ??
+      external.replace(/^_/, "").toUpperCase();
+    if (enumerators[index] !== expected) {
+      throw new Error(
+        `enum TokenType position ${index} is ${enumerators[index]}, but the grammar external there is ${external} (expected ${expected})`,
+      );
+    }
+  }
+}
+
 const temporaryDirectory = createEnvironmentDirectory(
   "tree-sitter-posix-sh-scanner",
 );
@@ -91,6 +150,8 @@ try {
       ["--dry-run", "--Werror", scannerSource, scannerContractSource],
       { stdio: "inherit" },
     );
+
+    checkExternalTokenOrder(scannerSource);
 
     const scannerContract = path.join(temporaryDirectory, "scanner-contract");
     const scannerReuseContract = path.join(
