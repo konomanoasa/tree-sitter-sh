@@ -2682,6 +2682,58 @@ static void assert_closing_reserved_words_classify_deterministically(void) {
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
 
+static void assert_separator_continuation_with_pending_documents(void) {
+  struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
+  assert(scanner != NULL);
+  assert(append_pending_document(scanner, make_document("END", false, false)));
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[TERM_CONTINUATION] = true;
+  valid_symbols[TERMINATOR_AHEAD] = true;
+  valid_symbols[RIGHT_BRACE] = true;
+
+  const int32_t same_line_command[] = {';', ' ', 'b', ' '};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    same_line_command,
+    sizeof(same_line_command) / sizeof(same_line_command[0]),
+    true,
+    TERM_CONTINUATION,
+    0,
+    3,
+    ' '
+  );
+
+  const int32_t newline_run[] = {';', '\n'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    newline_run,
+    sizeof(newline_run) / sizeof(newline_run[0]),
+    false,
+    TOKEN_COUNT,
+    0,
+    1,
+    '\n'
+  );
+
+  const int32_t closing_brace[] = {';', ' ', '}'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    closing_brace,
+    sizeof(closing_brace) / sizeof(closing_brace[0]),
+    true,
+    TERMINATOR_AHEAD,
+    0,
+    3,
+    0
+  );
+
+  tree_sitter_posix_sh_external_scanner_destroy(scanner);
+}
+
 static void assert_comment_boundary_contract(void) {
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -3898,6 +3950,7 @@ int main(void) {
   assert_case_item_boundary_contract();
   assert_header_separator_recovery_contract();
   assert_lone_separator_ends_the_list();
+  assert_separator_continuation_with_pending_documents();
   assert_closing_reserved_words_classify_deterministically();
   assert_comment_boundary_contract();
   assert_trailing_comment_boundary_contract();

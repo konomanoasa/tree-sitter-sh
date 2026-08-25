@@ -579,12 +579,9 @@ static void restore_suspended_documents(struct Scanner *scanner) {
   }
 }
 
-static void restore_here_document_body_depths(struct Scanner *scanner) {
+static void finish_active_document(struct Scanner *scanner) {
   scanner->substitution_depth = scanner->body_substitution_depth;
   scanner->backquote_depth = scanner->body_backquote_depth;
-}
-
-static void finish_active_document(struct Scanner *scanner) {
   clear_document(&scanner->active_documents[0]);
   scanner->active_count -= 1;
 
@@ -900,6 +897,20 @@ static bool is_bracket_scan_boundary(
   );
 }
 
+// A quote or expansion introducer defers the bracket classification to the
+// grammar's structured readings, so the incompleteness scans stop at one.
+static bool is_quote_or_expansion_start(int32_t character) {
+  return (
+    character ==
+    '\'' ||
+    character ==
+    '"' ||
+    character ==
+    '$' ||
+    character == '`'
+  );
+}
+
 static bool scan_bracket_literal_start(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -930,15 +941,7 @@ static bool scan_bracket_literal_start(
       continue;
     }
 
-    if (
-      character ==
-      '\'' ||
-      character ==
-      '"' ||
-      character ==
-      '$' ||
-      character == '`'
-    ) {
+    if (is_quote_or_expansion_start(character)) {
       return false;
     }
 
@@ -978,15 +981,7 @@ static bool scan_bracket_literal_start(
             }
             continue;
           }
-          if (
-            nested_character ==
-            '\'' ||
-            nested_character ==
-            '"' ||
-            nested_character ==
-            '$' ||
-            nested_character == '`'
-          ) {
+          if (is_quote_or_expansion_start(nested_character)) {
             return false;
           }
           if (nested_character == ']' && nested_marker != '.') {
@@ -1053,14 +1048,7 @@ static bool scan_pattern_bracket_character(
     '=' ||
     character ==
     '\\' ||
-    character ==
-    '\'' ||
-    character ==
-    '"' ||
-    character ==
-    '$' ||
-    character ==
-    '`' ||
+    is_quote_or_expansion_start(character) ||
     is_bracket_scan_boundary(scanner, lexer, parameter_pattern)
   ) {
     return false;
@@ -1141,28 +1129,41 @@ struct DelimiterCaseBuffer {
   size_t capacity;
 };
 
-static bool
-append_delimiter_case(struct DelimiterCaseBuffer *cases, size_t group_depth) {
-  if (cases->length == SIZE_MAX) {
+static bool grow_element_buffer(
+  void **data,
+  size_t *capacity,
+  size_t length,
+  size_t element_size,
+  size_t initial_capacity
+) {
+  if (length < *capacity) {
+    return true;
+  }
+
+  size_t next_capacity = *capacity == 0 ? initial_capacity : *capacity * 2;
+  if (next_capacity < *capacity || next_capacity > SIZE_MAX / element_size) {
     return false;
   }
 
-  if (cases->length == cases->capacity) {
-    size_t capacity = 8;
-    if (cases->capacity != 0) {
-      if (cases->capacity > SIZE_MAX / 2) {
-        return false;
-      }
-      capacity = cases->capacity * 2;
-    }
+  void *resized = ts_realloc(*data, next_capacity * element_size);
+  if (resized == NULL) {
+    return false;
+  }
+  *data = resized;
+  *capacity = next_capacity;
+  return true;
+}
 
-    struct DelimiterCaseFrame *resized =
-      ts_realloc(cases->data, capacity * sizeof(struct DelimiterCaseFrame));
-    if (resized == NULL) {
-      return false;
-    }
-    cases->data = resized;
-    cases->capacity = capacity;
+static bool
+append_delimiter_case(struct DelimiterCaseBuffer *cases, size_t group_depth) {
+  if (!grow_element_buffer(
+        (void **)&cases->data,
+        &cases->capacity,
+        cases->length,
+        sizeof(struct DelimiterCaseFrame),
+        8
+      )) {
+    return false;
   }
 
   cases->data[cases->length] = (struct DelimiterCaseFrame){
@@ -1179,26 +1180,18 @@ static bool push_delimiter_group(
   enum DelimiterGroupKind kind,
   enum DelimiterQuote parent_quote
 ) {
-  if (groups->length >= SCANNER_STATE_CAPACITY) {
+  if (
+    groups->length >=
+    SCANNER_STATE_CAPACITY ||
+    !grow_element_buffer(
+      (void **)&groups->data,
+      &groups->capacity,
+      groups->length,
+      sizeof(struct DelimiterGroupFrame),
+      16
+    )
+  ) {
     return false;
-  }
-
-  if (groups->length == groups->capacity) {
-    size_t capacity = groups->capacity == 0 ? 16 : groups->capacity * 2;
-    if (capacity < groups->capacity || capacity > SCANNER_STATE_CAPACITY) {
-      capacity = SCANNER_STATE_CAPACITY;
-    }
-    if (capacity > SIZE_MAX / sizeof(struct DelimiterGroupFrame)) {
-      return false;
-    }
-
-    struct DelimiterGroupFrame *resized =
-      ts_realloc(groups->data, capacity * sizeof(struct DelimiterGroupFrame));
-    if (resized == NULL) {
-      return false;
-    }
-    groups->data = resized;
-    groups->capacity = capacity;
   }
 
   groups->data[groups->length] = (struct DelimiterGroupFrame){
@@ -3427,12 +3420,10 @@ static bool scan_function_body_boundary(
     }
 
     if (lexer->lookahead == '\\') {
-      lexer->advance(lexer, false);
-      if (lexer->lookahead != '\n') {
+      if (!skip_line_continuations(lexer)) {
         has_valid_layout = false;
         break;
       }
-      lexer->advance(lexer, false);
       continue;
     }
 
@@ -3513,18 +3504,9 @@ static bool scan_function_body_boundary(
 
   bool has_function_body = has_valid_layout && lexer->lookahead == '(';
   if (has_valid_layout && lexer->lookahead == '{') {
-    bool has_valid_continuations = true;
     lexer->advance(lexer, false);
-    while (lexer->lookahead == '\\') {
-      lexer->advance(lexer, false);
-      if (lexer->lookahead != '\n') {
-        has_valid_continuations = false;
-        break;
-      }
-      lexer->advance(lexer, false);
-    }
     has_function_body =
-      has_valid_continuations && is_token_delimiter(scanner, lexer);
+      skip_line_continuations(lexer) && is_token_delimiter(scanner, lexer);
   } else if (has_valid_layout && is_lowercase_letter(lexer->lookahead)) {
     char word[6];
     if (read_reserved_word(scanner, lexer, word)) {
@@ -3543,14 +3525,14 @@ static bool scan_recovery_boundary(
 ) {
   lexer->mark_end(lexer);
 
+  bool is_compound_recovery = symbol ==
+    COMPOUND_COMMAND_RECOVERY_BOUNDARY ||
+    symbol ==
+    SUBSHELL_RECOVERY_BOUNDARY ||
+    symbol == CASE_ITEMS_RECOVERY_BOUNDARY;
+
   if (
-    (symbol ==
-      COMPOUND_COMMAND_RECOVERY_BOUNDARY ||
-      symbol ==
-      SUBSHELL_RECOVERY_BOUNDARY ||
-      symbol ==
-      CASE_ITEMS_RECOVERY_BOUNDARY ||
-      symbol == SEPARATOR_RECOVERY) &&
+    (is_compound_recovery || symbol == SEPARATOR_RECOVERY) &&
     lexer->lookahead == ';'
   ) {
     if (!scan_case_item_terminator(lexer)) {
@@ -3588,13 +3570,7 @@ static bool scan_recovery_boundary(
       (is_active_backquote_boundary(scanner, lexer->lookahead) &&
         !valid_symbols[BACKQUOTE_END]);
   }
-  if (
-    symbol ==
-    COMPOUND_COMMAND_RECOVERY_BOUNDARY ||
-    symbol ==
-    SUBSHELL_RECOVERY_BOUNDARY ||
-    symbol == CASE_ITEMS_RECOVERY_BOUNDARY
-  ) {
+  if (is_compound_recovery) {
     is_direct_boundary =
       (is_direct_boundary ||
         lexer_at_eof(lexer) ||
@@ -4092,7 +4068,6 @@ static bool scan_element_boundary_core(
       // pre-newline reading of the trailing and here-document structures.
       if (
         valid_symbols[TERM_CONTINUATION] &&
-        !has_startable_pending_document(scanner) &&
         finish_term_continuation(scanner, lexer, valid_symbols)
       ) {
         lexer->result_symbol = TERM_CONTINUATION;
@@ -4138,7 +4113,10 @@ static bool scan_element_boundary_core(
         valid_symbols
       );
     }
-    if (!valid_symbols[SEPARATOR_NEWLINE]) {
+    if (
+      !valid_symbols[SEPARATOR_NEWLINE] ||
+      has_startable_pending_document(scanner)
+    ) {
       return false;
     }
     // A newline followed by another command begins a separating newline
@@ -4390,10 +4368,7 @@ static bool scan_separator_operator_continuation(
       lexer->result_symbol = LIST_CONTINUATION;
       return true;
     }
-    if (
-      valid_symbols[TERM_CONTINUATION] &&
-      !has_startable_pending_document(scanner)
-    ) {
+    if (valid_symbols[TERM_CONTINUATION]) {
       lexer->result_symbol = TERM_CONTINUATION;
       return true;
     }
@@ -4416,11 +4391,7 @@ static bool scan_separator_operator_continuation(
     lone_separator_ahead = lexer->lookahead != ';' && lexer->lookahead != '&';
   }
   bool at_input_end = lexer_at_eof(lexer);
-  // With startable pending here-documents the separator's newline run extent
-  // depends on the document bodies, so neither continuation nor terminator
-  // commits here; the grammar races its here-document variants instead.
-  bool term_continues = !has_startable_pending_document(scanner) &&
-    !lone_separator_ahead &&
+  bool term_continues = !lone_separator_ahead &&
     finish_term_continuation(scanner, lexer, valid_symbols);
 
   if (valid_symbols[LIST_CONTINUATION]) {
@@ -4444,12 +4415,15 @@ static bool scan_separator_operator_continuation(
       return true;
     }
   } else if (valid_symbols[TERM_CONTINUATION]) {
-    if (has_startable_pending_document(scanner)) {
-      return false;
-    }
     if (term_continues) {
       lexer->result_symbol = TERM_CONTINUATION;
       return true;
+    }
+    if (
+      has_startable_pending_document(scanner) &&
+      (at_input_end || character == '\n' || character == '#')
+    ) {
+      return false;
     }
   }
 
@@ -4473,18 +4447,18 @@ static bool scan_separator_operator_continuation(
 
 // Crosses the newline, blank-line, and comment-line run that a separating
 // newline_list may own, then reports whether another command begins. Pending
-// here-documents make the run's extent depend on document bodies, so those
-// runs are left to the grammar's raced here-document variant. Inside an
-// active here-document body every further line is probed against the
-// delimiter line, which ends the continuation before any later command.
+// startable here-documents make any newline run's extent depend on the
+// document bodies, so the scan then classifies the current line only and
+// leaves every run that reaches a newline or comment to the grammar's raced
+// here-document variant. Inside an active here-document body every further
+// line is probed against the delimiter line, which ends the continuation
+// before any later command.
 static bool finish_term_continuation(
   const struct Scanner *scanner,
   TSLexer *lexer,
   const bool *valid_symbols
 ) {
-  if (has_startable_pending_document(scanner)) {
-    return false;
-  }
+  bool cross_lines = !has_startable_pending_document(scanner);
 
   while (true) {
     if (!scan_horizontal_layout(lexer)) {
@@ -4493,10 +4467,16 @@ static bool finish_term_continuation(
       return escape_run_begins_word(scanner, lexer);
     }
     if (lexer->lookahead == '#') {
+      if (!cross_lines) {
+        return false;
+      }
       advance_to_line_end(lexer);
       continue;
     }
     if (lexer->lookahead == '\n') {
+      if (!cross_lines) {
+        return false;
+      }
       lexer->advance(lexer, false);
       if (scanner->active_count > 0) {
         return probe_here_document_continuation(scanner, lexer, valid_symbols);
@@ -5029,12 +5009,9 @@ static bool scan_arithmetic_layout(TSLexer *lexer) {
     if (lexer->lookahead != '\\') {
       return true;
     }
-
-    lexer->advance(lexer, false);
-    if (lexer->lookahead != '\n') {
+    if (!skip_line_continuations(lexer)) {
       return false;
     }
-    lexer->advance(lexer, false);
   }
 }
 
@@ -5166,25 +5143,14 @@ static bool append_validation_token(
   uint8_t kind,
   uint8_t category
 ) {
-  if (tokens->length == tokens->capacity) {
-    size_t capacity = tokens->capacity == 0 ? 64 : tokens->capacity * 2;
-    if (
-      capacity <
-      tokens->capacity ||
-      capacity >
-      SIZE_MAX /
-      sizeof(struct ValidationToken)
-    ) {
-      return false;
-    }
-
-    struct ValidationToken *resized =
-      ts_realloc(tokens->data, capacity * sizeof(struct ValidationToken));
-    if (resized == NULL) {
-      return false;
-    }
-    tokens->data = resized;
-    tokens->capacity = capacity;
+  if (!grow_element_buffer(
+        (void **)&tokens->data,
+        &tokens->capacity,
+        tokens->length,
+        sizeof(struct ValidationToken),
+        64
+      )) {
+    return false;
   }
 
   tokens->data[tokens->length] =
@@ -5240,24 +5206,14 @@ static bool embedded_push_frame(
   char closer,
   bool command_context
 ) {
-  if (skip->frame_count == skip->frame_capacity) {
-    size_t capacity = skip->frame_capacity == 0 ? 16 : skip->frame_capacity * 2;
-    if (
-      capacity <
-      skip->frame_capacity ||
-      capacity >
-      SIZE_MAX /
-      sizeof(struct EmbeddedFrame)
-    ) {
-      return false;
-    }
-    struct EmbeddedFrame *resized =
-      ts_realloc(skip->frames, capacity * sizeof(struct EmbeddedFrame));
-    if (resized == NULL) {
-      return false;
-    }
-    skip->frames = resized;
-    skip->frame_capacity = capacity;
+  if (!grow_element_buffer(
+        (void **)&skip->frames,
+        &skip->frame_capacity,
+        skip->frame_count,
+        sizeof(struct EmbeddedFrame),
+        16
+      )) {
+    return false;
   }
   skip->frames[skip->frame_count] = (struct EmbeddedFrame){
     .closer = closer,
@@ -5268,24 +5224,14 @@ static bool embedded_push_frame(
 }
 
 static bool embedded_push_case(struct EmbeddedSkip *skip) {
-  if (skip->case_count == skip->case_capacity) {
-    size_t capacity = skip->case_capacity == 0 ? 8 : skip->case_capacity * 2;
-    if (
-      capacity <
-      skip->case_capacity ||
-      capacity >
-      SIZE_MAX /
-      sizeof(struct EmbeddedCaseFrame)
-    ) {
-      return false;
-    }
-    struct EmbeddedCaseFrame *resized =
-      ts_realloc(skip->cases, capacity * sizeof(struct EmbeddedCaseFrame));
-    if (resized == NULL) {
-      return false;
-    }
-    skip->cases = resized;
-    skip->case_capacity = capacity;
+  if (!grow_element_buffer(
+        (void **)&skip->cases,
+        &skip->case_capacity,
+        skip->case_count,
+        sizeof(struct EmbeddedCaseFrame),
+        8
+      )) {
+    return false;
   }
   skip->cases[skip->case_count] = (struct EmbeddedCaseFrame){
     .frame_count = skip->frame_count,
@@ -5320,25 +5266,14 @@ static bool embedded_append_pending(
   struct EmbeddedSkip *skip,
   struct HereDocument document
 ) {
-  if (skip->pending_count == skip->pending_capacity) {
-    size_t capacity =
-      skip->pending_capacity == 0 ? 4 : skip->pending_capacity * 2;
-    if (
-      capacity <
-      skip->pending_capacity ||
-      capacity >
-      SIZE_MAX /
-      sizeof(struct HereDocument)
-    ) {
-      return false;
-    }
-    struct HereDocument *resized =
-      ts_realloc(skip->pending, capacity * sizeof(struct HereDocument));
-    if (resized == NULL) {
-      return false;
-    }
-    skip->pending = resized;
-    skip->pending_capacity = capacity;
+  if (!grow_element_buffer(
+        (void **)&skip->pending,
+        &skip->pending_capacity,
+        skip->pending_count,
+        sizeof(struct HereDocument),
+        4
+      )) {
+    return false;
   }
   skip->pending[skip->pending_count] = document;
   skip->pending_count += 1;
@@ -6276,12 +6211,8 @@ static enum ArithmeticValidation validate_arithmetic_content(
         continue;
       }
 
-      while (lexer->lookahead == '\\') {
-        lexer->advance(lexer, false);
-        if (lexer->lookahead != '\n') {
-          return ARITHMETIC_VALIDATION_INVALID;
-        }
-        lexer->advance(lexer, false);
+      if (!skip_line_continuations(lexer)) {
+        return ARITHMETIC_VALIDATION_INVALID;
       }
       if (lexer_at_eof(lexer)) {
         return ARITHMETIC_VALIDATION_INCOMPLETE;
@@ -6481,19 +6412,15 @@ structured_expression_is_valid(const struct StructuredValidation *validation) {
         continue;
       }
       if (token->kind == VALIDATION_TOKEN_LEFT_PARENTHESIS) {
-        if (context_count == context_capacity) {
-          size_t capacity = context_capacity == 0 ? 16 : context_capacity * 2;
-          if (capacity < context_capacity) {
-            valid = false;
-            break;
-          }
-          uint8_t *resized = ts_realloc(contexts, capacity);
-          if (resized == NULL) {
-            valid = false;
-            break;
-          }
-          contexts = resized;
-          context_capacity = capacity;
+        if (!grow_element_buffer(
+              (void **)&contexts,
+              &context_capacity,
+              context_count,
+              sizeof(uint8_t),
+              16
+            )) {
+          valid = false;
+          break;
         }
         contexts[context_count] = STRUCTURED_CONTEXT_GROUP;
         context_count += 1;
@@ -6546,19 +6473,15 @@ structured_expression_is_valid(const struct StructuredValidation *validation) {
       continue;
     }
     if (token->category == ARITHMETIC_OPERATOR_CATEGORY_QUESTION) {
-      if (context_count == context_capacity) {
-        size_t capacity = context_capacity == 0 ? 16 : context_capacity * 2;
-        if (capacity < context_capacity) {
-          valid = false;
-          break;
-        }
-        uint8_t *resized = ts_realloc(contexts, capacity);
-        if (resized == NULL) {
-          valid = false;
-          break;
-        }
-        contexts = resized;
-        context_capacity = capacity;
+      if (!grow_element_buffer(
+            (void **)&contexts,
+            &context_capacity,
+            context_count,
+            sizeof(uint8_t),
+            16
+          )) {
+        valid = false;
+        break;
       }
       contexts[context_count] = STRUCTURED_CONTEXT_TERNARY;
       context_count += 1;
@@ -7065,7 +6988,6 @@ scan_here_document_end_commit(struct Scanner *scanner, TSLexer *lexer) {
   lexer->mark_end(lexer);
   lexer->result_symbol = HERE_DOCUMENT_END_COMMIT;
   finish_active_document(scanner);
-  restore_here_document_body_depths(scanner);
   return true;
 }
 
@@ -7093,7 +7015,6 @@ static bool scan_active_here_document(
       lexer->mark_end(lexer);
       lexer->result_symbol = QUOTED_HERE_DOCUMENT_END;
       finish_active_document(scanner);
-      restore_here_document_body_depths(scanner);
       scanner->at_here_document_line_start = false;
       return true;
     }
@@ -7122,7 +7043,6 @@ static bool scan_active_here_document(
     if (at_end_of_input && valid_symbols[HERE_DOCUMENT_END_RECOVERY]) {
       lexer->result_symbol = HERE_DOCUMENT_END_RECOVERY;
       finish_active_document(scanner);
-      restore_here_document_body_depths(scanner);
       scanner->at_here_document_line_start = false;
       return true;
     }
@@ -7147,7 +7067,6 @@ static bool scan_active_here_document(
     lexer->mark_end(lexer);
     lexer->result_symbol = HERE_DOCUMENT_END_RECOVERY;
     finish_active_document(scanner);
-    restore_here_document_body_depths(scanner);
     return true;
   }
 
@@ -8125,14 +8044,8 @@ static bool scan_dispatch(
     return scan_function_body_boundary(scanner, lexer, valid_symbols);
   }
 
-  bool element_boundary_is_valid = valid_symbols[WORD_SEPARATOR_BEGIN] ||
-    valid_symbols[ASSIGNMENT_SEPARATOR_BEGIN] ||
-    valid_symbols[REDIRECT_SEPARATOR_BEGIN] ||
-    valid_symbols[PIPE_CONTINUATION] ||
-    valid_symbols[AND_OR_CONTINUATION] ||
-    valid_symbols[LIST_CONTINUATION] ||
-    valid_symbols[TERM_CONTINUATION] ||
-    valid_symbols[TERMINATOR_AHEAD] ||
+  bool element_boundary_is_valid =
+    element_boundary_symbols_are_valid(valid_symbols) ||
     (lexer->lookahead == ';' && valid_symbols[INVALID_CASE_TERMINATOR_START]);
   if (element_boundary_is_valid) {
     int32_t boundary_character = lexer->lookahead;
