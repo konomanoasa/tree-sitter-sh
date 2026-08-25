@@ -735,9 +735,9 @@ test("line-continuation and comment contracts", () => {
     "9 2",
   );
 
-  // The newline ending a comment line records the run's continuation horizon,
-  // so an edit that turns the following closer into ordinary source
-  // invalidates the run instead of reusing its terminator shape.
+  // The final comment line records the run's continuation horizon, so an edit
+  // that turns the following closer into ordinary source invalidates the run
+  // instead of reusing its terminator shape.
   const commentHorizonInitial = writeSource(
     "comment-horizon-initial",
     lines("while read line; do", '  echo "$line" # note', "done < file"),
@@ -757,6 +757,65 @@ test("line-continuation and comment contracts", () => {
     commentHorizonInitial,
     "comment-line-horizon-closer-return",
     "45 1 e",
+  );
+
+  const commentChainInitial = writeSource(
+    "comment-chain-initial",
+    lines(
+      "while read line; do",
+      "  # first",
+      "  # second",
+      "",
+      "  # third",
+      "done < file",
+    ),
+  );
+  const commentChainCloserFinal = writeSource(
+    "comment-chain-closer-final",
+    lines(
+      "while read line; do",
+      "  # first",
+      "  # second",
+      "",
+      "  # third",
+      "don& < file",
+    ),
+  );
+  assertIncrementalEqualsFresh(
+    commentChainInitial,
+    commentChainCloserFinal,
+    "comment-chain-closer-loss",
+    "55 1 &",
+  );
+  assertIncrementalEqualsFresh(
+    commentChainCloserFinal,
+    commentChainInitial,
+    "comment-chain-closer-return",
+    "55 1 e",
+  );
+
+  const commentChainCommandFinal = writeSource(
+    "comment-chain-command-final",
+    lines(
+      "while read line; do",
+      "  # first",
+      "  # second",
+      "",
+      "  : third",
+      "done < file",
+    ),
+  );
+  assertIncrementalEqualsFresh(
+    commentChainInitial,
+    commentChainCommandFinal,
+    "comment-chain-command-start",
+    "44 1 :",
+  );
+  assertIncrementalEqualsFresh(
+    commentChainCommandFinal,
+    commentChainInitial,
+    "comment-chain-comment-return",
+    "44 1 #",
   );
 
   const trailingCommentInitial = writeSource(
@@ -4257,6 +4316,12 @@ test("parser scaling remains linear within the existing guard", () => {
       name: "bracket suffix parsing",
       small: `printf ${'[a"x"*[.]'.repeat(3_000)}\n`,
     },
+    {
+      large: "# comment\n".repeat(4_800),
+      maximumScale: 5,
+      name: "comment-dense layout parsing",
+      small: "# comment\n".repeat(1_200),
+    },
   ];
 
   for (const contract of scalingSources) {
@@ -4264,8 +4329,9 @@ test("parser scaling remains linear within the existing guard", () => {
     const largeSource = writeSource(`${contract.name}-large`, contract.large);
     const smallMilliseconds = measure(smallSource, contract.name);
     const largeMilliseconds = measure(largeSource, contract.name);
+    const maximumScale = contract.maximumScale ?? 8;
     assert.ok(
-      largeMilliseconds <= smallMilliseconds * 8 + 100,
+      largeMilliseconds <= smallMilliseconds * maximumScale + 100,
       `${contract.name} scaled nonlinearly: ${smallMilliseconds}ms to ${largeMilliseconds}ms`,
     );
   }
@@ -4413,6 +4479,19 @@ test("incremental parsing reuses unchanged commands", () => {
     `${closerName}: incremental and fresh CSTs differ`,
   );
   assertIncrementalTimeRatio(closerName, functionSource, closerEdit, 1.5);
+
+  const commentLine = "# comment\n";
+  const commentCount = 4_800;
+  const commentSourceText = commentLine.repeat(commentCount);
+  const commentSource = writeSource("reuse-comments", commentSourceText);
+  const commentEdit = `${commentSourceText.length - 2} 1 x`;
+  const commentName = "final-comment-byte-replace";
+  assert.equal(
+    debugIncrementalParse(commentSource, commentEdit).fingerprint,
+    freshFingerprint(commentName, commentSourceText, commentEdit),
+    `${commentName}: incremental and fresh CSTs differ`,
+  );
+  assertIncrementalTimeRatio(commentName, commentSource, commentEdit, 1.5);
 });
 
 test("substitution newlines, continuations, and narrowed recoveries stay deterministic", () => {

@@ -3500,10 +3500,9 @@ module.exports = grammar({
     _free_trailing_layout: ($) =>
       prec.right(1, choice($._closing_layout, trailingComment($))),
 
-    // The newline ending a comment line is the run's rightmost token, so the
-    // scanner reads ahead to the run's continuation horizon there and the
-    // recorded lookahead invalidates the run when a later edit changes what
-    // follows it.
+    // Comment-line ends form a lookahead chain: each reaches the next comment
+    // or the run horizon, so the final one invalidates the run when its
+    // following command or closer changes without overlapping every probe.
     _comment_line: ($) => seq($._free_comment, $._comment_line_end),
 
     _continued_blank_line: ($) =>

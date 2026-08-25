@@ -3204,15 +3204,51 @@ static void assert_trailing_comment_boundary_contract(void) {
   tree_sitter_posix_sh_external_scanner_destroy(scanner);
 }
 
-// The newline ending a comment line reads ahead to the run's continuation
-// horizon, so the recorded lookahead invalidates the run when a later edit
-// changes what follows it.
+// Comment-line lookahead ends at the next comment or the run horizon, so the
+// final line invalidates the run without overlapping every preceding probe.
 static void assert_comment_line_end_contract(void) {
   struct Scanner *scanner = tree_sitter_posix_sh_external_scanner_create();
   assert(scanner != NULL);
 
   bool valid_symbols[TOKEN_COUNT] = {false};
   valid_symbols[COMMENT_LINE_END] = true;
+
+  const int32_t next_comment[] = {'\n', '#', 'x', '\n', 'n', 'e', 'x', 't'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    next_comment,
+    sizeof(next_comment) / sizeof(next_comment[0]),
+    true,
+    COMMENT_LINE_END,
+    1,
+    1,
+    '#'
+  );
+
+  const int32_t layout_before_comment[] = {
+    '\n',
+    ' ',
+    '\t',
+    '\n',
+    ' ',
+    '\\',
+    '\n',
+    '\t',
+    '#',
+    'x',
+  };
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    layout_before_comment,
+    sizeof(layout_before_comment) / sizeof(layout_before_comment[0]),
+    true,
+    COMMENT_LINE_END,
+    1,
+    8,
+    '#'
+  );
 
   const int32_t command_ahead[] = {'\n', 'n', 'e', 'x', 't'};
   assert_scan_result(

@@ -4445,18 +4445,16 @@ static bool scan_separator_operator_continuation(
   return false;
 }
 
-// Crosses the newline, blank-line, and comment-line run that a separating
-// newline_list may own, then reports whether another command begins. Pending
-// startable here-documents make any newline run's extent depend on the
-// document bodies, so the scan then classifies the current line only and
-// leaves every run that reaches a newline or comment to the grammar's raced
-// here-document variant. Inside an active here-document body every further
-// line is probed against the delimiter line, which ends the continuation
-// before any later command.
-static bool finish_term_continuation(
+enum TermContinuationLimit {
+  TERM_CONTINUATION_RUN_END,
+  TERM_CONTINUATION_NEXT_COMMENT_OR_RUN_END,
+};
+
+static bool finish_term_continuation_with_limit(
   const struct Scanner *scanner,
   TSLexer *lexer,
-  const bool *valid_symbols
+  const bool *valid_symbols,
+  enum TermContinuationLimit limit
 ) {
   bool cross_lines = !has_startable_pending_document(scanner);
 
@@ -4467,7 +4465,7 @@ static bool finish_term_continuation(
       return escape_run_begins_word(scanner, lexer);
     }
     if (lexer->lookahead == '#') {
-      if (!cross_lines) {
+      if (!cross_lines || limit == TERM_CONTINUATION_NEXT_COMMENT_OR_RUN_END) {
         return false;
       }
       advance_to_line_end(lexer);
@@ -4527,6 +4525,40 @@ static bool finish_term_continuation(
 
     return true;
   }
+}
+
+// Crosses the newline, blank-line, and comment-line run that a separating
+// newline_list may own, then reports whether another command begins. Pending
+// startable here-documents make any newline run's extent depend on the
+// document bodies, so the scan then classifies the current line only and
+// leaves every run that reaches a newline or comment to the grammar's raced
+// here-document variant. Inside an active here-document body every further
+// line is probed against the delimiter line, which ends the continuation
+// before any later command.
+static bool finish_term_continuation(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  const bool *valid_symbols
+) {
+  return finish_term_continuation_with_limit(
+    scanner,
+    lexer,
+    valid_symbols,
+    TERM_CONTINUATION_RUN_END
+  );
+}
+
+static void record_comment_line_lookahead(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  const bool *valid_symbols
+) {
+  (void)finish_term_continuation_with_limit(
+    scanner,
+    lexer,
+    valid_symbols,
+    TERM_CONTINUATION_NEXT_COMMENT_OR_RUN_END
+  );
 }
 
 static bool
@@ -7919,16 +7951,13 @@ static bool scan_dispatch(
     lexer->advance(lexer, false);
     lexer->mark_end(lexer);
     /*
-     * The newline ends a comment line of a newline run, which continues with
-     * further layout lines or ends before the next command or closer.
-     * Reading to that horizon records the run's decisive lookahead on its
-     * own final token, so an edit at the horizon invalidates the run instead
-     * of leaving a stale shape for reuse. With pending here-documents the
-     * run's extent depends on the document bodies and stays with the raced
-     * here-document variants.
+     * Each comment line reads to the next comment or the run horizon. The
+     * final line records the decisive command or closer lookahead, while the
+     * disjoint preceding reads keep comment-dense runs linear. With pending
+     * here-documents the run stays with the raced grammar variants.
      */
     if (!has_startable_pending_document(scanner)) {
-      finish_term_continuation(scanner, lexer, valid_symbols);
+      record_comment_line_lookahead(scanner, lexer, valid_symbols);
     }
     if (scanner->active_count > 0) {
       // The consumed newline reaches a body line start of the active
