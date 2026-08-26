@@ -32,7 +32,7 @@ if (
 const grammarDirectory = path.resolve(repositoryDirectory, grammar.path);
 const cacheDirectory = path.join(
   repositoryDirectory,
-  "node_modules/.cache/tree-sitter-posix-sh",
+  "node_modules/.cache/tree-sitter-sh",
 );
 const treeSitterPackageDirectory = path.dirname(
   require.resolve("tree-sitter-cli/package.json"),
@@ -82,7 +82,7 @@ function runTreeSitter(arguments_, options = {}) {
   const temporaryEnvironment = options.environmentDirectory === undefined;
   const environmentDirectory =
     options.environmentDirectory ??
-    createEnvironmentDirectory("tree-sitter-posix-sh");
+    createEnvironmentDirectory("tree-sitter-sh");
 
   try {
     const result = childProcess.spawnSync(treeSitterExecutable, arguments_, {

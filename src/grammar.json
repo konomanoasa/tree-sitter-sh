@@ -1,6 +1,6 @@
 {
   "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
-  "name": "posix_sh",
+  "name": "sh",
   "rules": {
     "program": {
       "type": "CHOICE",

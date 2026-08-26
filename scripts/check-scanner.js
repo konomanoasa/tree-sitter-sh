@@ -120,9 +120,7 @@ function checkExternalTokenOrder(scannerSource) {
   }
 }
 
-const temporaryDirectory = createEnvironmentDirectory(
-  "tree-sitter-posix-sh-scanner",
-);
+const temporaryDirectory = createEnvironmentDirectory("tree-sitter-sh-scanner");
 
 try {
   const requestedArguments = process.argv.slice(2);

@@ -49,7 +49,7 @@ let parserLibrary;
 let sourceSequence = 0;
 
 before(() => {
-  runtimeDirectory = createEnvironmentDirectory("tree-sitter-posix-sh-parser");
+  runtimeDirectory = createEnvironmentDirectory("tree-sitter-sh-parser");
   contractsQuery = path.join(runtimeDirectory, "contracts.scm");
   fs.writeFileSync(contractsQuery, contractsQuerySource);
   parserLibrary = path.join(runtimeDirectory, "parser");

@@ -35,7 +35,7 @@ function readDefinition(source, name) {
 }
 
 const temporaryDirectory = createEnvironmentDirectory(
-  "tree-sitter-posix-sh-generated",
+  "tree-sitter-sh-generated",
 );
 const generatedDirectory = path.join(temporaryDirectory, "output");
 const environmentDirectory = path.join(temporaryDirectory, "environment");

@@ -7241,11 +7241,11 @@ scan_here_document_sequence_end(struct Scanner *scanner, TSLexer *lexer) {
   return true;
 }
 
-void *tree_sitter_posix_sh_external_scanner_create(void) {
+void *tree_sitter_sh_external_scanner_create(void) {
   return ts_calloc(1, sizeof(struct Scanner));
 }
 
-void tree_sitter_posix_sh_external_scanner_destroy(void *payload) {
+void tree_sitter_sh_external_scanner_destroy(void *payload) {
   struct Scanner *scanner = payload;
   if (scanner == NULL) {
     return;
@@ -7779,7 +7779,7 @@ static bool deserialize_scanner_state(
 }
 
 unsigned
-tree_sitter_posix_sh_external_scanner_serialize(void *payload, char *buffer) {
+tree_sitter_sh_external_scanner_serialize(void *payload, char *buffer) {
   const struct Scanner *scanner = payload;
   if (scanner == NULL) {
     return 0;
@@ -7797,7 +7797,7 @@ tree_sitter_posix_sh_external_scanner_serialize(void *payload, char *buffer) {
   return (unsigned)writer.length + 1;
 }
 
-void tree_sitter_posix_sh_external_scanner_deserialize(
+void tree_sitter_sh_external_scanner_deserialize(
   void *payload,
   const char *buffer,
   unsigned length
@@ -8657,7 +8657,7 @@ static bool scan_dispatch(
   return false;
 }
 
-bool tree_sitter_posix_sh_external_scanner_scan(
+bool tree_sitter_sh_external_scanner_scan(
   void *payload,
   TSLexer *lexer,
   const bool *valid_symbols

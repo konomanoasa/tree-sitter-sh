@@ -1,11 +1,11 @@
 {
-  "name": "tree-sitter-posix-sh",
+  "name": "tree-sitter-sh",
   "version": "0.1.0",
   "private": true,
   "description": "A Tree-sitter grammar for POSIX sh.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/konomanoasa/tree-sitter-posix-sh.git"
+    "url": "git+https://github.com/konomanoasa/tree-sitter-sh.git"
   },
   "type": "commonjs",
   "scripts": {

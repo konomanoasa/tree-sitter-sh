@@ -1,4 +1,4 @@
-# tree-sitter-posix-sh
+# tree-sitter-sh
 
 [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for the
 POSIX.1-2024 Shell Command Language.

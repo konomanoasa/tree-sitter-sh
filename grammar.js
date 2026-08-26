@@ -1189,7 +1189,7 @@ const patternInitialBracketRange = ($, endpoint) =>
   );
 
 module.exports = grammar({
-  name: "posix_sh",
+  name: "sh",
 
   externals: ($) => [
     $._left_brace,
