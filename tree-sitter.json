@@ -3,10 +3,8 @@
   "grammars": [
     {
       "name": "sh",
-      "camelcase": "Sh",
       "title": "POSIX sh",
       "scope": "source.sh",
-      "path": ".",
       "file-types": ["sh"],
       "injection-regex": "^(sh|shell)$"
     }
@@ -27,11 +25,9 @@
   "bindings": {
     "c": false,
     "go": false,
-    "java": false,
     "node": false,
     "python": false,
     "rust": false,
-    "swift": false,
-    "zig": false
+    "swift": false
   }
 }

@@ -16,6 +16,7 @@ if (
 }
 
 const grammar = configuration.grammars[0];
+const grammarPath = grammar?.path ?? ".";
 if (
   grammar === null ||
   typeof grammar !== "object" ||
@@ -23,13 +24,13 @@ if (
   grammar.name.length === 0 ||
   typeof grammar.scope !== "string" ||
   grammar.scope.length === 0 ||
-  typeof grammar.path !== "string" ||
-  grammar.path.length === 0
+  typeof grammarPath !== "string" ||
+  grammarPath.length === 0
 ) {
   throw new Error("tree-sitter.json grammar metadata is incomplete");
 }
 
-const grammarDirectory = path.resolve(repositoryDirectory, grammar.path);
+const grammarDirectory = path.resolve(repositoryDirectory, grammarPath);
 const cacheDirectory = path.join(
   repositoryDirectory,
   "node_modules/.cache/tree-sitter-sh",
