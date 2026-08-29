@@ -226,6 +226,71 @@ echo `if x; then y; fi `
     (newline_list)))
 
 ==================
+A folded pair remains one bracket range endpoint
+==================
+
+echo `echo \`echo [a-\\$x]\``
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (backquote_substitution
+                                                (backquote_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (pattern_bracket_source
+                                                                        (pattern_bracket_members_source
+                                                                          (pattern_bracket_range_source
+                                                                            (pattern_bracket_character_source)
+                                                                            (pattern_bracket_range_operator_source)
+                                                                            (escaped_character))
+                                                                          (parameter_expansion
+                                                                            (variable_name))))))))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
 Command substitution ignores quoted and commented closing parentheses
 ==================
 
@@ -1356,4 +1421,248 @@ echo `p \\` end
                     word: (word
                       (literal)))))))))))
   trailing: (linebreak
+    (newline_list)))
+
+==================
+A content escape run keeps the backquote literal at every level
+==================
+
+echo `echo \\\`date\\\``
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (escaped_character)
+                                              (escaped_character)
+                                              (literal)
+                                              (escaped_character)
+                                              (escaped_character)))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Leading escaped pairs precede a nested closing spelling
+==================
+
+echo `a \`b \\\\\` c`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (backquote_substitution
+                                                (backquote_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (escaped_character)
+                                                                      (escaped_character))))))))))))))
+                                            (word
+                                              (literal)))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+An odd content run keeps the dollar sign literal
+==================
+
+echo `echo \\\$x`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (escaped_character)
+                                              (escaped_character)
+                                              (literal)))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+An even content run keeps the dollar sign literal
+==================
+
+echo `echo \\$x`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (escaped_character)
+                                              (literal)
+                                              (literal)))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Escaped pairs before a deferred dollar sign stay body content
+==================
+
+echo `echo \\\\\$x`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (escaped_character)
+                                              (escaped_character)
+                                              (parameter_expansion
+                                                (variable_name))))))))))))))))))))))))
+  (linebreak
     (newline_list)))

@@ -744,9 +744,6 @@ test("line-continuation and comment contracts", () => {
     "9 2",
   );
 
-  // The final comment line records the run's continuation horizon, so an edit
-  // that turns the following closer into ordinary source invalidates the run
-  // instead of reusing its terminator shape.
   const commentHorizonInitial = writeSource(
     "comment-horizon-initial",
     lines("while read line; do", '  echo "$line" # note', "done < file"),
@@ -3593,10 +3590,6 @@ test("incremental parsing reuses unchanged commands", () => {
     );
   }
 
-  // PERFORMANCE.md Measurement: read the parser's own timing report so
-  // process startup stays outside the measurement, take one warm-up plus at
-  // least nine samples per operation, and compare medians. The fresh
-  // operation parses the edited source from scratch.
   const measurementSamples = 9;
 
   function medianDuration(samples) {

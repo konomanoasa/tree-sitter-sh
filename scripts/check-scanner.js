@@ -134,7 +134,7 @@ try {
   const scannerSource = path.join(grammarDirectory, "src/scanner.c");
   const scannerContractSource = path.join(
     repositoryDirectory,
-    "test/scanner.c",
+    "test/scanner.test.c",
   );
 
   if (requestedArguments[0] === "--write") {
@@ -150,14 +150,8 @@ try {
 
     checkExternalTokenOrder(scannerSource);
 
-    const scannerContract = path.join(temporaryDirectory, "scanner-contract");
-    const scannerReuseContract = path.join(
-      temporaryDirectory,
-      "scanner-reuse-contract",
-    );
     const scannerReuseObject = path.join(temporaryDirectory, "scanner-reuse.o");
     const commonArguments = [
-      "-std=c11",
       "-Wall",
       "-Wextra",
       "-Werror",
@@ -165,13 +159,15 @@ try {
       `-I${path.join(grammarDirectory, "src")}`,
     ];
 
-    run(clang, [...commonArguments, "-fsyntax-only", scannerSource], {
-      stdio: "inherit",
-    });
-
     const compileCommands = [
       {
-        arguments: [clang, ...commonArguments, "-fsyntax-only", scannerSource],
+        arguments: [
+          clang,
+          "-std=c17",
+          ...commonArguments,
+          "-fsyntax-only",
+          scannerSource,
+        ],
         directory: repositoryDirectory,
         file: scannerSource,
       },
@@ -181,6 +177,7 @@ try {
         // contract compilation below still treats every warning as an error.
         arguments: [
           clang,
+          "-std=c17",
           ...commonArguments,
           "-Wno-unused-function",
           "-fsyntax-only",
@@ -207,31 +204,44 @@ try {
       );
     }
 
-    run(
-      clang,
-      [...commonArguments, scannerContractSource, "-o", scannerContract],
-      {
+    for (const standard of ["c99", "c17"]) {
+      const standardArguments = [`-std=${standard}`, ...commonArguments];
+      const scannerContract = path.join(
+        temporaryDirectory,
+        `scanner-contract-${standard}`,
+      );
+      const scannerReuseContract = path.join(
+        temporaryDirectory,
+        `scanner-reuse-contract-${standard}`,
+      );
+
+      run(clang, [...standardArguments, "-fsyntax-only", scannerSource], {
         stdio: "inherit",
-      },
-    );
-    run(scannerContract, [], { stdio: "inherit" });
+      });
+      run(
+        clang,
+        [...standardArguments, scannerContractSource, "-o", scannerContract],
+        { stdio: "inherit" },
+      );
+      run(scannerContract, [], { stdio: "inherit" });
+      run(
+        clang,
+        [
+          ...standardArguments,
+          "-DTREE_SITTER_REUSE_ALLOCATOR",
+          scannerContractSource,
+          "-o",
+          scannerReuseContract,
+        ],
+        { stdio: "inherit" },
+      );
+      run(scannerReuseContract, [], { stdio: "inherit" });
+    }
 
     run(
       clang,
       [
-        ...commonArguments,
-        "-DTREE_SITTER_REUSE_ALLOCATOR",
-        scannerContractSource,
-        "-o",
-        scannerReuseContract,
-      ],
-      { stdio: "inherit" },
-    );
-    run(scannerReuseContract, [], { stdio: "inherit" });
-
-    run(
-      clang,
-      [
+        "-std=c17",
         ...commonArguments,
         "-DTREE_SITTER_REUSE_ALLOCATOR",
         "-c",

@@ -9,9 +9,6 @@ const PARAMETER_PATTERN_TEXT_PATTERN = RegExp(
 );
 
 const PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN = /[^ \t\n;&|<>()\\'"$`:.=\]-]/;
-// POSIX 2.6.2 examines every unescaped, unquoted, non-embedded right brace
-// when finding the matching "}", so inside a parameter expansion the special
-// pattern constructs never own one.
 const PARAMETER_PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN =
   /[^ \t\n;&|<>()\\'"$`:.=\]}-]/;
 const PARAMETER_DEFERRED_EXTRA_CHARACTER_PATTERN = /[ \t\n;&|<>()]/;
@@ -35,9 +32,6 @@ const arithmeticBinaryLevelSymbols = ($, suffix) =>
     ([level]) => $[`_arithmetic_${level}_${suffix}`],
   );
 
-// The negation reading outranks every member reading: XBD 9.3.5 makes an
-// exclamation mark at the first position always start a non-matching list, so
-// an initial range may never claim it as its starting endpoint.
 const PATTERN_PRECEDENCE = {
   literalFallback: -2,
   expression: 2,
@@ -46,8 +40,9 @@ const PATTERN_PRECEDENCE = {
   negation: 5,
 };
 
-const structuredSourceParts = ($) => [
+const structuredSourcePartsWithBackquoteRuns = ($, backquoteRuns) => [
   $.escaped_character,
+  ...backquoteRuns,
   $.single_quoted,
   $.double_quoted,
   $.dollar_single_quoted,
@@ -57,9 +52,43 @@ const structuredSourceParts = ($) => [
   $.backquote_substitution,
 ];
 
-// The class, collating-symbol, and equivalence-class constructs, in the one
-// order every containing choice uses. The word variants may own a right
-// brace; the parameter variants end at the matching "}" instead.
+const structuredSourceParts = ($) =>
+  structuredSourcePartsWithBackquoteRuns($, [
+    $._backquote_content_escape_run,
+    $._backquote_escaped_pair_run,
+  ]);
+
+const patternRangeEndpointStructuredSourceParts = ($) =>
+  structuredSourcePartsWithBackquoteRuns($, [
+    $._backquote_single_escaped_pair_run,
+  ]);
+
+// The markers keep a run atomic; consuming one pair first can change how the
+// remaining suffix folds through the enclosing backquotes.
+const backquoteContentEscapeRun = ($, escapeName, dollar) =>
+  seq(
+    $._backquote_content_run_begin,
+    repeat(alias($._backquote_escaped_pair, escapeName)),
+    choice(alias($._backquote_escaped_tail, escapeName), dollar),
+  );
+
+const backquoteEscapedPairRun = ($, pair) =>
+  seq(
+    $._backquote_pair_run_begin,
+    repeat1(alias($._backquote_escaped_pair, pair)),
+    $._backquote_pair_run_end,
+  );
+
+const backquoteSingleEscapedPairRun = ($, pair) =>
+  prec(
+    1,
+    seq(
+      $._backquote_pair_run_begin,
+      alias($._backquote_escaped_pair, pair),
+      $._backquote_pair_run_end,
+    ),
+  );
+
 const wordPatternSpecialSources = ($) => [
   $.pattern_character_class_source,
   $.pattern_collating_symbol_source,
@@ -228,10 +257,6 @@ const lineContinuationRun = ($) => prec.right(1, repeat1($.line_continuation));
 
 const parameterBraceClose = ($) => choice("}", $._here_document_boundary);
 
-// Layout after a committed operator, where a command must follow: at most one
-// linebreak run and trailing blanks. Blanks before a newline belong to the
-// newline_list's blank-line element, so no horizontal layout precedes the
-// linebreak.
 const postOperatorLayout = ($) =>
   choice(
     seq($.linebreak, optional($._horizontal_layout)),
@@ -351,15 +376,11 @@ const arithmeticExpansionEnd = ($) =>
     $._here_document_boundary,
   );
 
-// The zero-width marker settles the arithmetic-versus-substitution race
-// before the second left parenthesis, which stays an ordinary token.
 const arithmeticExpansionStart = ($, marker) =>
   seq($._command_or_arithmetic_substitution_start, marker, "(");
 
-// The structured reading closes through the scanner's closing boundary, which
-// settles the reduce-versus-shift decision across layout. The flat readings
-// have no such decision: layout units are consumed directly and the closer is
-// recognized at its own character.
+// The scanner boundary prevents layout from choosing a flat reading during
+// the structured reading's final reduce-versus-shift decision.
 const closedArithmeticExpansion = ($, start, expression, closing) =>
   seq(
     start,
@@ -373,8 +394,6 @@ const closedArithmeticExpansion = ($, start, expression, closing) =>
 const linebreakLayout = ($) =>
   seq(optional($.linebreak), optional($._horizontal_layout));
 
-// A committed separator operator owns the continuation pairs after it, and
-// at most one linebreak run follows before the next command.
 const separatorOperatorLayout = ($, operator) =>
   seq(
     operator,
@@ -415,9 +434,6 @@ const newlineListElements = ($) => [
   $._comment_line,
 ];
 
-// A run may end with continuation pairs no raw newline follows; the run owns
-// them so the position after it can hold a closer or the next command
-// directly.
 const ledNewlineList = ($, lead) =>
   prec.right(
     seq(
@@ -427,14 +443,9 @@ const ledNewlineList = ($, lead) =>
     ),
   );
 
-// A comment whose position follows completed structure: the comment boundary
-// leads, so no line continuation belongs to the comment side.
 const boundaryLineComment = ($, comment) =>
   seq($._comment_boundary, optional($._horizontal_layout), comment);
 
-// A comment that ends the input. The scanner classifies its boundary by the
-// missing terminating newline, so this reading never competes with the
-// comment-line elements of an open newline_list.
 const trailingComment = ($) =>
   seq($._trailing_comment_boundary, optional($._horizontal_layout), $.comment);
 
@@ -442,6 +453,8 @@ const doubleQuotedPart = ($) =>
   choice(
     $.double_quote_text,
     $.double_quote_escape,
+    $._backquote_double_quote_content_escape_run,
+    $._backquote_double_quote_escaped_pair_run,
     $.line_continuation,
     alias($._newline, $.double_quote_text),
     alias($._double_quoted_parameter_expansion, $.parameter_expansion),
@@ -457,11 +470,7 @@ const completeCommandsTail = ($) =>
     optional($._free_trailing_layout),
   );
 
-// A linebreak-led body owns every layout unit through to the closer, so a
-// blank run after the linebreak stays an interior layout token: the decision
-// between further commands and the closing delimiter waits for the token
-// after the run instead of forcing an early reduction the closer side would
-// win statically.
+// Delay the body-versus-closer decision until after the blank run.
 const linebreakLedCommandsBody = ($) =>
   seq(
     $.linebreak,
@@ -469,15 +478,8 @@ const linebreakLedCommandsBody = ($) =>
     optional(choice(completeCommandsTail($), trailingComment($))),
   );
 
-// Each leading layout run has exactly one owning variant, so the decision
-// between further commands and the closing delimiter waits for the token
-// after the run. The leading layout differs per substitution form: a leading
-// line continuation after `$(` has to remain visible until the next byte is
-// known — `$(\\\n(` can begin either an arithmetic expansion or a command
-// substitution whose first command is a subshell — so the command
-// substitution start owns leading continuation pairs and its body layout is
-// blank-led. A backquote body has no such race and owns continuation-led
-// layout itself.
+// Keep leading continuations outside the body while `$(` can still become an
+// arithmetic expansion; backquotes pass their continuation-led layout here.
 const substitutionCommandsBody = ($, leadingLayout) =>
   choice(
     seq(leadingLayout, optional(completeCommandsTail($))),
@@ -492,10 +494,7 @@ const backquoteDollar = ($) =>
 const backquoteDelimiter = (plain, prefix) =>
   choice(alias(plain, "`"), seq(alias(prefix, "\\"), token.immediate("`")));
 
-// The body-begin marker settles the reading after "$(": the scanner emits it
-// only where the arithmetic race is decided in favor of the command
-// substitution, and tracks the substitution nesting that here-document and
-// stray-closer decisions depend on.
+// The marker commits the `$(` reading and opens its scanner nesting level.
 const commandSubstitution = ($, start) =>
   seq(
     start,
@@ -507,8 +506,6 @@ const commandSubstitution = ($, start) =>
     ),
   );
 
-// The scanner emits the special left bracket only when the marker directly
-// follows it, so no layout can separate the two.
 const patternSpecialStart = ($, marker) =>
   seq(alias($._pattern_special_left_bracket, "["), marker);
 
@@ -571,13 +568,18 @@ const patternSpecialInitialRange = ($, endpoint) =>
     ),
   );
 
+const patternBracketListTail = ($, member) =>
+  seq(
+    repeat(seq(repeat($.line_continuation), field("member", member))),
+    optional(lineContinuationRun($)),
+  );
+
 const patternSpecialPrefixedList = ($, member, initialRange) =>
   prec.right(
     choice(
       seq(
         field("member", alias(initialRange, $.pattern_bracket_range_source)),
-        repeat(seq(repeat($.line_continuation), field("member", member))),
-        optional(lineContinuationRun($)),
+        patternBracketListTail($, member),
       ),
       seq(
         field(
@@ -587,8 +589,7 @@ const patternSpecialPrefixedList = ($, member, initialRange) =>
             $.pattern_bracket_character_source,
           ),
         ),
-        repeat(seq(repeat($.line_continuation), field("member", member))),
-        optional(lineContinuationRun($)),
+        patternBracketListTail($, member),
       ),
     ),
   );
@@ -609,7 +610,7 @@ const patternDeferredBracketRangeEndpoint = ($, character, collatingSymbol) =>
     alias(character, $.pattern_bracket_character_source),
     collatingSymbol,
     $.pattern_bracket_hyphen_source,
-    ...structuredSourceParts($),
+    ...patternRangeEndpointStructuredSourceParts($),
   );
 
 const patternDeferredBracketMember = ($, character, range, specialSources) =>
@@ -675,9 +676,6 @@ const bracedParameterExpansion = ($, tail) =>
     ),
   );
 
-// The word of a double-quoted expansion owns its interior and trailing
-// escaped newlines itself, so only the unquoted word takes the trailing run
-// here; the pattern context never absorbs one and always takes it.
 const parameterTailWordSlot = ($, word, wordTrailingContinuations) =>
   optional(
     wordTrailingContinuations
@@ -782,11 +780,6 @@ const forTail = ($) =>
     ),
   );
 
-// A redirection continues a simple command directly after the previous
-// element or after a word separator that lets it carry its own descriptor.
-// Standalone line continuations never begin an element here: the scanner
-// classifies the layout run they lead and the classified owner holds them,
-// so no formal element exists only to store layout.
 const commandRedirectContinuations = ($) => [
   field("redirect", alias($._io_redirect_without_descriptor, $.io_redirect)),
   seq($._redirect_separator, field("redirect", $.io_redirect)),
@@ -901,14 +894,9 @@ const patternBracketList = ($, member, initialRange) =>
             initialRange,
           ),
         ),
-        repeat(seq(repeat($.line_continuation), field("member", member))),
-        optional(lineContinuationRun($)),
+        patternBracketListTail($, member),
       ),
-      seq(
-        field("member", member),
-        repeat(seq(repeat($.line_continuation), field("member", member))),
-        optional(lineContinuationRun($)),
-      ),
+      seq(field("member", member), patternBracketListTail($, member)),
     ),
   );
 
@@ -994,6 +982,9 @@ module.exports = grammar({
     $._backquote_dollar_prefix,
     $._backquote_end,
     $._backquote_end_prefix,
+    $._backquote_content_run_begin,
+    $._backquote_pair_run_begin,
+    $._backquote_pair_run_end,
     $._pattern_continuation,
     $._pattern_end,
     $._pipe_continuation,
@@ -1315,6 +1306,9 @@ module.exports = grammar({
 
     _sequential_newline_separator: ($) => field("newlines", $.newline_list),
 
+    // No position derives these two rules directly: every use aliases a
+    // variant-specific hidden rule to them, and the DSL requires an alias
+    // target to be a defined rule.
     sequential_sep: ($) =>
       choice($._sequential_operator_separator, $._sequential_newline_separator),
 
@@ -2049,7 +2043,7 @@ module.exports = grammar({
         $._pattern_operator_bracket_character,
         $.pattern_collating_symbol_source,
         $.pattern_bracket_hyphen_source,
-        ...structuredSourceParts($),
+        ...patternRangeEndpointStructuredSourceParts($),
       ),
 
     _parameter_pattern_bracket_range_endpoint: ($) =>
@@ -2061,7 +2055,7 @@ module.exports = grammar({
         $._pattern_operator_bracket_character,
         parameterPatternCollatingSymbolSource($),
         $.pattern_bracket_hyphen_source,
-        ...structuredSourceParts($),
+        ...patternRangeEndpointStructuredSourceParts($),
       ),
 
     pattern_bracket_character_source: ($) =>
@@ -2250,6 +2244,29 @@ module.exports = grammar({
 
     escaped_character: (_) => token(seq("\\", /[^\n]/)),
 
+    _backquote_content_escape_run: ($) =>
+      backquoteContentEscapeRun($, $.escaped_character, alias("$", $.literal)),
+
+    _backquote_escaped_pair_run: ($) =>
+      backquoteEscapedPairRun($, $.escaped_character),
+
+    _backquote_single_escaped_pair_run: ($) =>
+      backquoteSingleEscapedPairRun($, $.escaped_character),
+
+    _backquote_double_quote_content_escape_run: ($) =>
+      backquoteContentEscapeRun(
+        $,
+        $.double_quote_escape,
+        alias("$", $.double_quote_text),
+      ),
+
+    _backquote_double_quote_escaped_pair_run: ($) =>
+      backquoteEscapedPairRun($, $.double_quote_escape),
+
+    _backquote_escaped_pair: (_) => "\\\\",
+
+    _backquote_escaped_tail: (_) => token(prec(1, seq("\\", /[^\\\n]/))),
+
     single_quoted: ($) =>
       seq(
         "'",
@@ -2395,22 +2412,18 @@ module.exports = grammar({
         seq($._parameter_pattern_part, optional($._parameter_source_tail)),
       ),
 
-    // The word may neither begin with an escaped newline (the operator's
-    // continuation run owns leading ones) nor push one past its end, so it
-    // owns interior and trailing continuations itself.
     _double_quoted_parameter_word: ($) =>
       seq(
         $._double_quoted_parameter_word_lead_part,
         repeat($._double_quoted_parameter_word_part),
       ),
 
-    // POSIX 2.6.2: a '}' within a quoted string is not examined when finding
-    // the matching '}', so a double-quote inside the word opens a nested
-    // quoted region even when the expansion itself is double-quoted.
     _double_quoted_parameter_word_lead_part: ($) =>
       choice(
         alias($._double_quoted_parameter_text, $.double_quote_text),
         alias($._double_quoted_parameter_escape, $.double_quote_escape),
+        $._backquote_double_quote_content_escape_run,
+        $._backquote_double_quote_escaped_pair_run,
         alias($._newline, $.double_quote_text),
         $.double_quoted,
         alias($._double_quoted_parameter_expansion, $.parameter_expansion),
@@ -2581,9 +2594,6 @@ module.exports = grammar({
     _arithmetic_dynamic_expansion_start: ($) =>
       arithmeticExpansionStart($, $._arithmetic_dynamic_left_parenthesis),
 
-    // The external scanner settles the arithmetic reading at the second left
-    // parenthesis, so the structured and runtime-fragment readings are
-    // mutually exclusive.
     arithmetic_expansion: ($) =>
       choice(
         closedArithmeticExpansion(
@@ -2827,10 +2837,6 @@ module.exports = grammar({
         ),
       ),
 
-    // The separator marker is zero width and precedes the raw newline it
-    // classifies, so inside a here-document body the scanner can settle the
-    // separator-versus-recovery decision before any token consumes the
-    // newline ahead of the delimiter line.
     _separator_led_newline_list: ($) =>
       ledNewlineList($, seq($._separator_newline, $._layout_newline)),
 
@@ -2846,10 +2852,6 @@ module.exports = grammar({
         ),
       ),
 
-    // The lead line of a trailing run may carry continuation pairs only
-    // behind a committed blank run or the scanner's trailing-continuation
-    // marker: a bare continuation at the boundary stays with the probes that
-    // classify the position.
     _trailing_continued_blank_line: ($) =>
       seq(
         choice($._pre_newline_blank, $._trailing_continuation_begin),
@@ -2867,10 +2869,6 @@ module.exports = grammar({
     _horizontal_layout: ($) =>
       prec.right(1, repeat1(choice($._blank, prec(2, $.line_continuation)))),
 
-    // The horizontal run before closers and in the leading layout of a
-    // command substitution body: blank-led directly, or continuation-led
-    // behind the scanner's marker for a run that only a closer or the end
-    // of input follows.
     _closing_layout: ($) =>
       prec.right(
         1,
@@ -2887,15 +2885,10 @@ module.exports = grammar({
 
     _redirect_separator: ($) => wordSeparator($, $._redirect_separator_begin),
 
-    // A trailing run has no later owner: the closing layout holds it, with
-    // the scanner's marker leading a continuation-led run, and only a
-    // trailing comment may follow completed commands otherwise.
     _free_trailing_layout: ($) =>
       prec.right(1, choice($._closing_layout, trailingComment($))),
 
-    // Comment-line ends form a lookahead chain: each reaches the next comment
-    // or the run horizon, so the final one invalidates the run when its
-    // following command or closer changes without overlapping every probe.
+    // Disjoint lookahead links each comment to the next one or the run horizon.
     _comment_line: ($) => seq($._free_comment, $._comment_line_end),
 
     _continued_blank_line: ($) =>

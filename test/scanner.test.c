@@ -716,8 +716,23 @@ static void assert_backquote_prefix_classification(void) {
     BACKQUOTE_TICK_PREFIX_NONE
   );
 
-  size_t count;
-  assert(!backquote_escape_count(sizeof(size_t) * 8 + 1, true, &count));
+  assert(
+    classify_backquote_tick_prefix(
+      sizeof(size_t) * CHAR_BIT + 1,
+      SIZE_MAX,
+      true,
+      false
+    ) == BACKQUOTE_TICK_PREFIX_NONE
+  );
+
+  struct BackquoteEscapeRunFold fold = fold_backquote_escape_run(1, 3);
+  assert(fold.acting_level == 3 && fold.leftover_count == 0);
+  fold = fold_backquote_escape_run(1, 5);
+  assert(fold.acting_level == 2 && fold.leftover_count == 2);
+  fold = fold_backquote_escape_run(2, 5);
+  assert(fold.acting_level == 2 && fold.leftover_count == 2);
+  fold = fold_backquote_escape_run(1, 7);
+  assert(fold.acting_level == 3 && fold.leftover_count == 1);
 }
 
 static bool scan_delimiter_fixture(
@@ -1170,10 +1185,6 @@ static void assert_boundary_line_continuation_contract(void) {
   bool valid_symbols[TOKEN_COUNT] = {false};
   valid_symbols[WORD_SEPARATOR_BEGIN] = true;
 
-  // Without a completed structure owning a trailing run, a continuation-led
-  // run before a further word classifies as the word separator first, as a
-  // zero-width marker; the pairs lex individually once the marker is
-  // consumed.
   const int32_t repeated_input[] = {
     '\\',
     '\n',
@@ -1197,8 +1208,6 @@ static void assert_boundary_line_continuation_contract(void) {
   assert(classified.lexer.result_symbol == WORD_SEPARATOR_BEGIN);
   assert(classified.mark == 0);
 
-  // A valid line continuation at the same boundary marks a trailing run of
-  // the completed element, which owns the pair directly.
   valid_symbols[LINE_CONTINUATION] = true;
   struct MockLexer owned;
   init_mock_lexer(
@@ -1409,9 +1418,6 @@ static void assert_backquote_prefix_scanner_contract(void) {
   valid_symbols[WORD_SEPARATOR_BEGIN] = true;
   valid_symbols[BACKQUOTE_START_PREFIX] = true;
 
-  // A valid line continuation keeps the pair with the completed element's
-  // own trailing run; without one the pair classifies the boundary as the
-  // zero-width word separator before it lexes.
   const int32_t continuation_input[] = {'\\', '\n', 'x'};
   struct MockLexer continuation;
   init_mock_lexer(
@@ -1491,6 +1497,174 @@ static void assert_backquote_prefix_scanner_contract(void) {
   assert(closer.lexer.result_symbol == BACKQUOTE_END_PREFIX);
   assert(closer.mark == 1);
   assert(scanner->backquote_depth == 1);
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+static void assert_backquote_escape_run_scanner_contract(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  scanner->backquote_depth = 1;
+
+  bool run_symbols[TOKEN_COUNT] = {false};
+  run_symbols[BACKQUOTE_DOLLAR_PREFIX] = true;
+  run_symbols[BACKQUOTE_START_PREFIX] = true;
+  run_symbols[BACKQUOTE_END_PREFIX] = true;
+  run_symbols[BACKQUOTE_CONTENT_RUN_BEGIN] = true;
+  run_symbols[BACKQUOTE_PAIR_RUN_BEGIN] = true;
+
+  const int32_t content_tick[] = {'\\', '\\', '\\', '`'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    content_tick,
+    4,
+    true,
+    BACKQUOTE_CONTENT_RUN_BEGIN,
+    0,
+    3,
+    '`'
+  );
+  assert(scanner->backquote_depth == 1);
+
+  const int32_t long_content_tick[] =
+    {'\\', '\\', '\\', '\\', '\\', '\\', '\\', '`'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    long_content_tick,
+    8,
+    true,
+    BACKQUOTE_CONTENT_RUN_BEGIN,
+    0,
+    7,
+    '`'
+  );
+
+  const int32_t odd_content_dollar[] = {'\\', '\\', '\\', '$'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    odd_content_dollar,
+    4,
+    true,
+    BACKQUOTE_CONTENT_RUN_BEGIN,
+    0,
+    3,
+    '$'
+  );
+
+  const int32_t even_content_dollar[] = {'\\', '\\', '$'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    even_content_dollar,
+    3,
+    true,
+    BACKQUOTE_CONTENT_RUN_BEGIN,
+    0,
+    2,
+    '$'
+  );
+
+  const int32_t paired_opener[] = {'\\', '\\', '\\', '\\', '\\', '`'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    paired_opener,
+    6,
+    true,
+    BACKQUOTE_PAIR_RUN_BEGIN,
+    0,
+    5,
+    '`'
+  );
+  assert(scanner->backquote_depth == 1);
+
+  const int32_t paired_dollar[] = {'\\', '\\', '\\', '\\', '\\', '$'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    paired_dollar,
+    6,
+    true,
+    BACKQUOTE_PAIR_RUN_BEGIN,
+    0,
+    5,
+    '$'
+  );
+
+  scanner->backquote_depth = 2;
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    paired_opener,
+    6,
+    true,
+    BACKQUOTE_PAIR_RUN_BEGIN,
+    0,
+    5,
+    '`'
+  );
+  assert(scanner->backquote_depth == 2);
+
+  scanner->backquote_depth = 1;
+  bool prefix_symbols[TOKEN_COUNT] = {false};
+  prefix_symbols[BACKQUOTE_DOLLAR_PREFIX] = true;
+  prefix_symbols[BACKQUOTE_START_PREFIX] = true;
+  prefix_symbols[BACKQUOTE_END_PREFIX] = true;
+  assert_scan_result(
+    scanner,
+    prefix_symbols,
+    content_tick,
+    4,
+    false,
+    0,
+    0,
+    3,
+    '`'
+  );
+
+  bool end_symbols[TOKEN_COUNT] = {false};
+  end_symbols[BACKQUOTE_PAIR_RUN_END] = true;
+  const int32_t tail_spelling[] = {'\\', '`'};
+  assert_scan_result(
+    scanner,
+    end_symbols,
+    tail_spelling,
+    2,
+    true,
+    BACKQUOTE_PAIR_RUN_END,
+    0,
+    1,
+    '`'
+  );
+
+  const int32_t bare_closer[] = {'`'};
+  assert_scan_result(
+    scanner,
+    end_symbols,
+    bare_closer,
+    1,
+    true,
+    BACKQUOTE_PAIR_RUN_END,
+    0,
+    0,
+    '`'
+  );
+
+  const int32_t continuing_pair[] = {'\\', '\\', 'x'};
+  assert_scan_result(
+    scanner,
+    end_symbols,
+    continuing_pair,
+    3,
+    false,
+    0,
+    0,
+    1,
+    '\\'
+  );
 
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
@@ -1722,9 +1896,6 @@ static void assert_case_item_boundary_contract(void) {
   );
   assert_scanner_matches_snapshot(scanner, before, before_length);
 
-  // Layout before the closing word belongs to the item's closing layout, so
-  // no boundary is classified across it and the zero-width extent can never
-  // hide a layout run.
   const int32_t continued_esac_input[] = {
     ' ',
     '\\',
@@ -1749,8 +1920,6 @@ static void assert_case_item_boundary_contract(void) {
   );
   assert_scanner_matches_snapshot(scanner, before, before_length);
 
-  // An empty case-item body keeps first-command classifications valid, so a
-  // real esac must still end the item.
   memset(valid_symbols, 0, sizeof(valid_symbols));
   valid_symbols[CASE_ITEM_NS_BOUNDARY] = true;
   valid_symbols[NAME_EQUALS_BEGIN] = true;
@@ -1830,8 +1999,6 @@ static void assert_lone_separator_ends_the_list(void) {
   valid_symbols[LIST_CONTINUATION] = true;
   valid_symbols[TERMINATOR_AHEAD] = true;
 
-  // The term-continuation read past the command's first word keeps the
-  // token's lookahead extent a function of the source alone.
   const int32_t command_input[] = {';', ' ', 'b'};
   assert_scan_result(
     scanner,
@@ -2398,8 +2565,6 @@ static void assert_trailing_comment_boundary_contract(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-// Comment-line lookahead ends at the next comment or the run horizon, so the
-// final line invalidates the run without overlapping every preceding probe.
 static void assert_comment_line_end_contract(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -2725,8 +2890,6 @@ static void assert_here_document_line_backslash_parity(void) {
   struct MockLexer mock;
   struct HereDocumentLineStart start;
 
-  // An escaped backslash pair ends its body line, so the delimiter line
-  // after it is found.
   const int32_t paired[] = {'x', '\\', '\\', '\n', 'E', '\n'};
   init_mock_lexer(&mock, paired, sizeof(paired) / sizeof(paired[0]));
   assert(
@@ -2738,8 +2901,6 @@ static void assert_here_document_line_backslash_parity(void) {
     HERE_DOCUMENT_LINE_DELIMITER
   );
 
-  // A trailing odd backslash continues the line across the newline, so the
-  // would-be delimiter line stays body content.
   const int32_t continued[] = {'x', '\\', '\n', 'E', '\n'};
   init_mock_lexer(&mock, continued, sizeof(continued) / sizeof(continued[0]));
   assert(
@@ -2751,7 +2912,6 @@ static void assert_here_document_line_backslash_parity(void) {
     HERE_DOCUMENT_LINE_END_OF_INPUT
   );
 
-  // The nested line scan applies the same parity to its delimiter candidate.
   const int32_t nested[] = {'x', '\\', '\\', '\n', 'E', '\n'};
   init_mock_lexer(&mock, nested, sizeof(nested) / sizeof(nested[0]));
   bool is_end = false;
@@ -3115,6 +3275,7 @@ int main(void) {
   assert_boundary_line_continuation_contract();
   assert_word_separator_classification_contract();
   assert_backquote_prefix_scanner_contract();
+  assert_backquote_escape_run_scanner_contract();
   assert_function_body_boundary_classifies_after_horizontal_layout();
   assert_substitution_closers();
   assert_case_item_boundary_contract();

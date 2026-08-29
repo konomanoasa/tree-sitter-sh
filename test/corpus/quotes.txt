@@ -311,3 +311,49 @@ echo "$'text'"
                         (double_quote_text))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+Double-quoted content escape runs stay quoted text
+==================
+
+x=`echo "a\\\`b"`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (backquote_substitution
+                          (backquote_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))
+                                            (cmd_suffix
+                                              (word
+                                                (double_quoted
+                                                  (double_quote_text)
+                                                  (double_quote_escape)
+                                                  (double_quote_escape)
+                                                  (double_quote_text)))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
