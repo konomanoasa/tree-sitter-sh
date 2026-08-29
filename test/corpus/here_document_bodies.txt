@@ -317,274 +317,6 @@ EOF
           end: (here_document_end))))))
 
 ==================
-An unclosed quote inside a substitution synchronizes at a here-document end
-==================
-
-cat <<EOF
-$("open
-EOF
-after
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal)))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (command_substitution
-              (command_substitution_body
-                (complete_commands
-                  (complete_command
-                    (list
-                      (and_or
-                        (pipeline
-                          (pipe_sequence
-                            (command
-                              (simple_command
-                                (cmd_name
-                                  (word
-                                    (double_quoted
-                                      (double_quote_text)
-                                      (here_document_end_recovery)))))))))))))
-              (here_document_end_recovery)))
-          (here_document_end))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-An unclosed parameter expansion synchronizes at a here-document end
-==================
-
-cat <<EOF
-${
-EOF
-after
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal)))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (parameter_expansion
-              (here_document_end_recovery)))
-          (here_document_end))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-An unclosed arithmetic expansion synchronizes at a here-document end
-==================
-
-cat <<EOF
-$((
-EOF
-after
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal)))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (arithmetic_expansion
-              (here_document_end_recovery)))
-          (here_document_end))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-An unclosed arithmetic expansion spans body lines before its here-document end
-==================
-
-cat <<E
-$((x
-more
-E
-cmd
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal)))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (arithmetic_expansion
-              (arithmetic_variable)
-              (arithmetic_variable)
-              (here_document_end_recovery)))
-          (here_document_end))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-An unterminated here-document remains a syntax error
-==================
-
-command <<delimiter
-body
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (here_document_body
-            (here_document_text))
-          end: (here_document_end_recovery))))))
-
-==================
 Unquoted here-document bodies keep logical dollar-single-quote source literal
 ==================
 
@@ -747,236 +479,6 @@ E
                                 (cmd_name
                                   (word
                                     (literal))))))))))))))
-          (here_document_end))))))
-
-==================
-A connector before the delimiter line recovers its missing command
-==================
-
-cat <<E
-$(a &&
-E
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal))))))))))))))
-  (linebreak
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (command_substitution
-              (command_substitution_body
-                (complete_commands
-                  (complete_command
-                    (list
-                      (and_or
-                        (pipeline
-                          (pipe_sequence
-                            (command
-                              (simple_command
-                                (cmd_name
-                                  (word
-                                    (literal)))))))
-                        (and_if)
-                        (pipeline
-                          (pipe_sequence
-                            (command
-                              (command_recovery)))))))))
-              (here_document_end_recovery)))
-          (here_document_end))))))
-
-==================
-An open conditional inside a body substitution synchronizes at the delimiter line
-==================
-
-cat <<E
-$(if :
-E
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal))))))))))))))
-  (linebreak
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (command_substitution
-              (command_substitution_body
-                (complete_commands
-                  (complete_command
-                    (list
-                      (and_or
-                        (pipeline
-                          (pipe_sequence
-                            (command
-                              (compound_command
-                                (if_clause
-                                  (if_keyword)
-                                  (compound_list
-                                    (term
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (simple_command
-                                                (cmd_name
-                                                  (word
-                                                    (literal))))))))))
-                                  (compound_command_recovery)))))))))))
-              (here_document_end_recovery)))
-          (here_document_end))))))
-
-==================
-A trailing blank before the delimiter line stays outside the substitution
-==================
-
-cat <<E
-$(a 
-E
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal))))))))))))))
-  (linebreak
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (command_substitution
-              (command_substitution_body
-                (complete_commands
-                  (complete_command
-                    (list
-                      (and_or
-                        (pipeline
-                          (pipe_sequence
-                            (command
-                              (simple_command
-                                (cmd_name
-                                  (word
-                                    (literal))))))))))))
-              (here_document_end_recovery)))
-          (here_document_end))))))
-
-==================
-A comment inside a body substitution ends before the delimiter line
-==================
-
-cat <<E
-$(a # c
-E
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal))))))))))))))
-  (linebreak
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (command_substitution
-              (command_substitution_body
-                (complete_commands
-                  (complete_command
-                    (list
-                      (and_or
-                        (pipeline
-                          (pipe_sequence
-                            (command
-                              (simple_command
-                                (cmd_name
-                                  (word
-                                    (literal)))))))))))
-                (linebreak
-                  (newline_list
-                    (comment))))
-              (here_document_end_recovery)))
           (here_document_end))))))
 
 ==================
@@ -1273,3 +775,69 @@ A
           (here_document_body
             (here_document_text))
           (here_document_end))))))
+
+==================
+Escaped backslash pairs keep body lines closed before continuations
+==================
+
+cat <<E; f()
+x\\
+E
+{ :; }
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal)))))))))))
+        separator: (separator_op)
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (function_definition
+                  name: (fname)
+                  linebreak: (linebreak
+                    (newline_list
+                      (here_document_sequence
+                        line_end: (here_document_line_end)
+                        document: (here_document
+                          body: (here_document_body
+                            (here_document_text)
+                            (here_document_escape))
+                          end: (here_document_end)))))
+                  body: (function_body
+                    body: (compound_command
+                      (brace_group
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))))))))
+                          terminator: (separator
+                            operator: (separator_op))))))))))))))
+  trailing: (linebreak
+    (newline_list)))

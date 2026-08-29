@@ -1,35 +1,4 @@
 ==================
-A right brace at command start is owned by command recovery
-==================
-
-first; }
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal))))))))
-        (separator_op)
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (command_recovery))))))))
-  (linebreak
-    (newline_list)))
-
-==================
 Brace compound lists preserve continued operators and final separators
 ==================
 
@@ -100,46 +69,6 @@ second
                               (newline_list)))))))))))))))
   trailing: (linebreak
     (newline_list)))
-
-==================
-An argument-position right brace stays a word in an unterminated body
-==================
-
-holder() { command }
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (function_definition
-                  (fname)
-                  (function_body
-                    (compound_command
-                      (brace_group
-                        (compound_list
-                          (term
-                            (and_or
-                              (pipeline
-                                (pipe_sequence
-                                  (command
-                                    (simple_command
-                                      (cmd_name
-                                        (word
-                                          (literal)))
-                                      (cmd_suffix
-                                        (word
-                                          (literal)))))))))
-                          (separator
-                            (newline_list)))
-                        (compound_command_recovery)))))))))))))
 
 ==================
 Subshells and brace groups share a compound list hierarchy
@@ -293,64 +222,6 @@ A compound command can close a reserved-delimited compound list without a separa
                                                       (literal)))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
-
-==================
-Commands after an argument-position right brace stay inside the group
-==================
-
-{ first; second }
-after
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (brace_group
-                    (compound_list
-                      (term
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (simple_command
-                                  (cmd_name
-                                    (word
-                                      (literal))))))))
-                        (separator
-                          (separator_op))
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (simple_command
-                                  (cmd_name
-                                    (word
-                                      (literal)))
-                                  (cmd_suffix
-                                    (word
-                                      (literal))))))))
-                        (separator
-                          (newline_list))
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (simple_command
-                                  (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      (separator
-                        (newline_list)))
-                    (compound_command_recovery)))))))))))
 
 ==================
 An argument-position right brace stays a word before a real closer

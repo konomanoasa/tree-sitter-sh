@@ -70,7 +70,6 @@ const externalEnumeratorExceptions = new Map([
   ["_bang_token", "PIPELINE_NEGATION"],
   ["_dless_commit", "DLESS"],
   ["_dlessdash_commit", "DLESSDASH"],
-  ["input_end_recovery", "QUOTE_INPUT_END_RECOVERY"],
   ["_pattern_bracket_character_token", "PATTERN_BRACKET_CHARACTER"],
   [
     "_parameter_pattern_bracket_character_token",

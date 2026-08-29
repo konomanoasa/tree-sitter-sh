@@ -54,16 +54,21 @@ function environmentFor(directory, additions = {}) {
     "tree-sitter",
   );
   const libraryDirectory = path.join(directory, "lib");
+  // The CLI discovers grammars by scanning parser directories for
+  // "tree-sitter-*" entries, so a link with the conventional name keeps
+  // scope resolution independent of the checkout's directory name.
+  const parserDirectory = path.join(directory, "parsers");
+  const parserLink = path.join(parserDirectory, `tree-sitter-${grammar.name}`);
   fs.mkdirSync(cacheDirectory, { recursive: true });
   fs.mkdirSync(treeSitterConfigurationDirectory, { recursive: true });
   fs.mkdirSync(libraryDirectory, { recursive: true });
+  fs.mkdirSync(parserDirectory, { recursive: true });
+  if (!fs.existsSync(parserLink)) {
+    fs.symlinkSync(grammarDirectory, parserLink, "junction");
+  }
   fs.writeFileSync(
     path.join(treeSitterConfigurationDirectory, "config.json"),
-    `${JSON.stringify(
-      { "parser-directories": [path.dirname(grammarDirectory)] },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify({ "parser-directories": [parserDirectory] }, null, 2)}\n`,
   );
   return {
     ...process.env,

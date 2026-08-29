@@ -17,16 +17,6 @@ const PARAMETER_PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN =
 const PARAMETER_DEFERRED_EXTRA_CHARACTER_PATTERN = /[ \t\n;&|<>()]/;
 const ASSIGNMENT_WORD_PRECEDENCE = 3;
 
-// Dynamic precedences for recovery readings. Every recovery loses to any
-// normal reading; the invalid-command reading is the last resort below the
-// structural recoveries, and local recoveries stay closest to zero so the
-// narrowest structure recovers first.
-const RECOVERY_PRECEDENCE = {
-  invalidCommand: -1000,
-  structural: -50,
-  local: -20,
-};
-
 const ARITHMETIC_BINARY_LEVELS = [
   ["logical_or", ["||"]],
   ["logical_and", ["&&"]],
@@ -231,17 +221,12 @@ const incompleteBracketLiteralPart = (
     ...structuredSourceParts($),
   );
 
-const reservedWord = ($, marker) => seq(marker, $._reserved_word_source);
-
 const wordSeparator = ($, marker) =>
   prec.right(2, seq(marker, repeat(choice($._blank, $.line_continuation))));
 
 const lineContinuationRun = ($) => prec.right(1, repeat1($.line_continuation));
 
-const hereDocumentBoundaryRecovery = ($) =>
-  alias($._here_document_boundary, $.here_document_end_recovery);
-
-const parameterBraceClose = ($) => choice("}", hereDocumentBoundaryRecovery($));
+const parameterBraceClose = ($) => choice("}", $._here_document_boundary);
 
 // Layout after a committed operator, where a command must follow: at most one
 // linebreak run and trailing blanks. Blanks before a newline belong to the
@@ -357,18 +342,13 @@ const parenthesizedArithmetic = ($, expression) =>
     ")",
   );
 
-// One shared rule holds every continuation-led layout run, so the owner of
-// the run is decided by the token after it instead of splitting the run
-// itself per owner.
-const continuationLedLayoutRun = ($) => $._continuation_led_run;
-
 const continuedBlankLineLayout = ($) =>
-  seq(optional($._pre_newline_blank), continuationLedLayoutRun($));
+  seq(optional($._pre_newline_blank), $._continuation_led_run);
 
 const arithmeticExpansionEnd = ($) =>
   choice(
     seq(")", $._arithmetic_second_right_parenthesis),
-    hereDocumentBoundaryRecovery($),
+    $._here_document_boundary,
   );
 
 // The zero-width marker settles the arithmetic-versus-substitution race
@@ -386,12 +366,21 @@ const closedArithmeticExpansion = ($, start, expression, closing) =>
     optional($._arithmetic_layout),
     choice(
       seq(field("expression", expression), closing, arithmeticExpansionEnd($)),
-      hereDocumentBoundaryRecovery($),
+      $._here_document_boundary,
     ),
   );
 
 const linebreakLayout = ($) =>
   seq(optional($.linebreak), optional($._horizontal_layout));
+
+// A committed separator operator owns the continuation pairs after it, and
+// at most one linebreak run follows before the next command.
+const separatorOperatorLayout = ($, operator) =>
+  seq(
+    operator,
+    repeat(prec(2, $.line_continuation)),
+    optional(field("linebreak", $.linebreak)),
+  );
 
 const reservedWordLinebreak = ($) =>
   choice(
@@ -434,7 +423,7 @@ const ledNewlineList = ($, lead) =>
     seq(
       lead,
       repeat(choice(...newlineListElements($))),
-      optional(continuationLedLayoutRun($)),
+      optional($._continuation_led_run),
     ),
   );
 
@@ -514,8 +503,7 @@ const commandSubstitution = ($, start) =>
     optional(field("body", $.command_substitution_body)),
     choice(
       alias($._command_substitution_close, ")"),
-      hereDocumentBoundaryRecovery($),
-      alias($._command_substitution_input_end_recovery, $.input_end_recovery),
+      $._here_document_boundary,
     ),
   );
 
@@ -635,11 +623,7 @@ const patternDeferredBracketMember = ($, character, range, specialSources) =>
 
 const bracedParameterStart = ($) => choice("${", seq(backquoteDollar($), "{"));
 
-// The missing-parameter recovery variants split by what follows the braced
-// start: an expansion tail operator keeps the real operator, word, and
-// closer with the zero-width recovery holding only the parameter position,
-// while any other invalid start leaves the whole tail to the plain recovery.
-const parameterExpansion = ($, bracedExpansion, missingExpansion) =>
+const parameterExpansion = ($, bracedExpansion) =>
   prec(
     1,
     choice(
@@ -650,24 +634,7 @@ const parameterExpansion = ($, bracedExpansion, missingExpansion) =>
       seq(
         bracedParameterStart($),
         repeat($.line_continuation),
-        choice(
-          hereDocumentBoundaryRecovery($),
-          bracedExpansion,
-          missingExpansion,
-          prec.dynamic(
-            RECOVERY_PRECEDENCE.local,
-            seq(
-              field(
-                "recovery",
-                alias(
-                  $._parameter_missing_recovery,
-                  $.parameter_expansion_recovery,
-                ),
-              ),
-              optional("}"),
-            ),
-          ),
-        ),
+        choice($._here_document_boundary, bracedExpansion),
       ),
     ),
   );
@@ -706,28 +673,6 @@ const bracedParameterExpansion = ($, tail) =>
         parameterBraceClose($),
       ),
     ),
-    prec.dynamic(
-      3,
-      seq(
-        field("operator", $.parameter_length_operator),
-        repeat($.line_continuation),
-        field("recovery", $.parameter_expansion_recovery),
-      ),
-    ),
-    prec.dynamic(
-      RECOVERY_PRECEDENCE.local,
-      seq(
-        field("operator", $.parameter_length_operator),
-        repeat($.line_continuation),
-        bracedParameterSource($, $._length_parameter),
-        repeat($.line_continuation),
-        field(
-          "recovery",
-          parameterTailRecovery($, $._parameter_tail_recovery_boundary),
-        ),
-        optional("}"),
-      ),
-    ),
   );
 
 // The word of a double-quoted expansion owns its interior and trailing
@@ -761,182 +706,27 @@ const parameterOperatorTail = ($, word, wordTrailingContinuations) =>
     ),
   );
 
-const parameterTailRecovery = ($, boundary) =>
-  alias(boundary, $.parameter_expansion_recovery);
-
-// Directly after the parameter only a closer, an operator, or a line
-// continuation may follow, so layout and control characters there prove the
-// expansion invalid and the full tail boundary applies. Behind an operator
-// the word absorbs every character up to the matching right brace, so
-// recovery waits for a real terminator: the end of input or the closing
-// backquote of an enclosing substitution.
-const recoveringParameterOperatorTail = (
-  $,
-  word,
-  wordRecoveryBoundary,
-  wordTrailingContinuations,
-) =>
-  choice(
-    seq(
-      field("operator", $.parameter_value_operator),
-      repeat($.line_continuation),
-      parameterTailWordSlot($, word, wordTrailingContinuations),
-      field("recovery", parameterTailRecovery($, wordRecoveryBoundary)),
-      optional("}"),
-    ),
-    seq(
-      field("operator", $.parameter_pattern_operator),
-      repeat($.line_continuation),
-      parameterTailPatternSlot($),
-      field("recovery", parameterTailRecovery($, wordRecoveryBoundary)),
-      optional("}"),
-    ),
-  );
-
-// One shared tail rule holds both operator readings per quoting flavor, so
-// the ordinary expansion, the recovering expansion, and the
-// missing-parameter recovery reuse the same states.
 const parameterExpansionTail = ($, operatorTail) =>
-  choice(
-    parameterBraceClose($),
-    operatorTail,
-    prec.dynamic(
-      RECOVERY_PRECEDENCE.local,
-      seq(
-        field(
-          "recovery",
-          choice(
-            parameterTailRecovery($, $._parameter_tail_recovery_boundary),
-            alias(
-              $._parameter_operator_recovery,
-              $.parameter_expansion_recovery,
-            ),
-          ),
-        ),
-        optional("}"),
-      ),
-    ),
-  );
-
-const missingParameterExpansion = ($, operatorTail) =>
-  prec.dynamic(
-    RECOVERY_PRECEDENCE.local,
-    seq(
-      field(
-        "recovery",
-        alias($._parameter_missing_recovery, $.parameter_expansion_recovery),
-      ),
-      repeat($.line_continuation),
-      operatorTail,
-    ),
-  );
-
-// Every recovery reading of a command position wraps one payload in the
-// formal pipeline hierarchy. This generates the hidden chain rules for a
-// prefix from the given top level down to the command payload.
-const RECOVERY_COMMAND_CHAIN = [
-  ["and_or", "pipeline", "pipeline"],
-  ["pipeline", "pipe_sequence", "sequence"],
-  ["pipe_sequence", "command", "command"],
-];
-
-const recoveryCommandChainRules = (prefix, top, command) => {
-  const rules = { [`_${prefix}_command`]: command };
-  let reached = false;
-  for (const [level, child, fieldName] of RECOVERY_COMMAND_CHAIN) {
-    reached = reached || level === top;
-    if (!reached) {
-      continue;
-    }
-    rules[`_${prefix}_${level}`] = ($) =>
-      field(fieldName, alias($[`_${prefix}_${child}`], $[child]));
-  }
-  return rules;
-};
-
-const recoveryField = ($) => field("recovery", $.compound_command_recovery);
-
-const directRecoveryField = ($) =>
-  field(
-    "recovery",
-    alias($._direct_recovery_boundary, $.compound_command_recovery),
-  );
-
-const invalidCommandRecoveryField = (
-  $,
-  source = $._invalid_command_recovery_source,
-) => field("recovery", alias(source, $.command_recovery));
-
-const headerRecoveryField = ($) =>
-  field(
-    "recovery",
-    alias($._header_recovery_boundary, $.compound_command_recovery),
-  );
-
-const forTailRecoveryField = ($) =>
-  field(
-    "recovery",
-    alias($._for_tail_recovery_boundary, $.compound_command_recovery),
-  );
-
-const caseItemsRecoveryField = ($) =>
-  field(
-    "recovery",
-    alias($._case_items_recovery_boundary, $.compound_command_recovery),
-  );
-
-const subshellRecoveryField = ($) =>
-  field(
-    "recovery",
-    alias($._subshell_recovery_boundary, $.compound_command_recovery),
-  );
+  choice(parameterBraceClose($), operatorTail);
 
 const caseClauseItems = ($) =>
   choice(
     $.esac_keyword,
-    caseItemsRecoveryField($),
-    field("items", alias($._recovering_case_list_ns, $.case_list_ns)),
-    seq(field("items", $.case_list), choice($.esac_keyword, recoveryField($))),
-    seq(
-      field("items", $.case_list_ns),
-      optional($._closing_layout),
-      choice($.esac_keyword, recoveryField($)),
-    ),
+    seq(field("items", $.case_list), $.esac_keyword),
+    seq(field("items", $.case_list_ns), $.esac_keyword),
   );
 
 const compoundListField = ($, name) => field(name, $.compound_list);
 
-const emptyCompoundListField = ($, name) =>
-  field(name, alias($._recovering_empty_compound_list, $.compound_list));
-
-const recoverableCompoundListField = ($, name) =>
-  field(
-    name,
-    choice(
-      $.compound_list,
-      alias($._recovering_empty_compound_list, $.compound_list),
-    ),
-  );
-
 const conditionalThenBranch = ($, keyword, tail) =>
   seq(
     keyword,
-    choice(
-      recoveryField($),
-      seq(
-        recoverableCompoundListField($, "condition"),
-        optional($._closing_layout),
-        choice(
-          recoveryField($),
-          seq(
-            $.then_keyword,
-            recoverableCompoundListField($, "consequence"),
-            optional($._closing_layout),
-            tail,
-          ),
-        ),
-      ),
-    ),
+    compoundListField($, "condition"),
+    optional($._closing_layout),
+    $.then_keyword,
+    compoundListField($, "consequence"),
+    optional($._closing_layout),
+    tail,
   );
 
 const ifClause = ($) =>
@@ -945,11 +735,10 @@ const ifClause = ($) =>
     $.if_keyword,
     choice(
       $.fi_keyword,
-      recoveryField($),
       seq(
         field("alternative", $.else_part),
         optional($._closing_layout),
-        choice($.fi_keyword, recoveryField($)),
+        $.fi_keyword,
       ),
     ),
   );
@@ -957,14 +746,9 @@ const ifClause = ($) =>
 const loopClause = ($, keyword) =>
   seq(
     keyword,
-    choice(
-      recoveryField($),
-      seq(
-        recoverableCompoundListField($, "condition"),
-        optional($._closing_layout),
-        choice(recoveryField($), field("body", $.do_group)),
-      ),
-    ),
+    compoundListField($, "condition"),
+    optional($._closing_layout),
+    field("body", $.do_group),
   );
 
 const separatedForBody = ($) =>
@@ -983,50 +767,18 @@ const separatedForBody = ($) =>
       ),
     ),
     optional($._horizontal_layout),
-    choice(
-      field("recovery", $.compound_command_recovery),
-      field("body", $.do_group),
-    ),
+    field("body", $.do_group),
   );
 
-const recoveringForTail = ($) =>
+const forTail = ($) =>
   choice(
-    seq(optional($._horizontal_layout), forTailRecoveryField($)),
     seq($._horizontal_layout, field("body", $.do_group)),
     separatedForBody($),
     seq(
       reservedWordLinebreak($),
       field("in", $.in),
       optional(seq($._horizontal_layout, field("words", $.wordlist))),
-      choice(
-        seq(optional($._horizontal_layout), forTailRecoveryField($)),
-        separatedForBody($),
-      ),
-    ),
-  );
-
-const strayParenthesisTail = ($) =>
-  prec.dynamic(
-    RECOVERY_PRECEDENCE.structural,
-    seq(
-      optional($._closing_layout),
-      field("separator", prec(100, $.separator_recovery)),
-      optional($._horizontal_layout),
-      field("and_or", alias($._invalid_list_and_or, $.and_or)),
-    ),
-  );
-
-const caseTerminatorTail = ($) =>
-  prec.dynamic(
-    RECOVERY_PRECEDENCE.structural,
-    seq(
-      optional($._closing_layout),
-      field(
-        "separator",
-        alias($._invalid_case_terminator_start, $.separator_recovery),
-      ),
-      optional($._horizontal_layout),
-      field("and_or", alias($._case_terminator_and_or, $.and_or)),
+      separatedForBody($),
     ),
   );
 
@@ -1114,15 +866,6 @@ const functionDefinitionWithBody = ($, body) =>
     field("body", body),
   );
 
-const recoveringFunctionDefinition = ($) =>
-  prec.dynamic(
-    RECOVERY_PRECEDENCE.structural,
-    seq(
-      functionDefinitionHeader($),
-      field("body", alias($._recovering_function_body, $.function_body)),
-    ),
-  );
-
 const patternBracketExpression = ($, list, opener = $._literal_left_bracket) =>
   prec.dynamic(
     PATTERN_PRECEDENCE.expression,
@@ -1191,6 +934,8 @@ const patternInitialBracketRange = ($, endpoint) =>
 module.exports = grammar({
   name: "sh",
 
+  extras: ($) => [$._here_document_content_line_start],
+
   externals: ($) => [
     $._left_brace,
     $._right_brace,
@@ -1214,7 +959,6 @@ module.exports = grammar({
     $._dlessdash_commit,
     $._here_end_begin,
     $._here_end_commit,
-    $._missing_here_document_delimiter,
     $.here_document_line_end,
     $._here_document_body_start,
     $._quoted_here_document_body_start,
@@ -1235,7 +979,6 @@ module.exports = grammar({
     $._arithmetic_closing_boundary,
     $._arithmetic_left_parenthesis,
     $._arithmetic_dynamic_left_parenthesis,
-    $._arithmetic_incomplete_left_parenthesis,
     $._pattern_special_left_bracket,
     $._literal_hash,
     $._comment_boundary,
@@ -1257,30 +1000,7 @@ module.exports = grammar({
     $._redirect_list_begin,
     $._case_item_end,
     $._case_item_ns_boundary,
-    $._compound_command_recovery_boundary,
-    $._subshell_recovery_boundary,
-    $._direct_recovery_boundary,
-    $._header_recovery_boundary,
-    $._for_tail_recovery_boundary,
-    $._case_items_recovery_boundary,
-    $._compound_list_boundary,
     $._function_body_continuation_boundary,
-    $._function_body_recovery_boundary,
-    $._parameter_missing_recovery_boundary,
-    $._parameter_operator_recovery_boundary,
-    $._parameter_tail_recovery_boundary,
-    $._double_quoted_parameter_tail_recovery_boundary,
-    $._input_end_recovery,
-    $._missing_command_recovery_boundary,
-    $._invalid_reserved_command_start,
-    $._invalid_case_terminator_start,
-    $._invalid_command_character_source,
-    $.separator_recovery,
-    $.redirection_target_recovery,
-    $.here_document_end_recovery,
-    $.backquote_end_recovery,
-    $.input_end_recovery,
-    $._command_substitution_input_end_recovery,
     $._command_substitution_body_begin,
     $._subshell_close,
     $._word_bracket_literal_start,
@@ -1307,13 +1027,10 @@ module.exports = grammar({
     $._separator_newline,
   ],
 
-  extras: ($) => [$._here_document_content_line_start],
-
   conflicts: ($) => [
     [$.term],
     [$.compound_list],
     [$.complete_commands],
-    [$.list],
     [$._operator_separator],
     [$._sequential_operator_separator],
     [$._sequential_newline_separator, $.linebreak],
@@ -1449,24 +1166,9 @@ module.exports = grammar({
       $._parameter_pattern_bracket_character,
     ],
     [$.pattern_bracket_range_operator_source, $.pattern_bracket_hyphen_source],
-    [$.parameter_expansion],
-    [$._double_quoted_parameter_expansion],
-    [$._parameter_expansion_tail],
-    [$._double_quoted_parameter_expansion_tail],
-    [$._parameter_operator_expansion_tail],
-    [$._double_quoted_parameter_operator_expansion_tail],
-    [$._braced_parameter_expansion],
-    [$._double_quoted_braced_parameter_expansion],
     [$._special_parameter_hash, $.parameter_length_operator],
     [$._parenthesized_arithmetic_lvalue, $._arithmetic_primary_expression],
     [$.arithmetic_dynamic_expression],
-    [
-      $.arithmetic_expansion,
-      $.parenthesized_arithmetic_source,
-      $.parenthesized_arithmetic_dynamic_source,
-    ],
-    [$.arithmetic_expansion, $.parenthesized_arithmetic_source],
-    [$.arithmetic_expansion, $.parenthesized_arithmetic_dynamic_source],
   ],
 
   rules: {
@@ -1534,18 +1236,7 @@ module.exports = grammar({
             field("and_or", $.and_or),
           ),
         ),
-        repeat(choice(strayParenthesisTail($), caseTerminatorTail($))),
       ),
-
-    ...recoveryCommandChainRules("invalid_list", "and_or", ($) =>
-      invalidCommandRecoveryField($, $._stray_right_parenthesis),
-    ),
-
-    ...recoveryCommandChainRules("case_terminator", "and_or", ($) =>
-      invalidCommandRecoveryField($, $._case_terminator_operator),
-    ),
-
-    _case_terminator_operator: ($) => choice($.dsemi, $.semi_and),
 
     and_or: ($) =>
       seq(
@@ -1556,33 +1247,17 @@ module.exports = grammar({
             optional($._horizontal_layout),
             field("operator", choice($.and_if, $.or_if)),
             postOperatorLayout($),
-            field(
-              "pipeline",
-              choice($.pipeline, alias($._recovering_pipeline, $.pipeline)),
-            ),
+            field("pipeline", $.pipeline),
           ),
         ),
       ),
 
     pipeline: ($) =>
-      choice(
-        seq(
-          optional(
-            seq(field("negation", $.bang), optional($._horizontal_layout)),
-          ),
-          field("sequence", $.pipe_sequence),
+      seq(
+        optional(
+          seq(field("negation", $.bang), optional($._horizontal_layout)),
         ),
-        prec.dynamic(
-          RECOVERY_PRECEDENCE.local,
-          seq(
-            field("negation", $.bang),
-            optional($._horizontal_layout),
-            field(
-              "sequence",
-              alias($._recovering_pipe_sequence, $.pipe_sequence),
-            ),
-          ),
-        ),
+        field("sequence", $.pipe_sequence),
       ),
 
     pipe_sequence: ($) =>
@@ -1594,10 +1269,7 @@ module.exports = grammar({
             optional($._horizontal_layout),
             "|",
             postOperatorLayout($),
-            field(
-              "command",
-              choice($.command, alias($._recovering_command, $.command)),
-            ),
+            field("command", $.command),
           ),
         ),
       ),
@@ -1607,66 +1279,14 @@ module.exports = grammar({
         field("body", $.simple_command),
         $._redirectable_compound_command,
         field("body", $.function_definition),
-        prec.dynamic(
-          RECOVERY_PRECEDENCE.invalidCommand,
-          invalidCommandRecoveryField($),
-        ),
       ),
 
     _redirectable_compound_command: ($) => redirectableCompoundCommand($),
 
-    command_recovery: ($) => $._missing_command_recovery_boundary,
-
-    _invalid_command_recovery_source: ($) =>
-      choice(
-        seq(
-          $._invalid_reserved_command_start,
-          choice(
-            $.then_keyword,
-            $.elif_keyword,
-            $.else_keyword,
-            $.fi_keyword,
-            $.in_keyword,
-            $.do_keyword,
-            $.done_keyword,
-            $.esac_keyword,
-          ),
-        ),
-        seq($._invalid_case_terminator_start, $._case_terminator_operator),
-        $._invalid_command_character_source,
-      ),
-
-    _stray_right_parenthesis: (_) => token(prec(-1, ")")),
-
-    _reserved_word_source: (_) =>
-      choice(
-        "if",
-        "then",
-        "elif",
-        "else",
-        "fi",
-        "for",
-        "in",
-        "do",
-        "done",
-        "case",
-        "esac",
-        "while",
-        "until",
-      ),
-
-    ...recoveryCommandChainRules("recovering", "pipeline", ($) =>
-      field("recovery", $.command_recovery),
-    ),
-
     separator_op: (_) => choice("&", ";"),
 
     _operator_separator: ($) =>
-      seq(
-        field("operator", $.separator_op),
-        repeat(prec(2, $.line_continuation)),
-        optional(field("linebreak", $.linebreak)),
-      ),
+      separatorOperatorLayout($, field("operator", $.separator_op)),
 
     _newline_separator: ($) => field("newlines", $.newline_list),
 
@@ -1691,12 +1311,7 @@ module.exports = grammar({
         field("linebreak", alias($._here_document_led_linebreak, $.linebreak)),
       ),
 
-    _sequential_operator_separator: ($) =>
-      seq(
-        ";",
-        repeat(prec(2, $.line_continuation)),
-        optional(field("linebreak", $.linebreak)),
-      ),
+    _sequential_operator_separator: ($) => separatorOperatorLayout($, ";"),
 
     _sequential_newline_separator: ($) => field("newlines", $.newline_list),
 
@@ -1769,27 +1384,6 @@ module.exports = grammar({
               "terminator",
               alias($._trailing_newline_separator, $.separator),
             ),
-            prec.dynamic(
-              RECOVERY_PRECEDENCE.structural,
-              seq(
-                optional($._closing_layout),
-                field("terminator", prec(100, $.separator_recovery)),
-              ),
-            ),
-          ),
-        ),
-      ),
-
-    _recovering_empty_compound_list: ($) =>
-      prec.dynamic(
-        RECOVERY_PRECEDENCE.local,
-        prec.right(
-          seq(
-            optional(field("leading", $.linebreak)),
-            optional($._horizontal_layout),
-            $._compound_list_boundary,
-            optional($._horizontal_layout),
-            recoveryField($),
           ),
         ),
       ),
@@ -1800,45 +1394,35 @@ module.exports = grammar({
 
     bang: ($) => $._bang_token,
 
-    if_keyword: ($) => reservedWord($, $._if_keyword),
+    if_keyword: ($) => seq($._if_keyword, "if"),
 
-    then_keyword: ($) => reservedWord($, $._then_keyword),
+    then_keyword: ($) => seq($._then_keyword, "then"),
 
-    elif_keyword: ($) => reservedWord($, $._elif_keyword),
+    elif_keyword: ($) => seq($._elif_keyword, "elif"),
 
-    else_keyword: ($) => reservedWord($, $._else_keyword),
+    else_keyword: ($) => seq($._else_keyword, "else"),
 
-    fi_keyword: ($) => reservedWord($, $._fi_keyword),
+    fi_keyword: ($) => seq($._fi_keyword, "fi"),
 
-    for_keyword: ($) => reservedWord($, $._for_keyword),
+    for_keyword: ($) => seq($._for_keyword, "for"),
 
-    in_keyword: ($) => reservedWord($, $._in_keyword),
+    in_keyword: ($) => seq($._in_keyword, "in"),
 
-    do_keyword: ($) => reservedWord($, $._do_keyword),
+    do_keyword: ($) => seq($._do_keyword, "do"),
 
-    done_keyword: ($) => reservedWord($, $._done_keyword),
+    done_keyword: ($) => seq($._done_keyword, "done"),
 
-    case_keyword: ($) => reservedWord($, $._case_keyword),
+    case_keyword: ($) => seq($._case_keyword, "case"),
 
-    esac_keyword: ($) => reservedWord($, $._esac_keyword),
+    esac_keyword: ($) => seq($._esac_keyword, "esac"),
 
-    while_keyword: ($) => reservedWord($, $._while_keyword),
+    while_keyword: ($) => seq($._while_keyword, "while"),
 
-    until_keyword: ($) => reservedWord($, $._until_keyword),
+    until_keyword: ($) => seq($._until_keyword, "until"),
 
-    function_definition: ($) =>
-      choice(
-        functionDefinitionWithBody($, $.function_body),
-        recoveringFunctionDefinition($),
-      ),
+    function_definition: ($) => functionDefinitionWithBody($, $.function_body),
 
     function_body: ($) => $._redirectable_compound_command,
-
-    _recovering_function_body: ($) =>
-      field(
-        "recovery",
-        alias($._function_body_recovery_boundary, $.compound_command_recovery),
-      ),
 
     fname: ($) => seq($._fname_begin, $._name_token),
 
@@ -1855,66 +1439,26 @@ module.exports = grammar({
         $.until_clause,
       ),
 
-    compound_command_recovery: ($) =>
-      prec.dynamic(
-        RECOVERY_PRECEDENCE.structural,
-        $._compound_command_recovery_boundary,
-      ),
-
     redirect_list: ($) => redirectList($),
 
     brace_group: ($) =>
       seq(
         alias($._left_brace, "{"),
-        choice(
-          seq(
-            compoundListField($, "body"),
-            optional($._closing_layout),
-            choice(alias($._right_brace, "}"), recoveryField($)),
-          ),
-          prec.right(
-            20,
-            seq(
-              emptyCompoundListField($, "body"),
-              choice(alias($._right_brace, "}"), recoveryField($)),
-            ),
-          ),
-        ),
+        compoundListField($, "body"),
+        optional($._closing_layout),
+        alias($._right_brace, "}"),
       ),
 
     subshell: ($) =>
       seq(
         "(",
-        choice(
-          seq(
-            field("body", $.compound_list),
-            optional($._closing_layout),
-            choice(alias($._subshell_close, ")"), subshellRecoveryField($)),
-          ),
-          prec.right(
-            20,
-            seq(
-              emptyCompoundListField($, "body"),
-              choice(alias($._subshell_close, ")"), subshellRecoveryField($)),
-            ),
-          ),
-        ),
+        field("body", $.compound_list),
+        optional($._closing_layout),
+        alias($._subshell_close, ")"),
       ),
 
     for_clause: ($) =>
-      seq(
-        $.for_keyword,
-        choice(
-          seq(repeat($._blank), headerRecoveryField($)),
-          seq(
-            $._word_separator,
-            choice(
-              seq(field("name", $.name), recoveringForTail($)),
-              headerRecoveryField($),
-            ),
-          ),
-        ),
-      ),
+      seq($.for_keyword, $._word_separator, field("name", $.name), forTail($)),
 
     in: ($) => $.in_keyword,
 
@@ -1934,26 +1478,9 @@ module.exports = grammar({
     do_group: ($) =>
       seq(
         $.do_keyword,
-        choice(
-          prec.dynamic(
-            RECOVERY_PRECEDENCE.structural,
-            prec.right(
-              20,
-              seq(
-                emptyCompoundListField($, "body"),
-                choice($.done_keyword, recoveryField($)),
-              ),
-            ),
-          ),
-          seq(
-            compoundListField($, "body"),
-            optional($._closing_layout),
-            choice(
-              prec(20, $.done_keyword),
-              prec.dynamic(RECOVERY_PRECEDENCE.structural, recoveryField($)),
-            ),
-          ),
-        ),
+        compoundListField($, "body"),
+        optional($._closing_layout),
+        prec(20, $.done_keyword),
       ),
 
     if_clause: ($) => prec.right(ifClause($)),
@@ -1966,10 +1493,7 @@ module.exports = grammar({
             $.elif_keyword,
             optional(field("alternative", $.else_part)),
           ),
-          seq(
-            $.else_keyword,
-            choice(recoveryField($), recoverableCompoundListField($, "body")),
-          ),
+          seq($.else_keyword, compoundListField($, "body")),
         ),
       ),
 
@@ -1980,44 +1504,18 @@ module.exports = grammar({
     case_clause: ($) =>
       seq(
         $.case_keyword,
-        choice(
-          seq(repeat($._blank), headerRecoveryField($)),
-          seq(
-            $._word_separator,
-            choice(
-              headerRecoveryField($),
-              seq(
-                field("word", $.word),
-                choice(
-                  seq(optional($._horizontal_layout), recoveryField($)),
-                  seq(
-                    reservedWordLinebreak($),
-                    choice(
-                      recoveryField($),
-                      seq(
-                        field("in", $.in),
-                        linebreakLayout($),
-                        caseClauseItems($),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+        $._word_separator,
+        field("word", $.word),
+        reservedWordLinebreak($),
+        field("in", $.in),
+        linebreakLayout($),
+        caseClauseItems($),
       ),
 
     case_list_ns: ($) =>
       choice(
         field("item", $.case_item_ns),
         seq(field("terminated", $.case_list), field("item", $.case_item_ns)),
-      ),
-
-    _recovering_case_list_ns: ($) =>
-      seq(
-        optional(field("terminated", $.case_list)),
-        field("item", alias($._recovering_case_item_ns, $.case_item_ns)),
       ),
 
     case_list: ($) => repeat1(field("item", $.case_item)),
@@ -2039,25 +1537,6 @@ module.exports = grammar({
               field("body", $.compound_list),
               optional($._closing_layout),
               $._case_item_ns_boundary,
-            ),
-          ),
-        ),
-      ),
-
-    _recovering_case_item_ns: ($) =>
-      seq(
-        field("patterns", $.pattern_list),
-        choice(
-          seq(optional($._closing_layout), directRecoveryField($)),
-          seq(
-            patternClosingLayout($),
-            ")",
-            choice(
-              seq(linebreakLayout($), directRecoveryField($)),
-              prec.dynamic(
-                10,
-                seq(field("body", $.compound_list), directRecoveryField($)),
-              ),
             ),
           ),
         ),
@@ -2186,11 +1665,7 @@ module.exports = grammar({
         field("filename", $.filename),
       ),
 
-    filename: ($) =>
-      choice(
-        field("word", $.word),
-        field("recovery", $.redirection_target_recovery),
-      ),
+    filename: ($) => field("word", $.word),
 
     lessand: (_) => "<&",
 
@@ -2214,13 +1689,10 @@ module.exports = grammar({
     dlessdash: ($) => seq("<<-", $._dlessdash_commit),
 
     here_end: ($) =>
-      choice(
-        seq(
-          $._here_end_begin,
-          field("word", alias($._here_end_source_word, $.word)),
-          $._here_end_commit,
-        ),
-        field("recovery", $.missing_here_end),
+      seq(
+        $._here_end_begin,
+        field("word", alias($._here_end_source_word, $.word)),
+        $._here_end_commit,
       ),
 
     _here_end_source_word: ($) =>
@@ -2233,15 +1705,13 @@ module.exports = grammar({
         ),
       ),
 
-    missing_here_end: ($) => $._missing_here_document_delimiter,
-
     here_document_sequence: ($) =>
       seq(
         optional(
           choice(
             boundaryLineComment($, field("comment", $.comment)),
-            seq($._pre_newline_blank, optional(continuationLedLayoutRun($))),
-            seq($._trailing_continuation_begin, continuationLedLayoutRun($)),
+            seq($._pre_newline_blank, optional($._continuation_led_run)),
+            seq($._trailing_continuation_begin, $._continuation_led_run),
           ),
         ),
         field("line_end", $.here_document_line_end),
@@ -2254,18 +1724,12 @@ module.exports = grammar({
         seq(
           $._here_document_body_start,
           optional(field("body", $.here_document_body)),
-          field(
-            "end",
-            choice($.here_document_end, $.here_document_end_recovery),
-          ),
+          field("end", $.here_document_end),
         ),
         seq(
           $._quoted_here_document_body_start,
           optional(field("body", $.quoted_here_document_body)),
-          field(
-            "end",
-            choice($.here_document_end, $.here_document_end_recovery),
-          ),
+          field("end", $.here_document_end),
         ),
       ),
 
@@ -2790,7 +2254,7 @@ module.exports = grammar({
       seq(
         "'",
         optional($.single_quote_content),
-        choice("'", hereDocumentBoundaryRecovery($), $.input_end_recovery),
+        choice("'", $._here_document_boundary),
       ),
 
     single_quote_content: ($) =>
@@ -2800,7 +2264,7 @@ module.exports = grammar({
       seq(
         '"',
         repeat(doubleQuotedPart($)),
-        choice('"', hereDocumentBoundaryRecovery($), $.input_end_recovery),
+        choice('"', $._here_document_boundary),
       ),
 
     double_quote_text: ($) =>
@@ -2826,7 +2290,7 @@ module.exports = grammar({
               alias($._newline, $.dollar_single_quote_text),
             ),
           ),
-          choice("'", hereDocumentBoundaryRecovery($), $.input_end_recovery),
+          choice("'", $._here_document_boundary),
         ),
       ),
 
@@ -2847,21 +2311,10 @@ module.exports = grammar({
       ),
 
     parameter_expansion: ($) =>
-      parameterExpansion(
-        $,
-        $._braced_parameter_expansion,
-        missingParameterExpansion($, $._parameter_operator_expansion_tail),
-      ),
+      parameterExpansion($, $._braced_parameter_expansion),
 
     _double_quoted_parameter_expansion: ($) =>
-      parameterExpansion(
-        $,
-        $._double_quoted_braced_parameter_expansion,
-        missingParameterExpansion(
-          $,
-          $._double_quoted_parameter_operator_expansion_tail,
-        ),
-      ),
+      parameterExpansion($, $._double_quoted_braced_parameter_expansion),
 
     _braced_parameter_expansion: ($) =>
       bracedParameterExpansion($, $._parameter_expansion_tail),
@@ -2873,18 +2326,7 @@ module.exports = grammar({
       parameterExpansionTail($, $._parameter_operator_expansion_tail),
 
     _parameter_operator_expansion_tail: ($) =>
-      choice(
-        parameterOperatorTail($, $.parameter_word, true),
-        prec.dynamic(
-          RECOVERY_PRECEDENCE.local,
-          recoveringParameterOperatorTail(
-            $,
-            $.parameter_word,
-            $._input_end_recovery,
-            true,
-          ),
-        ),
-      ),
+      parameterOperatorTail($, $.parameter_word, true),
 
     _double_quoted_parameter_expansion_tail: ($) =>
       parameterExpansionTail(
@@ -2893,32 +2335,10 @@ module.exports = grammar({
       ),
 
     _double_quoted_parameter_operator_expansion_tail: ($) =>
-      choice(
-        parameterOperatorTail(
-          $,
-          alias($._double_quoted_parameter_word, $.parameter_word),
-          false,
-        ),
-        prec.dynamic(
-          RECOVERY_PRECEDENCE.local,
-          recoveringParameterOperatorTail(
-            $,
-            alias($._double_quoted_parameter_word, $.parameter_word),
-            $._double_quoted_parameter_tail_recovery_boundary,
-            false,
-          ),
-        ),
-      ),
-
-    parameter_expansion_recovery: ($) => $._input_end_recovery,
-
-    _parameter_missing_recovery: ($) => $._parameter_missing_recovery_boundary,
-
-    _parameter_operator_recovery: ($) =>
-      seq(
-        ":",
-        repeat($.line_continuation),
-        $._parameter_operator_recovery_boundary,
+      parameterOperatorTail(
+        $,
+        alias($._double_quoted_parameter_word, $.parameter_word),
+        false,
       ),
 
     _unbraced_parameter: ($) =>
@@ -3147,10 +2567,7 @@ module.exports = grammar({
       seq(
         backquoteDelimiter($._backquote_start, $._backquote_start_prefix),
         optional(field("body", $.backquote_substitution_body)),
-        choice(
-          backquoteDelimiter($._backquote_end, $._backquote_end_prefix),
-          $.backquote_end_recovery,
-        ),
+        backquoteDelimiter($._backquote_end, $._backquote_end_prefix),
       ),
 
     backquote_substitution_body: ($) => $._substitution_body,
@@ -3164,16 +2581,9 @@ module.exports = grammar({
     _arithmetic_dynamic_expansion_start: ($) =>
       arithmeticExpansionStart($, $._arithmetic_dynamic_left_parenthesis),
 
-    _arithmetic_incomplete_expansion_start: ($) =>
-      arithmeticExpansionStart($, $._arithmetic_incomplete_left_parenthesis),
-
     // The external scanner settles the arithmetic reading at the second left
-    // parenthesis, so these variants are mutually exclusive: a structured
-    // expression, a flat source run around runtime fragments, and an
-    // incomplete expansion recovering at the end of its input or at the
-    // boundary of an enclosing here-document. Racing the readings instead
-    // would let an edited tree keep flat-reading subtrees that an incremental
-    // reparse of the restored source reuses over the structured reading.
+    // parenthesis, so the structured and runtime-fragment readings are
+    // mutually exclusive.
     arithmetic_expansion: ($) =>
       choice(
         closedArithmeticExpansion(
@@ -3187,22 +2597,6 @@ module.exports = grammar({
           $._arithmetic_dynamic_expansion_start,
           $.arithmetic_dynamic_expression,
           optional($._arithmetic_layout),
-        ),
-        seq(
-          $._arithmetic_incomplete_expansion_start,
-          optional($._arithmetic_layout),
-          repeat(
-            seq(
-              choice(
-                $._arithmetic_source_part,
-                $._arithmetic_runtime_fragment,
-                prec.dynamic(RECOVERY_PRECEDENCE.local, "("),
-                prec.dynamic(RECOVERY_PRECEDENCE.local, ")"),
-              ),
-              optional($._arithmetic_layout),
-            ),
-          ),
-          choice($._input_end_recovery, hereDocumentBoundaryRecovery($)),
         ),
       ),
 
@@ -3344,8 +2738,7 @@ module.exports = grammar({
         token(/0[0-7]*/),
       ),
 
-    arithmetic_variable: ($) =>
-      seq(optional($._name_equals_begin), $._name_token),
+    arithmetic_variable: ($) => $._name_token,
 
     _arithmetic_assignment_operator_segment: ($) =>
       arithmeticOperatorSegment(
@@ -3430,7 +2823,7 @@ module.exports = grammar({
       prec.right(
         seq(
           repeat1(choice(...newlineListElements($))),
-          optional(continuationLedLayoutRun($)),
+          optional($._continuation_led_run),
         ),
       ),
 
@@ -3460,7 +2853,7 @@ module.exports = grammar({
     _trailing_continued_blank_line: ($) =>
       seq(
         choice($._pre_newline_blank, $._trailing_continuation_begin),
-        continuationLedLayoutRun($),
+        $._continuation_led_run,
         $._layout_newline,
       ),
 
@@ -3483,7 +2876,7 @@ module.exports = grammar({
         1,
         choice(
           seq($._blank, repeat(choice($._blank, prec(2, $.line_continuation)))),
-          seq($._trailing_continuation_begin, continuationLedLayoutRun($)),
+          seq($._trailing_continuation_begin, $._continuation_led_run),
         ),
       ),
 

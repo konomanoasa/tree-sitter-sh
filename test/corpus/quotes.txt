@@ -254,64 +254,6 @@ tail'
     (newline_list)))
 
 ==================
-An unterminated double quote recovers at the end of input
-==================
-
-echo "open
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (double_quote_text)
-                        (double_quote_text)
-                        (input_end_recovery)))))))))))))
-
-==================
-An unterminated dollar single quote recovers at the end of input
-==================
-
-echo $'open
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (dollar_single_quoted
-                        (dollar_single_quote_text)
-                        (dollar_single_quote_text)
-                        (input_end_recovery)))))))))))))
-
-==================
 Dollar single quote control escapes retain their delimiter value
 ==================
 
@@ -339,34 +281,6 @@ printf $'\c\\'
                         (dollar_single_quote_escape))))))))))))
   trailing: (linebreak
     (newline_list)))
-
-==================
-An unterminated single quote recovers at the end of input
-==================
-
-echo 'open
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (single_quoted
-                        (single_quote_content)
-                        (input_end_recovery)))))))))))))
 
 ==================
 Inherited double quotes keep dollar-single-quote source literal

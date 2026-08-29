@@ -188,6 +188,27 @@ cat 2>output
 #    ^ operator
 #     ^^^^^^ string
 
+cat {fd}>output
+# <- function.call
+#   ^^^^ variable
+#       ^ operator
+#        ^^^^^^ string
+
+case value in [[.hyphen.]][[=e=]]) : ;; esac
+# <- keyword
+#    ^^^^^ string
+#          ^^ keyword
+#             ^ punctuation.bracket
+#              ^^^^^^^^^^ character.special
+#                        ^ punctuation.bracket
+#                         ^ punctuation.bracket
+#                          ^^^^^ character.special
+#                               ^ punctuation.bracket
+#                                ^ punctuation.bracket
+#                                  ^ function.call
+#                                    ^^ operator
+#                                       ^^^^ keyword
+
 printf '%s' \
   value
 # ^^^^^ string
@@ -195,3 +216,4 @@ printf '%s' \
 cat <<'EOF'
 $name \$ text
 EOF
+# <- label

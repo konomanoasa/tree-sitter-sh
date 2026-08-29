@@ -138,6 +138,11 @@
     (double_quoted
       (double_quote_text) @label)))
 
+(here_end
+  word: (word
+    (dollar_single_quoted
+      (dollar_single_quote_text) @label)))
+
 (here_document_end) @label
 
 (cmd_name

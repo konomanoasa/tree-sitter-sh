@@ -533,18 +533,6 @@ printf [$(case x in x) printf ok ;; esac)] "${value#[${other#(}]}"
     (newline_list)))
 
 ==================
-Bracket expressions delegate nested parameter syntax to the grammar
-==================
-
-
-
----
-
-(program
-  (linebreak
-    (newline_list)))
-
-==================
 Initial negation outranks ranges and braces stay members
 ==================
 

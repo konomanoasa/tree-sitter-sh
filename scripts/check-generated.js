@@ -17,9 +17,9 @@ const generatedFiles = [
 ];
 
 const limits = {
-  EXTERNAL_TOKEN_COUNT: 122,
-  STATE_COUNT: 33_500,
-  parserSize: 46_000_000,
+  EXTERNAL_TOKEN_COUNT: 97,
+  STATE_COUNT: 22_000,
+  parserSize: 28_000_000,
 };
 
 function readDefinition(source, name) {

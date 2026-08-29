@@ -259,14 +259,13 @@ OUTER
           end: (here_document_end))))))
 
 ==================
-A delimiter substitution skips nested here-document bodies
+Escaped backslash pairs keep nested document delimiters reachable
 ==================
 
-cat <<$(cat <<\eof
-a here-doc with )
-eof
-)
-after
+: $(( $(cat <<I
+x\\
+I
+) + 1 ))
 
 ---
 
@@ -285,45 +284,39 @@ after
                     (word
                       (literal)))
                   suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (command_substitution
-                              body: (command_substitution_body
-                                (complete_commands
-                                  command: (complete_command
-                                    body: (list
-                                      and_or: (and_or
-                                        pipeline: (pipeline
-                                          sequence: (pipe_sequence
-                                            command: (command
-                                              body: (simple_command
-                                                name: (cmd_name
-                                                  (word
-                                                    (literal)))
-                                                suffix: (cmd_suffix
-                                                  redirect: (io_redirect
-                                                    body: (io_here
-                                                      operator: (dless)
-                                                      end: (here_end
-                                                        word: (word
-                                                          (escaped_character)
-                                                          (literal))))))))))))))
-                                (linebreak
-                                  (newline_list
-                                    (here_document_sequence
-                                      line_end: (here_document_line_end)
-                                      document: (here_document
-                                        body: (quoted_here_document_body
-                                          (quoted_here_document_text))
-                                        end: (here_document_end))))))))))))))))))))
+                    word: (word
+                      (arithmetic_expansion
+                        expression: (arithmetic_binary_expression
+                          left: (command_substitution
+                            body: (command_substitution_body
+                              (complete_commands
+                                command: (complete_command
+                                  body: (list
+                                    and_or: (and_or
+                                      pipeline: (pipeline
+                                        sequence: (pipe_sequence
+                                          command: (command
+                                            body: (simple_command
+                                              name: (cmd_name
+                                                (word
+                                                  (literal)))
+                                              suffix: (cmd_suffix
+                                                redirect: (io_redirect
+                                                  body: (io_here
+                                                    operator: (dless)
+                                                    end: (here_end
+                                                      word: (word
+                                                        (literal))))))))))))))
+                              (linebreak
+                                (newline_list
+                                  (here_document_sequence
+                                    line_end: (here_document_line_end)
+                                    document: (here_document
+                                      body: (here_document_body
+                                        (here_document_text)
+                                        (here_document_escape))
+                                      end: (here_document_end)))))))
+                          operator: (arithmetic_operator)
+                          right: (arithmetic_number)))))))))))))
   trailing: (linebreak
-    (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (quoted_here_document_body
-            (quoted_here_document_text))
-          end: (here_document_end_recovery))))))
+    (newline_list)))

@@ -554,47 +554,7 @@
       "required": false,
       "types": [
         {
-          "type": "arithmetic_expansion",
-          "named": true
-        },
-        {
-          "type": "arithmetic_number",
-          "named": true
-        },
-        {
-          "type": "arithmetic_operator",
-          "named": true
-        },
-        {
-          "type": "arithmetic_variable",
-          "named": true
-        },
-        {
-          "type": "backquote_substitution",
-          "named": true
-        },
-        {
-          "type": "command_substitution",
-          "named": true
-        },
-        {
-          "type": "here_document_end_recovery",
-          "named": true
-        },
-        {
           "type": "line_continuation",
-          "named": true
-        },
-        {
-          "type": "parameter_expansion",
-          "named": true
-        },
-        {
-          "type": "parenthesized_arithmetic_dynamic_source",
-          "named": true
-        },
-        {
-          "type": "parenthesized_arithmetic_source",
           "named": true
         }
       ]
@@ -796,16 +756,6 @@
           }
         ]
       }
-    },
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "backquote_end_recovery",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -853,16 +803,6 @@
             "named": true
           }
         ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
-            "named": true
-          }
-        ]
       }
     },
     "children": {
@@ -882,7 +822,7 @@
     "fields": {
       "in": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "in",
@@ -904,19 +844,9 @@
           }
         ]
       },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
-            "named": true
-          }
-        ]
-      },
       "word": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "word",
@@ -1022,16 +952,6 @@
         "types": [
           {
             "type": "pattern_list",
-            "named": true
-          }
-        ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -1207,7 +1127,7 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "compound_command",
@@ -1219,16 +1139,6 @@
           },
           {
             "type": "simple_command",
-            "named": true
-          }
-        ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "command_recovery",
             "named": true
           }
         ]
@@ -1256,57 +1166,6 @@
     }
   },
   {
-    "type": "command_recovery",
-    "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "do_keyword",
-          "named": true
-        },
-        {
-          "type": "done_keyword",
-          "named": true
-        },
-        {
-          "type": "dsemi",
-          "named": true
-        },
-        {
-          "type": "elif_keyword",
-          "named": true
-        },
-        {
-          "type": "else_keyword",
-          "named": true
-        },
-        {
-          "type": "esac_keyword",
-          "named": true
-        },
-        {
-          "type": "fi_keyword",
-          "named": true
-        },
-        {
-          "type": "in_keyword",
-          "named": true
-        },
-        {
-          "type": "semi_and",
-          "named": true
-        },
-        {
-          "type": "then_keyword",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "command_substitution",
     "named": true,
     "fields": {
@@ -1325,14 +1184,6 @@
       "multiple": true,
       "required": false,
       "types": [
-        {
-          "type": "here_document_end_recovery",
-          "named": true
-        },
-        {
-          "type": "input_end_recovery",
-          "named": true
-        },
         {
           "type": "line_continuation",
           "named": true
@@ -1479,17 +1330,12 @@
     }
   },
   {
-    "type": "compound_command_recovery",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "compound_list",
     "named": true,
     "fields": {
       "body": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "term",
@@ -1507,26 +1353,12 @@
           }
         ]
       },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
-            "named": true
-          }
-        ]
-      },
       "terminator": {
         "multiple": false,
         "required": false,
         "types": [
           {
             "type": "separator",
-            "named": true
-          },
-          {
-            "type": "separator_recovery",
             "named": true
           }
         ]
@@ -1571,16 +1403,6 @@
             "named": true
           }
         ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
-            "named": true
-          }
-        ]
       }
     },
     "children": {
@@ -1622,14 +1444,6 @@
         {
           "type": "dollar_single_quote_text",
           "named": true
-        },
-        {
-          "type": "here_document_end_recovery",
-          "named": true
-        },
-        {
-          "type": "input_end_recovery",
-          "named": true
         }
       ]
     }
@@ -1670,14 +1484,6 @@
         },
         {
           "type": "double_quote_text",
-          "named": true
-        },
-        {
-          "type": "here_document_end_recovery",
-          "named": true
-        },
-        {
-          "type": "input_end_recovery",
           "named": true
         },
         {
@@ -1749,16 +1555,6 @@
             "named": true
           }
         ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
-            "named": true
-          }
-        ]
       }
     },
     "children": {
@@ -1798,19 +1594,9 @@
     "type": "filename",
     "named": true,
     "fields": {
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "redirection_target_recovery",
-            "named": true
-          }
-        ]
-      },
       "word": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "word",
@@ -1831,7 +1617,7 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "do_group",
@@ -1851,20 +1637,10 @@
       },
       "name": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "name",
-            "named": true
-          }
-        ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -1920,20 +1696,10 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "compound_command",
-            "named": true
-          }
-        ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -2030,10 +1796,6 @@
         "types": [
           {
             "type": "here_document_end",
-            "named": true
-          },
-          {
-            "type": "here_document_end_recovery",
             "named": true
           }
         ]
@@ -2149,19 +1911,9 @@
     "type": "here_end",
     "named": true,
     "fields": {
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "missing_here_end",
-            "named": true
-          }
-        ]
-      },
       "word": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "word",
@@ -2187,7 +1939,7 @@
       },
       "condition": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "compound_list",
@@ -2197,20 +1949,10 @@
       },
       "consequence": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "compound_list",
-            "named": true
-          }
-        ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -2460,10 +2202,6 @@
           {
             "type": "separator_op",
             "named": true
-          },
-          {
-            "type": "separator_recovery",
-            "named": true
           }
         ]
       }
@@ -2481,11 +2219,6 @@
   },
   {
     "type": "literal",
-    "named": true,
-    "fields": {}
-  },
-  {
-    "type": "missing_here_end",
     "named": true,
     "fields": {}
   },
@@ -2572,16 +2305,6 @@
           }
         ]
       },
-      "recovery": {
-        "multiple": true,
-        "required": false,
-        "types": [
-          {
-            "type": "parameter_expansion_recovery",
-            "named": true
-          }
-        ]
-      },
       "word": {
         "multiple": false,
         "required": false,
@@ -2593,25 +2316,6 @@
         ]
       }
     },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "here_document_end_recovery",
-          "named": true
-        },
-        {
-          "type": "line_continuation",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
-    "type": "parameter_expansion_recovery",
-    "named": true,
-    "fields": {},
     "children": {
       "multiple": true,
       "required": false,
@@ -3711,17 +3415,9 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": true,
+      "multiple": false,
       "required": false,
       "types": [
-        {
-          "type": "here_document_end_recovery",
-          "named": true
-        },
-        {
-          "type": "input_end_recovery",
-          "named": true
-        },
         {
           "type": "single_quote_content",
           "named": true
@@ -3744,16 +3440,6 @@
         "types": [
           {
             "type": "compound_list",
-            "named": true
-          }
-        ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -3896,7 +3582,7 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "do_group",
@@ -3906,20 +3592,10 @@
       },
       "condition": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "compound_list",
-            "named": true
-          }
-        ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -3956,7 +3632,7 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "do_group",
@@ -3966,20 +3642,10 @@
       },
       "condition": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "compound_list",
-            "named": true
-          }
-        ]
-      },
-      "recovery": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "compound_command_recovery",
             "named": true
           }
         ]
@@ -4323,10 +3989,6 @@
     "named": false
   },
   {
-    "type": "backquote_end_recovery",
-    "named": true
-  },
-  {
     "type": "case",
     "named": false
   },
@@ -4387,10 +4049,6 @@
     "named": true
   },
   {
-    "type": "here_document_end_recovery",
-    "named": true
-  },
-  {
     "type": "here_document_escape",
     "named": true
   },
@@ -4405,10 +4063,6 @@
   {
     "type": "in",
     "named": false
-  },
-  {
-    "type": "input_end_recovery",
-    "named": true
   },
   {
     "type": "lessand",
@@ -4432,14 +4086,6 @@
   },
   {
     "type": "quoted_here_document_text",
-    "named": true
-  },
-  {
-    "type": "redirection_target_recovery",
-    "named": true
-  },
-  {
-    "type": "separator_recovery",
     "named": true
   },
   {

@@ -626,59 +626,6 @@ x=1 done arg
     (newline_list)))
 
 ==================
-Closing reserved words at command positions are owned by command recovery
-==================
-
-then
-done
-esac
-in
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (command_recovery
-                  (then_keyword))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (command_recovery
-                  (done_keyword))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (command_recovery
-                  (esac_keyword))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (command_recovery
-                  (in_keyword)))))))))
-  (linebreak
-    (newline_list)))
-
-==================
 Reserved closer spellings remain arguments inside compound commands
 ==================
 
