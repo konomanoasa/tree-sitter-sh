@@ -52,7 +52,10 @@ before(() => {
   runtimeDirectory = createEnvironmentDirectory("tree-sitter-sh-parser");
   contractsQuery = path.join(runtimeDirectory, "contracts.scm");
   fs.writeFileSync(contractsQuery, contractsQuerySource);
-  parserLibrary = path.join(runtimeDirectory, "parser");
+  parserLibrary = path.join(
+    runtimeDirectory,
+    process.platform === "win32" ? "parser.dll" : "parser",
+  );
   runTreeSitter(["build", "--output", parserLibrary, grammarDirectory], {
     environmentDirectory: runtimeDirectory,
   });

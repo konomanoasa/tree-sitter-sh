@@ -6,13 +6,14 @@
       "title": "POSIX sh",
       "scope": "source.sh",
       "file-types": ["sh"],
-      "injection-regex": "^(sh|shell)$"
+      "injection-regex": "^(sh|shell)$",
+      "highlights": "queries/highlights.scm"
     }
   ],
   "metadata": {
     "version": "0.1.0",
     "license": "MIT",
-    "description": "A Tree-sitter grammar for POSIX sh.",
+    "description": "Tree-sitter grammar for POSIX sh.",
     "authors": [
       {
         "name": "konomanoasa"
