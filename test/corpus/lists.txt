@@ -309,6 +309,39 @@ Pipeline negation permits continued layout before its command
     (newline_list)))
 
 ==================
+A bang past the pipeline head stays an ordinary word
+==================
+
+echo hi | !
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)))))
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 Pipelines permit linebreaks after pipe operators
 ==================
 

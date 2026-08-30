@@ -8,6 +8,28 @@ const {
   repositoryDirectory,
 } = require("./tree-sitter");
 
+const bindingIncludeDirectory = path.join(repositoryDirectory, "bindings", "c");
+const bindingHeaderSource = path.join(
+  bindingIncludeDirectory,
+  "tree_sitter",
+  "tree-sitter-sh.h",
+);
+const bindingContractSource = path.join(
+  repositoryDirectory,
+  "test/binding.test.c",
+);
+const scannerSource = path.join(grammarDirectory, "src/scanner.c");
+const scannerContractSource = path.join(
+  repositoryDirectory,
+  "test/scanner.test.c",
+);
+const cSources = [
+  bindingHeaderSource,
+  bindingContractSource,
+  scannerSource,
+  scannerContractSource,
+];
+
 function run(command, arguments_, options = {}) {
   const result = childProcess.spawnSync(command, arguments_, {
     cwd: repositoryDirectory,
@@ -119,7 +141,7 @@ function checkExternalTokenOrder(scannerSource) {
   }
 }
 
-const temporaryDirectory = createEnvironmentDirectory("tree-sitter-sh-scanner");
+const temporaryDirectory = createEnvironmentDirectory("tree-sitter-sh-c");
 
 try {
   const requestedArguments = process.argv.slice(2);
@@ -127,35 +149,30 @@ try {
     requestedArguments.length > 1 ||
     (requestedArguments.length === 1 && requestedArguments[0] !== "--write")
   ) {
-    throw new Error("Usage: node scripts/check-scanner.js [--write]");
+    throw new Error("Usage: node scripts/check-c.js [--write]");
   }
 
   const { clang, clangd, clangFormat } = resolveTools();
-  const scannerSource = path.join(grammarDirectory, "src/scanner.c");
-  const scannerContractSource = path.join(
-    repositoryDirectory,
-    "test/scanner.test.c",
-  );
 
   if (requestedArguments[0] === "--write") {
-    run(clangFormat, ["-i", scannerSource, scannerContractSource], {
+    run(clangFormat, ["-i", ...cSources], {
       stdio: "inherit",
     });
   } else {
-    run(
-      clangFormat,
-      ["--dry-run", "--Werror", scannerSource, scannerContractSource],
-      { stdio: "inherit" },
-    );
+    run(clangFormat, ["--dry-run", "--Werror", ...cSources], {
+      stdio: "inherit",
+    });
 
     checkExternalTokenOrder(scannerSource);
 
     const scannerReuseObject = path.join(temporaryDirectory, "scanner-reuse.o");
-    const commonArguments = [
-      "-Wall",
-      "-Wextra",
-      "-Werror",
-      "-pedantic",
+    const warningArguments = ["-Wall", "-Wextra", "-Werror", "-pedantic"];
+    const bindingArguments = [
+      ...warningArguments,
+      `-I${bindingIncludeDirectory}`,
+    ];
+    const scannerArguments = [
+      ...warningArguments,
       `-I${path.join(grammarDirectory, "src")}`,
     ];
 
@@ -164,7 +181,29 @@ try {
         arguments: [
           clang,
           "-std=c17",
-          ...commonArguments,
+          "-xc",
+          "-fsyntax-only",
+          bindingHeaderSource,
+        ],
+        directory: repositoryDirectory,
+        file: bindingHeaderSource,
+      },
+      {
+        arguments: [
+          clang,
+          "-std=c17",
+          ...bindingArguments,
+          "-fsyntax-only",
+          bindingContractSource,
+        ],
+        directory: repositoryDirectory,
+        file: bindingContractSource,
+      },
+      {
+        arguments: [
+          clang,
+          "-std=c17",
+          ...scannerArguments,
           "-fsyntax-only",
           scannerSource,
         ],
@@ -178,7 +217,7 @@ try {
         arguments: [
           clang,
           "-std=c17",
-          ...commonArguments,
+          ...scannerArguments,
           "-Wno-unused-function",
           "-fsyntax-only",
           scannerContractSource,
@@ -192,11 +231,12 @@ try {
       `${JSON.stringify(compileCommands)}\n`,
     );
 
-    for (const source of [scannerSource, scannerContractSource]) {
+    for (const source of cSources) {
       run(
         clangd,
         [
           "--log=error",
+          "--tweaks=",
           `--compile-commands-dir=${temporaryDirectory}`,
           `--check=${source}`,
         ],
@@ -205,7 +245,14 @@ try {
     }
 
     for (const standard of ["c99", "c17"]) {
-      const standardArguments = [`-std=${standard}`, ...commonArguments];
+      const bindingStandardArguments = [
+        `-std=${standard}`,
+        ...bindingArguments,
+      ];
+      const scannerStandardArguments = [
+        `-std=${standard}`,
+        ...scannerArguments,
+      ];
       const scannerContract = path.join(
         temporaryDirectory,
         `scanner-contract-${standard}`,
@@ -215,19 +262,33 @@ try {
         `scanner-reuse-contract-${standard}`,
       );
 
-      run(clang, [...standardArguments, "-fsyntax-only", scannerSource], {
-        stdio: "inherit",
-      });
       run(
         clang,
-        [...standardArguments, scannerContractSource, "-o", scannerContract],
+        [...bindingStandardArguments, "-fsyntax-only", bindingContractSource],
+        { stdio: "inherit" },
+      );
+      run(
+        clang,
+        [...scannerStandardArguments, "-fsyntax-only", scannerSource],
+        {
+          stdio: "inherit",
+        },
+      );
+      run(
+        clang,
+        [
+          ...scannerStandardArguments,
+          scannerContractSource,
+          "-o",
+          scannerContract,
+        ],
         { stdio: "inherit" },
       );
       run(scannerContract, [], { stdio: "inherit" });
       run(
         clang,
         [
-          ...standardArguments,
+          ...scannerStandardArguments,
           "-DTREE_SITTER_REUSE_ALLOCATOR",
           scannerContractSource,
           "-o",
@@ -242,7 +303,7 @@ try {
       clang,
       [
         "-std=c17",
-        ...commonArguments,
+        ...scannerArguments,
         "-DTREE_SITTER_REUSE_ALLOCATOR",
         "-c",
         scannerSource,

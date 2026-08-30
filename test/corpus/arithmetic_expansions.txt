@@ -1053,6 +1053,17 @@ printf "$((1 + ))"
     (newline_list)))
 
 ==================
+An empty expression leaves arithmetic for an invalid empty subshell
+:error
+==================
+
+printf "$(())" "$((  ))" "$((()))"
+
+---
+
+
+
+==================
 A top-level comma leaves arithmetic for command substitution
 ==================
 

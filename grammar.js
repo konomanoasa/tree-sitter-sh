@@ -254,12 +254,6 @@ const lineContinuationRun = ($) => prec.right(1, repeat1($.line_continuation));
 
 const parameterBraceClose = ($) => choice("}", $._here_document_boundary);
 
-const postOperatorLayout = ($) =>
-  choice(
-    seq($.linebreak, optional($._horizontal_layout)),
-    optional($._horizontal_layout),
-  );
-
 const arithmeticBinaryExpression = ($, left, right, operatorSegment) =>
   prec.left(
     seq(
@@ -703,6 +697,12 @@ const parameterOperatorTail = ($, word, wordTrailingContinuations) =>
 
 const parameterExpansionTail = ($, operatorTail) =>
   choice(parameterBraceClose($), operatorTail);
+
+const parameterPatternSource = ($) =>
+  choice(
+    $._parameter_tilde_source,
+    seq($._parameter_pattern_part, optional($._parameter_source_tail)),
+  );
 
 const caseClauseItems = ($) =>
   choice(
@@ -1234,7 +1234,7 @@ module.exports = grammar({
             $._and_or_continuation,
             optional($._horizontal_layout),
             field("operator", choice($.and_if, $.or_if)),
-            postOperatorLayout($),
+            linebreakLayout($),
             field("pipeline", $.pipeline),
           ),
         ),
@@ -1256,7 +1256,7 @@ module.exports = grammar({
             $._pipe_continuation,
             optional($._horizontal_layout),
             "|",
-            postOperatorLayout($),
+            linebreakLayout($),
             field("command", $.command),
           ),
         ),
@@ -2403,11 +2403,7 @@ module.exports = grammar({
 
     parameter_pattern_operator: (_) => prec(2, choice("%%", "##", "%", "#")),
 
-    parameter_word: ($) =>
-      choice(
-        $._parameter_tilde_source,
-        seq($._parameter_pattern_part, optional($._parameter_source_tail)),
-      ),
+    parameter_word: ($) => parameterPatternSource($),
 
     _double_quoted_parameter_word: ($) =>
       seq(
@@ -2432,14 +2428,7 @@ module.exports = grammar({
     _double_quoted_parameter_word_part: ($) =>
       choice($._double_quoted_parameter_word_lead_part, $.line_continuation),
 
-    parameter_pattern: ($) =>
-      prec.right(
-        1,
-        choice(
-          $._parameter_tilde_source,
-          seq($._parameter_pattern_part, optional($._parameter_source_tail)),
-        ),
-      ),
+    parameter_pattern: ($) => prec.right(1, parameterPatternSource($)),
 
     _parameter_source_tail: ($) => repeat1($._parameter_pattern_part),
 
