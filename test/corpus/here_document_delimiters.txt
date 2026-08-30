@@ -1103,3 +1103,192 @@ $v
                                   end: (here_document_end)))))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+A case pattern esac after a pipe stays in the substitution delimiter
+==================
+
+cat <<$(case q in x|esac) k;; esac)
+body
+$(case q in x|esac) k;; esac)
+echo after
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (command_substitution
+                              (command_substitution_body
+                                (complete_commands
+                                  (complete_command
+                                    (list
+                                      (and_or
+                                        (pipeline
+                                          (pipe_sequence
+                                            (command
+                                              (compound_command
+                                                (case_clause
+                                                  (case_keyword)
+                                                  (word
+                                                    (literal))
+                                                  (in
+                                                    (in_keyword))
+                                                  (case_list
+                                                    (case_item
+                                                      (pattern_list
+                                                        (word
+                                                          (literal))
+                                                        (word
+                                                          (literal)))
+                                                      (compound_list
+                                                        (term
+                                                          (and_or
+                                                            (pipeline
+                                                              (pipe_sequence
+                                                                (command
+                                                                  (simple_command
+                                                                    (cmd_name
+                                                                      (word
+                                                                        (literal))))))))))
+                                                      (dsemi)))
+                                                  (esac_keyword))))))))))))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+A parenthesized esac case pattern stays in the substitution delimiter
+==================
+
+cat <<$(case x in (esac) y;; esac)
+body
+$(case x in (esac) y;; esac)
+echo after
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (command_substitution
+                              (command_substitution_body
+                                (complete_commands
+                                  (complete_command
+                                    (list
+                                      (and_or
+                                        (pipeline
+                                          (pipe_sequence
+                                            (command
+                                              (compound_command
+                                                (case_clause
+                                                  (case_keyword)
+                                                  (word
+                                                    (literal))
+                                                  (in
+                                                    (in_keyword))
+                                                  (case_list
+                                                    (case_item
+                                                      (pattern_list
+                                                        (word
+                                                          (literal)))
+                                                      (compound_list
+                                                        (term
+                                                          (and_or
+                                                            (pipeline
+                                                              (pipe_sequence
+                                                                (command
+                                                                  (simple_command
+                                                                    (cmd_name
+                                                                      (word
+                                                                        (literal))))))))))
+                                                      (dsemi)))
+                                                  (esac_keyword))))))))))))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+A double-quoted delimiter newline keeps the captured document
+:error
+==================
+
+cat <<"B
+C"
+body
+echo after
+
+---
+

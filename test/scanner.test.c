@@ -2938,7 +2938,10 @@ static void assert_here_document_line_backslash_parity(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-static void assert_uncommitted_here_document_delimiter_clears_on_newline(void) {
+// Newlines reset only the pre-scan operator flags. A captured delimiter
+// survives them because the here-end word itself can contain newline tokens
+// (inside double-quotes or a nested here-document body) before its commit.
+static void assert_newline_resets_delimiter_flags_but_keeps_captures(void) {
   bool valid_symbols[TOKEN_COUNT] = {false};
   valid_symbols[NEWLINE] = true;
   const int32_t input[] = {'\n'};
@@ -2980,9 +2983,96 @@ static void assert_uncommitted_here_document_delimiter_clears_on_newline(void) {
     1,
     0
   );
-  assert(uncommitted->captured_count == 0);
+  assert(uncommitted->captured_count == 1);
   assert(uncommitted->pending_count == 0);
+  assert(move_captured_document_to_pending(uncommitted));
+  assert(uncommitted->captured_count == 0);
+  assert(uncommitted->pending_count == 1);
   tree_sitter_sh_external_scanner_destroy(uncommitted);
+}
+
+static void finish_tracked_delimiter_word(
+  struct CaseTrackerBuffer *cases,
+  struct DelimiterGroupBuffer *groups,
+  const char *word
+) {
+  for (const char *character = word; *character != '\0'; character += 1) {
+    track_delimiter_word_character(&groups->data[0].word, *character);
+  }
+  assert(finish_delimiter_word(cases, groups, 1));
+}
+
+// esac terminates a tracked case only as the first token of a pattern; after
+// another pattern word it is an ordinary word and the case stays open.
+static void assert_case_pattern_esac_terminates_only_at_first_token(void) {
+  struct DelimiterGroupBuffer groups = {0};
+  struct CaseTrackerBuffer cases = {0};
+  assert(push_delimiter_group(
+    &groups,
+    ')',
+    DELIMITER_GROUP_COMMAND,
+    DELIMITER_UNQUOTED
+  ));
+
+  assert(append_case_tracker(&cases, 1));
+  cases.data[0].state = CASE_TRACKER_EXPECT_PATTERN;
+  finish_tracked_delimiter_word(&cases, &groups, "esac");
+  assert(cases.length == 0);
+
+  assert(append_case_tracker(&cases, 1));
+  cases.data[0].state = CASE_TRACKER_EXPECT_PATTERN;
+  finish_tracked_delimiter_word(&cases, &groups, "x");
+  assert(cases.length == 1);
+  assert(cases.data[0].state == CASE_TRACKER_IN_PATTERN);
+  finish_tracked_delimiter_word(&cases, &groups, "esac");
+  assert(cases.length == 1);
+  assert(cases.data[0].state == CASE_TRACKER_IN_PATTERN);
+
+  ts_free(groups.data);
+  ts_free(cases.data);
+}
+
+// Reserved prefixes such as `if` keep the next word at command start in both
+// case-tracking clients, so a case after them still begins a tracked case.
+static void assert_command_prefixes_keep_case_tracking(void) {
+  struct DelimiterGroupBuffer groups = {0};
+  struct CaseTrackerBuffer cases = {0};
+  assert(push_delimiter_group(
+    &groups,
+    ')',
+    DELIMITER_GROUP_COMMAND,
+    DELIMITER_UNQUOTED
+  ));
+
+  finish_tracked_delimiter_word(&cases, &groups, "if");
+  assert(groups.data[0].command_start);
+  finish_tracked_delimiter_word(&cases, &groups, "case");
+  assert(cases.length == 1);
+  assert(cases.data[0].state == CASE_TRACKER_EXPECT_WORD);
+  assert(!groups.data[0].command_start);
+
+  ts_free(groups.data);
+  ts_free(cases.data);
+
+  struct CaseTracker body = {.depth = 1, .state = CASE_TRACKER_BODY};
+  assert(
+    case_tracker_note_word(&body, CASE_WORD_COMMAND_PREFIX, true) ==
+    CASE_TRACKER_NOTE_COMMAND_PREFIX
+  );
+  assert(
+    case_tracker_note_word(&body, CASE_WORD_CASE, true) ==
+    CASE_TRACKER_NOTE_BEGIN
+  );
+  assert(
+    case_tracker_note_word(&body, CASE_WORD_ESAC, true) == CASE_TRACKER_NOTE_END
+  );
+  assert(
+    case_tracker_note_word(NULL, CASE_WORD_ESAC, true) == CASE_TRACKER_NOTE_WORD
+  );
+  assert(
+    case_tracker_note_word(&body, CASE_WORD_CASE, false) ==
+    CASE_TRACKER_NOTE_WORD
+  );
 }
 
 static void assert_io_location_marks_the_full_token(void) {
@@ -3289,7 +3379,9 @@ int main(void) {
   assert_tilde_end_marker_contract();
   assert_nul_and_eof_are_distinct();
   assert_an_open_backquote_ends_tokens();
-  assert_uncommitted_here_document_delimiter_clears_on_newline();
+  assert_newline_resets_delimiter_flags_but_keeps_captures();
+  assert_case_pattern_esac_terminates_only_at_first_token();
+  assert_command_prefixes_keep_case_tracking();
   assert_io_location_marks_the_full_token();
   assert_redirect_list_begin_contract();
   assert_name_equals_begin_contract();

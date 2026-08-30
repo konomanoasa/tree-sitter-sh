@@ -95,26 +95,23 @@ const wordPatternSpecialSources = ($) => [
   $.pattern_equivalence_class_source,
 ];
 
-const parameterPatternSpecialSources = ($) => [
-  alias(
-    $._parameter_pattern_character_class_source,
-    $.pattern_character_class_source,
-  ),
-  alias(
-    $._parameter_pattern_collating_symbol_source,
-    $.pattern_collating_symbol_source,
-  ),
-  alias(
-    $._parameter_pattern_equivalence_class_source,
-    $.pattern_equivalence_class_source,
-  ),
-];
-
 const parameterPatternCollatingSymbolSource = ($) =>
   alias(
     $._parameter_pattern_collating_symbol_source,
     $.pattern_collating_symbol_source,
   );
+
+const parameterPatternSpecialSources = ($) => [
+  alias(
+    $._parameter_pattern_character_class_source,
+    $.pattern_character_class_source,
+  ),
+  parameterPatternCollatingSymbolSource($),
+  alias(
+    $._parameter_pattern_equivalence_class_source,
+    $.pattern_equivalence_class_source,
+  ),
+];
 
 const patternSpecialContentCharacters = ($, plain) => [
   plain,

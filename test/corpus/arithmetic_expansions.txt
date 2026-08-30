@@ -1465,3 +1465,307 @@ x=$((1 +
     operator: (arithmetic_operator))
   trailing: (linebreak
     (newline_list)))
+
+==================
+A case pattern esac after a pipe stays inside the validated substitution
+==================
+
+echo $(( $(case q in x|esac) echo 1;; esac) + 1 ))
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_binary_expression
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (compound_command
+                                              (case_clause
+                                                (case_keyword)
+                                                (word
+                                                  (literal))
+                                                (in
+                                                  (in_keyword))
+                                                (case_list
+                                                  (case_item
+                                                    (pattern_list
+                                                      (word
+                                                        (literal))
+                                                      (word
+                                                        (literal)))
+                                                    (compound_list
+                                                      (term
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (literal))))))))))
+                                                    (dsemi)))
+                                                (esac_keyword))))))))))))
+                          (arithmetic_operator)
+                          (arithmetic_number)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+A numeric case word keeps the substitution inside the dynamic reading
+==================
+
+echo $(( $(case 9 in x) echo 1;; esac) 1 ))
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_dynamic_expression
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (compound_command
+                                              (case_clause
+                                                (case_keyword)
+                                                (word
+                                                  (literal))
+                                                (in
+                                                  (in_keyword))
+                                                (case_list
+                                                  (case_item
+                                                    (pattern_list
+                                                      (word
+                                                        (literal)))
+                                                    (compound_list
+                                                      (term
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (literal))))))))))
+                                                    (dsemi)))
+                                                (esac_keyword))))))))))))
+                          (arithmetic_number)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+A case after a command-prefix reserved word stays inside the arithmetic reading
+==================
+
+echo $(( $(if :; then case a in b) echo 1;; esac; fi) + 1 ))
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_binary_expression
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (compound_command
+                                              (if_clause
+                                                (if_keyword)
+                                                (compound_list
+                                                  (term
+                                                    (and_or
+                                                      (pipeline
+                                                        (pipe_sequence
+                                                          (command
+                                                            (simple_command
+                                                              (cmd_name
+                                                                (word
+                                                                  (literal)))))))))
+                                                  (separator
+                                                    (separator_op)))
+                                                (then_keyword)
+                                                (compound_list
+                                                  (term
+                                                    (and_or
+                                                      (pipeline
+                                                        (pipe_sequence
+                                                          (command
+                                                            (compound_command
+                                                              (case_clause
+                                                                (case_keyword)
+                                                                (word
+                                                                  (literal))
+                                                                (in
+                                                                  (in_keyword))
+                                                                (case_list
+                                                                  (case_item
+                                                                    (pattern_list
+                                                                      (word
+                                                                        (literal)))
+                                                                    (compound_list
+                                                                      (term
+                                                                        (and_or
+                                                                          (pipeline
+                                                                            (pipe_sequence
+                                                                              (command
+                                                                                (simple_command
+                                                                                  (cmd_name
+                                                                                    (word
+                                                                                      (literal)))
+                                                                                  (cmd_suffix
+                                                                                    (word
+                                                                                      (literal))))))))))
+                                                                    (dsemi)))
+                                                                (esac_keyword))))))))
+                                                  (separator
+                                                    (separator_op)))
+                                                (fi_keyword))))))))))))
+                          (arithmetic_operator)
+                          (arithmetic_number)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+A case after a brace-group opener stays inside the arithmetic reading
+==================
+
+echo $(( $({ case a in b) echo 1;; esac; }) + 1 ))
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_binary_expression
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (compound_command
+                                              (brace_group
+                                                (compound_list
+                                                  (term
+                                                    (and_or
+                                                      (pipeline
+                                                        (pipe_sequence
+                                                          (command
+                                                            (compound_command
+                                                              (case_clause
+                                                                (case_keyword)
+                                                                (word
+                                                                  (literal))
+                                                                (in
+                                                                  (in_keyword))
+                                                                (case_list
+                                                                  (case_item
+                                                                    (pattern_list
+                                                                      (word
+                                                                        (literal)))
+                                                                    (compound_list
+                                                                      (term
+                                                                        (and_or
+                                                                          (pipeline
+                                                                            (pipe_sequence
+                                                                              (command
+                                                                                (simple_command
+                                                                                  (cmd_name
+                                                                                    (word
+                                                                                      (literal)))
+                                                                                  (cmd_suffix
+                                                                                    (word
+                                                                                      (literal))))))))))
+                                                                    (dsemi)))
+                                                                (esac_keyword))))))))
+                                                  (separator
+                                                    (separator_op))))))))))))))
+                          (arithmetic_operator)
+                          (arithmetic_number)))))))))))))
+  (linebreak
+    (newline_list)))

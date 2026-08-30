@@ -276,15 +276,18 @@ clear_document_array(struct HereDocument **documents, size_t *count) {
   *count = 0;
 }
 
-static void
-discard_uncommitted_here_document_delimiter(struct Scanner *scanner) {
-  clear_document_array(&scanner->captured_documents, &scanner->captured_count);
+// A here-document operator whose delimiter word has not begun cannot span a
+// newline, so the pre-scan flags reset there. Captured delimiters stay until
+// their commit: the word after HERE_END_BEGIN can itself contain newline
+// tokens, inside double-quotes or inside a nested here-document's body.
+static void reset_here_document_delimiter_scan(struct Scanner *scanner) {
   scanner->expecting_delimiter = false;
   scanner->delimiter_strips_tabs = false;
 }
 
 static void clear_scanner(struct Scanner *scanner) {
-  discard_uncommitted_here_document_delimiter(scanner);
+  reset_here_document_delimiter_scan(scanner);
+  clear_document_array(&scanner->captured_documents, &scanner->captured_count);
   clear_document_array(&scanner->pending_documents, &scanner->pending_count);
   clear_document_array(&scanner->active_documents, &scanner->active_count);
   for (size_t index = 0; index < scanner->suspended_frame_count; index += 1) {
@@ -1067,23 +1070,147 @@ struct DelimiterGroupBuffer {
   size_t capacity;
 };
 
-enum DelimiterCaseState {
-  DELIMITER_CASE_EXPECT_WORD,
-  DELIMITER_CASE_EXPECT_IN,
-  DELIMITER_CASE_EXPECT_PATTERN,
-  DELIMITER_CASE_BODY,
+// Case tracking is shared between the here-document delimiter scan and the
+// embedded construct skip: both must know where an unquoted esac or a
+// pattern parenthesis can end a case command nested in substitution source.
+// EXPECT_PATTERN is the first token position of a pattern, where an
+// unquoted esac terminates the case; IN_PATTERN covers the rest of the
+// pattern list, where esac is an ordinary word.
+enum CaseTrackerState {
+  CASE_TRACKER_EXPECT_WORD,
+  CASE_TRACKER_EXPECT_IN,
+  CASE_TRACKER_EXPECT_PATTERN,
+  CASE_TRACKER_IN_PATTERN,
+  CASE_TRACKER_BODY,
 };
 
-struct DelimiterCaseFrame {
-  size_t group_depth;
-  enum DelimiterCaseState state;
+struct CaseTracker {
+  size_t depth;
+  uint8_t state;
 };
 
-struct DelimiterCaseBuffer {
-  struct DelimiterCaseFrame *data;
+static bool case_tracker_in_pattern(uint8_t state) {
+  return (
+    state == CASE_TRACKER_EXPECT_PATTERN || state == CASE_TRACKER_IN_PATTERN
+  );
+}
+
+struct CaseTrackerBuffer {
+  struct CaseTracker *data;
   size_t length;
   size_t capacity;
 };
+
+static struct CaseTracker *
+active_case_tracker(const struct CaseTrackerBuffer *cases, size_t depth) {
+  if (cases->length == 0) {
+    return NULL;
+  }
+  struct CaseTracker *tracker = &cases->data[cases->length - 1];
+  return tracker->depth == depth ? tracker : NULL;
+}
+
+static void
+pop_case_trackers_at_depth(struct CaseTrackerBuffer *cases, size_t depth) {
+  while (cases->length > 0 && cases->data[cases->length - 1].depth >= depth) {
+    cases->length -= 1;
+  }
+}
+
+enum CaseWordKind {
+  CASE_WORD_GENERIC,
+  CASE_WORD_IN,
+  CASE_WORD_ESAC,
+  CASE_WORD_CASE,
+  // Reserved prefixes whose following word is still at command start.
+  CASE_WORD_COMMAND_PREFIX,
+};
+
+static enum CaseWordKind classify_case_word(const char *word) {
+  if (strcmp(word, "in") == 0) {
+    return CASE_WORD_IN;
+  }
+  if (strcmp(word, "esac") == 0) {
+    return CASE_WORD_ESAC;
+  }
+  if (strcmp(word, "case") == 0) {
+    return CASE_WORD_CASE;
+  }
+
+  static const char *const COMMAND_PREFIXES[] = {
+    "!",
+    "{",
+    "if",
+    "then",
+    "elif",
+    "else",
+    "while",
+    "until",
+    "do",
+  };
+  for (
+    size_t index = 0;
+    index < sizeof(COMMAND_PREFIXES) / sizeof(COMMAND_PREFIXES[0]);
+    index += 1
+  ) {
+    if (strcmp(word, COMMAND_PREFIXES[index]) == 0) {
+      return CASE_WORD_COMMAND_PREFIX;
+    }
+  }
+  return CASE_WORD_GENERIC;
+}
+
+enum CaseTrackerNote {
+  CASE_TRACKER_NOTE_WORD,
+  CASE_TRACKER_NOTE_COMMAND_PREFIX,
+  CASE_TRACKER_NOTE_END,
+  CASE_TRACKER_NOTE_BEGIN,
+};
+
+// Advances the tracked case across one completed command word and reports
+// how the caller must react: END pops the active tracker, BEGIN pushes a
+// nested one, and COMMAND_PREFIX leaves the command-start position open.
+static enum CaseTrackerNote case_tracker_note_word(
+  struct CaseTracker *tracker,
+  enum CaseWordKind kind,
+  bool at_command_start
+) {
+  if (tracker != NULL && tracker->state != CASE_TRACKER_BODY) {
+    switch (tracker->state) {
+    case CASE_TRACKER_EXPECT_WORD:
+      tracker->state = CASE_TRACKER_EXPECT_IN;
+      break;
+    case CASE_TRACKER_EXPECT_IN:
+      if (kind == CASE_WORD_IN) {
+        tracker->state = CASE_TRACKER_EXPECT_PATTERN;
+      }
+      break;
+    case CASE_TRACKER_EXPECT_PATTERN:
+      if (kind == CASE_WORD_ESAC) {
+        return CASE_TRACKER_NOTE_END;
+      }
+      tracker->state = CASE_TRACKER_IN_PATTERN;
+      break;
+    default:
+      break;
+    }
+    return CASE_TRACKER_NOTE_WORD;
+  }
+
+  if (!at_command_start) {
+    return CASE_TRACKER_NOTE_WORD;
+  }
+  if (kind == CASE_WORD_ESAC && tracker != NULL) {
+    return CASE_TRACKER_NOTE_END;
+  }
+  if (kind == CASE_WORD_COMMAND_PREFIX) {
+    return CASE_TRACKER_NOTE_COMMAND_PREFIX;
+  }
+  if (kind == CASE_WORD_CASE) {
+    return CASE_TRACKER_NOTE_BEGIN;
+  }
+  return CASE_TRACKER_NOTE_WORD;
+}
 
 static bool grow_element_buffer(
   void **data,
@@ -1110,24 +1237,33 @@ static bool grow_element_buffer(
   return true;
 }
 
-static bool
-append_delimiter_case(struct DelimiterCaseBuffer *cases, size_t group_depth) {
+static bool append_case_tracker(struct CaseTrackerBuffer *cases, size_t depth) {
   if (!grow_element_buffer(
         (void **)&cases->data,
         &cases->capacity,
         cases->length,
-        sizeof(struct DelimiterCaseFrame),
+        sizeof(struct CaseTracker),
         8
       )) {
     return false;
   }
 
-  cases->data[cases->length] = (struct DelimiterCaseFrame){
-    .group_depth = group_depth,
-    .state = DELIMITER_CASE_EXPECT_WORD,
+  cases->data[cases->length] = (struct CaseTracker){
+    .depth = depth,
+    .state = CASE_TRACKER_EXPECT_WORD,
   };
   cases->length += 1;
   return true;
+}
+
+static bool delimiter_group_holds_commands(enum DelimiterGroupKind kind) {
+  return (
+    kind ==
+    DELIMITER_GROUP_COMMAND ||
+    kind ==
+    DELIMITER_GROUP_SUBSHELL ||
+    kind == DELIMITER_GROUP_BACKQUOTE
+  );
 }
 
 static bool push_delimiter_group(
@@ -1155,11 +1291,7 @@ static bool push_delimiter_group(
     .kind = kind,
     .parent_quote = parent_quote,
     .word = {.candidate = true},
-    .command_start = kind ==
-      DELIMITER_GROUP_COMMAND ||
-      kind ==
-      DELIMITER_GROUP_SUBSHELL ||
-      kind == DELIMITER_GROUP_BACKQUOTE,
+    .command_start = delimiter_group_holds_commands(kind),
   };
   groups->length += 1;
   return true;
@@ -1180,19 +1312,6 @@ static bool is_delimiter_word_character(int32_t character) {
   );
 }
 
-static bool delimiter_word_equals(
-  const struct DelimiterWordTracker *word,
-  const char *text
-) {
-  size_t length = strlen(text);
-  return (
-    word->candidate &&
-    word->length ==
-    length &&
-    memcmp(word->text, text, length) == 0
-  );
-}
-
 static void reset_delimiter_word(struct DelimiterWordTracker *word) {
   word->length = 0;
   word->active = false;
@@ -1200,7 +1319,7 @@ static void reset_delimiter_word(struct DelimiterWordTracker *word) {
 }
 
 static bool finish_delimiter_word(
-  struct DelimiterCaseBuffer *cases,
+  struct CaseTrackerBuffer *cases,
   struct DelimiterGroupBuffer *groups,
   size_t group_depth
 ) {
@@ -1211,60 +1330,28 @@ static bool finish_delimiter_word(
     return true;
   }
 
-  bool at_command_start = group->command_start;
-  struct DelimiterCaseFrame *active_case =
-    cases->length == 0 ? NULL : &cases->data[cases->length - 1];
-  if (active_case != NULL && active_case->group_depth == group_depth) {
-    if (active_case->state == DELIMITER_CASE_EXPECT_WORD) {
-      active_case->state = DELIMITER_CASE_EXPECT_IN;
-      group->command_start = false;
-      reset_delimiter_word(word);
-      return true;
-    }
-
-    if (active_case->state == DELIMITER_CASE_EXPECT_IN) {
-      if (delimiter_word_equals(word, "in")) {
-        active_case->state = DELIMITER_CASE_EXPECT_PATTERN;
-      }
-      group->command_start = false;
-      reset_delimiter_word(word);
-      return true;
-    }
-
-    if (
-      (active_case->state ==
-        DELIMITER_CASE_EXPECT_PATTERN ||
-        (active_case->state == DELIMITER_CASE_BODY && at_command_start)) &&
-      delimiter_word_equals(word, "esac")
-    ) {
-      cases->length -= 1;
-      group->command_start = false;
-      reset_delimiter_word(word);
-      return true;
-    }
+  char text[sizeof(word->text) + 1] = {0};
+  if (word->candidate) {
+    memcpy(text, word->text, word->length);
   }
-
-  if (
-    at_command_start &&
-    (delimiter_word_equals(word, "!") ||
-      delimiter_word_equals(word, "{") ||
-      delimiter_word_equals(word, "if") ||
-      delimiter_word_equals(word, "then") ||
-      delimiter_word_equals(word, "elif") ||
-      delimiter_word_equals(word, "else") ||
-      delimiter_word_equals(word, "while") ||
-      delimiter_word_equals(word, "until") ||
-      delimiter_word_equals(word, "do"))
-  ) {
-    group->command_start = true;
+  switch (case_tracker_note_word(
+    active_case_tracker(cases, group_depth),
+    word->candidate ? classify_case_word(text) : CASE_WORD_GENERIC,
+    group->command_start
+  )) {
+  case CASE_TRACKER_NOTE_COMMAND_PREFIX:
     reset_delimiter_word(word);
     return true;
-  }
-
-  if (at_command_start && delimiter_word_equals(word, "case")) {
-    if (!append_delimiter_case(cases, group_depth)) {
+  case CASE_TRACKER_NOTE_END:
+    cases->length -= 1;
+    break;
+  case CASE_TRACKER_NOTE_BEGIN:
+    if (!append_case_tracker(cases, group_depth)) {
       return false;
     }
+    break;
+  default:
+    break;
   }
   group->command_start = false;
   reset_delimiter_word(word);
@@ -1273,18 +1360,14 @@ static bool finish_delimiter_word(
 
 static size_t
 delimiter_command_group_depth(const struct DelimiterGroupBuffer *groups) {
-  if (groups->length == 0) {
+  if (
+    groups->length ==
+    0 ||
+    !delimiter_group_holds_commands(groups->data[groups->length - 1].kind)
+  ) {
     return 0;
   }
-
-  enum DelimiterGroupKind kind = groups->data[groups->length - 1].kind;
-  return (kind ==
-           DELIMITER_GROUP_COMMAND ||
-           kind ==
-           DELIMITER_GROUP_SUBSHELL ||
-           kind == DELIMITER_GROUP_BACKQUOTE)
-    ? groups->length
-    : 0;
+  return groups->length;
 }
 
 static bool
@@ -1308,18 +1391,12 @@ append_repeated_byte(struct ByteBuffer *buffer, uint8_t byte, size_t count) {
 
 static void pop_delimiter_group(
   struct DelimiterGroupBuffer *groups,
-  struct DelimiterCaseBuffer *cases,
+  struct CaseTrackerBuffer *cases,
   enum DelimiterQuote *quote
 ) {
   size_t group_depth = groups->length;
   *quote = groups->data[group_depth - 1].parent_quote;
-  while (
-    cases->length >
-    0 &&
-    cases->data[cases->length - 1].group_depth >= group_depth
-  ) {
-    cases->length -= 1;
-  }
+  pop_case_trackers_at_depth(cases, group_depth);
   groups->length -= 1;
 }
 
@@ -1357,7 +1434,7 @@ static enum DelimiterBackslashResult scan_delimiter_backslash_run(
   TSLexer *lexer,
   struct ByteBuffer *delimiter,
   struct DelimiterGroupBuffer *groups,
-  struct DelimiterCaseBuffer *cases,
+  struct CaseTrackerBuffer *cases,
   enum DelimiterQuote *quote,
   size_t *backquote_depth,
   bool at_delimiter_source_start,
@@ -1925,6 +2002,124 @@ static bool push_dollar_delimiter_group(
   return true;
 }
 
+// Consumes single-quoted delimiter source through the closing quote; the
+// quoting never nests, so the segment reads to completion or input end.
+static bool scan_delimiter_single_quoted_segment(
+  TSLexer *lexer,
+  struct ByteBuffer *delimiter,
+  bool dollar
+) {
+  while (!lexer_at_eof(lexer)) {
+    int32_t character = lexer->lookahead;
+    if (character == '\'') {
+      lexer->advance(lexer, false);
+      return true;
+    }
+    if (dollar && character == '\\') {
+      lexer->advance(lexer, false);
+      if (!scan_dollar_single_quote_escape(lexer, delimiter)) {
+        return false;
+      }
+      continue;
+    }
+    if (!append_codepoint(delimiter, character)) {
+      return false;
+    }
+    lexer->advance(lexer, false);
+  }
+  return false;
+}
+
+// Handles one double-quoted delimiter character; a substitution start hands
+// control back to the group machinery with *quote reset for its interior.
+static bool scan_delimiter_double_quoted_character(
+  TSLexer *lexer,
+  struct ByteBuffer *delimiter,
+  struct DelimiterGroupBuffer *groups,
+  enum DelimiterQuote *quote,
+  size_t *backquote_depth
+) {
+  int32_t character = lexer->lookahead;
+  if (lexer_at_eof(lexer)) {
+    return false;
+  }
+
+  if (character == '"') {
+    *quote = DELIMITER_UNQUOTED;
+    lexer->advance(lexer, false);
+    return true;
+  }
+
+  if (character == '$') {
+    lexer->advance(lexer, false);
+    if (!append_byte(delimiter, '$')) {
+      return false;
+    }
+    if (lexer->lookahead == '(' || lexer->lookahead == '{') {
+      if (!push_dollar_delimiter_group(
+            lexer,
+            delimiter,
+            groups,
+            DELIMITER_DOUBLE_QUOTED
+          )) {
+        return false;
+      }
+      *quote = DELIMITER_UNQUOTED;
+    }
+    return true;
+  }
+
+  if (character == '`') {
+    if (
+      *backquote_depth ==
+      SIZE_MAX ||
+      !append_byte(delimiter, '`') ||
+      !push_delimiter_group(
+        groups,
+        '`',
+        DELIMITER_GROUP_BACKQUOTE,
+        DELIMITER_DOUBLE_QUOTED
+      )
+    ) {
+      return false;
+    }
+    *backquote_depth += 1;
+    *quote = DELIMITER_UNQUOTED;
+    lexer->advance(lexer, false);
+    return true;
+  }
+
+  if (character == '\\') {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead == '\n') {
+      lexer->advance(lexer, false);
+      return true;
+    }
+    if (
+      lexer->lookahead ==
+      '$' ||
+      lexer->lookahead ==
+      '`' ||
+      lexer->lookahead ==
+      '"' ||
+      lexer->lookahead == '\\'
+    ) {
+      if (!append_codepoint(delimiter, lexer->lookahead)) {
+        return false;
+      }
+      lexer->advance(lexer, false);
+      return true;
+    }
+    return append_byte(delimiter, '\\');
+  }
+
+  if (!append_codepoint(delimiter, character)) {
+    return false;
+  }
+  lexer->advance(lexer, false);
+  return true;
+}
+
 static bool scan_here_document_delimiter(
   struct Scanner *scanner,
   TSLexer *lexer,
@@ -1934,7 +2129,7 @@ static bool scan_here_document_delimiter(
   enum DelimiterQuote quote = DELIMITER_UNQUOTED;
   struct ByteBuffer delimiter = {.limit = SCANNER_STATE_CAPACITY};
   struct DelimiterGroupBuffer groups = {0};
-  struct DelimiterCaseBuffer cases = {0};
+  struct CaseTrackerBuffer cases = {0};
   struct HereDocument *nested_documents = NULL;
   size_t nested_document_count = 0;
   size_t nested_delimiter_start = 0;
@@ -1951,92 +2146,30 @@ static bool scan_here_document_delimiter(
   while (valid) {
     int32_t character = lexer->lookahead;
 
-    if (quote == DELIMITER_SINGLE_QUOTED) {
-      if (lexer_at_eof(lexer)) {
-        valid = false;
-      } else if (character == '\'') {
+    if (
+      quote ==
+      DELIMITER_SINGLE_QUOTED ||
+      quote == DELIMITER_DOLLAR_SINGLE_QUOTED
+    ) {
+      valid = scan_delimiter_single_quoted_segment(
+        lexer,
+        &delimiter,
+        quote == DELIMITER_DOLLAR_SINGLE_QUOTED
+      );
+      if (valid) {
         quote = DELIMITER_UNQUOTED;
-        lexer->advance(lexer, false);
-      } else {
-        valid = append_codepoint(&delimiter, character);
-        lexer->advance(lexer, false);
-      }
-      continue;
-    }
-
-    if (quote == DELIMITER_DOLLAR_SINGLE_QUOTED) {
-      if (lexer_at_eof(lexer)) {
-        valid = false;
-      } else if (character == '\'') {
-        quote = DELIMITER_UNQUOTED;
-        lexer->advance(lexer, false);
-      } else if (character == '\\') {
-        lexer->advance(lexer, false);
-        valid = scan_dollar_single_quote_escape(lexer, &delimiter);
-      } else {
-        valid = append_codepoint(&delimiter, character);
-        lexer->advance(lexer, false);
       }
       continue;
     }
 
     if (quote == DELIMITER_DOUBLE_QUOTED) {
-      if (lexer_at_eof(lexer)) {
-        valid = false;
-      } else if (character == '"') {
-        quote = DELIMITER_UNQUOTED;
-        lexer->advance(lexer, false);
-      } else if (character == '$') {
-        lexer->advance(lexer, false);
-        valid = append_byte(&delimiter, '$');
-        if (valid && (lexer->lookahead == '(' || lexer->lookahead == '{')) {
-          valid = push_dollar_delimiter_group(
-            lexer,
-            &delimiter,
-            &groups,
-            DELIMITER_DOUBLE_QUOTED
-          );
-          if (valid) {
-            quote = DELIMITER_UNQUOTED;
-          }
-        }
-      } else if (character == '`') {
-        valid = delimiter_backquote_depth <
-          SIZE_MAX &&
-          append_byte(&delimiter, '`') &&
-          push_delimiter_group(
-            &groups,
-            '`',
-            DELIMITER_GROUP_BACKQUOTE,
-            DELIMITER_DOUBLE_QUOTED
-          );
-        if (valid) {
-          delimiter_backquote_depth += 1;
-          quote = DELIMITER_UNQUOTED;
-          lexer->advance(lexer, false);
-        }
-      } else if (character == '\\') {
-        lexer->advance(lexer, false);
-        if (lexer->lookahead == '\n') {
-          lexer->advance(lexer, false);
-        } else if (
-          lexer->lookahead ==
-          '$' ||
-          lexer->lookahead ==
-          '`' ||
-          lexer->lookahead ==
-          '"' ||
-          lexer->lookahead == '\\'
-        ) {
-          valid = append_codepoint(&delimiter, lexer->lookahead);
-          lexer->advance(lexer, false);
-        } else {
-          valid = append_byte(&delimiter, '\\');
-        }
-      } else {
-        valid = append_codepoint(&delimiter, character);
-        lexer->advance(lexer, false);
-      }
+      valid = scan_delimiter_double_quoted_character(
+        lexer,
+        &delimiter,
+        &groups,
+        &quote,
+        &delimiter_backquote_depth
+      );
       continue;
     }
 
@@ -2085,13 +2218,10 @@ static bool scan_here_document_delimiter(
       }
     }
 
-    struct DelimiterCaseFrame *operator_case =
-      cases.length == 0 ? NULL : &cases.data[cases.length - 1];
-    bool in_case_pattern = operator_case !=
-      NULL &&
-      operator_case->group_depth ==
-      command_group_depth &&
-      operator_case->state == DELIMITER_CASE_EXPECT_PATTERN;
+    struct CaseTracker *operator_case =
+      active_case_tracker(&cases, command_group_depth);
+    bool in_case_pattern =
+      operator_case != NULL && case_tracker_in_pattern(operator_case->state);
     if (
       command_group_depth >
       0 &&
@@ -2367,19 +2497,17 @@ static bool scan_here_document_delimiter(
     if (
       groups.length > 0 && character == groups.data[groups.length - 1].closing
     ) {
-      struct DelimiterCaseFrame *active_case =
-        cases.length == 0 ? NULL : &cases.data[cases.length - 1];
+      struct CaseTracker *active_case =
+        active_case_tracker(&cases, groups.length);
       if (
         character ==
         ')' &&
         active_case !=
         NULL &&
-        active_case->group_depth ==
-        groups.length &&
-        active_case->state == DELIMITER_CASE_EXPECT_PATTERN
+        case_tracker_in_pattern(active_case->state)
       ) {
         valid = append_codepoint(&delimiter, character);
-        active_case->state = DELIMITER_CASE_BODY;
+        active_case->state = CASE_TRACKER_BODY;
         groups.data[groups.length - 1].command_start = true;
         lexer->advance(lexer, false);
         continue;
@@ -2398,17 +2526,12 @@ static bool scan_here_document_delimiter(
       ')' &&
       character == '('
     ) {
-      struct DelimiterCaseFrame *active_case =
-        cases.length == 0 ? NULL : &cases.data[cases.length - 1];
-      if (
-        active_case !=
-        NULL &&
-        active_case->group_depth ==
-        groups.length &&
-        active_case->state == DELIMITER_CASE_EXPECT_PATTERN
-      ) {
+      struct CaseTracker *active_case =
+        active_case_tracker(&cases, groups.length);
+      if (active_case != NULL && case_tracker_in_pattern(active_case->state)) {
         has_word_content = true;
         valid = append_codepoint(&delimiter, character);
+        active_case->state = CASE_TRACKER_IN_PATTERN;
         lexer->advance(lexer, false);
         continue;
       }
@@ -2437,20 +2560,18 @@ static bool scan_here_document_delimiter(
 
     size_t active_command_depth = delimiter_command_group_depth(&groups);
     if (active_command_depth > 0) {
-      struct DelimiterCaseFrame *active_case =
-        cases.length == 0 ? NULL : &cases.data[cases.length - 1];
+      struct CaseTracker *active_case =
+        active_case_tracker(&cases, active_command_depth);
       if (
         character ==
         ';' &&
         active_case !=
         NULL &&
-        active_case->group_depth ==
-        active_command_depth &&
         active_case->state ==
-        DELIMITER_CASE_BODY &&
+        CASE_TRACKER_BODY &&
         (lexer->lookahead == ';' || lexer->lookahead == '&')
       ) {
-        active_case->state = DELIMITER_CASE_EXPECT_PATTERN;
+        active_case->state = CASE_TRACKER_EXPECT_PATTERN;
       }
 
       if (
@@ -2462,11 +2583,7 @@ static bool scan_here_document_delimiter(
         '&' ||
         (character ==
           '|' &&
-          !(active_case !=
-            NULL &&
-            active_case->group_depth ==
-            active_command_depth &&
-            active_case->state == DELIMITER_CASE_EXPECT_PATTERN))
+          !(active_case != NULL && case_tracker_in_pattern(active_case->state)))
       ) {
         groups.data[active_command_depth - 1].command_start = true;
       }
@@ -4034,7 +4151,7 @@ scan_here_document_line_end(struct Scanner *scanner, TSLexer *lexer) {
   if (!activate_startable_pending_documents(scanner)) {
     return false;
   }
-  discard_uncommitted_here_document_delimiter(scanner);
+  reset_here_document_delimiter_scan(scanner);
   scanner->at_here_document_line_start = true;
   lexer->mark_end(lexer);
   lexer->result_symbol = HERE_DOCUMENT_LINE_END;
@@ -4375,25 +4492,11 @@ struct EmbeddedFrame {
   bool command_context;
 };
 
-enum EmbeddedCaseState {
-  EMBEDDED_CASE_EXPECT_WORD,
-  EMBEDDED_CASE_EXPECT_IN,
-  EMBEDDED_CASE_PATTERN,
-  EMBEDDED_CASE_BODY,
-};
-
-struct EmbeddedCaseFrame {
-  size_t frame_count;
-  uint8_t state;
-};
-
 struct EmbeddedSkip {
   struct EmbeddedFrame *frames;
   size_t frame_count;
   size_t frame_capacity;
-  struct EmbeddedCaseFrame *cases;
-  size_t case_count;
-  size_t case_capacity;
+  struct CaseTrackerBuffer cases;
   struct HereDocument *pending;
   size_t pending_count;
   size_t pending_capacity;
@@ -4401,7 +4504,7 @@ struct EmbeddedSkip {
 
 static void clear_embedded_skip(struct EmbeddedSkip *skip) {
   ts_free(skip->frames);
-  ts_free(skip->cases);
+  ts_free(skip->cases.data);
   for (size_t index = 0; index < skip->pending_count; index += 1) {
     clear_document(&skip->pending[index]);
   }
@@ -4431,41 +4534,49 @@ static bool embedded_push_frame(
   return true;
 }
 
-static bool embedded_push_case(struct EmbeddedSkip *skip) {
-  if (!grow_element_buffer(
-        (void **)&skip->cases,
-        &skip->case_capacity,
-        skip->case_count,
-        sizeof(struct EmbeddedCaseFrame),
-        8
-      )) {
-    return false;
-  }
-  skip->cases[skip->case_count] = (struct EmbeddedCaseFrame){
-    .frame_count = skip->frame_count,
-    .state = EMBEDDED_CASE_EXPECT_WORD,
-  };
-  skip->case_count += 1;
-  return true;
-}
-
-static struct EmbeddedCaseFrame *
-embedded_active_case(struct EmbeddedSkip *skip) {
-  if (skip->case_count == 0) {
-    return NULL;
-  }
-  struct EmbeddedCaseFrame *frame = &skip->cases[skip->case_count - 1];
-  return frame->frame_count == skip->frame_count ? frame : NULL;
-}
-
 static void embedded_note_word(struct EmbeddedSkip *skip, bool in_command) {
   if (!in_command) {
     return;
   }
-  struct EmbeddedCaseFrame *active_case = embedded_active_case(skip);
-  if (active_case != NULL && active_case->state == EMBEDDED_CASE_EXPECT_WORD) {
-    active_case->state = EMBEDDED_CASE_EXPECT_IN;
+  (void)case_tracker_note_word(
+    active_case_tracker(&skip->cases, skip->frame_count),
+    CASE_WORD_GENERIC,
+    false
+  );
+}
+
+static bool embedded_word_is_delimited(const TSLexer *lexer) {
+  return (
+    lexer_at_eof(lexer) ||
+    is_horizontal_blank(lexer->lookahead) ||
+    lexer->lookahead ==
+    '\n' ||
+    is_control_operator_start(lexer->lookahead)
+  );
+}
+
+// Pushes the frames for a "$(", "${", or "$((" introducer whose "(" or "{"
+// is at the lookahead, mirroring push_dollar_delimiter_group.
+static bool
+embedded_push_dollar_group(struct EmbeddedSkip *skip, TSLexer *lexer) {
+  bool command_context = lexer->lookahead == '(';
+  if (!embedded_push_frame(
+        skip,
+        command_context ? ')' : '}',
+        command_context
+      )) {
+    return false;
   }
+  lexer->advance(lexer, false);
+
+  if (command_context && lexer->lookahead == '(') {
+    skip->frames[skip->frame_count - 1].command_context = false;
+    if (!embedded_push_frame(skip, ')', false)) {
+      return false;
+    }
+    lexer->advance(lexer, false);
+  }
+  return true;
 }
 
 static bool embedded_append_pending(
@@ -4691,8 +4802,8 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
 
     struct EmbeddedFrame *frame = &skip.frames[skip.frame_count - 1];
     bool in_command = frame->closer == ')' && frame->command_context;
-    struct EmbeddedCaseFrame *active_case =
-      in_command ? embedded_active_case(&skip) : NULL;
+    struct CaseTracker *active_case =
+      in_command ? active_case_tracker(&skip.cases, skip.frame_count) : NULL;
     int32_t character = lexer->lookahead;
 
     if (frame->closer == '`') {
@@ -4735,23 +4846,9 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
       if (character == '$') {
         lexer->advance(lexer, false);
         if (lexer->lookahead == '(' || lexer->lookahead == '{') {
-          bool command_context = lexer->lookahead == '(';
-          if (!embedded_push_frame(
-                &skip,
-                command_context ? ')' : '}',
-                command_context
-              )) {
+          if (!embedded_push_dollar_group(&skip, lexer)) {
             result = ARITHMETIC_VALIDATION_INVALID;
             break;
-          }
-          lexer->advance(lexer, false);
-          if (command_context && lexer->lookahead == '(') {
-            skip.frames[skip.frame_count - 1].command_context = false;
-            if (!embedded_push_frame(&skip, ')', false)) {
-              result = ARITHMETIC_VALIDATION_INVALID;
-              break;
-            }
-            lexer->advance(lexer, false);
           }
           at_command_position = true;
         }
@@ -4812,23 +4909,9 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
       at_word = true;
       at_command_position = false;
       if (lexer->lookahead == '(' || lexer->lookahead == '{') {
-        bool command_context = lexer->lookahead == '(';
-        if (!embedded_push_frame(
-              &skip,
-              command_context ? ')' : '}',
-              command_context
-            )) {
+        if (!embedded_push_dollar_group(&skip, lexer)) {
           result = ARITHMETIC_VALIDATION_INVALID;
           break;
-        }
-        lexer->advance(lexer, false);
-        if (command_context && lexer->lookahead == '(') {
-          skip.frames[skip.frame_count - 1].command_context = false;
-          if (!embedded_push_frame(&skip, ')', false)) {
-            result = ARITHMETIC_VALIDATION_INVALID;
-            break;
-          }
-          lexer->advance(lexer, false);
         }
         at_command_position = true;
         continue;
@@ -4868,7 +4951,7 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
       in_command &&
       character ==
       '<' &&
-      (active_case == NULL || active_case->state == EMBEDDED_CASE_BODY)
+      (active_case == NULL || active_case->state == CASE_TRACKER_BODY)
     ) {
       lexer->advance(lexer, false);
       if (lexer->lookahead != '<') {
@@ -4906,7 +4989,8 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
 
     if (character == '(' && frame->closer == ')') {
       lexer->advance(lexer, false);
-      if (active_case != NULL && active_case->state == EMBEDDED_CASE_PATTERN) {
+      if (active_case != NULL && case_tracker_in_pattern(active_case->state)) {
+        active_case->state = CASE_TRACKER_IN_PATTERN;
         at_word = false;
         continue;
       }
@@ -4922,8 +5006,8 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
     if (character == ')' && frame->closer == ')') {
       if (active_case != NULL) {
         lexer->advance(lexer, false);
-        if (active_case->state == EMBEDDED_CASE_PATTERN) {
-          active_case->state = EMBEDDED_CASE_BODY;
+        if (case_tracker_in_pattern(active_case->state)) {
+          active_case->state = CASE_TRACKER_BODY;
           at_word = false;
           at_command_position = true;
           continue;
@@ -4934,13 +5018,7 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
       }
       lexer->advance(lexer, false);
       skip.frame_count -= 1;
-      while (
-        skip.case_count >
-        0 &&
-        skip.cases[skip.case_count - 1].frame_count > skip.frame_count
-      ) {
-        skip.case_count -= 1;
-      }
+      pop_case_trackers_at_depth(&skip.cases, skip.frame_count + 1);
       at_word = true;
       at_command_position = false;
       continue;
@@ -4959,16 +5037,30 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
       active_case !=
       NULL &&
       active_case->state ==
-      EMBEDDED_CASE_BODY &&
+      CASE_TRACKER_BODY &&
       character == ';'
     ) {
       lexer->advance(lexer, false);
       if (lexer->lookahead == ';' || lexer->lookahead == '&') {
         lexer->advance(lexer, false);
-        active_case->state = EMBEDDED_CASE_PATTERN;
+        active_case->state = CASE_TRACKER_EXPECT_PATTERN;
       }
       at_word = false;
       at_command_position = true;
+      continue;
+    }
+
+    if (!at_word && (character == '{' || character == '!')) {
+      lexer->advance(lexer, false);
+      if (
+        in_command && at_command_position && embedded_word_is_delimited(lexer)
+      ) {
+        at_word = true;
+        continue;
+      }
+      embedded_note_word(&skip, in_command);
+      at_word = true;
+      at_command_position = false;
       continue;
     }
 
@@ -4987,61 +5079,29 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
         lexer->advance(lexer, false);
       }
       word[length] = '\0';
-      int32_t next = lexer->lookahead;
-      bool delimited = lexer_at_eof(lexer) ||
-        is_horizontal_blank(next) ||
-        next ==
-        '\n' ||
-        is_control_operator_start(next) ||
-        next ==
-        '<' ||
-        next ==
-        '>' ||
-        next ==
-        '(' ||
-        next == ')';
+      candidate = candidate && embedded_word_is_delimited(lexer);
       if (in_command) {
-        if (active_case != NULL) {
-          if (active_case->state == EMBEDDED_CASE_EXPECT_WORD) {
-            active_case->state = EMBEDDED_CASE_EXPECT_IN;
-          } else if (
-            active_case->state ==
-            EMBEDDED_CASE_EXPECT_IN &&
-            candidate &&
-            delimited &&
-            strcmp(word, "in") == 0
-          ) {
-            active_case->state = EMBEDDED_CASE_PATTERN;
-          } else if (
-            candidate &&
-            delimited &&
-            strcmp(word, "esac") ==
-            0 &&
-            (active_case->state ==
-              EMBEDDED_CASE_PATTERN ||
-              (active_case->state == EMBEDDED_CASE_BODY && position))
-          ) {
-            skip.case_count -= 1;
-          } else if (
-            candidate &&
-            delimited &&
-            strcmp(word, "case") ==
-            0 &&
-            position &&
-            active_case->state == EMBEDDED_CASE_BODY
-          ) {
-            if (!embedded_push_case(&skip)) {
-              result = ARITHMETIC_VALIDATION_INVALID;
-              break;
-            }
-          }
-        } else if (
-          candidate && delimited && position && strcmp(word, "case") == 0
-        ) {
-          if (!embedded_push_case(&skip)) {
+        switch (case_tracker_note_word(
+          active_case,
+          candidate ? classify_case_word(word) : CASE_WORD_GENERIC,
+          position
+        )) {
+        case CASE_TRACKER_NOTE_COMMAND_PREFIX:
+          at_word = true;
+          continue;
+        case CASE_TRACKER_NOTE_END:
+          skip.cases.length -= 1;
+          break;
+        case CASE_TRACKER_NOTE_BEGIN:
+          if (!append_case_tracker(&skip.cases, skip.frame_count)) {
             result = ARITHMETIC_VALIDATION_INVALID;
-            break;
           }
+          break;
+        default:
+          break;
+        }
+        if (result != ARITHMETIC_VALIDATION_VALID) {
+          break;
         }
       }
       at_word = true;
@@ -5066,6 +5126,7 @@ skip_embedded_construct(TSLexer *lexer, char initial_closer) {
     } else if (character == '<' || character == '>') {
       at_word = false;
     } else {
+      embedded_note_word(&skip, in_command);
       at_word = true;
       at_command_position = false;
     }
@@ -6235,7 +6296,7 @@ static bool scan_active_here_document(
 
   if (valid_symbols[NEWLINE] && lexer->lookahead == '\n') {
     lexer->advance(lexer, false);
-    discard_uncommitted_here_document_delimiter(scanner);
+    reset_here_document_delimiter_scan(scanner);
     scanner->at_here_document_line_start = true;
     lexer->mark_end(lexer);
     lexer->result_symbol = NEWLINE;
@@ -6921,7 +6982,7 @@ static bool scan_dispatch(
     if (!has_startable_pending_document(scanner)) {
       record_comment_line_lookahead(scanner, lexer, valid_symbols);
     }
-    discard_uncommitted_here_document_delimiter(scanner);
+    reset_here_document_delimiter_scan(scanner);
     if (scanner->active_count > 0) {
       scanner->at_here_document_line_start = true;
     }
@@ -7152,7 +7213,7 @@ static bool scan_dispatch(
   if (valid_symbols[NEWLINE] && lexer->lookahead == '\n') {
     lexer->advance(lexer, false);
     lexer->mark_end(lexer);
-    discard_uncommitted_here_document_delimiter(scanner);
+    reset_here_document_delimiter_scan(scanner);
     lexer->result_symbol = NEWLINE;
     return true;
   }
