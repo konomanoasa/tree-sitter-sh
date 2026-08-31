@@ -95,12 +95,16 @@
   ")"
   "{"
   "}"
-  "$("
-  "${"
 ] @punctuation.bracket
 
 (parameter_expansion
   "$" @constant)
+
+(command_substitution
+  "$" @punctuation.bracket)
+
+(arithmetic_expansion
+  "$" @punctuation.bracket)
 
 (single_quoted
   "'" @punctuation.delimiter)

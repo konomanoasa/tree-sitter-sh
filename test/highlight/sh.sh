@@ -109,7 +109,8 @@ printf '%s\n' "$((count += 2 * 3))" "${name:-fallback}" "$@" "$10"
 #                              ^ number
 #                               ^^ punctuation.bracket
 #                                 ^ punctuation.delimiter
-#                                    ^^ punctuation.bracket
+#                                    ^ constant
+#                                     ^ punctuation.bracket
 #                                      ^^^^ variable
 #                                          ^^ operator
 #                                            ^^^^^^^^ string
@@ -122,7 +123,8 @@ printf '%s\n' "$((count += 2 * 3))" "${name:-fallback}" "$@" "$10"
 
 printf '%s\n' "${name#[!a-c]}" file-[[:digit:]]?
 # <- function.call
-#              ^^ punctuation.bracket
+#              ^ constant
+#               ^ punctuation.bracket
 #                ^^^^ variable
 #                    ^ operator
 #                     ^ punctuation.bracket

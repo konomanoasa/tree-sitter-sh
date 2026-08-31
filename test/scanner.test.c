@@ -2776,6 +2776,69 @@ static void assert_arithmetic_left_parenthesis_classification(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
+static void assert_dollar_expansion_start_contract(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[DOLLAR_EXPANSION_START] = true;
+
+  const int32_t expansion_starts[] = {'x', '1', '@', '{', '('};
+  for (
+    size_t index = 0;
+    index < sizeof(expansion_starts) / sizeof(expansion_starts[0]);
+    index += 1
+  ) {
+    const int32_t input[] = {'$', expansion_starts[index]};
+    assert_scan_result(
+      scanner,
+      valid_symbols,
+      input,
+      sizeof(input) / sizeof(input[0]),
+      true,
+      DOLLAR_EXPANSION_START,
+      0,
+      1,
+      expansion_starts[index]
+    );
+  }
+
+  const int32_t literal_followers[] = {'%', '\''};
+  for (
+    size_t index = 0;
+    index < sizeof(literal_followers) / sizeof(literal_followers[0]);
+    index += 1
+  ) {
+    const int32_t input[] = {'$', literal_followers[index]};
+    assert_scan_result(
+      scanner,
+      valid_symbols,
+      input,
+      sizeof(input) / sizeof(input[0]),
+      false,
+      0,
+      0,
+      1,
+      literal_followers[index]
+    );
+  }
+
+  const int32_t lone_dollar[] = {'$'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    lone_dollar,
+    sizeof(lone_dollar) / sizeof(lone_dollar[0]),
+    false,
+    0,
+    0,
+    1,
+    0
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
 static void assert_tilde_end_marker(
   enum TokenType symbol,
   int32_t lookahead,
@@ -3376,6 +3439,7 @@ int main(void) {
   assert_comment_line_end_contract();
   assert_arithmetic_boundary_contract();
   assert_arithmetic_left_parenthesis_classification();
+  assert_dollar_expansion_start_contract();
   assert_tilde_end_marker_contract();
   assert_nul_and_eof_are_distinct();
   assert_an_open_backquote_ends_tokens();

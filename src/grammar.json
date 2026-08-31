@@ -8467,7 +8467,7 @@
                     "members": [
                       {
                         "type": "SYMBOL",
-                        "name": "_unbraced_parameter_start"
+                        "name": "_dollar_expansion_start"
                       },
                       {
                         "type": "STRING",
@@ -8512,15 +8512,24 @@
             "type": "SEQ",
             "members": [
               {
-                "type": "CHOICE",
+                "type": "SEQ",
                 "members": [
                   {
-                    "type": "STRING",
-                    "value": "${"
-                  },
-                  {
-                    "type": "SEQ",
+                    "type": "CHOICE",
                     "members": [
+                      {
+                        "type": "SEQ",
+                        "members": [
+                          {
+                            "type": "SYMBOL",
+                            "name": "_dollar_expansion_start"
+                          },
+                          {
+                            "type": "STRING",
+                            "value": "$"
+                          }
+                        ]
+                      },
                       {
                         "type": "SEQ",
                         "members": [
@@ -8541,12 +8550,12 @@
                             }
                           }
                         ]
-                      },
-                      {
-                        "type": "STRING",
-                        "value": "{"
                       }
                     ]
+                  },
+                  {
+                    "type": "STRING",
+                    "value": "{"
                   }
                 ]
               },
@@ -8592,7 +8601,7 @@
                     "members": [
                       {
                         "type": "SYMBOL",
-                        "name": "_unbraced_parameter_start"
+                        "name": "_dollar_expansion_start"
                       },
                       {
                         "type": "STRING",
@@ -8637,15 +8646,24 @@
             "type": "SEQ",
             "members": [
               {
-                "type": "CHOICE",
+                "type": "SEQ",
                 "members": [
                   {
-                    "type": "STRING",
-                    "value": "${"
-                  },
-                  {
-                    "type": "SEQ",
+                    "type": "CHOICE",
                     "members": [
+                      {
+                        "type": "SEQ",
+                        "members": [
+                          {
+                            "type": "SYMBOL",
+                            "name": "_dollar_expansion_start"
+                          },
+                          {
+                            "type": "STRING",
+                            "value": "$"
+                          }
+                        ]
+                      },
                       {
                         "type": "SEQ",
                         "members": [
@@ -8666,12 +8684,12 @@
                             }
                           }
                         ]
-                      },
-                      {
-                        "type": "STRING",
-                        "value": "{"
                       }
                     ]
+                  },
+                  {
+                    "type": "STRING",
+                    "value": "{"
                   }
                 ]
               },
@@ -10396,15 +10414,24 @@
       ]
     },
     "_command_substitution_start": {
-      "type": "CHOICE",
+      "type": "SEQ",
       "members": [
         {
-          "type": "STRING",
-          "value": "$("
-        },
-        {
-          "type": "SEQ",
+          "type": "CHOICE",
           "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_dollar_expansion_start"
+                },
+                {
+                  "type": "STRING",
+                  "value": "$"
+                }
+              ]
+            },
             {
               "type": "SEQ",
               "members": [
@@ -10425,12 +10452,12 @@
                   }
                 }
               ]
-            },
-            {
-              "type": "STRING",
-              "value": "("
             }
           ]
+        },
+        {
+          "type": "STRING",
+          "value": "("
         }
       ]
     },
@@ -14723,7 +14750,7 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_unbraced_parameter_start"
+      "name": "_dollar_expansion_start"
     },
     {
       "type": "SYMBOL",

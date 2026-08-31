@@ -1314,7 +1314,12 @@ test("substitution, redirection, and token boundaries retain ownership", () => {
 
   const delimiters = writeSource(
     "source-delimiters",
-    lines("printf x$x", "echo `inner`", "echo `printf \\`nested\\` \\$name`"),
+    lines(
+      "printf x$x",
+      "echo `inner`",
+      "echo `printf \\`nested\\` \\$name`",
+      "echo $" + "{x} $(x) $((1))",
+    ),
   );
   const delimiterOutput = parseValidCst(delimiters);
   const backquoteToken = '"\\`"';
@@ -1334,6 +1339,25 @@ test("substitution, redirection, and token boundaries retain ownership", () => {
   ]) {
     assertCstRange(delimiterOutput, range, item);
   }
+  for (const [parentRange, parentItem, childRange, childItem] of [
+    ["3:5-3:9", "parameter_expansion", "3:5-3:6", '"$"'],
+    ["3:5-3:9", "parameter_expansion", "3:6-3:7", '"{"'],
+    ["3:10-3:14", "command_substitution", "3:10-3:11", '"$"'],
+    ["3:10-3:14", "command_substitution", "3:11-3:12", '"("'],
+    ["3:15-3:21", "arithmetic_expansion", "3:15-3:16", '"$"'],
+    ["3:15-3:21", "arithmetic_expansion", "3:16-3:17", '"("'],
+    ["3:15-3:21", "arithmetic_expansion", "3:17-3:18", '"("'],
+  ]) {
+    assertCstDirectChildRange(
+      delimiterOutput,
+      parentRange,
+      parentItem,
+      childRange,
+      childItem,
+    );
+  }
+  assertNotContains(delimiterOutput, '"${"');
+  assertNotContains(delimiterOutput, '"$("');
 
   const interiorBlankInitial = writeSource(
     "substitution-interior-blank-initial",
@@ -1369,6 +1393,67 @@ test("substitution, redirection, and token boundaries retain ownership", () => {
     parameterDelimiterFinal,
     "parameter-delimiter",
     "8 1 $x",
+  );
+
+  const literalDollar = writeSource("literal-dollar", lines("printf $"));
+  const bracedExpansion = writeSource(
+    "braced-expansion",
+    lines("printf $" + "{x}"),
+  );
+  const commandSubstitution = writeSource(
+    "command-substitution",
+    lines("printf $(x)"),
+  );
+  const quotedLiteralDollar = writeSource(
+    "quoted-literal-dollar",
+    lines('printf "$"'),
+  );
+  const quotedCommandSubstitution = writeSource(
+    "quoted-command-substitution",
+    lines('printf "$(x)"'),
+  );
+  assertIncrementalEqualsFresh(
+    literalDollar,
+    bracedExpansion,
+    "insert-braced-expansion-delimiters",
+    "8 0 {x}",
+  );
+  assertIncrementalEqualsFresh(
+    bracedExpansion,
+    literalDollar,
+    "delete-braced-expansion-delimiters",
+    "8 3",
+  );
+  assertIncrementalEqualsFresh(
+    quotedLiteralDollar,
+    quotedCommandSubstitution,
+    "insert-command-substitution-delimiters",
+    "9 0 (x)",
+  );
+  assertIncrementalEqualsFresh(
+    quotedCommandSubstitution,
+    quotedLiteralDollar,
+    "delete-command-substitution-delimiters",
+    "9 3",
+  );
+
+  const arithmeticExpansion = writeSource(
+    "arithmetic-expansion",
+    lines("printf $((x))"),
+  );
+  assertIncrementalEqualsFresh(
+    commandSubstitution,
+    arithmeticExpansion,
+    "promote-command-substitution-to-arithmetic-expansion",
+    "9 0 (",
+    "11 0 )",
+  );
+  assertIncrementalEqualsFresh(
+    arithmeticExpansion,
+    commandSubstitution,
+    "demote-arithmetic-expansion-to-command-substitution",
+    "9 1",
+    "11 1",
   );
 
   const backquoteDelimiterInitial = writeSource(

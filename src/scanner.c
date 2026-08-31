@@ -72,7 +72,7 @@ enum TokenType {
   COMMENT,
   COMMENT_LINE_END,
   HERE_DOCUMENT_BOUNDARY,
-  UNBRACED_PARAMETER_START,
+  DOLLAR_EXPANSION_START,
   BRACED_PARAMETER_NUMBER_START,
   BRACED_POSITIONAL_PARAMETER_START,
   BACKQUOTE_START,
@@ -5796,15 +5796,20 @@ static bool scan_pattern_special_left_bracket(TSLexer *lexer) {
   return true;
 }
 
-static bool scan_unbraced_parameter_start(TSLexer *lexer) {
+static bool scan_dollar_expansion_start(TSLexer *lexer) {
   if (lexer->lookahead != '$') {
     return false;
   }
 
   lexer->mark_end(lexer);
   lexer->advance(lexer, false);
-  if (is_parameter_start_character(lexer->lookahead)) {
-    lexer->result_symbol = UNBRACED_PARAMETER_START;
+  if (
+    is_parameter_start_character(lexer->lookahead) ||
+    lexer->lookahead ==
+    '{' ||
+    lexer->lookahead == '('
+  ) {
+    lexer->result_symbol = DOLLAR_EXPANSION_START;
     return true;
   }
 
@@ -7131,8 +7136,8 @@ static bool scan_dispatch(
     return true;
   }
 
-  if (lexer->lookahead == '$' && valid_symbols[UNBRACED_PARAMETER_START]) {
-    return scan_unbraced_parameter_start(lexer);
+  if (lexer->lookahead == '$' && valid_symbols[DOLLAR_EXPANSION_START]) {
+    return scan_dollar_expansion_start(lexer);
   }
 
   if (lexer->lookahead == '[' && valid_symbols[PATTERN_SPECIAL_LEFT_BRACKET]) {

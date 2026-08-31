@@ -482,6 +482,12 @@ const substitutionCommandsBody = ($, leadingLayout) =>
 const backquoteDollar = ($) =>
   seq(alias($._backquote_dollar_prefix, "\\"), token.immediate("$"));
 
+const dollarExpansionPrefix = ($) =>
+  choice(seq($._dollar_expansion_start, "$"), backquoteDollar($));
+
+const dollarExpansionStart = ($, delimiter) =>
+  seq(dollarExpansionPrefix($), delimiter);
+
 const backquoteDelimiter = (plain, prefix) =>
   choice(alias(plain, "`"), seq(alias(prefix, "\\"), token.immediate("`")));
 
@@ -613,18 +619,13 @@ const patternDeferredBracketMember = ($, character, range, specialSources) =>
     ...structuredSourceParts($),
   );
 
-const bracedParameterStart = ($) => choice("${", seq(backquoteDollar($), "{"));
-
 const parameterExpansion = ($, bracedExpansion) =>
   prec(
     1,
     choice(
+      seq(dollarExpansionPrefix($), field("parameter", $._unbraced_parameter)),
       seq(
-        choice(seq($._unbraced_parameter_start, "$"), backquoteDollar($)),
-        field("parameter", $._unbraced_parameter),
-      ),
-      seq(
-        bracedParameterStart($),
+        dollarExpansionStart($, "{"),
         repeat($.line_continuation),
         choice($._here_document_boundary, bracedExpansion),
       ),
@@ -971,7 +972,7 @@ module.exports = grammar({
     $.comment,
     $._comment_line_end,
     $._here_document_boundary,
-    $._unbraced_parameter_start,
+    $._dollar_expansion_start,
     $._braced_parameter_number_start,
     $._braced_positional_parameter_start,
     $._backquote_start,
@@ -2538,8 +2539,7 @@ module.exports = grammar({
     command_substitution: ($) =>
       commandSubstitution($, $._command_or_arithmetic_substitution_start),
 
-    _command_substitution_start: ($) =>
-      choice("$(", seq(backquoteDollar($), "(")),
+    _command_substitution_start: ($) => dollarExpansionStart($, "("),
 
     _command_or_arithmetic_substitution_start: ($) =>
       prec.right(
