@@ -1,6 +1,6 @@
 LANGUAGE_NAME := tree-sitter-sh
 HOMEPAGE_URL := https://github.com/konomanoasa/tree-sitter-sh
-VERSION := 0.4.0
+VERSION := 0.5.0
 DESCRIPTION := Tree-sitter grammar for POSIX sh.
 
 # repository
