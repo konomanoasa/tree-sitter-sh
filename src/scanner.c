@@ -7205,7 +7205,16 @@ static bool scan_dispatch(
   }
 
   if (lexer->lookahead == '}') {
+    // While the word before the brace may still continue, POSIX keeps an
+    // undelimited right brace inside that word, so the closer must not fire
+    // there. A continuing term alone does not glue: after a complete
+    // compound command no word can follow, the operator or keyword before
+    // the brace has already delimited it, and the closer stays reachable.
     return valid_symbols[RIGHT_BRACE] &&
+      (!valid_symbols[TERM_CONTINUATION] ||
+        !(valid_symbols[WORD_SEPARATOR_BEGIN] ||
+          valid_symbols[ASSIGNMENT_SEPARATOR_BEGIN] ||
+          valid_symbols[REDIRECT_SEPARATOR_BEGIN])) &&
       scan_delimited_character_token(scanner, lexer, RIGHT_BRACE);
   }
 

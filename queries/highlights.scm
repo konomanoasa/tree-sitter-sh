@@ -98,13 +98,22 @@
 ] @punctuation.bracket
 
 (parameter_expansion
-  "$" @constant)
+  "$" @variable
+  parameter: (variable_name))
+
+(parameter_expansion
+  "$" @variable.parameter
+  parameter: (positional_parameter))
+
+(parameter_expansion
+  "$" @variable.builtin
+  parameter: (special_parameter))
 
 (command_substitution
-  "$" @punctuation.bracket)
+  "$" @punctuation.special)
 
 (arithmetic_expansion
-  "$" @punctuation.bracket)
+  "$" @punctuation.special)
 
 (single_quoted
   "'" @punctuation.delimiter)

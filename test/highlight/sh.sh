@@ -36,7 +36,7 @@ for item in one *.txt; do
 #         ^^^^ string
 #             ^ punctuation.delimiter
 #               ^ punctuation.delimiter
-#                ^ constant
+#                ^ variable
 #                 ^^^^ variable
 #                     ^ punctuation.delimiter
 done
@@ -50,7 +50,7 @@ show() {
   case "$1" in
 # ^^^^ keyword
 #      ^ punctuation.delimiter
-#       ^ constant
+#       ^ variable.parameter
 #        ^ variable.parameter
 #         ^ punctuation.delimiter
 #           ^^ keyword
@@ -73,7 +73,7 @@ show() {
 #                               ^^^^ string
 #                                   ^ punctuation.delimiter
 #                                     ^ punctuation.delimiter
-#                                      ^ constant
+#                                      ^ variable.parameter
 #                                       ^ variable.parameter
 #                                        ^ punctuation.delimiter
 #                                          ^^ operator
@@ -86,7 +86,7 @@ show() {
 #              ^^^^ string
 #                  ^ punctuation.delimiter
 #                    ^ punctuation.delimiter
-#                     ^ constant
+#                     ^ variable.parameter
 #                      ^ variable.parameter
 #                       ^ punctuation.delimiter
 #                         ^^ operator
@@ -101,7 +101,8 @@ printf '%s\n' "$((count += 2 * 3))" "${name:-fallback}" "$@" "$10"
 #      ^ punctuation.delimiter
 #       ^^^^ string
 #           ^ punctuation.delimiter
-#              ^^^ punctuation.bracket
+#              ^ punctuation.special
+#               ^^ punctuation.bracket
 #                 ^^^^^ variable
 #                       ^^ operator
 #                          ^ number
@@ -109,7 +110,7 @@ printf '%s\n' "$((count += 2 * 3))" "${name:-fallback}" "$@" "$10"
 #                              ^ number
 #                               ^^ punctuation.bracket
 #                                 ^ punctuation.delimiter
-#                                    ^ constant
+#                                    ^ variable
 #                                     ^ punctuation.bracket
 #                                      ^^^^ variable
 #                                          ^^ operator
@@ -117,13 +118,13 @@ printf '%s\n' "$((count += 2 * 3))" "${name:-fallback}" "$@" "$10"
 #                                                    ^ punctuation.bracket
 #                                                     ^ punctuation.delimiter
 #                                                       ^ punctuation.delimiter
-#                                                        ^ constant
+#                                                        ^ variable.builtin
 #                                                         ^ variable.builtin
 #                                                          ^ punctuation.delimiter
 
 printf '%s\n' "${name#[!a-c]}" file-[[:digit:]]?
 # <- function.call
-#              ^ constant
+#              ^ variable
 #               ^ punctuation.bracket
 #                ^^^^ variable
 #                    ^ operator
@@ -165,7 +166,8 @@ printf '%s\n' $'a\n' "a\$b" \*
 printf '%s\n' "$(date)" `date`
 # <- function.call
 #             ^ punctuation.delimiter
-#              ^^ punctuation.bracket
+#              ^ punctuation.special
+#               ^ punctuation.bracket
 #                ^^^^ function.call
 #                    ^ punctuation.bracket
 #                     ^ punctuation.delimiter

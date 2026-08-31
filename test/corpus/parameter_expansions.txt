@@ -1514,3 +1514,12 @@ y}" "${d%q\
                           (line_continuation)))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+An empty braced expansion lacks its parameter
+:error
+==================
+
+echo ${} "${}"
+
+---
