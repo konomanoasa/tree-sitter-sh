@@ -548,7 +548,7 @@ static bool line_matches_document(
     make_document_bytes(delimiter, delimiter_length, quoted, strip_tabs);
   struct MockLexer mock;
   init_mock_lexer(&mock, line, line_length);
-  bool result = scan_here_document_end_line(&mock.lexer, &document);
+  bool result = scan_here_document_end_line(&mock.lexer, &document, 0);
   clear_document(&document);
   return result;
 }
@@ -2956,22 +2956,22 @@ static void assert_here_document_line_backslash_parity(void) {
   const int32_t paired[] = {'x', '\\', '\\', '\n', 'E', '\n'};
   init_mock_lexer(&mock, paired, sizeof(paired) / sizeof(paired[0]));
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &document, &start) ==
+    probe_here_document_line(scanner, &mock.lexer, &document, 0, &start) ==
     HERE_DOCUMENT_LINE_CONTENT
   );
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &document, &start) ==
+    probe_here_document_line(scanner, &mock.lexer, &document, 0, &start) ==
     HERE_DOCUMENT_LINE_DELIMITER
   );
 
   const int32_t continued[] = {'x', '\\', '\n', 'E', '\n'};
   init_mock_lexer(&mock, continued, sizeof(continued) / sizeof(continued[0]));
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &document, &start) ==
+    probe_here_document_line(scanner, &mock.lexer, &document, 0, &start) ==
     HERE_DOCUMENT_LINE_CONTENT
   );
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &document, &start) ==
+    probe_here_document_line(scanner, &mock.lexer, &document, 0, &start) ==
     HERE_DOCUMENT_LINE_END_OF_INPUT
   );
 
@@ -2998,6 +2998,87 @@ static void assert_here_document_line_backslash_parity(void) {
   assert(is_end);
 
   clear_document(&document);
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+// Body lines inside enclosing backquotes fold their escape runs before the
+// delimiter comparison, mirroring the delimiter scan's arithmetic.
+static void assert_enclosed_here_document_line_folds(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  struct HereDocumentLineStart start;
+  struct MockLexer mock;
+
+  struct HereDocument backquoted = make_document("`x`", true, false);
+  const int32_t escaped_ticks[] = {'\\', '`', 'x', '\\', '`', '\n'};
+  init_mock_lexer(
+    &mock,
+    escaped_ticks,
+    sizeof(escaped_ticks) / sizeof(escaped_ticks[0])
+  );
+  assert(
+    probe_here_document_line(scanner, &mock.lexer, &backquoted, 1, &start) ==
+    HERE_DOCUMENT_LINE_DELIMITER
+  );
+  init_mock_lexer(
+    &mock,
+    escaped_ticks,
+    sizeof(escaped_ticks) / sizeof(escaped_ticks[0])
+  );
+  assert(scan_here_document_end_line(&mock.lexer, &backquoted, 1));
+
+  const int32_t bare_ticks[] = {'`', 'x', '`', '\n'};
+  init_mock_lexer(
+    &mock,
+    bare_ticks,
+    sizeof(bare_ticks) / sizeof(bare_ticks[0])
+  );
+  assert(
+    probe_here_document_line(scanner, &mock.lexer, &backquoted, 1, &start) ==
+    HERE_DOCUMENT_LINE_CONTENT
+  );
+  init_mock_lexer(
+    &mock,
+    bare_ticks,
+    sizeof(bare_ticks) / sizeof(bare_ticks[0])
+  );
+  assert(!scan_here_document_end_line(&mock.lexer, &backquoted, 1));
+  clear_document(&backquoted);
+
+  struct HereDocument dollar = make_document("$v", false, false);
+  const int32_t escaped_dollar[] = {'\\', '$', 'v', '\n'};
+  init_mock_lexer(
+    &mock,
+    escaped_dollar,
+    sizeof(escaped_dollar) / sizeof(escaped_dollar[0])
+  );
+  assert(
+    probe_here_document_line(scanner, &mock.lexer, &dollar, 1, &start) ==
+    HERE_DOCUMENT_LINE_DELIMITER
+  );
+  clear_document(&dollar);
+
+  // One rescan keeps the backslash a pair leaves before an ordinary
+  // character, so the line stays content for the quote-removed delimiter.
+  struct HereDocument plain = make_document("d", true, false);
+  const int32_t retained[] = {'\\', '\\', 'd', '\n'};
+  init_mock_lexer(&mock, retained, sizeof(retained) / sizeof(retained[0]));
+  assert(
+    probe_here_document_line(scanner, &mock.lexer, &plain, 1, &start) ==
+    HERE_DOCUMENT_LINE_CONTENT
+  );
+  const int32_t folded_away[] = {'d', '\n'};
+  init_mock_lexer(
+    &mock,
+    folded_away,
+    sizeof(folded_away) / sizeof(folded_away[0])
+  );
+  assert(
+    probe_here_document_line(scanner, &mock.lexer, &plain, 1, &start) ==
+    HERE_DOCUMENT_LINE_DELIMITER
+  );
+  clear_document(&plain);
+
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
@@ -3420,6 +3501,7 @@ int main(void) {
   assert_byte_delimiter_matching();
   assert_nested_here_document_logical_line_tabs();
   assert_here_document_line_backslash_parity();
+  assert_enclosed_here_document_line_folds();
   assert_backquote_prefix_classification();
   assert_substitution_hash_delimiter_words();
   assert_recursive_backquote_delimiters();

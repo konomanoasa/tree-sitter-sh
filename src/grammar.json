@@ -3628,6 +3628,10 @@
                   },
                   {
                     "type": "SYMBOL",
+                    "name": "_here_document_end_backslash"
+                  },
+                  {
+                    "type": "SYMBOL",
                     "name": "line_continuation"
                   }
                 ]
@@ -3646,6 +3650,17 @@
       "content": {
         "type": "PATTERN",
         "value": "[^\\\\\\n]+"
+      }
+    },
+    "_here_document_end_backslash": {
+      "type": "IMMEDIATE_TOKEN",
+      "content": {
+        "type": "PREC",
+        "value": -2,
+        "content": {
+          "type": "STRING",
+          "value": "\\"
+        }
       }
     },
     "here_document_body": {

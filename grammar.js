@@ -1730,12 +1730,22 @@ module.exports = grammar({
         $._quoted_here_document_end,
         seq(
           $._here_document_end_begin,
-          repeat1(choice($._here_document_end_text, $.line_continuation)),
+          repeat1(
+            choice(
+              $._here_document_end_text,
+              $._here_document_end_backslash,
+              $.line_continuation,
+            ),
+          ),
           $._here_document_end_commit,
         ),
       ),
 
     _here_document_end_text: (_) => token.immediate(/[^\\\n]+/),
+
+    // Inside enclosing backquotes, an end line can carry escapes that fold
+    // away before the delimiter comparison but stay in the source.
+    _here_document_end_backslash: (_) => token.immediate(prec(-2, "\\")),
 
     here_document_body: ($) =>
       repeat1(
