@@ -99,15 +99,11 @@
 
 (parameter_expansion
   "$" @variable
-  parameter: (variable_name))
-
-(parameter_expansion
-  "$" @variable.parameter
-  parameter: (positional_parameter))
-
-(parameter_expansion
-  "$" @variable.builtin
-  parameter: (special_parameter))
+  parameter: [
+    (variable_name)
+    (positional_parameter)
+    (special_parameter)
+  ])
 
 (command_substitution
   "$" @punctuation.special)
@@ -303,7 +299,7 @@
   (word
     (pattern_bracket_source
       "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @punctuation.special
+      (pattern_bracket_negation_source)? @operator
       (pattern_bracket_members_source
         [
           (pattern_bracket_character_source) @character
@@ -313,26 +309,36 @@
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character
-            operator: (pattern_bracket_range_operator_source) @punctuation.special
+            operator: (pattern_bracket_range_operator_source) @operator
             end: [
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character)
           (pattern_character_class_source
             "[" @punctuation.bracket
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             content: (pattern_character_class_content_source) @character.special
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             "]" @punctuation.bracket)
-          (pattern_collating_symbol_source) @character.special
-          (pattern_equivalence_class_source) @character.special
+          (pattern_collating_symbol_source
+            "[" @punctuation.bracket
+            "." @punctuation.delimiter
+            value: (pattern_collating_symbol_character_source) @character.special
+            "." @punctuation.delimiter
+            "]" @punctuation.bracket)
+          (pattern_equivalence_class_source
+            "[" @punctuation.bracket
+            "=" @punctuation.delimiter
+            value: (pattern_equivalence_class_character_source) @character.special
+            "=" @punctuation.delimiter
+            "]" @punctuation.bracket)
         ])
       "]" @punctuation.bracket)))
 
 (parameter_pattern
   (pattern_bracket_source
     "[" @punctuation.bracket
-    (pattern_bracket_negation_source)? @punctuation.special
+    (pattern_bracket_negation_source)? @operator
     (pattern_bracket_members_source
       [
         (pattern_bracket_character_source) @character
@@ -342,19 +348,29 @@
             (pattern_bracket_character_source)
             (pattern_bracket_hyphen_source)
           ] @character
-          operator: (pattern_bracket_range_operator_source) @punctuation.special
+          operator: (pattern_bracket_range_operator_source) @operator
           end: [
             (pattern_bracket_character_source)
             (pattern_bracket_hyphen_source)
           ] @character)
         (pattern_character_class_source
           "[" @punctuation.bracket
-          ":" @punctuation.bracket
+          ":" @punctuation.delimiter
           content: (pattern_character_class_content_source) @character.special
-          ":" @punctuation.bracket
+          ":" @punctuation.delimiter
           "]" @punctuation.bracket)
-        (pattern_collating_symbol_source) @character.special
-        (pattern_equivalence_class_source) @character.special
+        (pattern_collating_symbol_source
+          "[" @punctuation.bracket
+          "." @punctuation.delimiter
+          value: (pattern_collating_symbol_character_source) @character.special
+          "." @punctuation.delimiter
+          "]" @punctuation.bracket)
+        (pattern_equivalence_class_source
+          "[" @punctuation.bracket
+          "=" @punctuation.delimiter
+          value: (pattern_equivalence_class_character_source) @character.special
+          "=" @punctuation.delimiter
+          "]" @punctuation.bracket)
       ])
     "]" @punctuation.bracket))
 
@@ -362,7 +378,7 @@
   (word
     (pattern_bracket_source
       "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @punctuation.special
+      (pattern_bracket_negation_source)? @operator
       (pattern_bracket_members_source
         [
           (pattern_bracket_character_source) @character
@@ -372,19 +388,29 @@
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character
-            operator: (pattern_bracket_range_operator_source) @punctuation.special
+            operator: (pattern_bracket_range_operator_source) @operator
             end: [
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character)
           (pattern_character_class_source
             "[" @punctuation.bracket
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             content: (pattern_character_class_content_source) @character.special
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             "]" @punctuation.bracket)
-          (pattern_collating_symbol_source) @character.special
-          (pattern_equivalence_class_source) @character.special
+          (pattern_collating_symbol_source
+            "[" @punctuation.bracket
+            "." @punctuation.delimiter
+            value: (pattern_collating_symbol_character_source) @character.special
+            "." @punctuation.delimiter
+            "]" @punctuation.bracket)
+          (pattern_equivalence_class_source
+            "[" @punctuation.bracket
+            "=" @punctuation.delimiter
+            value: (pattern_equivalence_class_character_source) @character.special
+            "=" @punctuation.delimiter
+            "]" @punctuation.bracket)
         ])
       "]" @punctuation.bracket)))
 
@@ -392,7 +418,7 @@
   (word
     (pattern_bracket_source
       "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @punctuation.special
+      (pattern_bracket_negation_source)? @operator
       (pattern_bracket_members_source
         [
           (pattern_bracket_character_source) @character
@@ -402,19 +428,29 @@
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character
-            operator: (pattern_bracket_range_operator_source) @punctuation.special
+            operator: (pattern_bracket_range_operator_source) @operator
             end: [
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character)
           (pattern_character_class_source
             "[" @punctuation.bracket
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             content: (pattern_character_class_content_source) @character.special
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             "]" @punctuation.bracket)
-          (pattern_collating_symbol_source) @character.special
-          (pattern_equivalence_class_source) @character.special
+          (pattern_collating_symbol_source
+            "[" @punctuation.bracket
+            "." @punctuation.delimiter
+            value: (pattern_collating_symbol_character_source) @character.special
+            "." @punctuation.delimiter
+            "]" @punctuation.bracket)
+          (pattern_equivalence_class_source
+            "[" @punctuation.bracket
+            "=" @punctuation.delimiter
+            value: (pattern_equivalence_class_character_source) @character.special
+            "=" @punctuation.delimiter
+            "]" @punctuation.bracket)
         ])
       "]" @punctuation.bracket)))
 
@@ -422,7 +458,7 @@
   word: (word
     (pattern_bracket_source
       "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @punctuation.special
+      (pattern_bracket_negation_source)? @operator
       (pattern_bracket_members_source
         [
           (pattern_bracket_character_source) @character
@@ -432,19 +468,29 @@
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character
-            operator: (pattern_bracket_range_operator_source) @punctuation.special
+            operator: (pattern_bracket_range_operator_source) @operator
             end: [
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character)
           (pattern_character_class_source
             "[" @punctuation.bracket
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             content: (pattern_character_class_content_source) @character.special
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             "]" @punctuation.bracket)
-          (pattern_collating_symbol_source) @character.special
-          (pattern_equivalence_class_source) @character.special
+          (pattern_collating_symbol_source
+            "[" @punctuation.bracket
+            "." @punctuation.delimiter
+            value: (pattern_collating_symbol_character_source) @character.special
+            "." @punctuation.delimiter
+            "]" @punctuation.bracket)
+          (pattern_equivalence_class_source
+            "[" @punctuation.bracket
+            "=" @punctuation.delimiter
+            value: (pattern_equivalence_class_character_source) @character.special
+            "=" @punctuation.delimiter
+            "]" @punctuation.bracket)
         ])
       "]" @punctuation.bracket)))
 
@@ -452,7 +498,7 @@
   word: (word
     (pattern_bracket_source
       "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @punctuation.special
+      (pattern_bracket_negation_source)? @operator
       (pattern_bracket_members_source
         [
           (pattern_bracket_character_source) @character
@@ -462,19 +508,29 @@
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character
-            operator: (pattern_bracket_range_operator_source) @punctuation.special
+            operator: (pattern_bracket_range_operator_source) @operator
             end: [
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character)
           (pattern_character_class_source
             "[" @punctuation.bracket
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             content: (pattern_character_class_content_source) @character.special
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             "]" @punctuation.bracket)
-          (pattern_collating_symbol_source) @character.special
-          (pattern_equivalence_class_source) @character.special
+          (pattern_collating_symbol_source
+            "[" @punctuation.bracket
+            "." @punctuation.delimiter
+            value: (pattern_collating_symbol_character_source) @character.special
+            "." @punctuation.delimiter
+            "]" @punctuation.bracket)
+          (pattern_equivalence_class_source
+            "[" @punctuation.bracket
+            "=" @punctuation.delimiter
+            value: (pattern_equivalence_class_character_source) @character.special
+            "=" @punctuation.delimiter
+            "]" @punctuation.bracket)
         ])
       "]" @punctuation.bracket)))
 
@@ -482,7 +538,7 @@
   word: (word
     (pattern_bracket_source
       "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @punctuation.special
+      (pattern_bracket_negation_source)? @operator
       (pattern_bracket_members_source
         [
           (pattern_bracket_character_source) @character
@@ -492,18 +548,28 @@
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character
-            operator: (pattern_bracket_range_operator_source) @punctuation.special
+            operator: (pattern_bracket_range_operator_source) @operator
             end: [
               (pattern_bracket_character_source)
               (pattern_bracket_hyphen_source)
             ] @character)
           (pattern_character_class_source
             "[" @punctuation.bracket
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             content: (pattern_character_class_content_source) @character.special
-            ":" @punctuation.bracket
+            ":" @punctuation.delimiter
             "]" @punctuation.bracket)
-          (pattern_collating_symbol_source) @character.special
-          (pattern_equivalence_class_source) @character.special
+          (pattern_collating_symbol_source
+            "[" @punctuation.bracket
+            "." @punctuation.delimiter
+            value: (pattern_collating_symbol_character_source) @character.special
+            "." @punctuation.delimiter
+            "]" @punctuation.bracket)
+          (pattern_equivalence_class_source
+            "[" @punctuation.bracket
+            "=" @punctuation.delimiter
+            value: (pattern_equivalence_class_character_source) @character.special
+            "=" @punctuation.delimiter
+            "]" @punctuation.bracket)
         ])
       "]" @punctuation.bracket)))
