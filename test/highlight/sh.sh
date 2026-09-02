@@ -196,7 +196,7 @@ cat 2>output
 
 cat {fd}>output
 # <- function.call
-#   ^^^^ variable
+#   ^^^^ string
 #       ^ operator
 #        ^^^^^^ string
 

@@ -27,7 +27,6 @@
   (arithmetic_variable)
   (variable_name)
   (name)
-  (io_location)
 ] @variable
 
 (positional_parameter) @variable.parameter

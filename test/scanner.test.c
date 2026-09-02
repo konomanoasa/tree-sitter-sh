@@ -1387,23 +1387,22 @@ static void assert_word_separator_classification_contract(void) {
   assert(pair_after_blank.offset == 4);
   assert(pair_after_blank.lexer.lookahead == 0);
 
-  const int32_t location_redirect_input[] =
-    {' ', '{', 'x', '}', '\\', '\n', '>'};
-  struct MockLexer location_redirect;
+  const int32_t brace_word_input[] = {' ', '{', 'x', '}', '\\', '\n', '>'};
+  struct MockLexer brace_word;
   init_mock_lexer(
-    &location_redirect,
-    location_redirect_input,
-    sizeof(location_redirect_input) / sizeof(location_redirect_input[0])
+    &brace_word,
+    brace_word_input,
+    sizeof(brace_word_input) / sizeof(brace_word_input[0])
   );
   assert(tree_sitter_sh_external_scanner_scan(
     scanner,
-    &location_redirect.lexer,
+    &brace_word.lexer,
     valid_symbols
   ));
-  assert(location_redirect.lexer.result_symbol == REDIRECT_SEPARATOR_BEGIN);
-  assert(location_redirect.mark == 1);
-  assert(location_redirect.offset == 6);
-  assert(location_redirect.lexer.lookahead == '>');
+  assert(brace_word.lexer.result_symbol == WORD_SEPARATOR_BEGIN);
+  assert(brace_word.mark == 1);
+  assert(brace_word.offset == 1);
+  assert(brace_word.lexer.lookahead == '{');
 
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
@@ -3219,72 +3218,6 @@ static void assert_command_prefixes_keep_case_tracking(void) {
   );
 }
 
-static void assert_io_location_marks_the_full_token(void) {
-  const struct Scanner scanner = {0};
-  const int32_t direct_input[] = {'{', 'a', '}', '>', 'x'};
-  struct MockLexer direct;
-  init_mock_lexer(
-    &direct,
-    direct_input,
-    sizeof(direct_input) / sizeof(direct_input[0])
-  );
-
-  assert(scan_left_brace_or_io_location(&scanner, &direct.lexer, false, true));
-  assert(direct.lexer.result_symbol == IO_LOCATION);
-  assert(direct.offset == 3);
-  assert(direct.mark == 3);
-  assert(direct.lexer.lookahead == '>');
-
-  const int32_t internal_brace_input[] = {'{', 'a', '}', '}', '>', 'x'};
-  struct MockLexer internal_brace;
-  init_mock_lexer(
-    &internal_brace,
-    internal_brace_input,
-    sizeof(internal_brace_input) / sizeof(internal_brace_input[0])
-  );
-
-  assert(
-    scan_left_brace_or_io_location(&scanner, &internal_brace.lexer, false, true)
-  );
-  assert(internal_brace.lexer.result_symbol == IO_LOCATION);
-  assert(internal_brace.offset == 4);
-  assert(internal_brace.mark == 4);
-  assert(internal_brace.lexer.lookahead == '>');
-
-  const int32_t continued_input[] = {'{', 'a', '}', '\\', '\n', '>', 'x'};
-  struct MockLexer continued;
-  init_mock_lexer(
-    &continued,
-    continued_input,
-    sizeof(continued_input) / sizeof(continued_input[0])
-  );
-
-  assert(
-    scan_left_brace_or_io_location(&scanner, &continued.lexer, false, true)
-  );
-  assert(continued.lexer.result_symbol == IO_LOCATION);
-  assert(continued.offset == 5);
-  assert(continued.mark == 3);
-  assert(continued.lexer.lookahead == '>');
-
-  struct MockLexer continuation_after_rewind;
-  init_mock_lexer(
-    &continuation_after_rewind,
-    continued_input + continued.mark,
-    sizeof(continued_input) / sizeof(continued_input[0]) - continued.mark
-  );
-  bool valid_symbols[TOKEN_COUNT] = {false};
-  valid_symbols[LINE_CONTINUATION] = true;
-
-  assert(
-    scan_line_continuation(&continuation_after_rewind.lexer, valid_symbols)
-  );
-  assert(continuation_after_rewind.lexer.result_symbol == LINE_CONTINUATION);
-  assert(continuation_after_rewind.offset == 2);
-  assert(continuation_after_rewind.mark == 2);
-  assert(continuation_after_rewind.lexer.lookahead == '>');
-}
-
 static void assert_redirect_list_begin_contract(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -3323,8 +3256,8 @@ static void assert_redirect_list_begin_contract(void) {
     valid_symbols,
     continued_input,
     sizeof(continued_input) / sizeof(continued_input[0]),
-    true,
-    REDIRECT_LIST_BEGIN,
+    false,
+    0,
     0,
     2,
     '{'
@@ -3528,7 +3461,6 @@ int main(void) {
   assert_newline_resets_delimiter_flags_but_keeps_captures();
   assert_case_pattern_esac_terminates_only_at_first_token();
   assert_command_prefixes_keep_case_tracking();
-  assert_io_location_marks_the_full_token();
   assert_redirect_list_begin_contract();
   assert_name_equals_begin_contract();
   assert_delimiter_scan_resource_rollback();

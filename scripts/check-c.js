@@ -73,7 +73,6 @@ function undefinedSymbols(output) {
 // uppercased without its leading underscore.
 const externalEnumeratorExceptions = new Map([
   ["_io_number_token", "FILE_DESCRIPTOR"],
-  ["_io_location_token", "IO_LOCATION"],
   ["_bang_token", "PIPELINE_NEGATION"],
   ["_dless_commit", "DLESS"],
   ["_dlessdash_commit", "DLESSDASH"],

@@ -17,7 +17,6 @@ enum TokenType {
   LEFT_BRACE,
   RIGHT_BRACE,
   FILE_DESCRIPTOR,
-  IO_LOCATION,
   PIPELINE_NEGATION,
   IF_KEYWORD,
   THEN_KEYWORD,
@@ -117,7 +116,7 @@ enum TokenType {
   TOKEN_COUNT,
 };
 
-typedef char ExternalTokenCountMustMatchGrammar[(TOKEN_COUNT == 100) ? 1 : -1];
+typedef char ExternalTokenCountMustMatchGrammar[(TOKEN_COUNT == 99) ? 1 : -1];
 
 enum ArithmeticOperatorCategory {
   ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT,
@@ -3540,7 +3539,6 @@ static bool classify_shell_boundary(
 );
 
 static bool classify_word_separator(
-  const struct Scanner *scanner,
   TSLexer *lexer,
   const bool *valid_symbols,
   bool mark_blank_run
@@ -3726,7 +3724,6 @@ static bool scan_element_boundary_core(
     is_word_element_start(scanner, lexer)
   ) {
     return classify_word_separator(
-      scanner,
       lexer,
       valid_symbols,
       !crossed_pairs && !blank_mark_committed
@@ -3764,56 +3761,7 @@ static bool scan_element_boundary(
   return scan_element_boundary_core(scanner, lexer, valid_symbols, false);
 }
 
-static bool scan_io_location_body(
-  const struct Scanner *scanner,
-  TSLexer *lexer,
-  bool commit_location
-) {
-  unsigned character_count = 0;
-  bool ends_with_right_brace = false;
-
-  while (
-    lexer->lookahead !=
-    '<' &&
-    lexer->lookahead !=
-    '>' &&
-    lexer->lookahead != '\\'
-  ) {
-    if (is_token_delimiter(scanner, lexer)) {
-      return false;
-    }
-
-    if (
-      lexer->lookahead ==
-      '\'' ||
-      lexer->lookahead ==
-      '"' ||
-      lexer->lookahead == '`'
-    ) {
-      return false;
-    }
-
-    ends_with_right_brace = lexer->lookahead == '}';
-    character_count += 1;
-    lexer->advance(lexer, false);
-    if (commit_location && ends_with_right_brace) {
-      lexer->mark_end(lexer);
-    }
-  }
-
-  if (character_count < 2 || !ends_with_right_brace) {
-    return false;
-  }
-
-  if (!skip_line_continuations(lexer)) {
-    return false;
-  }
-
-  return lexer->lookahead == '<' || lexer->lookahead == '>';
-}
-
 static bool classify_word_separator(
-  const struct Scanner *scanner,
   TSLexer *lexer,
   const bool *valid_symbols,
   bool mark_blank_run
@@ -3841,9 +3789,6 @@ static bool classify_word_separator(
     if (skip_line_continuations(lexer)) {
       assignment_ahead = lexer->lookahead == '=';
     }
-  } else if (character == '{' && valid_symbols[REDIRECT_SEPARATOR_BEGIN]) {
-    lexer->advance(lexer, false);
-    redirect_ahead = scan_io_location_body(scanner, lexer, false);
   }
 
   if (assignment_ahead && valid_symbols[ASSIGNMENT_SEPARATOR_BEGIN]) {
@@ -4067,39 +4012,6 @@ static bool scan_file_descriptor(TSLexer *lexer) {
   return true;
 }
 
-static bool scan_left_brace_or_io_location(
-  const struct Scanner *scanner,
-  TSLexer *lexer,
-  bool left_brace_is_valid,
-  bool io_location_is_valid
-) {
-  if (lexer->lookahead != '{') {
-    return false;
-  }
-
-  lexer->advance(lexer, false);
-  lexer->mark_end(lexer);
-
-  if (!skip_line_continuations(lexer)) {
-    return false;
-  }
-
-  if (is_token_delimiter(scanner, lexer)) {
-    if (!left_brace_is_valid) {
-      return false;
-    }
-    lexer->result_symbol = LEFT_BRACE;
-    return true;
-  }
-
-  if (!io_location_is_valid || !scan_io_location_body(scanner, lexer, true)) {
-    return false;
-  }
-
-  lexer->result_symbol = IO_LOCATION;
-  return true;
-}
-
 static bool scan_here_document_operator_commit(
   struct Scanner *scanner,
   TSLexer *lexer,
@@ -4176,13 +4088,7 @@ static bool classify_shell_boundary(
 
   if (
     valid_symbols[REDIRECT_LIST_BEGIN] &&
-    (character ==
-      '<' ||
-      character ==
-      '>' ||
-      character ==
-      '{' ||
-      is_decimal_digit(character))
+    (character == '<' || character == '>' || is_decimal_digit(character))
   ) {
     lexer->result_symbol = REDIRECT_LIST_BEGIN;
     return true;
@@ -7321,8 +7227,6 @@ static bool scan_dispatch(
          '<' ||
          lexer->lookahead ==
          '>' ||
-         lexer->lookahead ==
-         '{' ||
          is_decimal_digit(lexer->lookahead)) &&
         valid_symbols[REDIRECT_LIST_BEGIN]) ||
       (lexer->lookahead == '\\' && valid_symbols[REDIRECT_LIST_BEGIN]))
@@ -7405,15 +7309,8 @@ static bool scan_dispatch(
   }
 
   if (lexer->lookahead == '{') {
-    return (
-      (valid_symbols[LEFT_BRACE] || valid_symbols[IO_LOCATION]) &&
-      scan_left_brace_or_io_location(
-        scanner,
-        lexer,
-        valid_symbols[LEFT_BRACE],
-        valid_symbols[IO_LOCATION]
-      )
-    );
+    return valid_symbols[LEFT_BRACE] &&
+      scan_delimited_character_token(scanner, lexer, LEFT_BRACE);
   }
 
   if (lexer->lookahead == '}') {

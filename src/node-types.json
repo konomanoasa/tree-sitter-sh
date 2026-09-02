@@ -2117,11 +2117,6 @@
     }
   },
   {
-    "type": "io_location",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "io_number",
     "named": true,
     "fields": {}
@@ -2140,16 +2135,6 @@
           },
           {
             "type": "io_here",
-            "named": true
-          }
-        ]
-      },
-      "location": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "io_location",
             "named": true
           }
         ]

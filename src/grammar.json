@@ -3091,25 +3091,12 @@
             "type": "SEQ",
             "members": [
               {
-                "type": "CHOICE",
-                "members": [
-                  {
-                    "type": "FIELD",
-                    "name": "number",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "io_number"
-                    }
-                  },
-                  {
-                    "type": "FIELD",
-                    "name": "location",
-                    "content": {
-                      "type": "SYMBOL",
-                      "name": "io_location"
-                    }
-                  }
-                ]
+                "type": "FIELD",
+                "name": "number",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "io_number"
+                }
               },
               {
                 "type": "REPEAT",
@@ -3186,10 +3173,6 @@
           "value": "[0-9]+"
         }
       ]
-    },
-    "io_location": {
-      "type": "SYMBOL",
-      "name": "_io_location_token"
     },
     "io_file": {
       "type": "SEQ",
@@ -14542,10 +14525,6 @@
     {
       "type": "SYMBOL",
       "name": "_io_number_token"
-    },
-    {
-      "type": "SYMBOL",
-      "name": "_io_location_token"
     },
     {
       "type": "SYMBOL",

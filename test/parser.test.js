@@ -911,7 +911,23 @@ test("unterminated structures parse through EOF", () => {
   }
 });
 
-test("case closers, IO locations, and keyword headers survive edits", () => {
+test("I/O location extension is rejected after compound commands", () => {
+  for (const [name, command] of [
+    ["brace-group", "{ :; } {fd}>out"],
+    ["function-body", "f() { :; } {fd}>out"],
+  ]) {
+    const source = writeSource(`io-location-extension-${name}`, lines(command));
+    const { output, status } = runParse({
+      description: `${name} I/O location extension`,
+      mode: "recovery",
+      source,
+    });
+    assert.equal(status, 1, `${name}: optional I/O location parsed as valid`);
+    assertNotContains(output, "io_location");
+  }
+});
+
+test("case closers and keyword headers survive edits", () => {
   const emptyNsItem = writeSource(
     "case-esac-after-closed-pattern",
     lines("case x in x) esac"),
@@ -963,24 +979,6 @@ test("case closers, IO locations, and keyword headers survive edits", () => {
     "3 1 ;",
   )) {
     assertCstRange(output, "0:1-0:2", "terminator: separator_op");
-  }
-
-  const locationContinuationInitial = writeSource(
-    "io-location-continuation-initial",
-    lines("printf {x}\\", ">file", "after"),
-  );
-  const locationContinuationFinal = writeSource(
-    "io-location-continuation-final",
-    lines("printf {x}>file", "after"),
-  );
-  for (const output of parseRecoveryAfterEdits(
-    locationContinuationInitial,
-    locationContinuationFinal,
-    "join-io-location-and-operator",
-    "10 2",
-  )) {
-    assertContains(output, "location: io_location");
-    assertNotContains(output, "ERROR");
   }
 });
 
@@ -1217,47 +1215,29 @@ test("substitution, redirection, and token boundaries retain ownership", () => {
     '1 0 ""',
   );
 
-  const locationCloserInitial = writeSource(
-    "io-location-closer-initial",
+  const braceWordContinuationInitial = writeSource(
+    "brace-word-continuation-initial",
     lines("{a}>x"),
   );
-  const locationCloserFinal = writeSource(
-    "io-location-closer-final",
-    lines("{a}}>x"),
-  );
-  assertIncrementalEqualsFresh(
-    locationCloserInitial,
-    locationCloserFinal,
-    "extend-io-location-through-right-brace",
-    "3 0 }",
-  );
-
-  const locationContinuationInitial = writeSource(
-    "io-location-continuation-initial",
-    lines("{a}>x"),
-  );
-  const locationContinuationFinal = writeSource(
-    "io-location-continuation-final",
+  const braceWordContinuationFinal = writeSource(
+    "brace-word-continuation-final",
     lines("{a}\\", ">x"),
   );
-  const locationContinuationOutput = parseValidCst(locationContinuationFinal);
-  assertCstRange(
-    locationContinuationOutput,
-    "0:0-0:3",
-    "location: io_location",
-  );
-  assertCstRange(locationContinuationOutput, "0:3-1:0", "line_continuation");
+  const braceWordContinuationOutput = parseValidCst(braceWordContinuationFinal);
+  assertCstRange(braceWordContinuationOutput, "0:0-0:3", "word");
+  assertCstRange(braceWordContinuationOutput, "0:3-1:0", "line_continuation");
   assertCstDirectChildRange(
-    locationContinuationOutput,
+    braceWordContinuationOutput,
     "1:0-1:2",
     "body: io_file",
     "1:0-1:1",
     '">"',
   );
+  assertNotContains(braceWordContinuationOutput, "io_location");
   assertIncrementalEqualsFresh(
-    locationContinuationInitial,
-    locationContinuationFinal,
-    "insert-continuation-after-io-location",
+    braceWordContinuationInitial,
+    braceWordContinuationFinal,
+    "insert-continuation-after-brace-word",
     "3 0 \\\n",
   );
 
@@ -1305,12 +1285,6 @@ test("substitution, redirection, and token boundaries retain ownership", () => {
     "delete-inner-fi-before-backquote-closer",
     "18 4",
   );
-
-  const invalidLocation = writeSource(
-    "recovery-io-location",
-    lines("printf {x'}>file"),
-  );
-  assertNotContains(parseRecovery(invalidLocation), "(io_location ");
 
   const delimiters = writeSource(
     "source-delimiters",

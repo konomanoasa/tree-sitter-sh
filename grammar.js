@@ -926,7 +926,6 @@ module.exports = grammar({
     $._left_brace,
     $._right_brace,
     $._io_number_token,
-    $._io_location_token,
     $._bang_token,
     $._if_keyword,
     $._then_keyword,
@@ -1621,10 +1620,7 @@ module.exports = grammar({
         prec.dynamic(
           2,
           seq(
-            choice(
-              field("number", $.io_number),
-              field("location", $.io_location),
-            ),
+            field("number", $.io_number),
             repeat($.line_continuation),
             field("body", choice($.io_file, $.io_here)),
           ),
@@ -1636,8 +1632,6 @@ module.exports = grammar({
       field("body", choice($.io_file, $.io_here)),
 
     io_number: ($) => seq($._io_number_token, /[0-9]+/),
-
-    io_location: ($) => $._io_location_token,
 
     io_file: ($) =>
       seq(
