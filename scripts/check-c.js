@@ -8,27 +8,12 @@ const {
   repositoryDirectory,
 } = require("./tree-sitter");
 
-const bindingIncludeDirectory = path.join(repositoryDirectory, "bindings", "c");
-const bindingHeaderSource = path.join(
-  bindingIncludeDirectory,
-  "tree_sitter",
-  "tree-sitter-sh.h",
-);
-const bindingContractSource = path.join(
-  repositoryDirectory,
-  "test/binding.test.c",
-);
 const scannerSource = path.join(grammarDirectory, "src/scanner.c");
 const scannerContractSource = path.join(
   repositoryDirectory,
   "test/scanner.test.c",
 );
-const cSources = [
-  bindingHeaderSource,
-  bindingContractSource,
-  scannerSource,
-  scannerContractSource,
-];
+const cSources = [scannerSource, scannerContractSource];
 
 function run(command, arguments_, options = {}) {
   const result = childProcess.spawnSync(command, arguments_, {
@@ -167,38 +152,12 @@ try {
 
     const scannerReuseObject = path.join(temporaryDirectory, "scanner-reuse.o");
     const warningArguments = ["-Wall", "-Wextra", "-Werror", "-pedantic"];
-    const bindingArguments = [
-      ...warningArguments,
-      `-I${bindingIncludeDirectory}`,
-    ];
     const scannerArguments = [
       ...warningArguments,
       `-I${path.join(grammarDirectory, "src")}`,
     ];
 
     const compileCommands = [
-      {
-        arguments: [
-          clang,
-          "-std=c17",
-          "-xc",
-          "-fsyntax-only",
-          bindingHeaderSource,
-        ],
-        directory: repositoryDirectory,
-        file: bindingHeaderSource,
-      },
-      {
-        arguments: [
-          clang,
-          "-std=c17",
-          ...bindingArguments,
-          "-fsyntax-only",
-          bindingContractSource,
-        ],
-        directory: repositoryDirectory,
-        file: bindingContractSource,
-      },
       {
         arguments: [
           clang,
@@ -245,10 +204,6 @@ try {
     }
 
     for (const standard of ["c99", "c17"]) {
-      const bindingStandardArguments = [
-        `-std=${standard}`,
-        ...bindingArguments,
-      ];
       const scannerStandardArguments = [
         `-std=${standard}`,
         ...scannerArguments,
@@ -262,11 +217,6 @@ try {
         `scanner-reuse-contract-${standard}`,
       );
 
-      run(
-        clang,
-        [...bindingStandardArguments, "-fsyntax-only", bindingContractSource],
-        { stdio: "inherit" },
-      );
       run(
         clang,
         [...scannerStandardArguments, "-fsyntax-only", scannerSource],
