@@ -1668,6 +1668,292 @@ static void assert_backquote_escape_run_scanner_contract(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
+static void assert_backquote_ordinary_escape_run_contract(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  scanner->backquote_depth = 1;
+
+  bool run_symbols[TOKEN_COUNT] = {false};
+  run_symbols[BACKQUOTE_DOLLAR_PREFIX] = true;
+  run_symbols[BACKQUOTE_START_PREFIX] = true;
+  run_symbols[BACKQUOTE_END_PREFIX] = true;
+  run_symbols[BACKQUOTE_CONTENT_RUN_BEGIN] = true;
+  run_symbols[BACKQUOTE_PAIR_RUN_BEGIN] = true;
+
+  // One rescan folds a pair into the escape of the following character.
+  const int32_t pair_before_semicolon[] = {'\\', '\\', ';'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    pair_before_semicolon,
+    3,
+    true,
+    BACKQUOTE_CONTENT_RUN_BEGIN,
+    0,
+    2,
+    ';'
+  );
+
+  // Three backslashes fold to an escaped backslash and a bare semicolon.
+  const int32_t triple_before_semicolon[] = {'\\', '\\', '\\', ';'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    triple_before_semicolon,
+    4,
+    true,
+    BACKQUOTE_PAIR_RUN_BEGIN,
+    0,
+    3,
+    ';'
+  );
+
+  const int32_t single_before_semicolon[] = {'\\', ';'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    single_before_semicolon,
+    2,
+    true,
+    BACKQUOTE_CONTENT_RUN_BEGIN,
+    0,
+    1,
+    ';'
+  );
+
+  scanner->backquote_depth = 2;
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    triple_before_semicolon,
+    4,
+    true,
+    BACKQUOTE_CONTENT_RUN_BEGIN,
+    0,
+    3,
+    ';'
+  );
+  const int32_t five_before_semicolon[] = {'\\', '\\', '\\', '\\', '\\', ';'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    five_before_semicolon,
+    6,
+    true,
+    BACKQUOTE_PAIR_RUN_BEGIN,
+    0,
+    5,
+    ';'
+  );
+
+  // The run end absorbs a lone backslash before an ordinary character and
+  // leaves it before a dollar sign.
+  bool end_symbols[TOKEN_COUNT] = {false};
+  end_symbols[BACKQUOTE_PAIR_RUN_END] = true;
+  assert_scan_result(
+    scanner,
+    end_symbols,
+    single_before_semicolon,
+    2,
+    true,
+    BACKQUOTE_PAIR_RUN_END,
+    1,
+    1,
+    ';'
+  );
+  const int32_t single_before_dollar[] = {'\\', '$'};
+  assert_scan_result(
+    scanner,
+    end_symbols,
+    single_before_dollar,
+    2,
+    true,
+    BACKQUOTE_PAIR_RUN_END,
+    0,
+    1,
+    '$'
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+static void assert_continuation_led_layout_classification(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[LINE_CONTINUATION] = true;
+  valid_symbols[LAYOUT_BEGIN] = true;
+  valid_symbols[COMMENT_BOUNDARY] = true;
+  valid_symbols[PRE_NEWLINE_BLANK] = true;
+  valid_symbols[TRAILING_CONTINUATION_BEGIN] = true;
+
+  const int32_t run_before_comment[] = {'\\', '\n', '\\', '\n', '#', 'c'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    run_before_comment,
+    6,
+    true,
+    COMMENT_BOUNDARY,
+    0,
+    4,
+    '#'
+  );
+
+  const int32_t run_before_blank_line[] = {'\\', '\n', ' ', '\\', '\n', '\n'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    run_before_blank_line,
+    6,
+    true,
+    PRE_NEWLINE_BLANK,
+    0,
+    5,
+    '\n'
+  );
+
+  const int32_t run_before_command[] = {'\\', '\n', '\\', '\n', 'x'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    run_before_command,
+    5,
+    true,
+    LAYOUT_BEGIN,
+    0,
+    4,
+    'x'
+  );
+
+  const int32_t run_before_end[] = {'\\', '\n', '\\', '\n'};
+  valid_symbols[LAYOUT_BEGIN] = false;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    run_before_end,
+    4,
+    true,
+    TRAILING_CONTINUATION_BEGIN,
+    0,
+    4,
+    0
+  );
+
+  // An escape after the backslash is a word for the grammar.
+  const int32_t escaped_word[] = {'\\', 'x'};
+  valid_symbols[LAYOUT_BEGIN] = true;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    escaped_word,
+    2,
+    false,
+    0,
+    0,
+    1,
+    'x'
+  );
+
+  // Inside the run only the continuation itself is valid.
+  memset(valid_symbols, 0, sizeof(valid_symbols));
+  valid_symbols[LINE_CONTINUATION] = true;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    run_before_command,
+    5,
+    true,
+    LINE_CONTINUATION,
+    2,
+    2,
+    '\\'
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+static void assert_here_document_body_arithmetic_boundary(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  assert(append_document(
+    &scanner->active_documents,
+    &scanner->active_count,
+    make_document("EOF", false, false)
+  ));
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[ARITHMETIC_OPERAND_BOUNDARY] = true;
+  valid_symbols[SEPARATOR_NEWLINE] = true;
+  const int32_t operand_on_next_line[] = {'\n', '2', ')', ')'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    operand_on_next_line,
+    4,
+    true,
+    ARITHMETIC_OPERAND_BOUNDARY,
+    0,
+    1,
+    '2'
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+static void assert_here_document_end_line_before_backquote(void) {
+  struct HereDocument document = make_document("EOF", false, false);
+  const int32_t end_then_backquote[] = {'E', 'O', 'F', '`'};
+  struct MockLexer enclosed;
+  init_mock_lexer(&enclosed, end_then_backquote, 4);
+  assert(scan_here_document_end_line(&enclosed.lexer, &document, 1));
+  assert(enclosed.offset == 3);
+  assert(enclosed.lexer.lookahead == '`');
+
+  struct MockLexer top_level;
+  init_mock_lexer(&top_level, end_then_backquote, 4);
+  assert(!scan_here_document_end_line(&top_level.lexer, &document, 0));
+
+  clear_document(&document);
+}
+
+static void assert_io_number_at_word_start(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[WORD_BRACKET_LITERAL_START] = true;
+  const int32_t digits_then_operator[] = {'2', '>', 'x'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    digits_then_operator,
+    3,
+    true,
+    FILE_DESCRIPTOR,
+    0,
+    1,
+    '>'
+  );
+
+  // Inside a word the digits stay word source.
+  valid_symbols[LITERAL_HASH] = true;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    digits_then_operator,
+    3,
+    false,
+    0,
+    0,
+    0,
+    '2'
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
 static void
 assert_function_body_boundary_classifies_after_horizontal_layout(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
@@ -2140,34 +2426,24 @@ static void assert_comment_boundary_contract(void) {
   assert(continued.offset == 4);
   assert(continued.lexer.lookahead == '#');
 
-  const int32_t continued_comment_after_blank[] = {'\\', '\n', '#', 'x'};
-  struct MockLexer continued_after_blank;
+  // The boundary precedes a continuation-led run, so the grammar reads the
+  // run as layout that the comment owns.
+  const int32_t continued_comment_led[] = {'\\', '\n', '#', 'x'};
+  struct MockLexer continued_led;
   init_mock_lexer(
-    &continued_after_blank,
-    continued_comment_after_blank,
-    sizeof(continued_comment_after_blank) /
-      sizeof(continued_comment_after_blank[0])
+    &continued_led,
+    continued_comment_led,
+    sizeof(continued_comment_led) / sizeof(continued_comment_led[0])
   );
   assert(tree_sitter_sh_external_scanner_scan(
     scanner,
-    &continued_after_blank.lexer,
+    &continued_led.lexer,
     valid_symbols
   ));
-  assert(continued_after_blank.lexer.result_symbol == LINE_CONTINUATION);
-  assert(continued_after_blank.mark == 2);
-  assert(continued_after_blank.offset == 2);
-  assert(continued_after_blank.lexer.lookahead == '#');
-
-  size_t boundary_start = continued_after_blank.offset;
-  assert(tree_sitter_sh_external_scanner_scan(
-    scanner,
-    &continued_after_blank.lexer,
-    valid_symbols
-  ));
-  assert(continued_after_blank.lexer.result_symbol == COMMENT_BOUNDARY);
-  assert(continued_after_blank.mark == boundary_start);
-  assert(continued_after_blank.offset == boundary_start);
-  assert(continued_after_blank.lexer.lookahead == '#');
+  assert(continued_led.lexer.result_symbol == COMMENT_BOUNDARY);
+  assert(continued_led.mark == 0);
+  assert(continued_led.offset == 2);
+  assert(continued_led.lexer.lookahead == '#');
 
   const int32_t blank_severed_and_if[] = {' ', '&', '\\', '\n', '&'};
   struct MockLexer and_if;
@@ -2262,14 +2538,17 @@ static void assert_comment_boundary_contract(void) {
     name_continuation,
     sizeof(name_continuation) / sizeof(name_continuation[0])
   );
+  // Where a comment line could own the run, the owner is settled before
+  // the run: a following command makes it horizontal layout.
   memset(valid_symbols, 0, sizeof(valid_symbols));
   valid_symbols[COMMENT_BOUNDARY] = true;
   valid_symbols[LINE_CONTINUATION] = true;
+  valid_symbols[LAYOUT_BEGIN] = true;
   assert(
     tree_sitter_sh_external_scanner_scan(scanner, &name.lexer, valid_symbols)
   );
-  assert(name.lexer.result_symbol == LINE_CONTINUATION);
-  assert(name.mark == 2);
+  assert(name.lexer.result_symbol == LAYOUT_BEGIN);
+  assert(name.mark == 0);
   assert(name.offset == 2);
   assert(name.lexer.lookahead == 'M');
 
@@ -2308,29 +2587,9 @@ static void assert_comment_boundary_contract(void) {
     &continuation_run.lexer,
     valid_symbols
   ));
-  assert(continuation_run.lexer.result_symbol == LINE_CONTINUATION);
-  assert(continuation_run.mark == 2);
-  assert(continuation_run.offset == 2);
-  assert(continuation_run.lexer.lookahead == '\\');
-  assert(tree_sitter_sh_external_scanner_scan(
-    scanner,
-    &continuation_run.lexer,
-    valid_symbols
-  ));
-  assert(continuation_run.lexer.result_symbol == LINE_CONTINUATION);
-  assert(continuation_run.mark == 4);
-  assert(continuation_run.offset == 4);
-  assert(continuation_run.lexer.lookahead == '#');
-
-  boundary_start = continuation_run.offset;
-  assert(tree_sitter_sh_external_scanner_scan(
-    scanner,
-    &continuation_run.lexer,
-    valid_symbols
-  ));
   assert(continuation_run.lexer.result_symbol == COMMENT_BOUNDARY);
-  assert(continuation_run.mark == boundary_start);
-  assert(continuation_run.offset == boundary_start);
+  assert(continuation_run.mark == 0);
+  assert(continuation_run.offset == 4);
   assert(continuation_run.lexer.lookahead == '#');
 
   const int32_t trailing_blank_non_comment[] = {
@@ -2351,10 +2610,10 @@ static void assert_comment_boundary_contract(void) {
     &trailing_blank.lexer,
     valid_symbols
   ));
-  assert(trailing_blank.lexer.result_symbol == LINE_CONTINUATION);
-  assert(trailing_blank.mark == 2);
-  assert(trailing_blank.offset == 2);
-  assert(trailing_blank.lexer.lookahead == ' ');
+  assert(trailing_blank.lexer.result_symbol == LAYOUT_BEGIN);
+  assert(trailing_blank.mark == 0);
+  assert(trailing_blank.offset == 4);
+  assert(trailing_blank.lexer.lookahead == 'x');
 
   const int32_t trailing_blank_comment[] = {
     '\\',
@@ -2375,10 +2634,10 @@ static void assert_comment_boundary_contract(void) {
     &trailing_comment.lexer,
     valid_symbols
   ));
-  assert(trailing_comment.lexer.result_symbol == LINE_CONTINUATION);
-  assert(trailing_comment.mark == 2);
-  assert(trailing_comment.offset == 2);
-  assert(trailing_comment.lexer.lookahead == ' ');
+  assert(trailing_comment.lexer.result_symbol == COMMENT_BOUNDARY);
+  assert(trailing_comment.mark == 0);
+  assert(trailing_comment.offset == 4);
+  assert(trailing_comment.lexer.lookahead == '#');
 
   const int32_t direct_hash_after_blank[] = {'#', 'x'};
   struct MockLexer hash_after_blank;
@@ -2559,6 +2818,88 @@ static void assert_trailing_comment_boundary_contract(void) {
     0,
     0,
     '#'
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+// Inside backquotes the closer's search skips nothing, so a comment ends at
+// the backtick acting at the enclosing level; escaped backticks and the
+// escape run before a deeper closer stay comment text.
+static void assert_backquote_comment_contract(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[COMMENT] = true;
+
+  const int32_t plain[] = {'#', 'c', '`', 'x'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    plain,
+    sizeof(plain) / sizeof(plain[0]),
+    true,
+    COMMENT,
+    4,
+    4,
+    0
+  );
+
+  scanner->backquote_depth = 1;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    plain,
+    sizeof(plain) / sizeof(plain[0]),
+    true,
+    COMMENT,
+    2,
+    2,
+    '`'
+  );
+
+  const int32_t escaped[] = {'#', '\\', '`', 'x', '`'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    escaped,
+    sizeof(escaped) / sizeof(escaped[0]),
+    true,
+    COMMENT,
+    4,
+    4,
+    '`'
+  );
+
+  scanner->backquote_depth = 2;
+  const int32_t deeper_closer[] = {'#', '\\', '`', 'y'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    deeper_closer,
+    sizeof(deeper_closer) / sizeof(deeper_closer[0]),
+    true,
+    COMMENT,
+    2,
+    2,
+    '`'
+  );
+
+  memset(valid_symbols, 0, sizeof(valid_symbols));
+  valid_symbols[COMMENT_BOUNDARY] = true;
+  valid_symbols[TRAILING_COMMENT_BOUNDARY] = true;
+  scanner->backquote_depth = 1;
+  const int32_t trailing[] = {'#', 'c', '`'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    trailing,
+    sizeof(trailing) / sizeof(trailing[0]),
+    true,
+    TRAILING_COMMENT_BOUNDARY,
+    0,
+    2,
+    '`'
   );
 
   tree_sitter_sh_external_scanner_destroy(scanner);
@@ -2893,9 +3234,73 @@ static void assert_tilde_end_marker_contract(void) {
       false
     );
   }
+
+  // Removed newlines before the boundary are layout after the prefix; the
+  // marker stays zero-width before them.
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[WORD_TILDE_END] = true;
+
+  const int32_t continued_blank[] = {'\\', '\n', '\\', '\n', ' ', 'x'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    continued_blank,
+    sizeof(continued_blank) / sizeof(continued_blank[0]),
+    true,
+    WORD_TILDE_END,
+    0,
+    4,
+    ' '
+  );
+
+  const int32_t continued_word[] = {'\\', '\n', 'x'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    continued_word,
+    sizeof(continued_word) / sizeof(continued_word[0]),
+    false,
+    WORD_TILDE_END,
+    0,
+    2,
+    'x'
+  );
+
+  const int32_t escaped_character[] = {'\\', 'x'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    escaped_character,
+    sizeof(escaped_character) / sizeof(escaped_character[0]),
+    false,
+    WORD_TILDE_END,
+    0,
+    1,
+    'x'
+  );
+
+  valid_symbols[WORD_TILDE_END] = false;
+  valid_symbols[ASSIGNMENT_TILDE_END] = true;
+  const int32_t continued_colon[] = {'\\', '\n', ':'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    continued_colon,
+    sizeof(continued_colon) / sizeof(continued_colon[0]),
+    true,
+    ASSIGNMENT_TILDE_END,
+    0,
+    2,
+    ':'
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
 static void assert_nul_and_eof_are_distinct(void) {
+  const struct Scanner outside_backquote = {0};
   const int32_t comment_input[] = {'#', 'a', 0, 'b', '\n'};
   struct MockLexer comment;
   init_mock_lexer(
@@ -2903,13 +3308,12 @@ static void assert_nul_and_eof_are_distinct(void) {
     comment_input,
     sizeof(comment_input) / sizeof(comment_input[0])
   );
-  assert(scan_comment(&comment.lexer));
+  assert(scan_comment(&outside_backquote, &comment.lexer));
   assert(comment.lexer.result_symbol == COMMENT);
   assert(comment.offset == 4);
   assert(comment.mark == 4);
   assert(comment.lexer.lookahead == '\n');
 
-  const struct Scanner outside_backquote = {0};
   const int32_t nul_input[] = {0};
   struct MockLexer nul;
   init_mock_lexer(&nul, nul_input, 1);
@@ -3444,6 +3848,11 @@ int main(void) {
   assert_word_separator_classification_contract();
   assert_backquote_prefix_scanner_contract();
   assert_backquote_escape_run_scanner_contract();
+  assert_backquote_ordinary_escape_run_contract();
+  assert_continuation_led_layout_classification();
+  assert_here_document_body_arithmetic_boundary();
+  assert_here_document_end_line_before_backquote();
+  assert_io_number_at_word_start();
   assert_function_body_boundary_classifies_after_horizontal_layout();
   assert_substitution_closers();
   assert_case_item_boundary_contract();
@@ -3451,6 +3860,7 @@ int main(void) {
   assert_separator_continuation_with_pending_documents();
   assert_comment_boundary_contract();
   assert_trailing_comment_boundary_contract();
+  assert_backquote_comment_contract();
   assert_comment_line_end_contract();
   assert_arithmetic_boundary_contract();
   assert_arithmetic_left_parenthesis_classification();

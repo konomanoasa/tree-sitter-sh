@@ -318,3 +318,74 @@ printf value
   (linebreak
     (newline_list))
   (comment))
+
+==================
+Continuation runs before comment lines stay layout
+==================
+
+\
+\
+# leading
+echo;\
+# after a separator
+echo &\
+\
+# after an ampersand
+echo
+\
+\
+# after a newline
+
+---
+
+(program
+  (linebreak
+    (newline_list
+      (line_continuation)
+      (line_continuation)
+      (comment)))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))
+      (separator_op))
+    (newline_list
+      (line_continuation)
+      (comment))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))
+      (separator_op))
+    (newline_list
+      (line_continuation)
+      (line_continuation)
+      (comment))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (line_continuation)
+      (line_continuation)
+      (comment))))

@@ -527,8 +527,8 @@ Group closers follow continuation-led layout lines
                                     (word
                                       (literal)))))))))
                       terminator: (separator
-                        newlines: (newline_list
-                          (line_continuation))))))))))))
+                        newlines: (newline_list)))
+                    (line_continuation)))))))))
     separator: (newline_list)
     command: (complete_command
       body: (list
@@ -549,7 +549,7 @@ Group closers follow continuation-led layout lines
                                     (word
                                       (literal)))))))))
                       terminator: (separator
-                        newlines: (newline_list
-                          (line_continuation)))))))))))))
+                        newlines: (newline_list)))
+                    (line_continuation))))))))))
   trailing: (linebreak
     (newline_list)))

@@ -64,12 +64,18 @@ const patternRangeEndpointStructuredSourceParts = ($) =>
   ]);
 
 // The markers keep a run atomic; consuming one pair first can change how the
-// remaining suffix folds through the enclosing backquotes.
-const backquoteContentEscapeRun = ($, escapeName, dollar) =>
+// remaining suffix folds through the enclosing backquotes. The run ends with
+// the character the folded run escapes: a tail escape, or the literal
+// character the pairs alone escape.
+const backquoteContentEscapeRun = ($, escapeName, literalName) =>
   seq(
     $._backquote_content_run_begin,
     repeat(alias($._backquote_escaped_pair, escapeName)),
-    choice(alias($._backquote_escaped_tail, escapeName), dollar),
+    choice(
+      alias($._backquote_escaped_tail, escapeName),
+      alias("$", literalName),
+      alias($._backquote_escaped_ordinary, literalName),
+    ),
   );
 
 const backquoteEscapedPairRun = ($, pair) =>
@@ -358,9 +364,6 @@ const parenthesizedArithmetic = ($, expression) =>
     ")",
   );
 
-const continuedBlankLineLayout = ($) =>
-  seq(optional($._pre_newline_blank), $._continuation_led_run);
-
 const arithmeticExpansionEnd = ($) =>
   choice(
     seq(")", $._arithmetic_second_right_parenthesis),
@@ -398,25 +401,6 @@ const reservedWordLinebreak = ($) =>
     $._horizontal_layout,
   );
 
-const continuationBoundaryLayout = ($, marker) =>
-  prec.right(
-    1,
-    seq(
-      optional(lineContinuationRun($)),
-      marker,
-      optional($._horizontal_layout),
-    ),
-  );
-
-const patternBoundaryLayout = ($) =>
-  continuationBoundaryLayout($, $._pattern_continuation);
-
-const patternClosingLayout = ($) =>
-  continuationBoundaryLayout($, $._pattern_end);
-
-const lineComment = ($, comment) =>
-  seq(continuationBoundaryLayout($, $._comment_boundary), comment);
-
 const newlineListElements = ($) => [
   $.here_document_sequence,
   $._layout_newline,
@@ -426,13 +410,7 @@ const newlineListElements = ($) => [
 ];
 
 const ledNewlineList = ($, lead) =>
-  prec.right(
-    seq(
-      lead,
-      repeat(choice(...newlineListElements($))),
-      optional($._continuation_led_run),
-    ),
-  );
+  prec.right(seq(lead, repeat(choice(...newlineListElements($)))));
 
 const boundaryLineComment = ($, comment) =>
   seq($._comment_boundary, optional($._horizontal_layout), comment);
@@ -457,7 +435,7 @@ const doubleQuotedPart = ($) =>
 const completeCommandsTail = ($) =>
   seq(
     $.complete_commands,
-    optional(alias($._trailing_linebreak, $.linebreak)),
+    optional($.linebreak),
     optional($._free_trailing_layout),
   );
 
@@ -1013,6 +991,7 @@ module.exports = grammar({
     $._trailing_continuation_begin,
     $._command_substitution_close,
     $._separator_newline,
+    $._layout_begin,
   ],
 
   conflicts: ($) => [
@@ -1166,9 +1145,7 @@ module.exports = grammar({
           optional(field("leading", $.linebreak)),
           optional($._horizontal_layout),
           field("commands", $.complete_commands),
-          optional(
-            field("trailing", alias($._trailing_linebreak, $.linebreak)),
-          ),
+          optional(field("trailing", $.linebreak)),
           optional($._free_trailing_layout),
         ),
         seq(
@@ -1278,9 +1255,6 @@ module.exports = grammar({
 
     _newline_separator: ($) => field("newlines", $.newline_list),
 
-    _trailing_newline_separator: ($) =>
-      field("newlines", alias($._trailing_newline_list, $.newline_list)),
-
     _separator_led_newline_separator: ($) =>
       field("newlines", alias($._separator_led_newline_list, $.newline_list)),
 
@@ -1371,10 +1345,7 @@ module.exports = grammar({
                 alias($._here_document_led_operator_separator, $.separator),
               ),
             ),
-            field(
-              "terminator",
-              alias($._trailing_newline_separator, $.separator),
-            ),
+            field("terminator", alias($._newline_separator, $.separator)),
           ),
         ),
       ),
@@ -1514,12 +1485,13 @@ module.exports = grammar({
     case_item_ns: ($) =>
       seq(
         field("patterns", $.pattern_list),
-        patternClosingLayout($),
+        $._pattern_end,
+        optional($._horizontal_layout),
         ")",
         choice(
           seq(
             optional($.linebreak),
-            optional($._closing_layout),
+            optional($._horizontal_layout),
             $._case_item_ns_boundary,
           ),
           prec.dynamic(
@@ -1536,7 +1508,8 @@ module.exports = grammar({
     case_item: ($) =>
       seq(
         field("patterns", $.pattern_list),
-        patternClosingLayout($),
+        $._pattern_end,
+        optional($._horizontal_layout),
         ")",
         choice(
           linebreakLayout($),
@@ -1550,18 +1523,18 @@ module.exports = grammar({
     pattern_list: ($) =>
       prec.dynamic(
         2,
-        prec.right(
-          1,
-          seq(
-            optional(seq("(", optional($._horizontal_layout))),
-            field("word", $.word),
-            repeat(
-              seq(
-                patternBoundaryLayout($),
-                "|",
-                optional($._horizontal_layout),
-                field("word", $.word),
-              ),
+        seq(
+          optional(seq("(", optional($._horizontal_layout))),
+          field("word", $.word),
+          optional(lineContinuationRun($)),
+          repeat(
+            seq(
+              $._pattern_continuation,
+              optional($._horizontal_layout),
+              "|",
+              optional($._horizontal_layout),
+              field("word", $.word),
+              optional(lineContinuationRun($)),
             ),
           ),
         ),
@@ -1697,7 +1670,6 @@ module.exports = grammar({
           choice(
             boundaryLineComment($, field("comment", $.comment)),
             seq($._pre_newline_blank, optional($._continuation_led_run)),
-            seq($._trailing_continuation_begin, $._continuation_led_run),
           ),
         ),
         field("line_end", $.here_document_line_end),
@@ -1727,7 +1699,8 @@ module.exports = grammar({
           repeat1(
             choice(
               $._here_document_end_text,
-              $._here_document_end_backslash,
+              $._here_document_backslash,
+              $._here_document_end_backquote,
               $.line_continuation,
             ),
           ),
@@ -1735,11 +1708,14 @@ module.exports = grammar({
         ),
       ),
 
-    _here_document_end_text: (_) => token.immediate(/[^\\\n]+/),
+    _here_document_end_text: (_) => token.immediate(/[^\\\n`]+/),
 
-    // Inside enclosing backquotes, an end line can carry escapes that fold
-    // away before the delimiter comparison but stay in the source.
-    _here_document_end_backslash: (_) => token.immediate(prec(-2, "\\")),
+    // Inside enclosing backquotes, an end line can carry escapes (the body's
+    // backslash token) that fold away before the delimiter comparison but
+    // stay in the source, and a bare backtick there closes the substitution
+    // instead of continuing the line; outside backquotes it is ordinary
+    // end-line text.
+    _here_document_end_backquote: (_) => token.immediate(prec(-2, "`")),
 
     here_document_body: ($) =>
       repeat1(
@@ -2247,7 +2223,7 @@ module.exports = grammar({
     escaped_character: (_) => token(seq("\\", /[^\n]/)),
 
     _backquote_content_escape_run: ($) =>
-      backquoteContentEscapeRun($, $.escaped_character, alias("$", $.literal)),
+      backquoteContentEscapeRun($, $.escaped_character, $.literal),
 
     _backquote_escaped_pair_run: ($) =>
       backquoteEscapedPairRun($, $.escaped_character),
@@ -2256,11 +2232,7 @@ module.exports = grammar({
       backquoteSingleEscapedPairRun($, $.escaped_character),
 
     _backquote_double_quote_content_escape_run: ($) =>
-      backquoteContentEscapeRun(
-        $,
-        $.double_quote_escape,
-        alias("$", $.double_quote_text),
-      ),
+      backquoteContentEscapeRun($, $.double_quote_escape, $.double_quote_text),
 
     _backquote_double_quote_escaped_pair_run: ($) =>
       backquoteEscapedPairRun($, $.double_quote_escape),
@@ -2268,6 +2240,8 @@ module.exports = grammar({
     _backquote_escaped_pair: (_) => "\\\\",
 
     _backquote_escaped_tail: (_) => token(prec(1, seq("\\", /[^\\\n]/))),
+
+    _backquote_escaped_ordinary: (_) => token.immediate(/[^\\\n$`]/),
 
     single_quoted: ($) =>
       seq(
@@ -2819,45 +2793,26 @@ module.exports = grammar({
 
     _name_token: (_) => token(prec(1, /[A-Za-z_][A-Za-z0-9_]*/)),
 
-    newline_list: ($) =>
-      prec.right(
-        seq(
-          repeat1(choice(...newlineListElements($))),
-          optional($._continuation_led_run),
-        ),
-      ),
+    newline_list: ($) => prec.right(repeat1(choice(...newlineListElements($)))),
 
     _separator_led_newline_list: ($) =>
       ledNewlineList($, seq($._separator_newline, $._layout_newline)),
-
-    _trailing_newline_list: ($) =>
-      ledNewlineList(
-        $,
-        choice(
-          $.here_document_sequence,
-          $._layout_newline,
-          $._blank_line,
-          $._trailing_continued_blank_line,
-          seq(boundaryLineComment($, $.comment), $._comment_line_end),
-        ),
-      ),
-
-    _trailing_continued_blank_line: ($) =>
-      seq(
-        choice($._pre_newline_blank, $._trailing_continuation_begin),
-        $._continuation_led_run,
-        $._layout_newline,
-      ),
-
-    _trailing_linebreak: ($) => alias($._trailing_newline_list, $.newline_list),
 
     _here_document_led_newline_list: ($) =>
       ledNewlineList($, $.here_document_sequence),
 
     linebreak: ($) => $.newline_list,
 
+    // Where several rules could own a continuation-led layout run, the
+    // scanner names the owner with a zero-width marker before the run.
     _horizontal_layout: ($) =>
-      prec.right(1, repeat1(choice($._blank, prec(2, $.line_continuation)))),
+      prec.right(
+        1,
+        seq(
+          optional($._layout_begin),
+          repeat1(choice($._blank, prec(2, $.line_continuation))),
+        ),
+      ),
 
     _closing_layout: ($) =>
       prec.right(
@@ -2879,14 +2834,16 @@ module.exports = grammar({
       prec.right(1, choice($._closing_layout, trailingComment($))),
 
     // Disjoint lookahead links each comment to the next one or the run horizon.
-    _comment_line: ($) => seq($._free_comment, $._comment_line_end),
+    _comment_line: ($) =>
+      seq(boundaryLineComment($, $.comment), $._comment_line_end),
 
     _continued_blank_line: ($) =>
-      prec.dynamic(2, seq(continuedBlankLineLayout($), $._layout_newline)),
+      prec.dynamic(
+        2,
+        seq($._pre_newline_blank, $._continuation_led_run, $._layout_newline),
+      ),
 
     _blank_line: ($) => seq($._pre_newline_blank, $._layout_newline),
-
-    _free_comment: ($) => prec.right(1, lineComment($, $.comment)),
 
     _layout_newline: (_) => "\n",
 

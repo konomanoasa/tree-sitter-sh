@@ -1536,3 +1536,13 @@ if (:) >out then :; fi
                                           (literal)))))))))))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+Digits before a redirection operator never form a target word
+:error
+==================
+
+echo 1>2>3
+echo <2>x
+
+---

@@ -841,3 +841,86 @@ E
                             operator: (separator_op))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+Unquoted body expansions span body lines
+==================
+
+cat <<EOF
+$((1 +
+2)) $(a
+b)
+EOF
+after
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (arithmetic_expansion
+              (arithmetic_binary_expression
+                (arithmetic_number)
+                (arithmetic_operator)
+                (arithmetic_number)))
+            (here_document_text)
+            (command_substitution
+              (command_substitution_body
+                (complete_commands
+                  (complete_command
+                    (list
+                      (and_or
+                        (pipeline
+                          (pipe_sequence
+                            (command
+                              (simple_command
+                                (cmd_name
+                                  (word
+                                    (literal))))))))))
+                  (newline_list)
+                  (complete_command
+                    (list
+                      (and_or
+                        (pipeline
+                          (pipe_sequence
+                            (command
+                              (simple_command
+                                (cmd_name
+                                  (word
+                                    (literal))))))))))))))
+          (here_document_end))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))

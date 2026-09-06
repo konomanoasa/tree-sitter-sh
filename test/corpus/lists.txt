@@ -953,8 +953,8 @@ c; d  \
 
 (program
   leading: (linebreak
-    (newline_list
-      (line_continuation)))
+    (newline_list))
+  (line_continuation)
   commands: (complete_commands
     command: (complete_command
       body: (list
@@ -1033,9 +1033,9 @@ first\
 
 (program
   leading: (linebreak
-    (newline_list
-      (line_continuation)
-      (line_continuation)))
+    (newline_list))
+  (line_continuation)
+  (line_continuation)
   commands: (complete_commands
     command: (complete_command
       body: (list
@@ -1892,3 +1892,38 @@ x=$( a\
                             (line_continuation))))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+Continuation runs before blank lines stay layout
+==================
+
+\
+\
+
+echo
+\
+\
+
+
+---
+
+(program
+  (linebreak
+    (newline_list
+      (line_continuation)
+      (line_continuation)))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (line_continuation)
+      (line_continuation))))

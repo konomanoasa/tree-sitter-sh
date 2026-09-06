@@ -1226,3 +1226,65 @@ case x in p) y=esac ;; esac
                     (esac_keyword))))))))))
   (linebreak
     (newline_list)))
+
+==================
+Continuations after an empty item precede esac
+==================
+
+case x in a)\
+\
+esac
+case y in b)\
+;; esac
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list_ns
+                      (case_item_ns
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (line_continuation)
+                        (line_continuation)))
+                    (esac_keyword)))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list
+                      (case_item
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (line_continuation)
+                        (dsemi)))
+                    (esac_keyword))))))))))
+  (linebreak
+    (newline_list)))

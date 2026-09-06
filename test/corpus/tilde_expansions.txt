@@ -325,3 +325,58 @@ printf "${value:-~fallback}"
                             (double_quote_text))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+A removed newline after a tilde prefix ends the prefix
+==================
+
+echo ~user\
+ next
+a=~user\
+ cmd
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (tilde_expansion
+                        (tilde_user
+                          (literal))))
+                    (line_continuation)
+                    (word
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (tilde_expansion
+                          (tilde_user
+                            (literal))))
+                      (line_continuation)))
+                  (cmd_word
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
