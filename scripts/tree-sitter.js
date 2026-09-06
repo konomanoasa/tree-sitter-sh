@@ -54,9 +54,7 @@ function environmentFor(directory, additions = {}) {
     "tree-sitter",
   );
   const libraryDirectory = path.join(directory, "lib");
-  // The CLI discovers grammars by scanning parser directories for
-  // "tree-sitter-*" entries, so a link with the conventional name keeps
-  // scope resolution independent of the checkout's directory name.
+  // CLI discovery requires a tree-sitter-* entry regardless of checkout name.
   const parserDirectory = path.join(directory, "parsers");
   const parserLink = path.join(parserDirectory, `tree-sitter-${grammar.name}`);
   fs.mkdirSync(cacheDirectory, { recursive: true });

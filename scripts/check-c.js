@@ -68,9 +68,6 @@ function undefinedSymbols(output) {
   return symbols;
 }
 
-// The scanner names these tokens after their classification rather than
-// their grammar spelling; every other enumerator is the grammar name
-// uppercased without its leading underscore.
 const externalEnumeratorExceptions = new Map([
   ["_io_number_token", "FILE_DESCRIPTOR"],
   ["_bang_token", "PIPELINE_NEGATION"],
@@ -84,9 +81,7 @@ const externalEnumeratorExceptions = new Map([
   ["_pattern_bracket_hyphen_token", "PATTERN_BRACKET_HYPHEN"],
 ]);
 
-// The external scanner reads tokens by enum position, so the TokenType
-// enumerators must list every grammar external in declaration order,
-// followed only by the TOKEN_COUNT sentinel.
+// External tokens are indexed by enum position, not by name.
 function checkExternalTokenOrder(scannerSource) {
   const grammar = JSON.parse(
     fs.readFileSync(path.join(grammarDirectory, "src/grammar.json"), "utf8"),

@@ -1,6 +1,5 @@
-// Tree-sitter's regex dialect requires an escaped left bracket inside a
-// character class, which Biome strips from regex literals, so these two
-// patterns stay strings.
+// Keep these regexes as strings: Biome removes the bracket escape that
+// Tree-sitter requires inside character classes.
 const LITERAL_TOKEN_PATTERN_SOURCE = "[^ \\t\\n;&|<>()/\\\\'\"$`*?\\[\\]~:#=]+";
 const PARAMETER_PATTERN_TEXT_PATTERN_SOURCE = "[^}\\n/'\"$`\\\\*?\\[\\]~]+";
 const LITERAL_TOKEN_PATTERN = RegExp(LITERAL_TOKEN_PATTERN_SOURCE);
@@ -63,10 +62,7 @@ const patternRangeEndpointStructuredSourceParts = ($) =>
     $._backquote_single_escaped_pair_run,
   ]);
 
-// The markers keep a run atomic; consuming one pair first can change how the
-// remaining suffix folds through the enclosing backquotes. The run ends with
-// the character the folded run escapes: a tail escape, or the literal
-// character the pairs alone escape.
+// Keep runs atomic: consuming a pair first changes the remainder's fold.
 const backquoteContentEscapeRun = ($, escapeName, literalName) =>
   seq(
     $._backquote_content_run_begin,
@@ -153,8 +149,7 @@ const incompleteBracketLiteralRun = ($, atom) =>
     ),
   );
 
-// A dollar sign that opens no expansion is an ordinary member, as in
-// `literal`: the scanner's expansion start wins whenever one follows.
+// Scanner expansion-start tokens outrank the literal dollar fallback.
 const patternBracketCharacter = ($, characterToken) =>
   choice(
     characterToken,
@@ -433,10 +428,8 @@ const substitutionCommandsBody = ($, leadingLayout) =>
 const backquoteDollar = ($) =>
   seq(alias($._backquote_dollar_prefix, "\\"), token.immediate("$"));
 
-// The scanner owns the dollar sign: a zero-width marker before an internal
-// "$" token is dropped while the parser recovers from an error, and the
-// plain "$" text token lexed instead stays reusable by a later edit whose
-// fresh parse reads an expansion.
+// Recovery drops zero-width markers. Let the scanner own '$' so a literal
+// fallback cannot remain reusable when an edit turns it into an expansion.
 const dollarExpansionPrefix = ($) =>
   choice(alias($._dollar_expansion_start, "$"), backquoteDollar($));
 
@@ -680,11 +673,8 @@ const conditionalThenBranch = ($, keyword, tail) =>
     tail,
   );
 
-// The layout between a consequence and the reserved word that follows it has
-// one owner: that consequence's closing layout. Nothing before fi competes
-// for it, so after an elif consequence the parser keeps the alternative open
-// through a trailing blank after a continuation instead of reducing an empty
-// alternative and meeting the else as a word.
+// Only the consequence owns closing layout; a competing owner before fi
+// lets elif reduce its empty alternative before reaching else.
 const ifClause = ($) =>
   conditionalThenBranch(
     $,
@@ -1013,10 +1003,8 @@ module.exports = grammar({
     [$._parenthesized_arithmetic_lvalue, $._arithmetic_primary_expression],
     [$.arithmetic_dynamic_expression],
     [$.complete_command],
-    // One escaped pair that ends its run is a bracket range endpoint when a
-    // range operator follows and an ordinary member otherwise; the fork
-    // resolves on that lookahead, and the range's dynamic precedence decides
-    // the operator case.
+    // Defer member-versus-range-endpoint reduction until the following token;
+    // dynamic precedence selects the range when an operator follows.
     [$._backquote_single_escaped_pair_run, $._backquote_escaped_pair_run],
   ],
 
@@ -1163,9 +1151,7 @@ module.exports = grammar({
 
     _sequential_newline_separator: ($) => field("newlines", $.newline_list),
 
-    // No position derives these two rules directly: every use aliases a
-    // variant-specific hidden rule to them, and the DSL requires an alias
-    // target to be a defined rule.
+    // Required alias targets; all uses derive variant-specific hidden rules.
     sequential_sep: ($) =>
       choice($._sequential_operator_separator, $._sequential_newline_separator),
 
@@ -1563,9 +1549,6 @@ module.exports = grammar({
         optional(
           choice(
             boundaryLineComment($, field("comment", $.comment)),
-            // A zero-width _pre_newline_blank leaves the blanks before a
-            // continuation run for the following rule, so a blank owns them
-            // here; the continuation run alone cannot begin with a blank.
             seq(
               $._pre_newline_blank,
               optional(seq(optional($._blank), $._continuation_led_run)),
@@ -1610,11 +1593,8 @@ module.exports = grammar({
 
     _here_document_end_text: (_) => token.immediate(/[^\\\n`]+/),
 
-    // Inside enclosing backquotes, an end line can carry escapes (the body's
-    // backslash token) that fold away before the delimiter comparison but
-    // stay in the source, and a bare backtick there closes the substitution
-    // instead of continuing the line; outside backquotes it is ordinary
-    // end-line text.
+    // Backquote folding removes escapes for comparison, not from the CST;
+    // a bare backtick ends the substitution rather than the delimiter line.
     _here_document_end_backquote: (_) => token.immediate(prec(-2, "`")),
 
     here_document_body: ($) =>
@@ -2243,9 +2223,7 @@ module.exports = grammar({
 
     _special_parameter_hash: (_) => "#",
 
-    // Spelled as string tokens: a regex token here loses the lexical
-    // preference contest against the operator strings in states where both
-    // are valid, which discards the string-length reading of "${#-}".
+    // Regex tokens lose to operator strings here, breaking the '${#-}' reading.
     _special_parameter_except_hash: (_) =>
       choice("0", "*", "@", "?", "$", "!", "-"),
 
@@ -2669,8 +2647,7 @@ module.exports = grammar({
 
     linebreak: ($) => $.newline_list,
 
-    // Where several rules could own a continuation-led layout run, the
-    // scanner names the owner with a zero-width marker before the run.
+    // Zero-width scanner markers resolve competing layout owners.
     _horizontal_layout: ($) =>
       prec.right(
         1,
@@ -2703,9 +2680,7 @@ module.exports = grammar({
     _comment_line: ($) =>
       seq(boundaryLineComment($, $.comment), $._comment_line_end),
 
-    // A zero-width _pre_newline_blank leaves the blanks before the
-    // continuation for the following rule, so a blank owns them here; the
-    // continuation run alone cannot begin with a blank.
+    // _pre_newline_blank is zero-width; this rule must consume the remaining blank.
     _continued_blank_line: ($) =>
       prec.dynamic(
         2,

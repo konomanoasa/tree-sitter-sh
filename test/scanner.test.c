@@ -434,12 +434,8 @@ static void assert_captured_to_pending_move_is_capacity_guarded(void) {
   assert_document(&scanner->pending_documents[127], "last", true, false);
   clear_scanner(scanner);
 
-  // Exact fit: 5 header bytes, the captured document (1 flag, 1 depth,
-  // 2 length, 629 delimiter), 127 empty pending documents (3 bytes each
-  // behind a 1-byte count), and the active and suspended counts reach the
-  // 1023-byte capacity. Moving the captured document widens the pending
-  // count varint past the freed captured count byte, so the move refuses
-  // and leaves the state untouched.
+  // The 629-byte delimiter and 127 pending documents exactly fill 1023 bytes.
+  // Moving the document grows the pending-count varint beyond that capacity.
   assert(append_captured_document(scanner, make_repeated_document(629)));
   for (size_t index = 0; index < 127; index += 1) {
     assert(append_pending_document(scanner, make_document("", false, false)));
@@ -1370,11 +1366,6 @@ static void assert_word_separator_classification_contract(void) {
   assert(assignment_as_word.mark == 1);
   assert(assignment_as_word.lexer.lookahead == '=');
 
-  // A blank before a line continuation belongs to the separator's own run, so
-  // the marker stays zero-width and the blank is left for the following
-  // _blank/line_continuation repetition. This mirrors a blank before a
-  // separating newline and lets the marker own the lookahead past the
-  // continuation, so an edit after it re-derives the reduced node.
   const int32_t pair_after_blank_input[] = {' ', '\\', '\n', 's'};
   struct MockLexer pair_after_blank;
   init_mock_lexer(
@@ -1685,7 +1676,6 @@ static void assert_backquote_ordinary_escape_run_contract(void) {
   run_symbols[BACKQUOTE_CONTENT_RUN_BEGIN] = true;
   run_symbols[BACKQUOTE_PAIR_RUN_BEGIN] = true;
 
-  // One rescan folds a pair into the escape of the following character.
   const int32_t pair_before_semicolon[] = {'\\', '\\', ';'};
   assert_scan_result(
     scanner,
@@ -1699,7 +1689,6 @@ static void assert_backquote_ordinary_escape_run_contract(void) {
     ';'
   );
 
-  // Three backslashes fold to an escaped backslash and a bare semicolon.
   const int32_t triple_before_semicolon[] = {'\\', '\\', '\\', ';'};
   assert_scan_result(
     scanner,
@@ -1751,8 +1740,6 @@ static void assert_backquote_ordinary_escape_run_contract(void) {
     ';'
   );
 
-  // The run end absorbs a lone backslash before an ordinary character and
-  // leaves it before a dollar sign.
   bool end_symbols[TOKEN_COUNT] = {false};
   end_symbols[BACKQUOTE_PAIR_RUN_END] = true;
   assert_scan_result(
@@ -1846,7 +1833,6 @@ static void assert_continuation_led_layout_classification(void) {
     0
   );
 
-  // An escape after the backslash is a word for the grammar.
   const int32_t escaped_word[] = {'\\', 'x'};
   valid_symbols[LAYOUT_BEGIN] = true;
   assert_scan_result(
@@ -1861,7 +1847,6 @@ static void assert_continuation_led_layout_classification(void) {
     'x'
   );
 
-  // Inside the run only the continuation itself is valid.
   memset(valid_symbols, 0, sizeof(valid_symbols));
   valid_symbols[LINE_CONTINUATION] = true;
   assert_scan_result(
@@ -1879,10 +1864,6 @@ static void assert_continuation_led_layout_classification(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-// After a closed command a glued continuation run stays valid, but a blank
-// before the continuation already ends that run: the blank line after it
-// begins newline layout, which the zero-width PRE_NEWLINE_BLANK at the
-// command end owns instead of falling out of the trailing linebreak.
 static void assert_blank_led_continuation_before_blank_line(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -1997,7 +1978,6 @@ static void assert_io_number_at_word_start(void) {
     '>'
   );
 
-  // Inside a word the digits stay word source.
   valid_symbols[LITERAL_HASH] = true;
   assert_scan_result(
     scanner,
@@ -2014,9 +1994,6 @@ static void assert_io_number_at_word_start(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-// The close scan treats a backslash before any character but a newline as an
-// escape wherever it stands, so a nested left bracket or a class marker
-// followed by an escape neither opens a class element nor fails the scan.
 static void assert_bracket_escapes_stay_members(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -2051,8 +2028,6 @@ static void assert_bracket_escapes_stay_members(void) {
     ' '
   );
 
-  // An escaped bracket after the class marker keeps the element open, and
-  // the bare bracket that follows bounds the scan as an incomplete bracket.
   const int32_t escaped_class_close[] =
     {'[', '[', ':', 'a', ':', '\\', ']', ']', ' '};
   assert_scan_result(
@@ -2067,7 +2042,6 @@ static void assert_bracket_escapes_stay_members(void) {
     ']'
   );
 
-  // Line continuations after the marker still let the close follow.
   const int32_t continued_class_close[] =
     {'[', '[', ':', 'a', ':', '\\', '\n', ']', ']', ' '};
   assert_scan_result(
@@ -2085,10 +2059,6 @@ static void assert_bracket_escapes_stay_members(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-// Inside enclosing backquotes the close scan folds an escape run the way the
-// committed member parse does: the following character is escaped exactly
-// when the folded run is odd. Two backslashes escape the close one level
-// deep, three leave it closing, and four escape it again two levels deep.
 static void assert_enclosed_bracket_escape_runs_fold(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -2153,10 +2123,6 @@ static void assert_enclosed_bracket_escape_runs_fold(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-// An escape run acting as the enclosing substitution's closer ends an
-// incomplete bracket literal before the run, as a bare backtick does one
-// level up, so the closer is read next at the same position. One level up
-// the same run opens a nested substitution instead.
 static void assert_enclosing_closer_ends_incomplete_bracket(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -2683,8 +2649,6 @@ static void assert_comment_boundary_contract(void) {
   assert(continued.offset == 4);
   assert(continued.lexer.lookahead == '#');
 
-  // The boundary precedes a continuation-led run, so the grammar reads the
-  // run as layout that the comment owns.
   const int32_t continued_comment_led[] = {'\\', '\n', '#', 'x'};
   struct MockLexer continued_led;
   init_mock_lexer(
@@ -2795,8 +2759,6 @@ static void assert_comment_boundary_contract(void) {
     name_continuation,
     sizeof(name_continuation) / sizeof(name_continuation[0])
   );
-  // Where a comment line could own the run, the owner is settled before
-  // the run: a following command makes it horizontal layout.
   memset(valid_symbols, 0, sizeof(valid_symbols));
   valid_symbols[COMMENT_BOUNDARY] = true;
   valid_symbols[LINE_CONTINUATION] = true;
@@ -3080,9 +3042,6 @@ static void assert_trailing_comment_boundary_contract(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-// Inside backquotes the closer's search skips nothing, so a comment ends at
-// the backtick acting at the enclosing level; escaped backticks and the
-// escape run before a deeper closer stay comment text.
 static void assert_backquote_comment_contract(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -3128,9 +3087,6 @@ static void assert_backquote_comment_contract(void) {
     '`'
   );
 
-  // A backtick acting at the current depth closes the enclosing substitution,
-  // so the comment ends before its escaped run and leaves the escaped closer
-  // intact: the mark sits before the backslash while the run is consumed.
   scanner->backquote_depth = 2;
   const int32_t deeper_closer[] = {'#', '\\', '`', 'y'};
   assert_scan_result(
@@ -3495,8 +3451,6 @@ static void assert_tilde_end_marker_contract(void) {
     );
   }
 
-  // Removed newlines before the boundary are layout after the prefix; the
-  // marker stays zero-width before them.
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
   bool valid_symbols[TOKEN_COUNT] = {false};
@@ -3664,8 +3618,6 @@ static void assert_here_document_line_backslash_parity(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-// Body lines inside enclosing backquotes fold their escape runs before the
-// delimiter comparison, mirroring the delimiter scan's arithmetic.
 static void assert_enclosed_here_document_line_folds(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -3721,8 +3673,6 @@ static void assert_enclosed_here_document_line_folds(void) {
   );
   clear_document(&dollar);
 
-  // One rescan keeps the backslash a pair leaves before an ordinary
-  // character, so the line stays content for the quote-removed delimiter.
   struct HereDocument plain = make_document("d", true, false);
   const int32_t retained[] = {'\\', '\\', 'd', '\n'};
   init_mock_lexer(&mock, retained, sizeof(retained) / sizeof(retained[0]));
@@ -3745,9 +3695,6 @@ static void assert_enclosed_here_document_line_folds(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-// Newlines reset only the pre-scan operator flags. A captured delimiter
-// survives them because the here-end word itself can contain newline tokens
-// (inside double-quotes or a nested here-document body) before its commit.
 static void assert_newline_resets_delimiter_flags_but_keeps_captures(void) {
   bool valid_symbols[TOKEN_COUNT] = {false};
   valid_symbols[NEWLINE] = true;
@@ -3809,8 +3756,6 @@ static void finish_tracked_delimiter_word(
   assert(finish_delimiter_word(cases, groups, 1));
 }
 
-// esac terminates a tracked case only as the first token of a pattern; after
-// another pattern word it is an ordinary word and the case stays open.
 static void assert_case_pattern_esac_terminates_only_at_first_token(void) {
   struct DelimiterGroupBuffer groups = {0};
   struct CaseTrackerBuffer cases = {0};
@@ -3839,8 +3784,6 @@ static void assert_case_pattern_esac_terminates_only_at_first_token(void) {
   ts_free(cases.data);
 }
 
-// Reserved prefixes such as `if` keep the next word at command start in both
-// case-tracking clients, so a case after them still begins a tracked case.
 static void assert_command_prefixes_keep_case_tracking(void) {
   struct DelimiterGroupBuffer groups = {0};
   struct CaseTrackerBuffer cases = {0};
@@ -4023,6 +3966,118 @@ static void assert_name_equals_begin_contract(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
+static void assert_reserved_word_at_command_name_position_stays_reserved(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[NAME_EQUALS_BEGIN] = true;
+  valid_symbols[FNAME_BEGIN] = true;
+
+  const int32_t fi_input[] = {'f', 'i', ' '};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    fi_input,
+    sizeof(fi_input) / sizeof(fi_input[0]),
+    true,
+    FI_KEYWORD,
+    0,
+    2,
+    ' '
+  );
+
+  const int32_t in_input[] = {'i', 'n', '\n'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    in_input,
+    sizeof(in_input) / sizeof(in_input[0]),
+    true,
+    IN_KEYWORD,
+    0,
+    2,
+    '\n'
+  );
+
+  const int32_t bang_input[] = {'!', ' ', 'x'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    bang_input,
+    sizeof(bang_input) / sizeof(bang_input[0]),
+    true,
+    PIPELINE_NEGATION,
+    1,
+    1,
+    ' '
+  );
+
+  const int32_t brace_input[] = {'}', '\n'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    brace_input,
+    sizeof(brace_input) / sizeof(brace_input[0]),
+    true,
+    RIGHT_BRACE,
+    1,
+    1,
+    '\n'
+  );
+
+  const int32_t fix_input[] = {'f', 'i', 'x', ' '};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    fix_input,
+    sizeof(fix_input) / sizeof(fix_input[0]),
+    false,
+    0,
+    0,
+    4,
+    0
+  );
+
+  // Clearing FNAME_BEGIN models a position after a command prefix.
+  memset(valid_symbols, 0, sizeof(valid_symbols));
+  valid_symbols[NAME_EQUALS_BEGIN] = true;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    fi_input,
+    sizeof(fi_input) / sizeof(fi_input[0]),
+    false,
+    0,
+    0,
+    2,
+    ' '
+  );
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    bang_input,
+    sizeof(bang_input) / sizeof(bang_input[0]),
+    false,
+    0,
+    0,
+    0,
+    '!'
+  );
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    brace_input,
+    sizeof(brace_input) / sizeof(brace_input[0]),
+    false,
+    0,
+    0,
+    0,
+    '}'
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
 static void assert_delimiter_scan_resource_rollback(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -4137,6 +4192,7 @@ int main(void) {
   assert_command_prefixes_keep_case_tracking();
   assert_redirect_list_begin_contract();
   assert_name_equals_begin_contract();
+  assert_reserved_word_at_command_name_position_stays_reserved();
   assert_delimiter_scan_resource_rollback();
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
   assert_reuse_allocator_realloc_failure_rolls_back();

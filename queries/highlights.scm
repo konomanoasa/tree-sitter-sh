@@ -211,8 +211,7 @@
       (pattern_question_source) @character.special
     ]))
 
-; Bound each search by its word edge while allowing intervening named children.
-; Explicit prefixes/suffixes keep query analysis out of hidden word-rule paths.
+; Explicit word edges avoid costly query compilation without restricting captures.
 [
   (cmd_name
     (word

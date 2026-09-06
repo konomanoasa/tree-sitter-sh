@@ -868,6 +868,9 @@ test("recovery preserves unaffected top-level commands", () => {
     ["stray-right-parenthesis", ")"],
     ["missing-redirection-target", "broken >;"],
     ["closed-empty-parameter", `broken \${}`],
+    ["reserved-closer-command", "fi"],
+    ["right-brace-command", "}"],
+    ["bang-past-pipeline-head", "! ! alpha"],
   ]) {
     const combined = writeSource(
       `recovery-boundary-${name}`,
@@ -2920,13 +2923,8 @@ test("trailing blanks before separating newlines stay layout", () => {
 });
 
 test("reserved-word closers keep their term stable across edits", () => {
-  // A term followed by a reserved-word closer must carry that closer in its
-  // lookahead, so editing the closer into an ordinary word (or the reverse)
-  // re-derives the term instead of reusing a stale reduction. The
-  // trailing-blank form diverged after a single edit; the no-blank forms only
-  // diverge after an edit history, because a single edit from a fresh tree
-  // stays consistent on its own. These are minimized differential-fuzz
-  // reproductions.
+  // The no-blank cases require the full edit history; a single fresh-tree edit
+  // does not reproduce the stale reduction.
   const blankInitial = writeSource(
     "closer-blank-initial",
     lines("if a", "then b ", "else c", "fi"),
@@ -2993,12 +2991,6 @@ test("reserved-word closers keep their term stable across edits", () => {
 });
 
 test("closing layout owns trailing blanks before a continued closer", () => {
-  // A command that ends in a trailing blank and then a line continuation before
-  // a closer must keep its term reusable across edits. The blank belongs to the
-  // closing layout, not to a word-separator or boundary token, so a zero-width
-  // term boundary carries the closer's lookahead into the term. Without it the
-  // reduced term froze and an inserted word fell into an ERROR node. These are
-  // minimized differential-fuzz reproductions that diverged after a single edit.
   const subshellInitial = writeSource(
     "closing-subshell-initial",
     lines("(echo a \\", ")"),
@@ -3046,11 +3038,6 @@ test("closing layout owns trailing blanks before a continued closer", () => {
 });
 
 test("complete commands keep their terminator across recovery edits", () => {
-  // A complete_command must carry its optional terminator in its lookahead, so
-  // an edit that resolves a recovery state (a stray ";;"/"&" churn) back to a
-  // valid terminator re-derives the command instead of reusing a reduction
-  // that dropped the terminator. These are minimized differential-fuzz
-  // reproductions; each froze `complete_command` at the list before the fix.
   const semiInitial = writeSource("terminator-semi-initial", "for \\\n");
   const semiFinal = writeSource("terminator-semi-final", "r ;\\\n");
   assertIncrementalEqualsFresh(
@@ -3086,15 +3073,7 @@ test("complete commands keep their terminator across recovery edits", () => {
 });
 
 test("terms own trailing layout that runs to the end of input", () => {
-  // A command's separating newline can be followed by a layout run — blank
-  // lines or line continuations — that reaches the end of input. That layout
-  // sits in the term's lookahead through a zero-width boundary, so an edit
-  // that turns it into another command re-derives the reduced command instead
-  // of reusing a reduction that ended before the layout and dropping the new
-  // command into an ERROR node. A separating newline that itself ends the
-  // input carries no such layout, so the final command stays reusable. These
-  // are minimized differential-fuzz reproductions that froze `complete_commands`
-  // only after their full edit histories.
+  // These cases require the full edit history to reproduce stale reuse.
   const continuationInitial = writeSource(
     "trailing-layout-continuation-initial",
     "\n\\\n\\\n\necho\n\\\n\\\n\n",
@@ -3131,12 +3110,6 @@ test("terms own trailing layout that runs to the end of input", () => {
 });
 
 test("closed commands own blank-led trailing continuation layout", () => {
-  // A closed compound command keeps LINE_CONTINUATION valid for its glued
-  // redirect continuations, and an assignment word for its trailing run, so
-  // the boundary scanner withheld PRE_NEWLINE_BLANK from a blank-led
-  // continuation run and the blank line that ends the input fell out of the
-  // trailing linebreak as an ERROR. The blank already ends any glued run, so
-  // the run is trailing layout in the fresh parse and after an edit.
   const groupInitial = writeSource(
     "closed-group-trailing-initial",
     lines("{ a; }"),
@@ -3169,13 +3142,6 @@ test("closed commands own blank-led trailing continuation layout", () => {
 });
 
 test("a continuation before a blank line keeps a compound-list closer reachable", () => {
-  // A command inside a compound list can end with a blank before a line
-  // continuation and then a blank line before the closer. The blank before the
-  // continuation crosses into a zero-width PRE_NEWLINE_BLANK, so the blank must
-  // have an owner in the continued blank line the newline_list terminator holds;
-  // otherwise the orphaned blank drops the closer into an ERROR. Every closer of
-  // a compound list reaches this, matching the glued form that has no leading
-  // blank.
   for (const [name, source] of [
     ["if", "if true; then : \\\n\nfi\n"],
     ["while", "while true; do : \\\n\ndone\n"],
@@ -3191,9 +3157,6 @@ test("a continuation before a blank line keeps a compound-list closer reachable"
     assertValid(writeSource(`compound-closer-${name}`, source), name);
   }
 
-  // The continuation form produces the same public node structure as the glued
-  // form that has no leading blank: the blank the fix admits stays a hidden
-  // token, so it never reaches the public CST.
   const nodeStructure = (name, contents) =>
     parseCst(parseValidCst(writeSource(name, contents), name)).map(
       (entry) => entry.content,
@@ -3204,7 +3167,6 @@ test("a continuation before a blank line keeps a compound-list closer reachable"
     "spaced and glued continuation closers share a public node structure",
   );
 
-  // An edit that inserts the blank and continuation agrees with a fresh parse.
   const initial = writeSource(
     "compound-closer-initial",
     lines("if true; then", ":", "fi"),
@@ -3217,13 +3179,6 @@ test("a continuation before a blank line keeps a compound-list closer reachable"
 });
 
 test("a compound-list closer stays stable when an edit turns it into a command", () => {
-  // When a command ends with a line continuation before a blank line, the
-  // following closer terminates the compound list. Editing the closer into a
-  // command extends the term across that blank line, so the term must have
-  // carried the closer's lookahead through a zero-width TERM_BOUNDARY. Without
-  // it the reused compound_list froze the terminator reading and dropped the
-  // new command into an ERROR. The continuation form now matches the plain
-  // blank-line form, which already carried the boundary.
   const withClose = writeSource(
     "closer-stable-initial",
     "if x; then a\\\n\nelse b\nfi\n",
@@ -3239,8 +3194,6 @@ test("a compound-list closer stays stable when an edit turns it into a command",
     "18 0 X",
   );
 
-  // The elif and else branches reuse several consequence compound lists at
-  // once, each ending in a continuation before its closer.
   const chainClose = writeSource(
     "closer-chain-initial",
     "if a; then b\\\n\nelif c; then d\\\n\nelse e\\\n\nfi\n",
@@ -3258,12 +3211,6 @@ test("a compound-list closer stays stable when an edit turns it into a command",
 });
 
 test("an elif consequence owns the continued layout before its else", () => {
-  // The layout between an elif consequence and the else or elif that
-  // continues the clause belongs to that consequence's closing layout; the if
-  // clause no longer competes for it before fi. With two owners the parser
-  // reduced an empty alternative on the trailing blank after a continuation
-  // and then met the else as a word. Editing the else into a command extends
-  // the elif consequence across the layout in both parses.
   const withElse = writeSource(
     "elif-continued-else",
     "if a; then b; elif c; then d; \\\n else e; fi\n",
@@ -3287,9 +3234,6 @@ test("an elif consequence owns the continued layout before its else", () => {
 });
 
 test("enclosing backquote escape runs keep bracket classification across edits", () => {
-  // The close scan folds the run like the member parse: two backslashes
-  // before the close escape it one backquote level deep, so the bracket stays
-  // an incomplete literal, while three leave it closing a pattern bracket.
   const escapedClose = writeSource(
     "backquote-bracket-escaped-close",
     "echo `echo [\\\\]`\n",
@@ -3313,12 +3257,6 @@ test("enclosing backquote escape runs keep bracket classification across edits",
 });
 
 test("here-document redirect lines keep a continuation before a following command", () => {
-  // A line continuation ending a here-document redirect line is removed
-  // before token recognition, so the source parses like the same line
-  // without it: the body still starts at the next newline and a later command
-  // follows. The here-document-sequence prefix owns the blank before the
-  // continuation even when the pre-newline-blank marker is zero-width, so the
-  // fresh parse and an edit that inserts the continuation agree.
   const withoutContinuation = writeSource(
     "heredoc-continuation-initial",
     lines("cat <<EOF", "EOF", "echo after"),
@@ -3336,11 +3274,7 @@ test("here-document redirect lines keep a continuation before a following comman
 });
 
 test("expansion dollars stay expansions after recovery edits", () => {
-  // Tree-sitter drops zero-width external tokens while it recovers from an
-  // error, so a "$" that opens an expansion must be the scanner's own token:
-  // a plain "$" text token lexed instead would stay reusable by a later edit
-  // whose fresh parse reads the nested expansion. This is a minimized
-  // differential-fuzz reproduction that reused the inner "${x:-y}" as text.
+  // Recovery previously left the inner '${x:-y}' reusable as literal text.
   const dollarInitial = writeSource(
     "expansion-dollar-initial",
     lines('echo "$' + "{x:-$'text'}\""),

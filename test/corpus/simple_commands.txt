@@ -626,6 +626,19 @@ x=1 done arg
     (newline_list)))
 
 ==================
+A reserved word at a command-name position is never a command name
+:error
+==================
+
+fi
+{ x; } ; }
+in
+if a; then b; fi;fi
+echo $(done)
+
+---
+
+==================
 Reserved closer spellings remain arguments inside compound commands
 ==================
 
