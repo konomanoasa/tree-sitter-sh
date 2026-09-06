@@ -211,12 +211,13 @@
       (pattern_question_source) @character.special
     ]))
 
-; Explicit word edges avoid costly query compilation without restricting captures.
+; Optional literals avoid costly required-step analysis; empty matches capture nothing.
 [
   (cmd_name
     (word
-      . (_)*
-      (literal) @string.regexp
+      .
+      (_)*
+      (literal)? @string.regexp
       [
         (pattern_star_source)
         (pattern_question_source)
@@ -229,12 +230,13 @@
         (pattern_question_source)
         (pattern_bracket_source)
       ]
-      (literal) @string.regexp
+      (literal)? @string.regexp
       (_)* .))
   (cmd_word
     (word
-      . (_)*
-      (literal) @string.regexp
+      .
+      (_)*
+      (literal)? @string.regexp
       [
         (pattern_star_source)
         (pattern_question_source)
@@ -247,12 +249,13 @@
         (pattern_question_source)
         (pattern_bracket_source)
       ]
-      (literal) @string.regexp
+      (literal)? @string.regexp
       (_)* .))
   (cmd_suffix
     word: (word
-      . (_)*
-      (literal) @string.regexp
+      .
+      (_)*
+      (literal)? @string.regexp
       [
         (pattern_star_source)
         (pattern_question_source)
@@ -265,12 +268,13 @@
         (pattern_question_source)
         (pattern_bracket_source)
       ]
-      (literal) @string.regexp
+      (literal)? @string.regexp
       (_)* .))
   (wordlist
     word: (word
-      . (_)*
-      (literal) @string.regexp
+      .
+      (_)*
+      (literal)? @string.regexp
       [
         (pattern_star_source)
         (pattern_question_source)
@@ -283,12 +287,13 @@
         (pattern_question_source)
         (pattern_bracket_source)
       ]
-      (literal) @string.regexp
+      (literal)? @string.regexp
       (_)* .))
   (filename
     word: (word
-      . (_)*
-      (literal) @string.regexp
+      .
+      (_)*
+      (literal)? @string.regexp
       [
         (pattern_star_source)
         (pattern_question_source)
@@ -301,7 +306,7 @@
         (pattern_question_source)
         (pattern_bracket_source)
       ]
-      (literal) @string.regexp
+      (literal)? @string.regexp
       (_)* .))
 ]
 
