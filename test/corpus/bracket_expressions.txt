@@ -658,3 +658,88 @@ printf [!-a] [!-] [!!-a] [{] [}] ${v#[)]}
                               member: (pattern_bracket_character_source)))))))))))))))
   trailing: (linebreak
     (newline_list)))
+==================
+A dollar sign that opens no expansion is a bracket member
+==================
+
+printf [a$] [$] [!$] [$=] [a-$] ${x#[a$]}
+case x in [a$]) ;; esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (pattern_bracket_source
+                        negation: (pattern_bracket_negation_source)
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_range_source
+                            start: (pattern_bracket_character_source)
+                            operator: (pattern_bracket_range_operator_source)
+                            end: (pattern_bracket_character_source)))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (pattern_bracket_source
+                            members: (pattern_bracket_members_source
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (pattern_bracket_source
+                              members: (pattern_bracket_members_source
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)))))
+                        terminator: (dsemi)))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))

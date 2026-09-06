@@ -2048,3 +2048,131 @@ echo `echo a # \` x`
                           (comment)))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+A bare backtick cannot close an escaped nested substitution
+:error
+==================
+
+echo `\`a`b`
+
+---
+
+
+
+==================
+Enclosing backquote escape runs fold before a bracket close scan
+==================
+
+echo `echo [\\] [\\\] [\\\a] [\\\-a]`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (literal)
+                                              (escaped_character)
+                                              (literal))
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (escaped_character))))
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (escaped_character)
+                                                  (pattern_bracket_character_source))))
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (pattern_bracket_range_source
+                                                    (escaped_character)
+                                                    (pattern_bracket_range_operator_source)
+                                                    (pattern_bracket_character_source))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+An incomplete bracket ends at a nested backquote closer
+==================
+
+echo `\`echo [a\``
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (backquote_substitution
+                                                (backquote_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (literal)
+                                                                      (literal)))))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))

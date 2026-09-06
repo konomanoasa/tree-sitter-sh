@@ -846,6 +846,8 @@ static enum BackquoteTickPrefix classify_backquote_tick_prefix(
   bool allow_end
 );
 
+static size_t fold_enclosed_plain_run(size_t run, size_t depth);
+
 // A comment runs to the newline, except that inside enclosing backquotes the
 // search for the closing backtick does not look inside comments: a backtick
 // acting at the enclosing level or above ends the comment first, and its
@@ -872,13 +874,20 @@ static void advance_to_comment_end(
         if (!count_escape_run(lexer, 0, &escape_count)) {
           return;
         }
-        if (
-          lexer->lookahead ==
-          '`' &&
-          fold_backquote_escape_run(scanner->backquote_depth, escape_count)
-            .acting_level > scanner->backquote_depth
-        ) {
-          lexer->advance(lexer, false);
+        if (lexer->lookahead == '`') {
+          // A backtick escaping deeper than this level is comment content.
+          // Acting at or below this level it is the enclosing substitution's
+          // closer, so the comment ends before the run and leaves the escaped
+          // closer intact for the backquote end token; the mark already sits
+          // before the run.
+          if (
+            fold_backquote_escape_run(scanner->backquote_depth, escape_count)
+              .acting_level > scanner->backquote_depth
+          ) {
+            lexer->advance(lexer, false);
+            continue;
+          }
+          return;
         }
         continue;
       }
@@ -1020,18 +1029,70 @@ enum BracketEscape {
   BRACKET_ESCAPE_END_OF_INPUT,
 };
 
-// At a backslash inside the bracket close scan. A backslash before anything
-// but a newline escapes that character, which is then an ordinary member
-// wherever the scan stands: it can neither close the bracket nor end a
-// class element.
-static enum BracketEscape skip_bracket_escape(TSLexer *lexer) {
-  if (skip_line_continuations(lexer)) {
-    return BRACKET_ESCAPE_CONTINUATION;
+// At a backslash inside the bracket close scan. Outside backquotes a
+// backslash before anything but a newline escapes that character, which is
+// then an ordinary member wherever the scan stands: it can neither close the
+// bracket nor end a class element.
+//
+// Inside enclosing backquotes the run folds before it escapes anything, so
+// the scan classifies the whole run the way the member parse will: the
+// following character is escaped exactly when the folded run is odd (for a
+// dollar sign or a backtick, when the run's own folding says so). An escaped
+// character is consumed as a member; otherwise the run alone is the member
+// and the character stays for the loop, where a bracket can still close.
+static enum BracketEscape
+skip_bracket_escape(const struct Scanner *scanner, TSLexer *lexer) {
+  if (scanner->backquote_depth == 0) {
+    if (skip_line_continuations(lexer)) {
+      return BRACKET_ESCAPE_CONTINUATION;
+    }
+    if (lexer_at_eof(lexer)) {
+      return BRACKET_ESCAPE_END_OF_INPUT;
+    }
+    lexer->advance(lexer, false);
+    return BRACKET_ESCAPE_MEMBER;
+  }
+  size_t run;
+  if (!count_escape_run(lexer, 0, &run)) {
+    return BRACKET_ESCAPE_END_OF_INPUT;
   }
   if (lexer_at_eof(lexer)) {
     return BRACKET_ESCAPE_END_OF_INPUT;
   }
-  lexer->advance(lexer, false);
+  int32_t follower = lexer->lookahead;
+  if (follower == '\n') {
+    // Only a run's final backslash folds into a line continuation before a
+    // newline; the grammar reads longer runs there as escaped pairs, so the
+    // scan leaves the newline in place for them.
+    if ((run & 1) != 0) {
+      lexer->advance(lexer, false);
+    }
+    return run >= 2 ? BRACKET_ESCAPE_MEMBER : BRACKET_ESCAPE_CONTINUATION;
+  }
+  bool follower_is_escaped;
+  if (follower == '`') {
+    follower_is_escaped = classify_backquote_tick_prefix(
+                            scanner->backquote_depth,
+                            run,
+                            true,
+                            true
+                          ) ==
+      BACKQUOTE_TICK_PREFIX_NONE &&
+      fold_backquote_escape_run(scanner->backquote_depth, run).acting_level >
+      scanner->backquote_depth +
+      1;
+  } else if (follower == '$') {
+    size_t remainder = scanner->backquote_depth < sizeof(size_t) * CHAR_BIT
+      ? run >> scanner->backquote_depth
+      : 0;
+    follower_is_escaped = (remainder & 1) != 0;
+  } else {
+    follower_is_escaped =
+      (fold_enclosed_plain_run(run, scanner->backquote_depth) & 1) != 0;
+  }
+  if (follower_is_escaped) {
+    lexer->advance(lexer, false);
+  }
   return BRACKET_ESCAPE_MEMBER;
 }
 
@@ -1049,7 +1110,7 @@ static bool skip_bracket_class_element(
   while (!is_bracket_scan_boundary(scanner, lexer, parameter_pattern)) {
     int32_t character = lexer->lookahead;
     if (character == '\\') {
-      switch (skip_bracket_escape(lexer)) {
+      switch (skip_bracket_escape(scanner, lexer)) {
       case BRACKET_ESCAPE_CONTINUATION:
         continue;
       case BRACKET_ESCAPE_MEMBER:
@@ -1078,7 +1139,7 @@ static bool skip_bracket_class_element(
     lexer->advance(lexer, false);
     if (character == marker && has_content) {
       if (lexer->lookahead == '\\') {
-        switch (skip_bracket_escape(lexer)) {
+        switch (skip_bracket_escape(scanner, lexer)) {
         case BRACKET_ESCAPE_CONTINUATION:
           break;
         case BRACKET_ESCAPE_MEMBER:
@@ -1123,7 +1184,7 @@ static bool scan_bracket_literal_start(
     int32_t character = lexer->lookahead;
 
     if (character == '\\') {
-      switch (skip_bracket_escape(lexer)) {
+      switch (skip_bracket_escape(scanner, lexer)) {
       case BRACKET_ESCAPE_CONTINUATION:
         continue;
       case BRACKET_ESCAPE_MEMBER:
@@ -1170,7 +1231,7 @@ static bool scan_bracket_literal_start(
       lexer->advance(lexer, false);
       has_member = true;
       if (lexer->lookahead == '\\') {
-        switch (skip_bracket_escape(lexer)) {
+        switch (skip_bracket_escape(scanner, lexer)) {
         case BRACKET_ESCAPE_CONTINUATION:
           break;
         case BRACKET_ESCAPE_MEMBER:
@@ -3942,12 +4003,33 @@ static bool scan_element_boundary_core(
         lexer->result_symbol = TERM_CONTINUATION;
         return true;
       }
+      // A blank before the crossed continuation already ended any glued
+      // continuation run (a closed compound command's redirect continuations,
+      // an assignment word's trailing run), so the blank line after the run
+      // belongs to the newline structure while LINE_CONTINUATION stays valid.
       if (
         valid_symbols[PRE_NEWLINE_BLANK] &&
-        (blank_mark_committed || !valid_symbols[LINE_CONTINUATION])
+        (blank_mark_committed ||
+          blank_before_continuation ||
+          !valid_symbols[LINE_CONTINUATION])
       ) {
         if (here_document_delimiter_line_follows(scanner, lexer)) {
           return false;
+        }
+        // The term ends before this continued blank line owns the newline
+        // structure. A zero-width TERM_BOUNDARY carries the closer's lookahead
+        // into the term, so an edit that turns the closer into a command
+        // re-derives the term instead of reusing a compound_list that froze
+        // this terminator reading. The re-scan then produces PRE_NEWLINE_BLANK.
+        // A pending here-document keeps its declaration's newline for the
+        // here-document sequence, which owns this run through
+        // PRE_NEWLINE_BLANK.
+        if (
+          valid_symbols[TERM_BOUNDARY] &&
+          !has_startable_pending_document(scanner)
+        ) {
+          lexer->result_symbol = TERM_BOUNDARY;
+          return true;
         }
         lexer->result_symbol = PRE_NEWLINE_BLANK;
         return true;
@@ -6318,7 +6400,10 @@ static bool scan_backquote_start(struct Scanner *scanner, TSLexer *lexer) {
 }
 
 static bool scan_backquote_end(struct Scanner *scanner, TSLexer *lexer) {
-  if (scanner->backquote_depth == 0) {
+  // A bare backtick closes only the outermost substitution. A nested level is
+  // opened by an escaped backtick and closes with the escaped end prefix, so a
+  // bare backtick at a deeper level closes the enclosing level instead.
+  if (scanner->backquote_depth != 1) {
     return false;
   }
 
@@ -6457,6 +6542,16 @@ static bool scan_backquote_prefix_after_first_backslash(
     fold.leftover_count == 0 && fold.acting_level == scanner->backquote_depth
   ) {
     if (!valid_symbols[BACKQUOTE_END_PREFIX]) {
+      // An incomplete bracket literal runs up to the enclosing closer just as
+      // it runs up to a bare backtick one level up; its zero-width end sits
+      // before the run so that the closer is read next.
+      bool word_end = valid_symbols[WORD_BRACKET_FALLBACK_END];
+      bool parameter_end = valid_symbols[PARAMETER_BRACKET_FALLBACK_END];
+      if (word_end != parameter_end) {
+        lexer->result_symbol =
+          word_end ? WORD_BRACKET_FALLBACK_END : PARAMETER_BRACKET_FALLBACK_END;
+        return true;
+      }
       return false;
     }
     lexer->mark_end(lexer);

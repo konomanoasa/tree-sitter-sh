@@ -1879,6 +1879,61 @@ static void assert_continuation_led_layout_classification(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
+// After a closed command a glued continuation run stays valid, but a blank
+// before the continuation already ends that run: the blank line after it
+// begins newline layout, which the zero-width PRE_NEWLINE_BLANK at the
+// command end owns instead of falling out of the trailing linebreak.
+static void assert_blank_led_continuation_before_blank_line(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[TERMINATOR_AHEAD] = true;
+  valid_symbols[PRE_NEWLINE_BLANK] = true;
+  valid_symbols[LINE_CONTINUATION] = true;
+
+  const int32_t blank_led_input[] = {' ', '\\', '\n', '\n'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    blank_led_input,
+    sizeof(blank_led_input) / sizeof(blank_led_input[0]),
+    true,
+    PRE_NEWLINE_BLANK,
+    0,
+    3,
+    '\n'
+  );
+
+  const int32_t glued_input[] = {'\\', '\n', '\n'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    glued_input,
+    sizeof(glued_input) / sizeof(glued_input[0]),
+    true,
+    LINE_CONTINUATION,
+    2,
+    2,
+    '\n'
+  );
+
+  valid_symbols[LINE_CONTINUATION] = false;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    blank_led_input,
+    sizeof(blank_led_input) / sizeof(blank_led_input[0]),
+    true,
+    PRE_NEWLINE_BLANK,
+    0,
+    3,
+    '\n'
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
 static void assert_here_document_body_arithmetic_boundary(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -2026,6 +2081,132 @@ static void assert_bracket_escapes_stay_members(void) {
     8,
     ']'
   );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+// Inside enclosing backquotes the close scan folds an escape run the way the
+// committed member parse does: the following character is escaped exactly
+// when the folded run is odd. Two backslashes escape the close one level
+// deep, three leave it closing, and four escape it again two levels deep.
+static void assert_enclosed_bracket_escape_runs_fold(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[WORD_BRACKET_LITERAL_START] = true;
+  valid_symbols[WORD_PATTERN_BRACKET_OPEN] = true;
+
+  scanner->backquote_depth = 1;
+  const int32_t even_run_escapes_close[] = {'[', '\\', '\\', ']', '`'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    even_run_escapes_close,
+    5,
+    true,
+    WORD_BRACKET_LITERAL_START,
+    1,
+    4,
+    '`'
+  );
+
+  const int32_t odd_run_leaves_close[] = {'[', '\\', '\\', '\\', ']', '`'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    odd_run_leaves_close,
+    6,
+    true,
+    WORD_PATTERN_BRACKET_OPEN,
+    1,
+    4,
+    ']'
+  );
+
+  const int32_t two_pairs[] = {'[', '\\', '\\', '\\', '\\', ']', '`'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    two_pairs,
+    7,
+    true,
+    WORD_PATTERN_BRACKET_OPEN,
+    1,
+    5,
+    ']'
+  );
+
+  scanner->backquote_depth = 2;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    two_pairs,
+    7,
+    true,
+    WORD_BRACKET_LITERAL_START,
+    1,
+    6,
+    '`'
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+// An escape run acting as the enclosing substitution's closer ends an
+// incomplete bracket literal before the run, as a bare backtick does one
+// level up, so the closer is read next at the same position. One level up
+// the same run opens a nested substitution instead.
+static void assert_enclosing_closer_ends_incomplete_bracket(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[BACKQUOTE_DOLLAR_PREFIX] = true;
+  valid_symbols[BACKQUOTE_START_PREFIX] = true;
+  valid_symbols[WORD_BRACKET_FALLBACK_END] = true;
+
+  const int32_t nested_closer[] = {'\\', '`'};
+  scanner->backquote_depth = 2;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    nested_closer,
+    2,
+    true,
+    WORD_BRACKET_FALLBACK_END,
+    0,
+    1,
+    '`'
+  );
+
+  valid_symbols[WORD_BRACKET_FALLBACK_END] = false;
+  valid_symbols[PARAMETER_BRACKET_FALLBACK_END] = true;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    nested_closer,
+    2,
+    true,
+    PARAMETER_BRACKET_FALLBACK_END,
+    0,
+    1,
+    '`'
+  );
+
+  scanner->backquote_depth = 1;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    nested_closer,
+    2,
+    true,
+    BACKQUOTE_START_PREFIX,
+    1,
+    1,
+    '`'
+  );
+  assert(scanner->backquote_depth == 2);
 
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
@@ -2947,6 +3128,9 @@ static void assert_backquote_comment_contract(void) {
     '`'
   );
 
+  // A backtick acting at the current depth closes the enclosing substitution,
+  // so the comment ends before its escaped run and leaves the escaped closer
+  // intact: the mark sits before the backslash while the run is consumed.
   scanner->backquote_depth = 2;
   const int32_t deeper_closer[] = {'#', '\\', '`', 'y'};
   assert_scan_result(
@@ -2956,7 +3140,7 @@ static void assert_backquote_comment_contract(void) {
     sizeof(deeper_closer) / sizeof(deeper_closer[0]),
     true,
     COMMENT,
-    2,
+    1,
     2,
     '`'
   );
@@ -3926,10 +4110,13 @@ int main(void) {
   assert_backquote_escape_run_scanner_contract();
   assert_backquote_ordinary_escape_run_contract();
   assert_continuation_led_layout_classification();
+  assert_blank_led_continuation_before_blank_line();
   assert_here_document_body_arithmetic_boundary();
   assert_here_document_end_line_before_backquote();
   assert_io_number_at_word_start();
   assert_bracket_escapes_stay_members();
+  assert_enclosed_bracket_escape_runs_fold();
+  assert_enclosing_closer_ends_incomplete_bracket();
   assert_function_body_boundary_classifies_after_horizontal_layout();
   assert_substitution_closers();
   assert_case_item_boundary_contract();

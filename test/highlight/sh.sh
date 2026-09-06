@@ -11,6 +11,10 @@ name=value
 #^ character
 # ^ punctuation.bracket
 
+[a$]
+# ^ character
+#  ^ punctuation.bracket
+
 name=value [a]
 #          ^ punctuation.bracket
 

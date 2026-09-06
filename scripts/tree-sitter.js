@@ -98,6 +98,8 @@ function runTreeSitter(arguments_, options = {}) {
       input: options.input,
       maxBuffer: options.maxBuffer ?? 256 * 1024 * 1024,
       stdio: options.stdio,
+      timeout: options.timeout,
+      killSignal: "SIGKILL",
     });
 
     if (result.error !== undefined) {

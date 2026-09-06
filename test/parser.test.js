@@ -3130,6 +3130,211 @@ test("terms own trailing layout that runs to the end of input", () => {
   );
 });
 
+test("closed commands own blank-led trailing continuation layout", () => {
+  // A closed compound command keeps LINE_CONTINUATION valid for its glued
+  // redirect continuations, and an assignment word for its trailing run, so
+  // the boundary scanner withheld PRE_NEWLINE_BLANK from a blank-led
+  // continuation run and the blank line that ends the input fell out of the
+  // trailing linebreak as an ERROR. The blank already ends any glued run, so
+  // the run is trailing layout in the fresh parse and after an edit.
+  const groupInitial = writeSource(
+    "closed-group-trailing-initial",
+    lines("{ a; }"),
+  );
+  const groupFinal = writeSource(
+    "closed-group-trailing-final",
+    "{ a; } \\\n\n",
+  );
+  assertIncrementalEqualsFresh(
+    groupInitial,
+    groupFinal,
+    "closed-group-trailing",
+    "6 0  \\\n",
+  );
+
+  const assignmentInitial = writeSource(
+    "assignment-trailing-initial",
+    lines("a=b"),
+  );
+  const assignmentFinal = writeSource(
+    "assignment-trailing-final",
+    "a=b \\\n\n",
+  );
+  assertIncrementalEqualsFresh(
+    assignmentInitial,
+    assignmentFinal,
+    "assignment-trailing",
+    "3 0  \\\n",
+  );
+});
+
+test("a continuation before a blank line keeps a compound-list closer reachable", () => {
+  // A command inside a compound list can end with a blank before a line
+  // continuation and then a blank line before the closer. The blank before the
+  // continuation crosses into a zero-width PRE_NEWLINE_BLANK, so the blank must
+  // have an owner in the continued blank line the newline_list terminator holds;
+  // otherwise the orphaned blank drops the closer into an ERROR. Every closer of
+  // a compound list reaches this, matching the glued form that has no leading
+  // blank.
+  for (const [name, source] of [
+    ["if", "if true; then : \\\n\nfi\n"],
+    ["while", "while true; do : \\\n\ndone\n"],
+    ["for", "for x in a; do : \\\n\ndone\n"],
+    ["case-item", "case x in a) : \\\n\n;; esac\n"],
+    ["case-item-ns", "case x in a) : \\\n\nesac\n"],
+    ["brace", "{ : \\\n\n}\n"],
+    ["subshell", "( : \\\n\n)\n"],
+    ["function", "f() { : \\\n\n}\n"],
+    ["condition", "if : \\\n\nthen :; fi\n"],
+    ["for-do", "for x in a \\\n\ndo :; done\n"],
+  ]) {
+    assertValid(writeSource(`compound-closer-${name}`, source), name);
+  }
+
+  // The continuation form produces the same public node structure as the glued
+  // form that has no leading blank: the blank the fix admits stays a hidden
+  // token, so it never reaches the public CST.
+  const nodeStructure = (name, contents) =>
+    parseCst(parseValidCst(writeSource(name, contents), name)).map(
+      (entry) => entry.content,
+    );
+  assert.deepEqual(
+    nodeStructure("compound-closer-spaced", "if true; then : \\\n\nfi\n"),
+    nodeStructure("compound-closer-glued", "if true; then :\\\n\nfi\n"),
+    "spaced and glued continuation closers share a public node structure",
+  );
+
+  // An edit that inserts the blank and continuation agrees with a fresh parse.
+  const initial = writeSource(
+    "compound-closer-initial",
+    lines("if true; then", ":", "fi"),
+  );
+  const final = writeSource(
+    "compound-closer-final",
+    "if true; then\n: \\\n\nfi\n",
+  );
+  assertIncrementalEqualsFresh(initial, final, "compound-closer", "15 0  \\\n");
+});
+
+test("a compound-list closer stays stable when an edit turns it into a command", () => {
+  // When a command ends with a line continuation before a blank line, the
+  // following closer terminates the compound list. Editing the closer into a
+  // command extends the term across that blank line, so the term must have
+  // carried the closer's lookahead through a zero-width TERM_BOUNDARY. Without
+  // it the reused compound_list froze the terminator reading and dropped the
+  // new command into an ERROR. The continuation form now matches the plain
+  // blank-line form, which already carried the boundary.
+  const withClose = writeSource(
+    "closer-stable-initial",
+    "if x; then a\\\n\nelse b\nfi\n",
+  );
+  const withCommand = writeSource(
+    "closer-stable-final",
+    "if x; then a\\\n\nelsXe b\nfi\n",
+  );
+  assertIncrementalEqualsFresh(
+    withClose,
+    withCommand,
+    "closer-stable-else",
+    "18 0 X",
+  );
+
+  // The elif and else branches reuse several consequence compound lists at
+  // once, each ending in a continuation before its closer.
+  const chainClose = writeSource(
+    "closer-chain-initial",
+    "if a; then b\\\n\nelif c; then d\\\n\nelse e\\\n\nfi\n",
+  );
+  const chainCommand = writeSource(
+    "closer-chain-final",
+    "if a; then b\\\n\nelif c; then d\\\n\nelsXe e\\\n\nfi\n",
+  );
+  assertIncrementalEqualsFresh(
+    chainClose,
+    chainCommand,
+    "closer-stable-chain",
+    "35 0 X",
+  );
+});
+
+test("an elif consequence owns the continued layout before its else", () => {
+  // The layout between an elif consequence and the else or elif that
+  // continues the clause belongs to that consequence's closing layout; the if
+  // clause no longer competes for it before fi. With two owners the parser
+  // reduced an empty alternative on the trailing blank after a continuation
+  // and then met the else as a word. Editing the else into a command extends
+  // the elif consequence across the layout in both parses.
+  const withElse = writeSource(
+    "elif-continued-else",
+    "if a; then b; elif c; then d; \\\n else e; fi\n",
+  );
+  const withCommand = writeSource(
+    "elif-continued-command",
+    "if a; then b; elif c; then d; \\\n elsXe e; fi\n",
+  );
+  assertIncrementalEqualsFresh(
+    withElse,
+    withCommand,
+    "elif-continued-else",
+    "36 0 X",
+  );
+  assertIncrementalEqualsFresh(
+    withCommand,
+    withElse,
+    "elif-continued-else-restored",
+    "36 1",
+  );
+});
+
+test("enclosing backquote escape runs keep bracket classification across edits", () => {
+  // The close scan folds the run like the member parse: two backslashes
+  // before the close escape it one backquote level deep, so the bracket stays
+  // an incomplete literal, while three leave it closing a pattern bracket.
+  const escapedClose = writeSource(
+    "backquote-bracket-escaped-close",
+    "echo `echo [\\\\]`\n",
+  );
+  const closingBracket = writeSource(
+    "backquote-bracket-closing",
+    "echo `echo [\\\\\\]`\n",
+  );
+  assertIncrementalEqualsFresh(
+    escapedClose,
+    closingBracket,
+    "backquote-bracket-grow",
+    "14 0 \\",
+  );
+  assertIncrementalEqualsFresh(
+    closingBracket,
+    escapedClose,
+    "backquote-bracket-shrink",
+    "14 1",
+  );
+});
+
+test("here-document redirect lines keep a continuation before a following command", () => {
+  // A line continuation ending a here-document redirect line is removed
+  // before token recognition, so the source parses like the same line
+  // without it: the body still starts at the next newline and a later command
+  // follows. The here-document-sequence prefix owns the blank before the
+  // continuation even when the pre-newline-blank marker is zero-width, so the
+  // fresh parse and an edit that inserts the continuation agree.
+  const withoutContinuation = writeSource(
+    "heredoc-continuation-initial",
+    lines("cat <<EOF", "EOF", "echo after"),
+  );
+  const withContinuation = writeSource(
+    "heredoc-continuation-final",
+    "cat <<EOF \\\n\nEOF\necho after\n",
+  );
+  assertIncrementalEqualsFresh(
+    withoutContinuation,
+    withContinuation,
+    "heredoc-continuation",
+    "9 0  \\\n",
+  );
+});
+
 test("expansion dollars stay expansions after recovery edits", () => {
   // Tree-sitter drops zero-width external tokens while it recovers from an
   // error, so a "$" that opens an expansion must be the scanner's own token:

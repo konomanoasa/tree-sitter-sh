@@ -86,13 +86,10 @@ const backquoteEscapedPairRun = ($, pair) =>
   );
 
 const backquoteSingleEscapedPairRun = ($, pair) =>
-  prec(
-    1,
-    seq(
-      $._backquote_pair_run_begin,
-      alias($._backquote_escaped_pair, pair),
-      $._backquote_pair_run_end,
-    ),
+  seq(
+    $._backquote_pair_run_begin,
+    alias($._backquote_escaped_pair, pair),
+    $._backquote_pair_run_end,
   );
 
 const wordPatternSpecialSources = ($) => [
@@ -156,9 +153,12 @@ const incompleteBracketLiteralRun = ($, atom) =>
     ),
   );
 
+// A dollar sign that opens no expansion is an ordinary member, as in
+// `literal`: the scanner's expansion start wins whenever one follows.
 const patternBracketCharacter = ($, characterToken) =>
   choice(
     characterToken,
+    "$",
     $._pattern_bracket_left,
     $._pattern_bracket_exclamation,
     $._pattern_character_class_colon,
@@ -680,18 +680,16 @@ const conditionalThenBranch = ($, keyword, tail) =>
     tail,
   );
 
+// The layout between a consequence and the reserved word that follows it has
+// one owner: that consequence's closing layout. Nothing before fi competes
+// for it, so after an elif consequence the parser keeps the alternative open
+// through a trailing blank after a continuation instead of reducing an empty
+// alternative and meeting the else as a word.
 const ifClause = ($) =>
   conditionalThenBranch(
     $,
     $.if_keyword,
-    choice(
-      $.fi_keyword,
-      seq(
-        field("alternative", $.else_part),
-        optional($._closing_layout),
-        $.fi_keyword,
-      ),
-    ),
+    choice($.fi_keyword, seq(field("alternative", $.else_part), $.fi_keyword)),
   );
 
 const loopClause = ($, keyword) =>
@@ -1015,6 +1013,11 @@ module.exports = grammar({
     [$._parenthesized_arithmetic_lvalue, $._arithmetic_primary_expression],
     [$.arithmetic_dynamic_expression],
     [$.complete_command],
+    // One escaped pair that ends its run is a bracket range endpoint when a
+    // range operator follows and an ordinary member otherwise; the fork
+    // resolves on that lookahead, and the range's dynamic precedence decides
+    // the operator case.
+    [$._backquote_single_escaped_pair_run, $._backquote_escaped_pair_run],
   ],
 
   rules: {
@@ -1339,7 +1342,11 @@ module.exports = grammar({
             $.elif_keyword,
             optional(field("alternative", $.else_part)),
           ),
-          seq($.else_keyword, compoundListField($, "body")),
+          seq(
+            $.else_keyword,
+            compoundListField($, "body"),
+            optional($._closing_layout),
+          ),
         ),
       ),
 
@@ -1556,7 +1563,13 @@ module.exports = grammar({
         optional(
           choice(
             boundaryLineComment($, field("comment", $.comment)),
-            seq($._pre_newline_blank, optional($._continuation_led_run)),
+            // A zero-width _pre_newline_blank leaves the blanks before a
+            // continuation run for the following rule, so a blank owns them
+            // here; the continuation run alone cannot begin with a blank.
+            seq(
+              $._pre_newline_blank,
+              optional(seq(optional($._blank), $._continuation_led_run)),
+            ),
           ),
         ),
         field("line_end", $.here_document_line_end),
@@ -2690,10 +2703,18 @@ module.exports = grammar({
     _comment_line: ($) =>
       seq(boundaryLineComment($, $.comment), $._comment_line_end),
 
+    // A zero-width _pre_newline_blank leaves the blanks before the
+    // continuation for the following rule, so a blank owns them here; the
+    // continuation run alone cannot begin with a blank.
     _continued_blank_line: ($) =>
       prec.dynamic(
         2,
-        seq($._pre_newline_blank, $._continuation_led_run, $._layout_newline),
+        seq(
+          $._pre_newline_blank,
+          optional($._blank),
+          $._continuation_led_run,
+          $._layout_newline,
+        ),
       ),
 
     _blank_line: ($) => seq($._pre_newline_blank, $._layout_newline),

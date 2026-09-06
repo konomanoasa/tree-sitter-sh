@@ -211,9 +211,12 @@
       (pattern_question_source) @character.special
     ]))
 
+; Bound each search by its word edge while allowing intervening named children.
+; Explicit prefixes/suffixes keep query analysis out of hidden word-rule paths.
 [
   (cmd_name
     (word
+      . (_)*
       (literal) @string.regexp
       [
         (pattern_star_source)
@@ -227,9 +230,11 @@
         (pattern_question_source)
         (pattern_bracket_source)
       ]
-      (literal) @string.regexp))
+      (literal) @string.regexp
+      (_)* .))
   (cmd_word
     (word
+      . (_)*
       (literal) @string.regexp
       [
         (pattern_star_source)
@@ -243,9 +248,11 @@
         (pattern_question_source)
         (pattern_bracket_source)
       ]
-      (literal) @string.regexp))
+      (literal) @string.regexp
+      (_)* .))
   (cmd_suffix
     word: (word
+      . (_)*
       (literal) @string.regexp
       [
         (pattern_star_source)
@@ -259,9 +266,11 @@
         (pattern_question_source)
         (pattern_bracket_source)
       ]
-      (literal) @string.regexp))
+      (literal) @string.regexp
+      (_)* .))
   (wordlist
     word: (word
+      . (_)*
       (literal) @string.regexp
       [
         (pattern_star_source)
@@ -275,9 +284,11 @@
         (pattern_question_source)
         (pattern_bracket_source)
       ]
-      (literal) @string.regexp))
+      (literal) @string.regexp
+      (_)* .))
   (filename
     word: (word
+      . (_)*
       (literal) @string.regexp
       [
         (pattern_star_source)
@@ -291,7 +302,8 @@
         (pattern_question_source)
         (pattern_bracket_source)
       ]
-      (literal) @string.regexp))
+      (literal) @string.regexp
+      (_)* .))
 ]
 
 (pattern_list

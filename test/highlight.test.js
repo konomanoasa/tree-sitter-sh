@@ -21,7 +21,11 @@ const inactivePatternsFixture = path.join(
 const query = path.join(repositoryDirectory, "queries", "highlights.scm");
 
 function assertCommand(arguments_) {
-  const result = runTreeSitter(arguments_, { allowedStatuses: [0, 1] });
+  const result = runTreeSitter(arguments_, {
+    allowedStatuses: [0, 1],
+    // Bound query compilation too; a parser-only timeout cannot interrupt it.
+    timeout: 10_000,
+  });
   assert.equal(result.status, 0, result.stdout + result.stderr);
 }
 
@@ -52,5 +56,16 @@ test("inactive pattern sources remain unhighlighted", () => {
     "source.sh",
     query,
     inactivePatternsFixture,
+  ]);
+});
+
+test("pattern literals span quotes and substitutions in each word context", () => {
+  assertCommand([
+    "query",
+    "--test",
+    "--scope",
+    "source.sh",
+    query,
+    path.join(repositoryDirectory, "test", "query", "pattern-literals.txt"),
   ]);
 });
