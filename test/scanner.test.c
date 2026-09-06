@@ -1370,6 +1370,11 @@ static void assert_word_separator_classification_contract(void) {
   assert(assignment_as_word.mark == 1);
   assert(assignment_as_word.lexer.lookahead == '=');
 
+  // A blank before a line continuation belongs to the separator's own run, so
+  // the marker stays zero-width and the blank is left for the following
+  // _blank/line_continuation repetition. This mirrors a blank before a
+  // separating newline and lets the marker own the lookahead past the
+  // continuation, so an edit after it re-derives the reduced node.
   const int32_t pair_after_blank_input[] = {' ', '\\', '\n', 's'};
   struct MockLexer pair_after_blank;
   init_mock_lexer(
@@ -1383,7 +1388,7 @@ static void assert_word_separator_classification_contract(void) {
     valid_symbols
   ));
   assert(pair_after_blank.lexer.result_symbol == WORD_SEPARATOR_BEGIN);
-  assert(pair_after_blank.mark == 1);
+  assert(pair_after_blank.mark == 0);
   assert(pair_after_blank.offset == 4);
   assert(pair_after_blank.lexer.lookahead == 0);
 
@@ -1949,6 +1954,77 @@ static void assert_io_number_at_word_start(void) {
     0,
     0,
     '2'
+  );
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+// The close scan treats a backslash before any character but a newline as an
+// escape wherever it stands, so a nested left bracket or a class marker
+// followed by an escape neither opens a class element nor fails the scan.
+static void assert_bracket_escapes_stay_members(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[WORD_BRACKET_LITERAL_START] = true;
+  valid_symbols[WORD_PATTERN_BRACKET_OPEN] = true;
+
+  const int32_t nested_escape_closed[] = {'[', '[', '\\', 'a', ']', ' '};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    nested_escape_closed,
+    6,
+    true,
+    WORD_PATTERN_BRACKET_OPEN,
+    1,
+    4,
+    ']'
+  );
+
+  const int32_t nested_escape_open[] = {'[', '[', '\\', 'a', ' '};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    nested_escape_open,
+    5,
+    true,
+    WORD_BRACKET_LITERAL_START,
+    1,
+    4,
+    ' '
+  );
+
+  // An escaped bracket after the class marker keeps the element open, and
+  // the bare bracket that follows bounds the scan as an incomplete bracket.
+  const int32_t escaped_class_close[] =
+    {'[', '[', ':', 'a', ':', '\\', ']', ']', ' '};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    escaped_class_close,
+    9,
+    true,
+    WORD_BRACKET_LITERAL_START,
+    1,
+    7,
+    ']'
+  );
+
+  // Line continuations after the marker still let the close follow.
+  const int32_t continued_class_close[] =
+    {'[', '[', ':', 'a', ':', '\\', '\n', ']', ']', ' '};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    continued_class_close,
+    10,
+    true,
+    WORD_PATTERN_BRACKET_OPEN,
+    1,
+    8,
+    ']'
   );
 
   tree_sitter_sh_external_scanner_destroy(scanner);
@@ -3137,7 +3213,7 @@ static void assert_dollar_expansion_start_contract(void) {
       sizeof(input) / sizeof(input[0]),
       true,
       DOLLAR_EXPANSION_START,
-      0,
+      1,
       1,
       expansion_starts[index]
     );
@@ -3853,6 +3929,7 @@ int main(void) {
   assert_here_document_body_arithmetic_boundary();
   assert_here_document_end_line_before_backquote();
   assert_io_number_at_word_start();
+  assert_bracket_escapes_stay_members();
   assert_function_body_boundary_classifies_after_horizontal_layout();
   assert_substitution_closers();
   assert_case_item_boundary_contract();

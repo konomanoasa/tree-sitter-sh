@@ -156,33 +156,6 @@ const incompleteBracketLiteralRun = ($, atom) =>
     ),
   );
 
-const bracketLiteralRun = ($, characterToken) =>
-  repeat1(
-    choice(
-      characterToken,
-      $._pattern_bracket_hyphen_token,
-      $._pattern_bracket_left,
-      $._pattern_bracket_exclamation,
-      $._pattern_character_class_colon,
-      $._pattern_collating_dot,
-      $._pattern_equivalence_equals,
-    ),
-  );
-
-const bracketLiteralFallback = ($, part, end) =>
-  prec.dynamic(
-    PATTERN_PRECEDENCE.literalFallback,
-    prec.right(
-      1,
-      seq(
-        alias($._literal_left_bracket, $.literal),
-        optional(alias($._pattern_initial_right_bracket, $.literal)),
-        repeat1(part),
-        choice(end, alias($._literal_right_bracket, $.literal)),
-      ),
-    ),
-  );
-
 const patternBracketCharacter = ($, characterToken) =>
   choice(
     characterToken,
@@ -460,8 +433,12 @@ const substitutionCommandsBody = ($, leadingLayout) =>
 const backquoteDollar = ($) =>
   seq(alias($._backquote_dollar_prefix, "\\"), token.immediate("$"));
 
+// The scanner owns the dollar sign: a zero-width marker before an internal
+// "$" token is dropped while the parser recovers from an error, and the
+// plain "$" text token lexed instead stays reusable by a later edit whose
+// fresh parse reads an expansion.
 const dollarExpansionPrefix = ($) =>
-  choice(seq($._dollar_expansion_start, "$"), backquoteDollar($));
+  choice(alias($._dollar_expansion_start, "$"), backquoteDollar($));
 
 const dollarExpansionStart = ($, delimiter) =>
   seq(dollarExpansionPrefix($), delimiter);
@@ -992,6 +969,10 @@ module.exports = grammar({
     $._command_substitution_close,
     $._separator_newline,
     $._layout_begin,
+    $._term_boundary,
+    $._command_boundary,
+    $._word_pattern_bracket_open,
+    $._parameter_pattern_bracket_open,
   ],
 
   conflicts: ($) => [
@@ -1008,21 +989,8 @@ module.exports = grammar({
       $._parameter_pattern_deferred_member,
       $._parameter_pattern_deferred_range_endpoint,
     ],
-    [
-      $._word_bracket_literal_fallback_part,
-      $._pattern_operator_bracket_character,
-    ],
-    [
-      $._parameter_bracket_literal_fallback_part,
-      $._pattern_operator_bracket_character,
-    ],
-    [$.pattern_character_class_source, $._pattern_special_marker_character],
     [$.pattern_collating_symbol_source, $._pattern_special_marker_character],
     [$.pattern_equivalence_class_source, $._pattern_special_marker_character],
-    [
-      $._parameter_pattern_character_class_source,
-      $._pattern_special_marker_character,
-    ],
     [
       $._parameter_pattern_collating_symbol_source,
       $._pattern_special_marker_character,
@@ -1037,105 +1005,16 @@ module.exports = grammar({
       $._pattern_special_literal_left,
     ],
     [
-      $._word_special_prefixed_bracket_source,
-      $.pattern_character_class_source,
-      $._pattern_special_literal_left,
-    ],
-    [
-      $._word_special_prefixed_bracket_source,
-      $.pattern_collating_symbol_source,
-      $._pattern_special_literal_left,
-    ],
-    [
-      $._word_special_prefixed_bracket_source,
-      $.pattern_equivalence_class_source,
-      $._pattern_special_literal_left,
-    ],
-    [
-      $._parameter_special_prefixed_bracket_source,
-      $._parameter_pattern_character_class_source,
-      $._pattern_special_literal_left,
-    ],
-    [
-      $._parameter_special_prefixed_bracket_source,
-      $._parameter_pattern_collating_symbol_source,
-      $._pattern_special_literal_left,
-    ],
-    [
-      $._parameter_special_prefixed_bracket_source,
-      $._parameter_pattern_equivalence_class_source,
-      $._pattern_special_literal_left,
-    ],
-    [$._word_bracket_literal_fallback_part, $.pattern_bracket_source],
-    [$._word_bracket_literal_fallback_part, $.pattern_bracket_character_source],
-    [$._word_bracket_literal_fallback_part, $.pattern_bracket_hyphen_source],
-    [
-      $._word_bracket_literal_fallback_part,
-      $.pattern_bracket_range_operator_source,
-      $.pattern_bracket_hyphen_source,
-    ],
-    [$._word_bracket_literal_fallback_part, $._pattern_bracket_member],
-    [
-      $._word_bracket_literal_fallback_part,
-      $.pattern_bracket_members_source,
-      $._pattern_initial_bracket_range,
-    ],
-    [
-      $._word_bracket_literal_fallback_part,
-      $._pattern_bracket_member,
-      $._pattern_bracket_range_endpoint,
-    ],
-    [
-      $._parameter_pattern_bracket_member,
-      $._parameter_pattern_bracket_range_endpoint,
-    ],
-    [
-      $._parameter_bracket_literal_fallback_part,
-      $._parameter_pattern_bracket_expression,
-    ],
-    [
-      $._parameter_bracket_literal_fallback_part,
-      $._parameter_pattern_bracket_character,
-    ],
-    [
-      $._parameter_bracket_literal_fallback_part,
-      $.pattern_bracket_hyphen_source,
-    ],
-    [
-      $._parameter_bracket_literal_fallback_part,
-      $.pattern_bracket_range_operator_source,
-      $.pattern_bracket_hyphen_source,
-    ],
-    [
-      $._parameter_bracket_literal_fallback_part,
-      $._parameter_pattern_bracket_member,
-    ],
-    [
-      $._parameter_pattern_bracket_list,
-      $._parameter_pattern_initial_bracket_range,
-      $._parameter_bracket_literal_fallback_part,
-    ],
-    [
-      $._parameter_bracket_literal_fallback_part,
       $._parameter_pattern_bracket_member,
       $._parameter_pattern_bracket_range_endpoint,
     ],
     [$.pattern_bracket_negation_source, $.pattern_bracket_character_source],
-    [
-      $._word_bracket_literal_fallback_part,
-      $.pattern_bracket_negation_source,
-      $.pattern_bracket_character_source,
-    ],
     [$.pattern_bracket_negation_source, $._parameter_pattern_bracket_character],
-    [
-      $._parameter_bracket_literal_fallback_part,
-      $.pattern_bracket_negation_source,
-      $._parameter_pattern_bracket_character,
-    ],
     [$.pattern_bracket_range_operator_source, $.pattern_bracket_hyphen_source],
     [$._special_parameter_hash, $.parameter_length_operator],
     [$._parenthesized_arithmetic_lvalue, $._arithmetic_primary_expression],
     [$.arithmetic_dynamic_expression],
+    [$.complete_command],
   ],
 
   rules: {
@@ -1175,16 +1054,20 @@ module.exports = grammar({
             field("command", $.complete_command),
           ),
         ),
+        optional($._term_boundary),
       ),
 
     complete_command: ($) =>
       seq(
         field("body", $.list),
         optional(
-          seq(
-            $._terminator_ahead,
-            optional($._horizontal_layout),
-            field("terminator", $.separator_op),
+          choice(
+            seq(
+              $._terminator_ahead,
+              optional($._horizontal_layout),
+              field("terminator", $.separator_op),
+            ),
+            $._term_boundary,
           ),
         ),
       ),
@@ -1324,6 +1207,7 @@ module.exports = grammar({
             field("and_or", $.and_or),
           ),
         ),
+        optional($._term_boundary),
       ),
 
     compound_list: ($) =>
@@ -1581,11 +1465,14 @@ module.exports = grammar({
     cmd_word: ($) => $.word,
 
     cmd_suffix: ($) =>
-      repeat1(
-        choice(
-          seq($._word_separator, field("word", $.word)),
-          ...commandRedirectContinuations($),
+      seq(
+        repeat1(
+          choice(
+            seq($._word_separator, field("word", $.word)),
+            ...commandRedirectContinuations($),
+          ),
         ),
+        optional($._command_boundary),
       ),
 
     io_redirect: ($) =>
@@ -1884,11 +1771,7 @@ module.exports = grammar({
     literal: ($) => prec.right(choice("$", wordPlainChunk($))),
 
     _word_bracket_part: ($) =>
-      choice(
-        $.pattern_bracket_source,
-        $._word_bracket_literal_fallback,
-        $._word_incomplete_bracket_literal,
-      ),
+      choice($.pattern_bracket_source, $._word_incomplete_bracket_literal),
 
     _word_incomplete_bracket_literal: ($) =>
       incompleteBracketLiteral(
@@ -1922,28 +1805,15 @@ module.exports = grammar({
 
     pattern_question_source: (_) => token(prec(-1, "?")),
 
-    _word_bracket_literal_fallback: ($) =>
-      bracketLiteralFallback(
+    pattern_bracket_source: ($) =>
+      patternBracketExpression(
         $,
-        $._word_bracket_literal_fallback_part,
-        $._word_bracket_fallback_end,
-      ),
-
-    _word_bracket_literal_fallback_part: ($) =>
-      prec.right(
-        incompleteBracketLiteralPart(
-          $,
-          wordPatternBracketSources($),
-          $._word_bracket_literal_run,
-          [$._pattern_special_literal_start],
+        $.pattern_bracket_members_source,
+        choice(
+          alias($._word_pattern_bracket_open, "["),
+          $._literal_left_bracket,
         ),
       ),
-
-    _word_bracket_literal_run: ($) =>
-      bracketLiteralRun($, $._pattern_bracket_character_token),
-
-    pattern_bracket_source: ($) =>
-      patternBracketExpression($, $.pattern_bracket_members_source),
 
     _parameter_pattern_bracket_expression: ($) =>
       patternBracketExpression(
@@ -1951,6 +1821,10 @@ module.exports = grammar({
         alias(
           $._parameter_pattern_bracket_list,
           $.pattern_bracket_members_source,
+        ),
+        choice(
+          alias($._parameter_pattern_bracket_open, "["),
+          $._literal_left_bracket,
         ),
       ),
 
@@ -2448,7 +2322,6 @@ module.exports = grammar({
             $.pattern_bracket_source,
           ),
         ),
-        $._parameter_bracket_literal_fallback,
         $._parameter_incomplete_bracket_literal,
       ),
 
@@ -2482,26 +2355,6 @@ module.exports = grammar({
 
     _parameter_incomplete_bracket_literal_run: ($) =>
       incompleteBracketLiteralRun($, parameterIncompleteBracketLiteralAtom($)),
-
-    _parameter_bracket_literal_fallback: ($) =>
-      bracketLiteralFallback(
-        $,
-        $._parameter_bracket_literal_fallback_part,
-        $._parameter_bracket_fallback_end,
-      ),
-
-    _parameter_bracket_literal_fallback_part: ($) =>
-      prec.right(
-        incompleteBracketLiteralPart(
-          $,
-          parameterPatternBracketSources($),
-          $._parameter_bracket_literal_run,
-          [$._pattern_special_literal_start],
-        ),
-      ),
-
-    _parameter_bracket_literal_run: ($) =>
-      bracketLiteralRun($, $._parameter_pattern_bracket_character_token),
 
     _parameter_pattern_literal: ($) => prec.right(parameterPlainChunk($)),
 

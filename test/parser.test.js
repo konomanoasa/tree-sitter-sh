@@ -2795,13 +2795,13 @@ test("trailing blanks before separating newlines stay layout", () => {
   );
   const blankSeparatorsOutput = parseValidCst(blankSeparatorsFinal);
   assertCstRange(blankSeparatorsOutput, "0:0-0:9", "command: complete_command");
-  assertCstRange(blankSeparatorsOutput, "0:10-1:0", "separator: newline_list");
+  assertCstRange(blankSeparatorsOutput, "0:9-1:0", "separator: newline_list");
   assertCstRange(
     blankSeparatorsOutput,
     "1:0-1:10",
     "command: complete_command",
   );
-  assertCstRange(blankSeparatorsOutput, "1:11-2:0", "separator: newline_list");
+  assertCstRange(blankSeparatorsOutput, "1:10-2:0", "separator: newline_list");
   assertCstRange(
     blankSeparatorsOutput,
     "2:0-2:11",
@@ -2860,7 +2860,7 @@ test("trailing blanks before separating newlines stay layout", () => {
     lines("if :; then", "first one ", "second two ", "fi"),
   );
   const blankIfBodyOutput = parseValidCst(blankIfBodyFinal);
-  assertCstRange(blankIfBodyOutput, "1:10-2:0", "separator: separator");
+  assertCstRange(blankIfBodyOutput, "1:9-2:0", "separator: separator");
   assertCstRange(blankIfBodyOutput, "2:10-3:0", "terminator: separator");
   assertCstRange(blankIfBodyOutput, "3:0-3:2", "fi_keyword");
   for (const recovery of ["ERROR", "MISSING", "_recovery"]) {
@@ -2916,6 +2916,241 @@ test("trailing blanks before separating newlines stay layout", () => {
     blankHereDocumentInitial,
     "delete-trailing-blank-before-here-document",
     "9 1",
+  );
+});
+
+test("reserved-word closers keep their term stable across edits", () => {
+  // A term followed by a reserved-word closer must carry that closer in its
+  // lookahead, so editing the closer into an ordinary word (or the reverse)
+  // re-derives the term instead of reusing a stale reduction. The
+  // trailing-blank form diverged after a single edit; the no-blank forms only
+  // diverge after an edit history, because a single edit from a fresh tree
+  // stays consistent on its own. These are minimized differential-fuzz
+  // reproductions.
+  const blankInitial = writeSource(
+    "closer-blank-initial",
+    lines("if a", "then b ", "else c", "fi"),
+  );
+  const blankFinal = writeSource(
+    "closer-blank-final",
+    lines("if a", "then b ", "exse c", "fi"),
+  );
+  assertIncrementalEqualsFresh(
+    blankInitial,
+    blankFinal,
+    "closer-blank",
+    "14 1 x",
+  );
+
+  const elseInitial = writeSource(
+    "closer-else-initial",
+    lines("if", "d", "then \\", " c", "else", "fi"),
+  );
+  const elseFinal = writeSource(
+    "closer-else-final",
+    lines("if", "d", "then \\", " c", "el#se", "fi"),
+  );
+  assertIncrementalEqualsFresh(
+    elseInitial,
+    elseFinal,
+    "closer-else",
+    "0 0",
+    "17 0 #",
+  );
+
+  const elifInitial = writeSource(
+    "closer-elif-initial",
+    lines("_()if", "sac;then \\", " c", "elif", "fi"),
+  );
+  const elifFinal = writeSource(
+    "closer-elif-final",
+    lines("_()if", "c;then \\", " c", "e=lif", "fi"),
+  );
+  assertIncrementalEqualsFresh(
+    elifInitial,
+    elifFinal,
+    "closer-elif",
+    "6 2",
+    "19 0 =",
+  );
+
+  const blankLineInitial = writeSource(
+    "closer-blank-line-initial",
+    lines("if", "e", "then \\", " ", "else", "fi"),
+  );
+  const blankLineFinal = writeSource(
+    "closer-blank-line-final",
+    lines("if", "e", "then \\", " -", "els", "fi"),
+  );
+  assertIncrementalEqualsFresh(
+    blankLineInitial,
+    blankLineFinal,
+    "closer-blank-line",
+    "13 0 -",
+    "0 0",
+    "18 1",
+  );
+});
+
+test("closing layout owns trailing blanks before a continued closer", () => {
+  // A command that ends in a trailing blank and then a line continuation before
+  // a closer must keep its term reusable across edits. The blank belongs to the
+  // closing layout, not to a word-separator or boundary token, so a zero-width
+  // term boundary carries the closer's lookahead into the term. Without it the
+  // reduced term froze and an inserted word fell into an ERROR node. These are
+  // minimized differential-fuzz reproductions that diverged after a single edit.
+  const subshellInitial = writeSource(
+    "closing-subshell-initial",
+    lines("(echo a \\", ")"),
+  );
+  const subshellFinal = writeSource(
+    "closing-subshell-final",
+    lines("(echo a \\", "b )"),
+  );
+  assertIncrementalEqualsFresh(
+    subshellInitial,
+    subshellFinal,
+    "insert-word-before-continued-subshell-closer",
+    "10 0 b ",
+  );
+
+  const tabInitial = writeSource(
+    "closing-subshell-tab-initial",
+    lines("(echo a\t\\", ")"),
+  );
+  const tabFinal = writeSource(
+    "closing-subshell-tab-final",
+    lines("(echo a\t\\", "b )"),
+  );
+  assertIncrementalEqualsFresh(
+    tabInitial,
+    tabFinal,
+    "insert-word-before-tab-continued-subshell-closer",
+    "10 0 b ",
+  );
+
+  const nestedInitial = writeSource(
+    "closing-subshell-nested-initial",
+    lines("((echo a \\", "))"),
+  );
+  const nestedFinal = writeSource(
+    "closing-subshell-nested-final",
+    lines("((echo a \\", "b ))"),
+  );
+  assertIncrementalEqualsFresh(
+    nestedInitial,
+    nestedFinal,
+    "insert-word-before-nested-subshell-closer",
+    "11 0 b ",
+  );
+});
+
+test("complete commands keep their terminator across recovery edits", () => {
+  // A complete_command must carry its optional terminator in its lookahead, so
+  // an edit that resolves a recovery state (a stray ";;"/"&" churn) back to a
+  // valid terminator re-derives the command instead of reusing a reduction
+  // that dropped the terminator. These are minimized differential-fuzz
+  // reproductions; each froze `complete_command` at the list before the fix.
+  const semiInitial = writeSource("terminator-semi-initial", "for \\\n");
+  const semiFinal = writeSource("terminator-semi-final", "r ;\\\n");
+  assertIncrementalEqualsFresh(
+    semiInitial,
+    semiFinal,
+    "terminator-semi",
+    "0 0 }",
+    "0 0 }",
+    "6 0 ;;",
+    "0 1",
+    "0 3",
+    "6 0",
+    "3 1",
+  );
+
+  const loneInitial = writeSource("terminator-lone-initial", ":bar ;");
+  const loneFinal = writeSource("terminator-lone-final", "/ ;");
+  assertIncrementalEqualsFresh(
+    loneInitial,
+    loneFinal,
+    "terminator-lone",
+    "0 1",
+    "0 2",
+    "3 0 ;",
+    "0 0 &",
+    "0 2",
+    "0 0 &",
+    "0 1",
+    "0 0 /",
+    "4 0",
+    "3 1",
+  );
+});
+
+test("terms own trailing layout that runs to the end of input", () => {
+  // A command's separating newline can be followed by a layout run — blank
+  // lines or line continuations — that reaches the end of input. That layout
+  // sits in the term's lookahead through a zero-width boundary, so an edit
+  // that turns it into another command re-derives the reduced command instead
+  // of reusing a reduction that ended before the layout and dropping the new
+  // command into an ERROR node. A separating newline that itself ends the
+  // input carries no such layout, so the final command stays reusable. These
+  // are minimized differential-fuzz reproductions that froze `complete_commands`
+  // only after their full edit histories.
+  const continuationInitial = writeSource(
+    "trailing-layout-continuation-initial",
+    "\n\\\n\\\n\necho\n\\\n\\\n\n",
+  );
+  const continuationFinal = writeSource(
+    "trailing-layout-continuation-final",
+    "\n\n\n\\\n\\\n\necho\n\\\n\\\n\\\\\n\n\n",
+  );
+  assertIncrementalEqualsFresh(
+    continuationInitial,
+    continuationFinal,
+    "trailing-layout-continuation",
+    "1 0 \n\n",
+    "17 0 \\\n",
+    "18 0 \\\n",
+  );
+
+  const blankLineInitial = writeSource(
+    "trailing-layout-blank-line-initial",
+    "\n\\\n\\\n\necho\n\\\n\\\n\n",
+  );
+  const blankLineFinal = writeSource(
+    "trailing-layout-blank-line-final",
+    "\n\\\n\\\n\n\\\n\necho\n\\&\n\\\n\n",
+  );
+  assertIncrementalEqualsFresh(
+    blankLineInitial,
+    blankLineFinal,
+    "trailing-layout-blank-line",
+    "6 0 \\\n\n",
+    "19 0 ",
+    "15 0 &",
+  );
+});
+
+test("expansion dollars stay expansions after recovery edits", () => {
+  // Tree-sitter drops zero-width external tokens while it recovers from an
+  // error, so a "$" that opens an expansion must be the scanner's own token:
+  // a plain "$" text token lexed instead would stay reusable by a later edit
+  // whose fresh parse reads the nested expansion. This is a minimized
+  // differential-fuzz reproduction that reused the inner "${x:-y}" as text.
+  const dollarInitial = writeSource(
+    "expansion-dollar-initial",
+    lines('echo "$' + "{x:-$'text'}\""),
+  );
+  const dollarFinal = writeSource(
+    "expansion-dollar-final",
+    lines('ech*o "$' + "{a=x$" + "{x:-y}:-$'text'}\""),
+  );
+  assertIncrementalEqualsFresh(
+    dollarInitial,
+    dollarFinal,
+    "expansion-dollar",
+    "3 0 *",
+    "10 0 $" + "{x:-y}",
+    "9 0 a=",
   );
 });
 
@@ -3474,6 +3709,36 @@ test("bracket fallback remains stable across complete and incomplete edits", () 
     terminalBracketInitial,
     "delete-terminal-bracket-continuation",
     "8 2",
+  );
+
+  const pipelineMergeInitial = writeSource(
+    "bracket-name-pipeline-merge-initial",
+    lines("[a] x |i"),
+  );
+  const pipelineMergeFinal = writeSource(
+    "bracket-name-pipeline-merge-final",
+    lines("[a] x i"),
+  );
+  assertIncrementalEqualsFresh(
+    pipelineMergeInitial,
+    pipelineMergeFinal,
+    "delete-pipe-merging-bracket-command-suffix",
+    "6 1",
+  );
+
+  const newlineMergeInitial = writeSource(
+    "bracket-name-newline-merge-initial",
+    lines("[a] x ", "i"),
+  );
+  const newlineMergeFinal = writeSource(
+    "bracket-name-newline-merge-final",
+    lines("[a] x i"),
+  );
+  assertIncrementalEqualsFresh(
+    newlineMergeInitial,
+    newlineMergeFinal,
+    "delete-newline-merging-bracket-command-suffix",
+    "6 1",
   );
 });
 

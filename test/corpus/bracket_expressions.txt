@@ -269,7 +269,7 @@ printf ${value#[}suffix]
     (newline_list)))
 
 ==================
-Special bracket delimiters preserve their source roles
+A bracket close ends a class element before its delimiter
 ==================
 
 printf [[.].]] [[=]=]]
@@ -292,10 +292,13 @@ printf [[.].]] [[=]=]]
                       (literal)))
                   suffix: (cmd_suffix
                     word: (word
+                      (literal)
                       (pattern_bracket_source
                         members: (pattern_bracket_members_source
-                          member: (pattern_collating_symbol_source
-                            value: (pattern_collating_symbol_character_source)))))
+                          member: (pattern_bracket_character_source)))
+                      (literal)
+                      (literal)
+                      (literal))
                     word: (word
                       (literal)
                       (pattern_bracket_source
@@ -304,6 +307,69 @@ printf [[.].]] [[=]=]]
                       (literal)
                       (literal)
                       (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Escapes after a nested bracket or class marker stay members
+==================
+
+printf [[\a] [[\a [[:alpha:\]] ${x%[[:alpha:\]]}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (escaped_character))))
+                    word: (word
+                      (literal)
+                      (literal)
+                      (escaped_character))
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (escaped_character))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (literal)
+                          (pattern_bracket_source
+                            members: (pattern_bracket_members_source
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (escaped_character)))))))))))))))
   trailing: (linebreak
     (newline_list)))
 
