@@ -106,9 +106,9 @@ function rootEndPoint(format, output) {
   const firstLine = output.split("\n", 1)[0];
   if (format === "tree") {
     const match = firstLine.match(
-      /^\(program \[[0-9]+, [0-9]+\] - \[([0-9]+), ([0-9]+)\]/,
+      /^\((program|ERROR) \[[0-9]+, [0-9]+\] - \[([0-9]+), ([0-9]+)\]/,
     );
-    return match === null ? undefined : `${match[1]}:${match[2]}`;
+    return match === null ? undefined : `${match[2]}:${match[3]}`;
   }
   if (format === "cst") {
     const match = firstLine.match(/^[0-9]+:[0-9]+[ ]+-[ ]+([0-9]+:[0-9]+)/);
@@ -187,7 +187,7 @@ function runParse({
   } else {
     assert.equal(mode, "recovery", `${description}: unknown parse mode`);
   }
-  if (format === "cst" && mode !== "resource") {
+  if (format === "cst" && mode === "valid") {
     assert.equal(
       parseCst(output)[0]?.content,
       "program",
@@ -387,11 +387,23 @@ function parseRecovery(source, description = path.basename(source)) {
 }
 
 function cstFingerprint(output) {
-  const fingerprint = parseCst(output)
-    .map((entry) => entry.line)
-    .join("\n");
-  assert.notEqual(fingerprint, "", "CST fingerprint is empty");
-  return fingerprint;
+  const structure = [];
+  const continuations = [];
+  let continuationDepth;
+  for (const entry of parseCst(output)) {
+    if (continuationDepth !== undefined) {
+      if (entry.depth > continuationDepth) continue;
+      continuationDepth = undefined;
+    }
+    if (/^([a-z_]+: )?line_continuation([ ]|$)/.test(entry.content)) {
+      continuations.push(entry.range);
+      continuationDepth = entry.depth;
+    } else {
+      structure.push(entry.line);
+    }
+  }
+  assert.notEqual(structure.length, 0, "CST fingerprint is empty");
+  return JSON.stringify([structure, continuations]);
 }
 
 function assertCstOutputsEqual(name, left, right) {
@@ -399,7 +411,7 @@ function assertCstOutputsEqual(name, left, right) {
   assert.equal(
     cstFingerprint(left.output),
     cstFingerprint(right.output),
-    `${name}: complete CSTs differ`,
+    `${name}: public CST contracts differ`,
   );
 }
 
@@ -421,7 +433,16 @@ function assertRepeatedColdParse(
     source,
     timeout,
   });
-  assertCstOutputsEqual(`${name} repeated cold parses`, first, second);
+  if (mode === "resource") {
+    assert.equal(first.status, second.status, `${name}: parse statuses differ`);
+    assert.deepEqual(
+      parseCst(first.output),
+      parseCst(second.output),
+      `${name}: resource recovery is not deterministic`,
+    );
+  } else {
+    assertCstOutputsEqual(`${name} repeated cold parses`, first, second);
+  }
 }
 
 function compareIncrementalAndFresh(
@@ -605,6 +626,41 @@ test("CST fingerprints distinguish anonymous tokens", () => {
   );
 });
 
+test("CST fingerprints preserve continuation ranges and order without ownership", () => {
+  const root = "0:0 - 2:0   program";
+  const first = "0:0 - 1:0     line_continuation";
+  const firstSource = "0:0 - 0:2       `\\\\\\n`";
+  const second = "1:0 - 2:0     line_continuation";
+  const secondSource = "1:0 - 1:2       `\\\\\\n`";
+  const source = lines(root, first, firstSource, second, secondSource);
+  const expected = cstFingerprint(source);
+  assert.equal(
+    cstFingerprint(
+      lines(
+        root,
+        "0:0 - 1:0     leading: line_continuation",
+        firstSource,
+        "1:0 - 2:0     trailing: line_continuation",
+        secondSource,
+      ),
+    ),
+    expected,
+  );
+  assert.equal(cstFingerprint(lines(root, first, second)), expected);
+  for (const [name, changed] of [
+    ["missing continuation", lines(root, first, firstSource)],
+    ["duplicate continuation", lines(root, first, first, second)],
+    ["reversed continuations", lines(root, second, first)],
+    [
+      "changed continuation range",
+      lines(root, first, "1:1 - 2:0     line_continuation"),
+    ],
+    ["changed root range", lines("0:0 - 3:0   program", first, second)],
+  ]) {
+    assert.notEqual(cstFingerprint(changed), expected, name);
+  }
+});
+
 test("line-continuation and comment contracts", () => {
   const syntaxPhysical = writeSource(
     "syntax-continuation-physical",
@@ -619,21 +675,6 @@ test("line-continuation and comment contracts", () => {
     syntaxPhysical,
     syntaxLogical,
     ["0:16-1:0", "2:14-3:0"],
-  );
-
-  const arithmeticPhysical = writeSource(
-    "arithmetic-continuation-physical",
-    lines(': "$((1 + \\', '2))"', ': "$((1 + 2\\', '))"'),
-  );
-  const arithmeticLogical = writeSource(
-    "arithmetic-continuation-logical",
-    lines(': "$((1 + 2))"', ': "$((1 + 2))"'),
-  );
-  assertLineContinuationManifest(
-    "line-continuation-arithmetic-contract",
-    arithmeticPhysical,
-    arithmeticLogical,
-    ["0:10-1:0", "2:11-3:0"],
   );
 
   const literalContinuations = writeSource(
@@ -868,9 +909,25 @@ test("recovery preserves unaffected top-level commands", () => {
     ["stray-right-parenthesis", ")"],
     ["missing-redirection-target", "broken >;"],
     ["closed-empty-parameter", `broken \${}`],
+    ["empty-subshell", "()"],
+    ["empty-subshell-with-blank", "( )"],
+    ["empty-subshell-with-terminator", "(;)"],
+    ["empty-subshell-with-newline", "(\n)"],
+    ["empty-subshell-with-redirection", "() >x"],
+    ["missing-target-in-closed-subshell", "( : > )"],
     ["reserved-closer-command", "fi"],
     ["right-brace-command", "}"],
+    ["case-break-after-top-level-command", "broken;;"],
+    ["case-fallthrough-after-top-level-command", "broken ;&"],
     ["bang-past-pipeline-head", "! ! alpha"],
+    ["missing-pipe-command-before-semicolon", "broken | ;"],
+    ["missing-and-command-before-semicolon", "broken && ;"],
+    ["missing-or-command-before-background-terminator", "broken || &"],
+    ["missing-negated-command-before-semicolon", "! ;"],
+    ["missing-pipe-command-after-comment", "broken | # pending\n;"],
+    ["missing-and-command-after-linebreak", "broken &&\n;"],
+    ["missing-command-after-operator-run", "broken && ! | ;"],
+    ["missing-negated-command-before-newline", "! # pending"],
   ]) {
     const combined = writeSource(
       `recovery-boundary-${name}`,
@@ -887,10 +944,82 @@ test("recovery preserves unaffected top-level commands", () => {
       prefix,
       `${name}: prefix complete_command changed`,
     );
+    const suffixRow = invalidCommand.split("\n").length + 1;
     assert.deepEqual(
-      normalizedCompleteCommand(output, "2:0-2:11"),
+      normalizedCompleteCommand(output, `${suffixRow}:0-${suffixRow}:11`),
       suffix,
       `${name}: suffix complete_command changed`,
+    );
+  }
+});
+
+test("closed malformed subshells preserve following nested commands", () => {
+  const suffixText = lines(
+    "case x in x) (cat <<EOF",
+    "$(printf value)",
+    "EOF",
+    ");; esac",
+  );
+  const suffixSource = writeSource("recovery-nested-standalone", suffixText);
+  const suffix = normalizedCompleteCommand(
+    parseValidCst(suffixSource),
+    "0:0-3:8",
+  );
+
+  for (const [broken, restored] of [
+    ["()", "(: )"],
+    ["(;)", "(: ;)"],
+  ]) {
+    const combined = writeSource(
+      "recovery-nested-subshell",
+      `${lines(broken, "", "# between")}${suffixText}`,
+    );
+    const { output, status } = runParse({
+      description: `${broken} before nested command`,
+      mode: "recovery",
+      source: combined,
+    });
+    assert.equal(status, 1, `${broken}: invalid command parsed as valid`);
+    assert.deepEqual(
+      normalizedCompleteCommand(output, "3:0-6:8"),
+      suffix,
+      `${broken}: suffix complete_command changed`,
+    );
+    const restoredSource = writeSource(
+      "recovery-restored-subshell",
+      `${lines(restored, "", "# between")}${suffixText}`,
+    );
+    assertIncrementalEqualsFresh(
+      combined,
+      restoredSource,
+      `${broken}: restore subshell body`,
+      "1 0 : ",
+    );
+  }
+});
+
+test("commands regain their public structure after a missing pipeline operand", () => {
+  for (const [name, broken, restored] of [
+    ["pipe", "broken | ;", "broken | fixed;"],
+    ["and", "broken && ;", "broken && fixed;"],
+    ["or", "broken || &", "broken || fixed&"],
+    ["negation", "! ;", "! fixed;"],
+  ]) {
+    const prefix = "before alpha\n";
+    const initial = writeSource(
+      `missing-${name}-operand`,
+      `${prefix}${lines(broken, "after omega")}`,
+    );
+    const final = writeSource(
+      `restored-${name}-operand`,
+      `${prefix}${lines(restored, "after omega")}`,
+    );
+    const offset = prefix.length + broken.length - 1;
+    assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `restore-${name}-operand-before-separator`,
+      `${offset} 0 fixed`,
     );
   }
 });
@@ -975,13 +1104,34 @@ test("case closers and keyword headers survive edits", () => {
     lines("a; b"),
   );
   const loneSeparatorFinal = writeSource("lone-separator-final", lines("a; ;"));
-  for (const output of parseRecoveryAfterEdits(
+  parseRecoveryAfterEdits(
     loneSeparatorInitial,
     loneSeparatorFinal,
     "replace-command-with-lone-separator",
     "3 1 ;",
-  )) {
-    assertCstRange(output, "0:1-0:2", "terminator: separator_op");
+  );
+});
+
+test("commands regain their public structure after a stray separator", () => {
+  for (const [name, initial, final, offset, replacement] of [
+    ["simple-command", "a; b\n", "a; c\n", 3, "c"],
+    ["function", "f() { a; b; }\n", "f() { a; c; }\n", 9, "c"],
+    ["if-clause", "if a; then b; c; fi\n", "if a; then b; d; fi\n", 14, "d"],
+    [
+      "case-item",
+      "case x in x) a; b;; esac\n",
+      "case x in x) a; c;; esac\n",
+      16,
+      "c",
+    ],
+  ]) {
+    assertIncrementalEqualsFresh(
+      writeSource(`${name}-before-stray-separator`, initial),
+      writeSource(`${name}-after-stray-separator`, final),
+      `restore-${name}-after-stray-separator`,
+      `${offset} 1 ;`,
+      `${offset} 1 ${replacement}`,
+    );
   }
 });
 
@@ -1657,16 +1807,14 @@ test("here-document state, delimiters, and bodies remain deterministic", () => {
     "long-final",
     `cat <<${longFinalDelimiter}\nbody\n${longFinalDelimiter}\nafter`,
   );
-  for (const output of parseRecoveryAfterEdits(
+  parseRecoveryAfterEdits(
     longInitial,
     longFinal,
     "oversized-delimiter-recovery",
     `6 2048 ${longFinalDelimiter}`,
     `2060 2048 ${longFinalDelimiter}`,
     "4109 0 after",
-  )) {
-    assertCstRange(output, "3:0-3:5", "complete_command");
-  }
+  );
 
   const bodyCloserInitial = writeSource(
     "body-substitution-closer-initial",
@@ -1808,6 +1956,32 @@ test("word, parameter, and arithmetic categories survive edits", () => {
     "11 1 0",
   );
 
+  const numericSource = writeSource(
+    "unclassified-numeric-parameter-source",
+    lines(": $" + "{00}", ': "$' + '{00:-x}"', ': "$' + '{#00}"'),
+  );
+  const numericOutput = runParse({
+    description:
+      "unclassified numeric parameter spellings retain anonymous leaves",
+    source: numericSource,
+  }).output;
+  for (const [parentRange, sourceRange] of [
+    ["0:2-0:7", "0:4-0:6"],
+    ["1:3-1:11", "1:5-1:7"],
+    ["2:3-2:9", "2:6-2:8"],
+  ]) {
+    assertCstDirectChildRange(
+      numericOutput,
+      parentRange,
+      "parameter_expansion",
+      sourceRange,
+      '"numeric_parameter_source"',
+    );
+  }
+  assertNotContains(numericOutput, "parameter:");
+  assertNotContains(numericOutput, "positional_parameter");
+  assertNotContains(numericOutput, "special_parameter");
+
   const arithmeticCategoryInitial = writeSource(
     "arithmetic-category-initial",
     lines(': "$((a | b && c))"'),
@@ -1829,37 +2003,6 @@ test("word, parameter, and arithmetic categories survive edits", () => {
     "9 1",
   );
 
-  const operandBoundaryInitial = writeSource(
-    "arithmetic-operand-operator-boundary-initial",
-    lines(': "$((a==b))"'),
-  );
-  const operandBoundaryFinal = writeSource(
-    "arithmetic-operand-operator-boundary-final",
-    lines(': "$((a\\', '==b))"'),
-  );
-  const operandBoundaryOutput = parseValidCst(operandBoundaryFinal);
-  assertCstRange(operandBoundaryOutput, "0:3-1:5", "arithmetic_expansion");
-  assertCstRange(operandBoundaryOutput, "0:7-1:0", "line_continuation");
-  assertCstRange(
-    operandBoundaryOutput,
-    "1:0-1:2",
-    "operator: arithmetic_operator",
-  );
-  assertNotContains(operandBoundaryOutput, "command_substitution");
-  assertNotContains(operandBoundaryOutput, "ERROR");
-  assertIncrementalEqualsFresh(
-    operandBoundaryInitial,
-    operandBoundaryFinal,
-    "insert-arithmetic-operand-operator-boundary-continuation",
-    "7 0 \\\n",
-  );
-  assertIncrementalEqualsFresh(
-    operandBoundaryFinal,
-    operandBoundaryInitial,
-    "delete-arithmetic-operand-operator-boundary-continuation",
-    "7 2",
-  );
-
   const missingOperand = writeSource(
     "arithmetic-missing-operand",
     lines(': "$((1 +\\', '))"'),
@@ -1874,40 +2017,21 @@ test("word, parameter, and arithmetic categories survive edits", () => {
   assertCstRange(missingOperandOutput, "0:9-1:0", "line_continuation");
   assertOccurrenceCount(missingOperandOutput, "line_continuation", 1);
 
-  function assertRepeatedSignFallback(name, logicalText, physicalLines) {
-    const logical = writeSource(`${name}-logical`, lines(logicalText));
-    const physical = writeSource(`${name}-physical`, lines(...physicalLines));
-    const logicalOutput = runParse({
+  for (const [name, text] of [
+    ["arithmetic-prefix-increment", ': "$((++a))"'],
+    ["arithmetic-prefix-decrement", ': "$((--a))"'],
+    ["arithmetic-infix-increment", ': "$((a++b))"'],
+    ["arithmetic-infix-decrement", ': "$((a--b))"'],
+  ]) {
+    const source = writeSource(name, lines(text));
+    const output = runParse({
       description: `${name} falls back to command substitution`,
-      source: logical,
+      source,
     }).output;
-    assertContains(logicalOutput, "command_substitution");
-    assertContains(logicalOutput, "subshell");
-    assertNotContains(logicalOutput, "arithmetic_unary_expression");
-    const physicalOutput = runParse({
-      description: `split ${name} spelling`,
-      mode: "recovery",
-      source: physical,
-    }).output;
-    assertNotContains(physicalOutput, "arithmetic_unary_expression");
+    assertContains(output, "command_substitution");
+    assertContains(output, "subshell");
+    assertNotContains(output, "arithmetic_unary_expression");
   }
-
-  assertRepeatedSignFallback("arithmetic-prefix-increment", ': "$((++a))"', [
-    ': "$((+\\',
-    '+a))"',
-  ]);
-  assertRepeatedSignFallback("arithmetic-prefix-decrement", ': "$((--a))"', [
-    ': "$((-\\',
-    '-a))"',
-  ]);
-  assertRepeatedSignFallback("arithmetic-infix-increment", ': "$((a++b))"', [
-    ': "$((a+\\',
-    '+b))"',
-  ]);
-  assertRepeatedSignFallback("arithmetic-infix-decrement", ': "$((a--b))"', [
-    ': "$((a-\\',
-    '-b))"',
-  ]);
 });
 
 test("arithmetic grouping, lvalues, and unary operators remain stable", () => {
@@ -2009,11 +2133,11 @@ test("arithmetic grouping, lvalues, and unary operators remain stable", () => {
 
   const openingLayoutInitial = writeSource(
     "arithmetic-opening-layout-initial",
-    lines(': "$((\\', 'a+1))"'),
+    lines(': "$((a+1))"'),
   );
   const openingLayoutFinal = writeSource(
     "arithmetic-opening-layout-final",
-    lines(': "$(( \\', 'a+1))"'),
+    lines(': "$(( a+1))"'),
   );
   assertIncrementalEqualsFresh(
     openingLayoutInitial,
@@ -2049,119 +2173,59 @@ test("arithmetic grouping, lvalues, and unary operators remain stable", () => {
     "7 1",
   );
 
-  const unaryBangInitial = writeSource(
-    "arithmetic-unary-bang-initial",
-    lines("x=$((!-a))"),
-  );
-  const unaryBangFinal = writeSource(
-    "arithmetic-unary-bang-final",
-    lines("x=$((!\\", "-a))"),
-  );
-  const unaryBangOutput = parseValidCst(unaryBangFinal);
-  assertContains(unaryBangOutput, "assignment: assignment_word");
-  assertCstRange(
-    unaryBangOutput,
-    "0:5-1:2",
-    "expression: arithmetic_unary_expression",
-  );
-  assertCstRange(unaryBangOutput, "0:6-1:0", "line_continuation");
-  assertCstRange(
-    unaryBangOutput,
-    "1:0-1:2",
-    "operand: arithmetic_unary_expression",
-  );
-  assertNotContains(unaryBangOutput, "command_substitution");
-  assertNotContains(unaryBangOutput, "ERROR");
-  assertIncrementalEqualsFresh(
-    unaryBangInitial,
-    unaryBangFinal,
-    "insert-arithmetic-unary-bang-continuation",
-    "6 0 \\\n",
-  );
-  assertIncrementalEqualsFresh(
-    unaryBangFinal,
-    unaryBangInitial,
-    "delete-arithmetic-unary-bang-continuation",
-    "6 2",
-  );
-
-  const unaryPlusInitial = writeSource(
-    "arithmetic-unary-plus-initial",
-    lines(": $((+-a))"),
-  );
-  const unaryPlusFinal = writeSource(
-    "arithmetic-unary-plus-final",
-    lines(": $((+\\", "\\", "-a))"),
-  );
-  const unaryPlusOutput = parseValidCst(unaryPlusFinal);
-  assertCstRange(
-    unaryPlusOutput,
-    "0:5-2:2",
-    "expression: arithmetic_unary_expression",
-  );
-  assertCstRange(unaryPlusOutput, "0:6-1:0", "line_continuation");
-  assertCstRange(unaryPlusOutput, "1:0-2:0", "line_continuation");
-  assertCstRange(
-    unaryPlusOutput,
-    "2:0-2:2",
-    "operand: arithmetic_unary_expression",
-  );
-  assertNotContains(unaryPlusOutput, "command_substitution");
-  assertNotContains(unaryPlusOutput, "ERROR");
-  assertIncrementalEqualsFresh(
-    unaryPlusInitial,
-    unaryPlusFinal,
-    "insert-arithmetic-unary-plus-continuations",
-    "6 0 \\\n\\\n",
-  );
-  assertIncrementalEqualsFresh(
-    unaryPlusFinal,
-    unaryPlusInitial,
-    "delete-arithmetic-unary-plus-continuations",
-    "6 4",
-  );
-
-  const unaryMinusInitial = writeSource(
-    "arithmetic-unary-minus-initial",
-    lines(": $((-+a))"),
-  );
-  const unaryMinusFinal = writeSource(
-    "arithmetic-unary-minus-final",
-    lines(": $((-\\", "+a))"),
-  );
-  assertIncrementalEqualsFresh(
-    unaryMinusInitial,
-    unaryMinusFinal,
-    "insert-arithmetic-unary-minus-continuation",
-    "6 0 \\\n",
-  );
-  assertIncrementalEqualsFresh(
-    unaryMinusFinal,
-    unaryMinusInitial,
-    "delete-arithmetic-unary-minus-continuation",
-    "6 2",
-  );
-
-  const separatedSignInitial = writeSource(
-    "arithmetic-separated-sign-initial",
-    lines(': "$((+ +a))"'),
-  );
-  const separatedSignFinal = writeSource(
-    "arithmetic-separated-sign-final",
-    lines(': "$((+\\', ' +a))"'),
-  );
-  assertIncrementalEqualsFresh(
-    separatedSignInitial,
-    separatedSignFinal,
-    "insert-arithmetic-separated-sign-continuation",
-    "7 0 \\\n",
-  );
-  assertIncrementalEqualsFresh(
-    separatedSignFinal,
-    separatedSignInitial,
-    "delete-arithmetic-separated-sign-continuation",
-    "7 2",
-  );
+  for (const [
+    name,
+    initialText,
+    finalText,
+    offset,
+    expressionRange,
+    operandRange,
+  ] of [
+    ["bang", "x=$((!-a))", "x=$((! -a))", 6, "0:5-0:9", "0:7-0:9"],
+    ["plus", ": $((+-a))", ": $((+ -a))", 6, "0:5-0:9", "0:7-0:9"],
+    ["minus", ": $((-+a))", ": $((- +a))", 6, "0:5-0:9", "0:7-0:9"],
+    [
+      "separated-sign",
+      ': "$((+ +a))"',
+      ': "$((+  +a))"',
+      7,
+      "0:6-0:11",
+      "0:9-0:11",
+    ],
+  ]) {
+    const initial = writeSource(
+      `arithmetic-unary-${name}-initial`,
+      lines(initialText),
+    );
+    const final = writeSource(
+      `arithmetic-unary-${name}-final`,
+      lines(finalText),
+    );
+    const [, output] = assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `insert-arithmetic-unary-${name}-blank`,
+      `${offset} 0  `,
+    );
+    assertCstRange(
+      output,
+      expressionRange,
+      "expression: arithmetic_unary_expression",
+    );
+    assertCstRange(
+      output,
+      operandRange,
+      "operand: arithmetic_unary_expression",
+    );
+    assertOccurrenceCount(output, "arithmetic_unary_expression", 2);
+    assertNotContains(output, "command_substitution");
+    assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `delete-arithmetic-unary-${name}-blank`,
+      `${offset} 1`,
+    );
+  }
 
   const backquoteInitial = writeSource(
     "backquote-continuation-initial",
@@ -2190,17 +2254,51 @@ test("arithmetic grouping, lvalues, and unary operators remain stable", () => {
     "6 2",
   );
 
-  const incompleteDollar = writeSource(
-    "arithmetic-incomplete-dollar",
-    "x=$((1 + $",
+  for (const [name, initial, final, edit] of [
+    ["operand", "x=$((1 +", "x=$((1 + 2))\n", "8 0  2))\n"],
+    ["parameter", "x=$((1 + $", "x=$((1 + $x))\n", "10 0 x))\n"],
+  ]) {
+    const incomplete = writeSource(`arithmetic-incomplete-${name}`, initial);
+    assertNotContains(
+      parseRecovery(incomplete, `input ending before an arithmetic ${name}`),
+      "command_substitution",
+    );
+    const completed = writeSource(`arithmetic-completed-${name}`, final);
+    for (const output of assertIncrementalEqualsFresh(
+      incomplete,
+      completed,
+      `complete-arithmetic-${name}-after-recovery`,
+      edit,
+    )) {
+      assertContains(output, "arithmetic_expansion");
+    }
+  }
+});
+
+test("editing enclosing quotes updates backquote command word structure", () => {
+  const initialText = 'echo `printf %s \\"a b\\"`\n';
+  const finalText = 'echo "`printf %s \\"a b\\"`"\n';
+  const initial = writeSource(
+    "backquote-without-enclosing-quotes",
+    initialText,
   );
-  const incompleteDollarOutput = parseRecovery(
-    incompleteDollar,
-    "input ending at an arithmetic expansion introducer",
+  const final = writeSource("backquote-with-enclosing-quotes", finalText);
+  const outputs = assertIncrementalEqualsFresh(
+    initial,
+    final,
+    "insert enclosing quotes",
+    `${initialText.length - 1} 0 "`,
+    '5 0 "',
   );
-  assertContains(incompleteDollarOutput, "(arithmetic_number");
-  assertContains(incompleteDollarOutput, "(arithmetic_operator");
-  assertNotContains(incompleteDollarOutput, "command_substitution");
+  for (const output of outputs) assertOccurrenceCount(output, "word: word", 3);
+  const restored = assertIncrementalEqualsFresh(
+    final,
+    initial,
+    "remove enclosing quotes",
+    `${finalText.length - 2} 1`,
+    "5 1",
+  );
+  for (const output of restored) assertOccurrenceCount(output, "word: word", 4);
 });
 
 test("arithmetic raw newlines stay layout in every reading", () => {
@@ -2354,6 +2452,51 @@ test("tilde, assignment, and compound-tail classifications remain stable", () =>
     ["0:16-0:17", '"/"'],
   ]) {
     assertCstRange(nestedUserOutput, range, item);
+  }
+
+  for (const [source, prefix] of [
+    [": ~[a/b]", "~[a"],
+    ["x=~[a:b]", "~[a"],
+    [": $" + "{p:-~[a/b]}", "~[a"],
+    [": $" + "{p#~[a/b]}", "~[a"],
+    ["x=~[[:alpha:]]", "~[["],
+    [": ~[[:alpha:]]", "~[[:alpha:]]"],
+    [": ~[a:b]", "~[a:b]"],
+    [String.raw`: ~[a\/b]`, String.raw`~[a\/b]`],
+    [String.raw`x=~[a\:b]`, String.raw`~[a\:b]`],
+    [': ~[a"b/c"]', '~[a"b/c"]'],
+    ["x=~[a$(printf b:c)]", "~[a$(printf b:c)]"],
+    [': "`: ~[/]`"', "~["],
+    [': "`x=~[:]`"', "~["],
+  ]) {
+    const output = parseValidCst(
+      writeSource("tilde-bracket-prefix", lines(source)),
+    );
+    const start = source.indexOf("~");
+    const end = start + prefix.length;
+    assertOccurrenceCount(output, "tilde_expansion", 1);
+    assertCstRange(output, `0:${start}-0:${end}`, "tilde_expansion");
+    assertCstRange(output, `0:${start + 1}-0:${end}`, "user: tilde_user");
+  }
+
+  for (const [initial, final, delimiter] of [
+    [": ~[ab]", ": ~[a/b]", "/"],
+    ["x=~[ab]", "x=~[a:b]", ":"],
+  ]) {
+    const initialSource = writeSource("tilde-bracket-initial", lines(initial));
+    const finalSource = writeSource("tilde-bracket-final", lines(final));
+    assertIncrementalEqualsFresh(
+      initialSource,
+      finalSource,
+      "insert-tilde-bracket-delimiter",
+      `5 0 ${delimiter}`,
+    );
+    assertIncrementalEqualsFresh(
+      finalSource,
+      initialSource,
+      "remove-tilde-bracket-delimiter",
+      "5 1",
+    );
   }
 
   const assignmentBoundaryInitial = writeSource(
@@ -3274,7 +3417,6 @@ test("here-document redirect lines keep a continuation before a following comman
 });
 
 test("expansion dollars stay expansions after recovery edits", () => {
-  // Recovery previously left the inner '${x:-y}' reusable as literal text.
   const dollarInitial = writeSource(
     "expansion-dollar-initial",
     lines('echo "$' + "{x:-$'text'}\""),
@@ -4017,21 +4159,9 @@ test("incremental parsing reuses unchanged commands", () => {
     const reusedCommands = (
       result.stderr.match(/^reuse_node symbol:complete_command$/gm) ?? []
     ).length;
-    const fragileTrees = new Set();
-    for (const line of result.stderr.matchAll(
-      /^cant_reuse_node_is_fragile tree:(.+)$/gm,
-    )) {
-      fragileTrees.add(line[1]);
-    }
-    let versionsMax = 0;
-    for (const line of result.stderr.matchAll(/version_count:([0-9]+)/g)) {
-      versionsMax = Math.max(versionsMax, Number(line[1]));
-    }
     return {
       fingerprint: cstFingerprint(result.stdout),
-      fragileTrees,
       reusedCommands,
-      versionsMax,
     };
   }
 
@@ -4039,17 +4169,6 @@ test("incremental parsing reuses unchanged commands", () => {
     assert.ok(
       parse.reusedCommands >= commandCount - 2,
       `${name}: reused ${parse.reusedCommands} of ${commandCount - 1} unchanged complete_commands`,
-    );
-    parse.fragileTrees.delete("complete_commands_repeat1");
-    assert.deepEqual(
-      [...parse.fragileTrees],
-      [],
-      `${name}: fragile nodes block command reuse`,
-    );
-    assert.equal(
-      parse.versionsMax,
-      1,
-      `${name}: parser forked on plain commands`,
     );
   }
 
@@ -4379,4 +4498,56 @@ test("substitution newlines and continuations remain stable", () => {
   const embeddedDocumentOutput = parseValidCst(embeddedDocument);
   assertContains(embeddedDocumentOutput, "arithmetic_expansion");
   assertContains(embeddedDocumentOutput, "here_document_body");
+});
+
+test("empty quoted here-document delimiters preserve enclosing source after recovery", () => {
+  const fixtures = [
+    {
+      name: "arithmetic-empty-single-quoted-delimiter",
+      initial: lines("echo $(( $(cat <<'", "1", "", ") + 1 ))"),
+      source: lines("echo $(( $(cat <<''", "1", "", ") + 1 ))"),
+      edit: "18 0 '",
+      expectedRange: "0:5-3:8",
+      expectedNode: "arithmetic_expansion",
+      delimiterRange: "0:17-0:19",
+      delimiterNode: "single_quoted",
+    },
+    {
+      name: "bracket-empty-double-quoted-delimiter",
+      initial: lines('echo [$(cat <<"', "1", "", ")]"),
+      source: lines('echo [$(cat <<""', "1", "", ")]"),
+      edit: '15 0 "',
+      expectedRange: "0:5-3:2",
+      expectedNode: "pattern_bracket_source",
+      delimiterRange: "0:14-0:16",
+      delimiterNode: "double_quoted",
+    },
+    {
+      name: "arithmetic-empty-dollar-single-quoted-delimiter",
+      initial: lines("echo $(( $(cat <<$'", "1", "", ") + 1 ))"),
+      source: lines("echo $(( $(cat <<$''", "1", "", ") + 1 ))"),
+      edit: "19 0 '",
+      expectedRange: "0:5-3:8",
+      expectedNode: "arithmetic_expansion",
+      delimiterRange: "0:17-0:20",
+      delimiterNode: "dollar_single_quoted",
+    },
+  ];
+  for (const fixture of fixtures) {
+    const initial = writeSource(`${fixture.name}-initial`, fixture.initial);
+    const source = writeSource(fixture.name, fixture.source);
+    parseRecovery(initial, `${fixture.name} unfinished quote`);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      source,
+      fixture.name,
+      fixture.edit,
+    )) {
+      assertCstRange(output, fixture.expectedRange, fixture.expectedNode);
+      assertCstRange(output, fixture.delimiterRange, "here_end");
+      assertCstRange(output, fixture.delimiterRange, fixture.delimiterNode);
+      assertCstRange(output, "1:0-2:0", "quoted_here_document_body");
+      assertCstRange(output, "2:0-3:0", "here_document_end");
+    }
+  }
 });

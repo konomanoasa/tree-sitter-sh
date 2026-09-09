@@ -235,3 +235,322 @@ cat <<'EOF'
 $name \$ text
 EOF
 # <- label
+
+# command name: asterisk
+pre"quoted"mid*tail'quoted'end
+# <- string.regexp
+#          ^^^ string.regexp
+#              ^^^^ string.regexp
+#                          ^^^ string.regexp
+#   ^^^^^^ !string.regexp
+
+# command name: question mark
+pre"quoted"mid?tail'quoted'end
+# <- string.regexp
+#          ^^^ string.regexp
+#              ^^^^ string.regexp
+#                          ^^^ string.regexp
+#   ^^^^^^ !string.regexp
+
+# command name: bracket expression
+pre"quoted"mid[a]tail'quoted'end
+# <- string.regexp
+#          ^^^ string.regexp
+#                ^^^^ string.regexp
+#                            ^^^ string.regexp
+#   ^^^^^^ !string.regexp
+
+# command after assignment: asterisk
+name=value pre"quoted"mid*tail'quoted'end
+#          ^^^ string.regexp
+#                     ^^^ string.regexp
+#                         ^^^^ string.regexp
+#                                     ^^^ string.regexp
+#              ^^^^^^ !string.regexp
+
+# command after assignment: question mark
+name=value pre"quoted"mid?tail'quoted'end
+#          ^^^ string.regexp
+#                     ^^^ string.regexp
+#                         ^^^^ string.regexp
+#                                     ^^^ string.regexp
+#              ^^^^^^ !string.regexp
+
+# command after assignment: bracket expression
+name=value pre"quoted"mid[a]tail'quoted'end
+#          ^^^ string.regexp
+#                     ^^^ string.regexp
+#                           ^^^^ string.regexp
+#                                       ^^^ string.regexp
+#              ^^^^^^ !string.regexp
+
+# command argument: asterisk
+echo pre"quoted"mid*tail'quoted'end
+#    ^^^ string.regexp
+#               ^^^ string.regexp
+#                   ^^^^ string.regexp
+#                               ^^^ string.regexp
+#        ^^^^^^ !string.regexp
+
+# command argument: question mark
+echo pre"quoted"mid?tail'quoted'end
+#    ^^^ string.regexp
+#               ^^^ string.regexp
+#                   ^^^^ string.regexp
+#                               ^^^ string.regexp
+#        ^^^^^^ !string.regexp
+
+# command argument: bracket expression
+echo pre"quoted"mid[a]tail'quoted'end
+#    ^^^ string.regexp
+#               ^^^ string.regexp
+#                     ^^^^ string.regexp
+#                                 ^^^ string.regexp
+#        ^^^^^^ !string.regexp
+
+# for word list: asterisk
+for item in pre"quoted"mid*tail'quoted'end; do :; done
+#           ^^^ string.regexp
+#                      ^^^ string.regexp
+#                          ^^^^ string.regexp
+#                                      ^^^ string.regexp
+#               ^^^^^^ !string.regexp
+
+# for word list: question mark
+for item in pre"quoted"mid?tail'quoted'end; do :; done
+#           ^^^ string.regexp
+#                      ^^^ string.regexp
+#                          ^^^^ string.regexp
+#                                      ^^^ string.regexp
+#               ^^^^^^ !string.regexp
+
+# for word list: bracket expression
+for item in pre"quoted"mid[a]tail'quoted'end; do :; done
+#           ^^^ string.regexp
+#                      ^^^ string.regexp
+#                            ^^^^ string.regexp
+#                                        ^^^ string.regexp
+#               ^^^^^^ !string.regexp
+
+# redirection filename: asterisk
+cat >pre"quoted"mid*tail'quoted'end
+#    ^^^ string.regexp
+#               ^^^ string.regexp
+#                   ^^^^ string.regexp
+#                               ^^^ string.regexp
+#        ^^^^^^ !string.regexp
+
+# redirection filename: question mark
+cat >pre"quoted"mid?tail'quoted'end
+#    ^^^ string.regexp
+#               ^^^ string.regexp
+#                   ^^^^ string.regexp
+#                               ^^^ string.regexp
+#        ^^^^^^ !string.regexp
+
+# redirection filename: bracket expression
+cat >pre"quoted"mid[a]tail'quoted'end
+#    ^^^ string.regexp
+#               ^^^ string.regexp
+#                     ^^^^ string.regexp
+#                                 ^^^ string.regexp
+#        ^^^^^^ !string.regexp
+
+# Multiple markers share literal captures
+echo pre*mid?tail[a]end
+#    ^^^ string.regexp
+#        ^^^ string.regexp
+#            ^^^^ string.regexp
+#                   ^^^ string.regexp
+
+# Substitutions separate literals without inheriting pattern captures
+echo pre$(printf x)mid*tail${value}end
+#    ^^^ string.regexp
+#                  ^^^ string.regexp
+#                      ^^^^ string.regexp
+#                                  ^^^ string.regexp
+#         ^^^^^^ !string.regexp
+#                ^ !string.regexp
+#                          ^^^^^ !string.regexp
+
+# Plain words stay strings
+echo pre"quoted"tail
+#    ^^^ !string.regexp
+#               ^^^^ !string.regexp
+
+# Quoted and escaped markers do not activate patterns
+echo pre'*'tail pre\*tail
+#    ^^^ !string.regexp
+#          ^^^^ !string.regexp
+#              ^^^ !string.regexp
+#                   ^^^^ !string.regexp
+
+# Assignments do not activate pathname patterns
+name=pre*tail
+#    ^^^ !string.regexp
+#        ^^^^ !string.regexp
+
+# Escaped members retain the brackets around their source
+echo [\a]
+#    ^ punctuation.bracket
+#     ^^ string.escape
+#       ^ punctuation.bracket
+
+# Command patterns retain a range ending in an escape
+pre[a-\c]
+#  ^ punctuation.bracket
+#   ^ character
+#    ^ operator
+#     ^^ string.escape
+#       ^ punctuation.bracket
+
+# Commands after assignments retain a quoted range endpoint
+name=value pre['a'-c]
+#             ^ punctuation.bracket
+#              ^ punctuation.delimiter
+#               ^ string
+#                 ^ operator
+#                  ^ character
+#                   ^ punctuation.bracket
+
+# Word lists retain collating symbols at both range endpoints
+for item in [[.a.]-[.z.]]; do :; done
+#           ^^ punctuation.bracket
+#             ^ punctuation.delimiter
+#              ^ character.special
+#                 ^ operator
+#                    ^ character.special
+#                      ^^ punctuation.bracket
+
+# Filenames retain class markers around a substituted class name
+cat >[[:${kind}:]]
+#    ^^ punctuation.bracket
+#      ^ punctuation.delimiter
+#       ^ variable
+#         ^^^^ variable
+#              ^ punctuation.delimiter
+#               ^^ punctuation.bracket
+
+# Case patterns retain collating markers around substitutions
+case value in [[.$element.]]) :;; esac
+#             ^^ punctuation.bracket
+#               ^ punctuation.delimiter
+#                ^ variable
+#                 ^^^^^^^ variable
+#                        ^ punctuation.delimiter
+#                         ^^ punctuation.bracket
+
+# Removal patterns retain equivalence markers around substitutions
+echo "${name#[[=$element=]]}"
+#            ^^ punctuation.bracket
+#              ^ punctuation.delimiter
+#               ^ variable
+#                ^^^^^^^ variable
+#                       ^ punctuation.delimiter
+#                        ^^ punctuation.bracket
+
+# Here-document delimiters keep labels, quotes, and escapes distinct
+cat <<*?[!a-z[:alpha:][.x.][=y=]]
+body
+*?[!a-z[:alpha:][.x.][=y=]]
+# <- label
+#^^^^^^^^^^^^^^^^^^^^^^^^^^ label
+
+cat <<[[.a.]-[.z.]]
+body
+[[.a.]-[.z.]]
+# <- label
+#^^^^^^^^^^^^ label
+
+cat <<[\a]
+body
+[a]
+# <- label
+#^^ label
+
+cat <<['a'-"z"]
+body
+[a-z]
+# <- label
+#^^^^ label
+
+cat <<[[:'alpha':][."x".][=$'y'=]]
+body
+[[:alpha:][.x.][=y=]]
+# <- label
+#^^^^^^^^^^^^^^^^^^^^ label
+
+# Pattern captures stay within their owning word
+pre*tail plain
+# <- string.regexp
+#^^ string.regexp
+#   ^^^^ string.regexp
+#        ^^^^^ string
+
+name=value pre?tail plain
+#    ^^^^^ string
+#          ^^^ string.regexp
+#              ^^^^ string.regexp
+#                   ^^^^^ string
+
+echo plain pre[a]tail plain
+#    ^^^^^ string
+#          ^^^ string.regexp
+#                ^^^^ string.regexp
+#                     ^^^^^ string
+
+for item in plain pre*tail plain; do :; done
+#           ^^^^^ string
+#                 ^^^ string.regexp
+#                     ^^^^ string.regexp
+#                          ^^^^^ string
+
+cat >pre?tail
+# <- function.call
+#^^ function.call
+#    ^^^ string.regexp
+#        ^^^^ string.regexp
+
+echo ~a*b ~a?b ~[!a-z[:alpha:][.x.][=y=]-] ~[[.a.]-[.z.]] ~[-a]
+#    ^^^^ string.special.path
+#         ^^^^ string.special.path
+#              ^^^^^^^^^^^^^^^^^^^^^^^^^^^ string.special.path
+#                                          ^^^^^^^^^^^^^^ string.special.path
+#                                                         ^^^^^ string.special.path
+
+name=~a*b:~[a-z]
+#    ^^^^ string.special.path
+#         ^^^^^^ string.special.path
+
+echo ${x:-${y:-~a?b}}
+#              ^^^^ string.special.path
+
+echo ~[a-\c] ~[[.$element.]-[."z".]] ~['q'] ~[$(printf x)]
+#    ^^^^ string.special.path
+#        ^^ string.escape
+#          ^ string.special.path
+#            ^^^^ string.special.path
+#                ^^^^^^^^ variable
+#                        ^^^^^ string.special.path
+#                             ^ punctuation.delimiter
+#                              ^ string
+#                               ^ punctuation.delimiter
+#                                ^^^ string.special.path
+#                                    ^^ string.special.path
+#                                      ^ punctuation.delimiter
+#                                       ^ string
+#                                        ^ punctuation.delimiter
+#                                         ^ string.special.path
+#                                           ^^ string.special.path
+#                                             ^ punctuation.special
+#                                              ^ punctuation.bracket
+#                                               ^^^^^^ function.call
+#                                                      ^ string
+#                                                       ^ punctuation.bracket
+#                                                        ^ string.special.path
+
+echo ~a*b/pre*tail
+#    ^^^^ string.special.path
+#        ^^^^ string.regexp
+#            ^ character.special
+#             ^^^^ string.regexp

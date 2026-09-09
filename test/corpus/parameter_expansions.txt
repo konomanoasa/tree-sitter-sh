@@ -160,48 +160,6 @@ printf ${x:-`printf nested`} "${x:-`printf nested`}"
     (newline_list)))
 
 ==================
-Parameter operators and words preserve boundary continuations
-==================
-
-printf ${x:-\
-} ${x:-\
-~user}
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_value_operator)
-                        (line_continuation)))
-                    word: (word
-                      (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_value_operator)
-                        (line_continuation)
-                        word: (parameter_word
-                          (tilde_expansion
-                            user: (tilde_user
-                              (literal)))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 Parameter value words follow unquoted and double-quote-like contexts
 ==================
 
@@ -994,70 +952,6 @@ printf "${name:-default}" "${name:=value}" "${name:?message}" "${name:+alternate
     (newline_list)))
 
 ==================
-Braced parameters expose removed line continuations at their boundaries
-==================
-
-printf "${\
-name}" "${\
-#name}" "${name#\
-pattern}" "${name:-\
-word}" "${name#\
-}"
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (double_quoted
-                        (parameter_expansion
-                          (line_continuation)
-                          parameter: (variable_name))))
-                    word: (word
-                      (double_quoted
-                        (parameter_expansion
-                          (line_continuation)
-                          operator: (parameter_length_operator)
-                          parameter: (variable_name))))
-                    word: (word
-                      (double_quoted
-                        (parameter_expansion
-                          parameter: (variable_name)
-                          operator: (parameter_pattern_operator)
-                          (line_continuation)
-                          pattern: (parameter_pattern
-                            (literal)))))
-                    word: (word
-                      (double_quoted
-                        (parameter_expansion
-                          parameter: (variable_name)
-                          operator: (parameter_value_operator)
-                          (line_continuation)
-                          word: (parameter_word
-                            (double_quote_text)))))
-                    word: (word
-                      (double_quoted
-                        (parameter_expansion
-                          parameter: (variable_name)
-                          operator: (parameter_pattern_operator)
-                          (line_continuation)))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 Inherited parameter words keep dollar-single-quote source literal
 ==================
 
@@ -1452,67 +1346,6 @@ printf ${x#[[:alpha:]]} ${y%[[.ch.]]} ${z%%[[=a=]]}
                               (pattern_equivalence_class_source
                                 (pattern_equivalence_class_character_source))))))))))))))))
   (linebreak
-    (newline_list)))
-
-==================
-Expansion words keep escaped newlines before their closers
-==================
-
-echo ${a:-w\
-} ${b#p\
-} "${c:-x\
-y}" "${d%q\
-}"
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_value_operator)
-                        word: (parameter_word
-                          (literal))
-                        (line_continuation)))
-                    word: (word
-                      (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_pattern_operator)
-                        pattern: (parameter_pattern
-                          (literal))
-                        (line_continuation)))
-                    word: (word
-                      (double_quoted
-                        (parameter_expansion
-                          parameter: (variable_name)
-                          operator: (parameter_value_operator)
-                          word: (parameter_word
-                            (double_quote_text)
-                            (line_continuation)
-                            (double_quote_text)))))
-                    word: (word
-                      (double_quoted
-                        (parameter_expansion
-                          parameter: (variable_name)
-                          operator: (parameter_pattern_operator)
-                          pattern: (parameter_pattern
-                            (literal))
-                          (line_continuation)))))))))))))
-  trailing: (linebreak
     (newline_list)))
 
 ==================

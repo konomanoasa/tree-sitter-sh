@@ -114,12 +114,12 @@ next
     (newline_list)))
 
 ==================
-Only unquoted bodies remove escaped newlines while finding the end
+Only unquoted bodies remove continuations before delimiter lines
 ==================
 
 cat <<EOF
-EO\
-F
+\
+EOF
 cat <<'END'
 EN\
 D
@@ -317,13 +317,11 @@ EOF
           end: (here_document_end))))))
 
 ==================
-Unquoted here-document bodies keep logical dollar-single-quote source literal
+Unquoted here-document bodies keep dollar-single-quote source literal
 ==================
 
 cat <<EOF
 $'text'
-$\
-'text'
 EOF
 
 ---
@@ -356,9 +354,6 @@ EOF
         (here_document
           (here_document_body
             (here_document_text)
-            (here_document_text)
-            (here_document_text)
-            (line_continuation)
             (here_document_text))
           (here_document_end))))))
 

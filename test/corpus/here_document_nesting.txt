@@ -259,6 +259,190 @@ OUTER
           end: (here_document_end))))))
 
 ==================
+An empty single-quoted delimiter preserves arithmetic expansion
+==================
+
+echo $(( $(cat <<''
+1
+
+) + 1 ))
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_binary_expression
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (io_redirect
+                                                  (io_here
+                                                    (dless)
+                                                    (here_end
+                                                      (word
+                                                        (single_quoted))))))))))))))
+                              (linebreak
+                                (newline_list
+                                  (here_document_sequence
+                                    (here_document_line_end)
+                                    (here_document
+                                      (quoted_here_document_body
+                                        (quoted_here_document_text))
+                                      (here_document_end)))))))
+                          (arithmetic_operator)
+                          (arithmetic_number)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+An empty double-quoted delimiter preserves bracket source
+==================
+
+echo [$(cat <<""
+1
+
+)]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (io_redirect
+                                                  (io_here
+                                                    (dless)
+                                                    (here_end
+                                                      (word
+                                                        (double_quoted))))))))))))))
+                              (linebreak
+                                (newline_list
+                                  (here_document_sequence
+                                    (here_document_line_end)
+                                    (here_document
+                                      (quoted_here_document_body
+                                        (quoted_here_document_text))
+                                      (here_document_end)))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+An empty dollar-single-quoted delimiter preserves arithmetic expansion
+==================
+
+echo $(( $(cat <<$''
+1
+
+) + 1 ))
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_binary_expression
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (io_redirect
+                                                  (io_here
+                                                    (dless)
+                                                    (here_end
+                                                      (word
+                                                        (dollar_single_quoted))))))))))))))
+                              (linebreak
+                                (newline_list
+                                  (here_document_sequence
+                                    (here_document_line_end)
+                                    (here_document
+                                      (quoted_here_document_body
+                                        (quoted_here_document_text))
+                                      (here_document_end)))))))
+                          (arithmetic_operator)
+                          (arithmetic_number)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
 Escaped backslash pairs keep nested document delimiters reachable
 ==================
 
@@ -520,6 +704,132 @@ b
                                                             (quoted_here_document_text))
                                                           (here_document_end)))))))))))))))))))))))))))))
   (linebreak
+    (newline_list)))
+
+==================
+Backquote continuations preserve their physical pairs and document boundaries
+==================
+
+echo `cat <<\\
+EOF
+abc \\
+$name
+EOF
+`
+echo `echo \`cat <<\\\\
+END
+body
+END
+\``
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            redirect: (io_redirect
+                                              body: (io_here
+                                                operator: (dless)
+                                                (line_continuation)
+                                                end: (here_end
+                                                  word: (word
+                                                    (literal))))))))))))))
+                          (linebreak
+                            (newline_list
+                              (here_document_sequence
+                                line_end: (here_document_line_end)
+                                document: (here_document
+                                  body: (here_document_body
+                                    (here_document_text)
+                                    (line_continuation)
+                                    (parameter_expansion
+                                      parameter: (variable_name)))
+                                  end: (here_document_end))))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (backquote_substitution
+                                                body: (backquote_substitution_body
+                                                  (complete_commands
+                                                    command: (complete_command
+                                                      body: (list
+                                                        and_or: (and_or
+                                                          pipeline: (pipeline
+                                                            sequence: (pipe_sequence
+                                                              command: (command
+                                                                body: (simple_command
+                                                                  name: (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  suffix: (cmd_suffix
+                                                                    redirect: (io_redirect
+                                                                      body: (io_here
+                                                                        operator: (dless)
+                                                                        (line_continuation)
+                                                                        end: (here_end
+                                                                          word: (word
+                                                                            (literal))))))))))))))
+                                                  (linebreak
+                                                    (newline_list
+                                                      (here_document_sequence
+                                                        line_end: (here_document_line_end)
+                                                        document: (here_document
+                                                          body: (here_document_body
+                                                            (here_document_text))
+                                                          end: (here_document_end)))))))))))))))))))))))))))))
+  trailing: (linebreak
     (newline_list)))
 
 ==================

@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 const {
@@ -12,12 +13,6 @@ const highlightFixture = path.join(
   "highlight",
   "sh.sh",
 );
-const inactivePatternsFixture = path.join(
-  repositoryDirectory,
-  "test",
-  "query",
-  "inactive-patterns.sh",
-);
 const query = path.join(repositoryDirectory, "queries", "highlights.scm");
 
 function assertCommand(arguments_) {
@@ -30,6 +25,26 @@ function assertCommand(arguments_) {
   return result.stdout;
 }
 
+function queryCaptures(fixture) {
+  const output = assertCommand([
+    "query",
+    "--captures",
+    "--scope",
+    "source.sh",
+    query,
+    fixture,
+  ]);
+  return [
+    ...output.matchAll(
+      / - ([^,]+), start: \(([0-9]+), ([0-9]+)\), end: \(([0-9]+), ([0-9]+)\)/g,
+    ),
+  ].map((match) => ({
+    name: match[1],
+    start: [Number(match[2]), Number(match[3])],
+    end: [Number(match[4]), Number(match[5])],
+  }));
+}
+
 test("highlight query", () => {
   assertCommand([
     "highlight",
@@ -39,70 +54,109 @@ test("highlight query", () => {
     "source.sh",
     highlightFixture,
   ]);
-  assertCommand([
-    "query",
-    "--test",
-    "--scope",
-    "source.sh",
-    query,
-    highlightFixture,
-  ]);
 });
 
-test("inactive pattern sources remain unhighlighted", () => {
-  assertCommand([
-    "query",
-    "--test",
-    "--scope",
-    "source.sh",
-    query,
-    inactivePatternsFixture,
-  ]);
-});
-
-test("pattern literals span quotes and substitutions in each word context", () => {
-  assertCommand([
-    "query",
-    "--test",
-    "--scope",
-    "source.sh",
-    query,
-    path.join(repositoryDirectory, "test", "query", "pattern-literals.txt"),
-  ]);
-});
-
-test("capture iteration keeps pattern literals inside their owning word", () => {
-  const output = assertCommand([
-    "query",
-    "--captures",
-    "--scope",
-    "source.sh",
-    query,
-    path.join(
-      repositoryDirectory,
-      "test",
-      "query",
-      "pattern-context-boundaries.txt",
+test("assignment patterns have no pattern captures", () => {
+  assert.deepEqual(
+    queryCaptures(
+      path.join(repositoryDirectory, "test", "query", "inactive-patterns.txt"),
     ),
-  ]);
-  const captures = output
-    .split("\n")
-    .filter((line) => line.includes(" - string.regexp,"))
-    .map((line) => line.slice(line.indexOf("start:")));
-  assert.deepEqual(captures, [
-    "start: (0, 0), end: (0, 3), text: `pre`",
-    "start: (0, 4), end: (0, 8), text: `tail`",
-    "start: (1, 11), end: (1, 14), text: `pre`",
-    "start: (1, 15), end: (1, 19), text: `tail`",
-    "start: (2, 11), end: (2, 14), text: `pre`",
-    "start: (2, 17), end: (2, 21), text: `tail`",
-    "start: (3, 18), end: (3, 21), text: `pre`",
-    "start: (3, 22), end: (3, 26), text: `tail`",
-    "start: (4, 5), end: (4, 8), text: `pre`",
-    "start: (4, 9), end: (4, 13), text: `tail`",
-    "start: (5, 5), end: (5, 8), text: `pre`",
-    "start: (5, 19), end: (5, 22), text: `mid`",
-    "start: (5, 23), end: (5, 27), text: `tail`",
-    "start: (5, 35), end: (5, 38), text: `end`",
-  ]);
+    [
+      { name: "variable", start: [0, 0], end: [0, 4] },
+      { name: "operator", start: [0, 4], end: [0, 5] },
+    ],
+  );
+});
+
+// Declaration annotations would be here-document body text, so check captures directly.
+test("here-document declarations preserve label, quote, and escape captures", () => {
+  const lines = readFileSync(highlightFixture, "utf8").split("\n");
+  // General string captures can overlap the more specific delimiter labels.
+  const captures = queryCaptures(highlightFixture).filter(
+    (capture) => capture.name !== "string",
+  );
+  for (const [input, expected] of [
+    ["cat <<*?[!a-z[:alpha:][.x.][=y=]]", { label: [[6, 33]] }],
+    ["cat <<[[.a.]-[.z.]]", { label: [[6, 19]] }],
+    [
+      String.raw`cat <<[\a]`,
+      {
+        label: [
+          [6, 7],
+          [9, 10],
+        ],
+        "string.escape": [[7, 9]],
+      },
+    ],
+    [
+      `cat <<['a'-"z"]`,
+      {
+        label: [
+          [6, 7],
+          [8, 9],
+          [10, 11],
+          [12, 13],
+          [14, 15],
+        ],
+        "punctuation.delimiter": [
+          [7, 8],
+          [9, 10],
+          [11, 12],
+          [13, 14],
+        ],
+      },
+    ],
+    [
+      `cat <<[[:'alpha':][."x".][=$'y'=]]`,
+      {
+        label: [
+          [6, 9],
+          [10, 15],
+          [16, 20],
+          [21, 22],
+          [23, 27],
+          [29, 30],
+          [31, 34],
+        ],
+        "punctuation.delimiter": [
+          [9, 10],
+          [15, 16],
+          [20, 21],
+          [22, 23],
+          [27, 29],
+          [30, 31],
+        ],
+      },
+    ],
+  ]) {
+    const row = lines.indexOf(input);
+    assert.notEqual(row, -1, input);
+    const actual = {};
+    for (const capture of captures) {
+      if (capture.start[0] !== row || capture.start[1] < 6) continue;
+      assert.equal(capture.end[0], row, input);
+      actual[capture.name] ??= [];
+      actual[capture.name].push([capture.start[1], capture.end[1]]);
+    }
+    const columns = (ranges) =>
+      [
+        ...new Set(
+          ranges.flatMap(([start, end]) =>
+            Array.from({ length: end - start }, (_, index) => start + index),
+          ),
+        ),
+      ].sort((left, right) => left - right);
+    assert.deepEqual(
+      Object.fromEntries(
+        Object.entries(actual).map(([name, ranges]) => [name, columns(ranges)]),
+      ),
+      Object.fromEntries(
+        Object.entries(expected).map(([name, ranges]) => [
+          name,
+          columns(ranges),
+        ]),
+      ),
+      input,
+    );
+  }
 });

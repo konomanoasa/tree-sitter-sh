@@ -380,3 +380,53 @@ a=~user\
                       (literal)))))))))))
   (linebreak
     (newline_list)))
+
+==================
+Tilde prefixes stop at unquoted delimiters inside bracket source
+==================
+
+: ~[/]
+x=~[:]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (tilde_expansion
+                        (tilde_user
+                          (literal)))
+                      (literal)
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (tilde_expansion
+                          (tilde_user
+                            (literal)))
+                        (literal)
+                        (literal))))))))))))
+  (linebreak
+    (newline_list)))
