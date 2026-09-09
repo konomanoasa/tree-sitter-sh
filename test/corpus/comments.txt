@@ -42,6 +42,59 @@ next
     (newline_list)))
 
 ==================
+List separators make an adjacent hash a comment
+==================
+
+first;# after the first command
+second &# after the second command
+third
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))
+      terminator: (separator_op))
+    separator: (newline_list
+      (comment))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))
+      terminator: (separator_op))
+    separator: (newline_list
+      (comment))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 Leading and trailing layout is not part of a comment node
 ==================
 

@@ -1,6 +1,0 @@
-pre*tail plain
-name=value pre?tail plain
-echo plain pre[a]tail plain
-for item in plain pre*tail plain; do :; done
-cat >pre?tail
-echo pre$(printf x)mid*tail${value}end

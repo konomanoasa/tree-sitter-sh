@@ -269,10 +269,11 @@ printf ${value#[}suffix]
     (newline_list)))
 
 ==================
-A bracket close ends a class element before its delimiter
+Only collating symbols retain a closing bracket as content
 ==================
 
-printf [[.].]] [[=]=]]
+printf [[.].]] [[=]=]] ${x#[[.].]]}
+case x in [[.].]]) :;; esac
 
 ---
 
@@ -292,6 +293,11 @@ printf [[.].]] [[=]=]]
                       (literal)))
                   suffix: (cmd_suffix
                     word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_collating_symbol_source
+                            value: (pattern_collating_symbol_character_source)))))
+                    word: (word
                       (literal)
                       (pattern_bracket_source
                         members: (pattern_bracket_members_source
@@ -300,13 +306,48 @@ printf [[.].]] [[=]=]]
                       (literal)
                       (literal))
                     word: (word
-                      (literal)
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (pattern_bracket_character_source)))
-                      (literal)
-                      (literal)
-                      (literal)))))))))))
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (pattern_bracket_source
+                            members: (pattern_bracket_members_source
+                              member: (pattern_collating_symbol_source
+                                value: (pattern_collating_symbol_character_source)))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (pattern_bracket_source
+                              members: (pattern_bracket_members_source
+                                member: (pattern_collating_symbol_source
+                                  value: (pattern_collating_symbol_character_source))))))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        terminator: (dsemi)))
+                    (esac_keyword))))))))))
   trailing: (linebreak
     (newline_list)))
 

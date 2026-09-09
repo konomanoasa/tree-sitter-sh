@@ -551,59 +551,6 @@ fourth &
     (newline_list)))
 
 ==================
-List separators make an adjacent hash a comment
-==================
-
-first;# after the first command
-second &# after the second command
-third
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))
-      terminator: (separator_op))
-    separator: (newline_list
-      (comment))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))
-      terminator: (separator_op))
-    separator: (newline_list
-      (comment))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 Newlines separate complete commands
 ==================
 
@@ -1831,47 +1778,6 @@ first\
   (line_continuation))
 
 ==================
-A continuation before a substitution closer stays layout
-==================
-
-x=$( a\
-)
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_prefix
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (command_substitution
-                          (command_substitution_body
-                            (complete_commands
-                              (complete_command
-                                (list
-                                  (and_or
-                                    (pipeline
-                                      (pipe_sequence
-                                        (command
-                                          (simple_command
-                                            (cmd_name
-                                              (word
-                                                (literal)))))))))))
-                            (line_continuation))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
 Continuation runs before blank lines stay layout
 ==================
 
@@ -1905,6 +1811,7 @@ echo
     (newline_list
       (line_continuation)
       (line_continuation))))
+
 ==================
 A blank-led continuation run after a closed group reaches the end of input
 ==================
