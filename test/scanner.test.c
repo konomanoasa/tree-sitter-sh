@@ -1013,6 +1013,70 @@ static void assert_recursive_backquote_delimiters(void) {
   ));
   assert(scanner->backquote_depth == 1);
   assert_document(&scanner->pending_documents[0], "`x`", true, false);
+  clear_scanner(scanner);
+
+  const struct {
+    size_t depth;
+    int32_t input[19];
+    size_t length;
+    const char *delimiter;
+  } escaped_ticks[] = {
+    {1, {'"', '\\', '\\', '\\', '`', '"', '\n'}, 7, "`"},
+    {1,
+      {'"', '\\', '\\', '\\', '\\', '\\', '\\', '\\', '`', '"', '\n'},
+      11,
+      "\\`"},
+    {2,
+      {'"', '\\', '\\', '\\', '\\', '\\', '\\', '\\', '`', '"', '\n'},
+      11,
+      "`"},
+    {2,
+      {'"',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '\\',
+        '`',
+        '"',
+        '\n'},
+      19,
+      "\\`"},
+    {1,
+      {'"', '\\', '\\', '\\', '\\', '\\', '`', 'x', '\\', '`', '"', '\n'},
+      12,
+      "\\`x`"},
+  };
+  for (
+    size_t index = 0; index < sizeof(escaped_ticks) / sizeof(escaped_ticks[0]);
+    index += 1
+  ) {
+    scanner->expecting_delimiter = true;
+    scanner->backquote_depth = escaped_ticks[index].depth;
+    assert(scan_delimiter_fixture(
+      scanner,
+      escaped_ticks[index].input,
+      escaped_ticks[index].length
+    ));
+    assert(scanner->backquote_depth == escaped_ticks[index].depth);
+    assert_document(
+      &scanner->pending_documents[0],
+      escaped_ticks[index].delimiter,
+      true,
+      false
+    );
+    clear_scanner(scanner);
+  }
 
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
@@ -2041,6 +2105,20 @@ static void assert_enclosed_bracket_escape_runs_fold(void) {
   valid_symbols[WORD_PATTERN_BRACKET_OPEN] = true;
 
   scanner->backquote_depth = 1;
+  const int32_t quoted_apostrophe[] =
+    {'[', 'a', '-', '$', '\'', '\\', '\\', '\'', '\'', ']', '`'};
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    quoted_apostrophe,
+    11,
+    true,
+    WORD_PATTERN_BRACKET_OPEN,
+    1,
+    9,
+    ']'
+  );
+
   const int32_t even_run_escapes_close[] = {'[', '\\', '\\', ']', '`'};
   assert_scan_result(
     scanner,
@@ -3581,6 +3659,31 @@ static void assert_enclosed_here_document_line_folds(void) {
     HERE_DOCUMENT_LINE_DELIMITER
   );
   clear_document(&backquoted);
+
+  struct HereDocument escaped_tick = make_document("\\`", true, false);
+  const int32_t escaped_tick_lines[][9] = {
+    {'\\', '\\', '\\', '`', '\n'},
+    {'\\', '\\', '\\', '\\', '\\', '\\', '\\', '`', '\n'},
+  };
+  const size_t escaped_tick_lengths[] = {5, 9};
+  for (size_t depth = 1; depth <= 2; depth += 1) {
+    init_mock_lexer(
+      &mock,
+      escaped_tick_lines[depth - 1],
+      escaped_tick_lengths[depth - 1]
+    );
+    assert(
+      read_here_document_line(
+        scanner,
+        &mock.lexer,
+        &escaped_tick,
+        depth,
+        NULL,
+        &start
+      ) == HERE_DOCUMENT_LINE_DELIMITER
+    );
+  }
+  clear_document(&escaped_tick);
 
   struct HereDocument dollar = make_document("$v", false, false);
   const int32_t escaped_dollar[] = {'\\', '$', 'v', '\n'};

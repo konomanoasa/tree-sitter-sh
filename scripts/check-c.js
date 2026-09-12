@@ -1,12 +1,12 @@
-const childProcess = require("node:child_process");
-const fs = require("node:fs");
-const path = require("node:path");
+import childProcess from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
-const {
+import {
   createEnvironmentDirectory,
   grammarDirectory,
   repositoryDirectory,
-} = require("./tree-sitter");
+} from "./tree-sitter.js";
 
 const scannerSource = path.join(grammarDirectory, "src/scanner.c");
 const scannerContractSource = path.join(

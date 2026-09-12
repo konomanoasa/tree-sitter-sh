@@ -1,9 +1,10 @@
-const childProcess = require("node:child_process");
-const fs = require("node:fs");
-const os = require("node:os");
-const path = require("node:path");
+import childProcess from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repositoryDirectory = path.resolve(__dirname, "..");
+const repositoryDirectory = path.resolve(import.meta.dirname, "..");
 const configuration = JSON.parse(
   fs.readFileSync(path.join(repositoryDirectory, "tree-sitter.json"), "utf8"),
 );
@@ -31,12 +32,13 @@ if (
 }
 
 const grammarDirectory = path.resolve(repositoryDirectory, grammarPath);
+const grammarName = grammar.name;
 const cacheDirectory = path.join(
   repositoryDirectory,
   "node_modules/.cache/tree-sitter-sh",
 );
 const treeSitterPackageDirectory = path.dirname(
-  require.resolve("tree-sitter-cli/package.json"),
+  fileURLToPath(import.meta.resolve("tree-sitter-cli/package.json")),
 );
 const treeSitterExecutable = path.join(
   treeSitterPackageDirectory,
@@ -120,7 +122,7 @@ function runTreeSitter(arguments_, options = {}) {
   }
 }
 
-if (require.main === module) {
+if (import.meta.main) {
   try {
     const result = runTreeSitter(process.argv.slice(2), { stdio: "inherit" });
     process.exitCode = result.status;
@@ -130,11 +132,11 @@ if (require.main === module) {
   }
 }
 
-module.exports = {
+export {
   createEnvironmentDirectory,
   environmentFor,
   grammarDirectory,
-  grammarName: grammar.name,
+  grammarName,
   repositoryDirectory,
   runTreeSitter,
   treeSitterExecutable,

@@ -1,11 +1,11 @@
-const fs = require("node:fs");
-const path = require("node:path");
+import fs from "node:fs";
+import path from "node:path";
 
-const {
+import {
   createEnvironmentDirectory,
   grammarDirectory,
   runTreeSitter,
-} = require("./tree-sitter");
+} from "./tree-sitter.js";
 
 const generatedFiles = [
   "src/grammar.json",
@@ -20,7 +20,7 @@ const budgets = {
   STATE_COUNT: 24_000,
   LARGE_STATE_COUNT: 1_500,
   SYMBOL_COUNT: 600,
-  EXTERNAL_TOKEN_COUNT: 107,
+  EXTERNAL_TOKEN_COUNT: 109,
   parser_bytes: 32_000_000,
   maximum_ACTIONS_index: 38_000,
   parse_table_storage_bytes: 3_700_000,
