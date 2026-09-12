@@ -462,7 +462,7 @@
     "fields": {
       "expression": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "arithmetic_assignment_expression",
