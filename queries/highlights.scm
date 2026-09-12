@@ -1,11 +1,47 @@
 [
   (literal)
+  (pattern_star_source)
+  (pattern_question_source)
+  (pattern_bracket_character_source)
+  (pattern_bracket_hyphen_source)
+  (pattern_bracket_range_operator_source)
+  (pattern_bracket_negation_source)
+  (pattern_character_class_content_source)
+  (pattern_collating_symbol_character_source)
+  (pattern_equivalence_class_character_source)
   (single_quote_content)
   (double_quote_text)
   (dollar_single_quote_text)
   (here_document_text)
   (quoted_here_document_text)
 ] @string
+
+(pattern_bracket_source
+  [
+    "["
+    "]"
+  ] @string)
+
+(pattern_character_class_source
+  [
+    "["
+    ":"
+    "]"
+  ] @string)
+
+(pattern_collating_symbol_source
+  [
+    "["
+    "."
+    "]"
+  ] @string)
+
+(pattern_equivalence_class_source
+  [
+    "["
+    "="
+    "]"
+  ] @string)
 
 [
   (escaped_character)
@@ -31,105 +67,47 @@
 
 (positional_parameter) @variable.parameter
 
-(special_parameter
-  [
-    "0"
-    "*"
-    "@"
-    "?"
-    "$"
-    "!"
-    "-"
-    "#"
-  ] @variable.builtin)
+(special_parameter) @variable.builtin
 
 (fname) @function
 
 [
-  (if_keyword
-    "if" @keyword)
-  (then_keyword
-    "then" @keyword)
-  (elif_keyword
-    "elif" @keyword)
-  (else_keyword
-    "else" @keyword)
-  (fi_keyword
-    "fi" @keyword)
-  (for_keyword
-    "for" @keyword)
-  (in_keyword
-    "in" @keyword)
-  (do_keyword
-    "do" @keyword)
-  (done_keyword
-    "done" @keyword)
-  (case_keyword
-    "case" @keyword)
-  (esac_keyword
-    "esac" @keyword)
-  (while_keyword
-    "while" @keyword)
-  (until_keyword
-    "until" @keyword)
-]
+  (if_keyword)
+  (then_keyword)
+  (elif_keyword)
+  (else_keyword)
+  (fi_keyword)
+  (for_keyword)
+  (in_keyword)
+  (do_keyword)
+  (done_keyword)
+  (case_keyword)
+  (esac_keyword)
+  (while_keyword)
+  (until_keyword)
+] @keyword
 
 [
+  (arithmetic_operator)
+  (parameter_length_operator)
+  (parameter_value_operator)
+  (parameter_pattern_operator)
+  (and_if)
+  (or_if)
   (bang)
-  (lessand)
-  (greatand)
-  (lessgreat)
-  (clobber)
+  (dsemi)
+  (semi_and)
 ] @operator
 
-(arithmetic_operator
-  _ @operator)
-
-(arithmetic_unary_expression
-  operator: (arithmetic_operator) @operator)
-
-(arithmetic_conditional_expression
-  operator: (arithmetic_operator) @operator)
-
-(parameter_length_operator
-  "#" @operator)
-
-(parameter_value_operator
-  [
-    ":-"
-    ":="
-    ":?"
-    ":+"
-    "-"
-    "="
-    "?"
-    "+"
-  ] @operator)
-
-(parameter_pattern_operator
-  [
-    "%%"
-    "##"
-    "%"
-    "#"
-  ] @operator)
-
 [
-  (and_if
-    "&&" @operator)
-  (or_if
-    "||" @operator)
-  (dsemi
-    ";;" @operator)
-  (semi_and
-    ";&" @operator)
-  (dgreat
-    ">>" @operator)
-  (dless
-    "<<" @operator)
-  (dlessdash
-    "<<-" @operator)
-]
+  (lessand)
+  (greatand)
+  (dgreat)
+  (lessgreat)
+  (clobber)
+  (dless)
+  (dlessdash)
+] @operator
 
 (io_file
   operator: [
@@ -199,8 +177,7 @@
     [
       "[" @string.special.path
       "]" @string.special.path
-      (pattern_bracket_negation_source
-        "!" @string.special.path)
+      (pattern_bracket_negation_source) @string.special.path
     ]))
 
 (tilde_user
@@ -274,8 +251,7 @@
       [
         "[" @label
         "]" @label
-        (pattern_bracket_negation_source
-          "!" @label)
+        (pattern_bracket_negation_source) @label
         (pattern_bracket_members_source
           [
             (pattern_bracket_character_source) @label
@@ -413,97 +389,13 @@
       (pattern_question_source) @character.special
     ]))
 
-[
-  (cmd_name
-    (word
-      (literal) @string.regexp
-      [
-        (pattern_star_source)
-        (pattern_question_source)
-        (pattern_bracket_source)
-      ]))
-  (cmd_name
-    (word
-      [
-        (pattern_star_source)
-        (pattern_question_source)
-        (pattern_bracket_source)
-      ]
-      (literal) @string.regexp))
-  (cmd_word
-    (word
-      (literal) @string.regexp
-      [
-        (pattern_star_source)
-        (pattern_question_source)
-        (pattern_bracket_source)
-      ]))
-  (cmd_word
-    (word
-      [
-        (pattern_star_source)
-        (pattern_question_source)
-        (pattern_bracket_source)
-      ]
-      (literal) @string.regexp))
-  (cmd_suffix
-    word: (word
-      (literal) @string.regexp
-      [
-        (pattern_star_source)
-        (pattern_question_source)
-        (pattern_bracket_source)
-      ]))
-  (cmd_suffix
-    word: (word
-      [
-        (pattern_star_source)
-        (pattern_question_source)
-        (pattern_bracket_source)
-      ]
-      (literal) @string.regexp))
-  (wordlist
-    word: (word
-      (literal) @string.regexp
-      [
-        (pattern_star_source)
-        (pattern_question_source)
-        (pattern_bracket_source)
-      ]))
-  (wordlist
-    word: (word
-      [
-        (pattern_star_source)
-        (pattern_question_source)
-        (pattern_bracket_source)
-      ]
-      (literal) @string.regexp))
-  (filename
-    word: (word
-      (literal) @string.regexp
-      [
-        (pattern_star_source)
-        (pattern_question_source)
-        (pattern_bracket_source)
-      ]))
-  (filename
-    word: (word
-      [
-        (pattern_star_source)
-        (pattern_question_source)
-        (pattern_bracket_source)
-      ]
-      (literal) @string.regexp))
-]
-
 (pattern_list
   (word
     (pattern_bracket_source
       [
         "[" @punctuation.bracket
         "]" @punctuation.bracket
-        (pattern_bracket_negation_source
-          "!" @operator)
+        (pattern_bracket_negation_source) @operator
         (pattern_bracket_members_source
           [
             (pattern_bracket_character_source) @character
@@ -550,8 +442,7 @@
     [
       "[" @punctuation.bracket
       "]" @punctuation.bracket
-      (pattern_bracket_negation_source
-        "!" @operator)
+      (pattern_bracket_negation_source) @operator
       (pattern_bracket_members_source
         [
           (pattern_bracket_character_source) @character
@@ -599,8 +490,7 @@
       [
         "[" @punctuation.bracket
         "]" @punctuation.bracket
-        (pattern_bracket_negation_source
-          "!" @operator)
+        (pattern_bracket_negation_source) @operator
         (pattern_bracket_members_source
           [
             (pattern_bracket_character_source) @character
@@ -648,8 +538,7 @@
       [
         "[" @punctuation.bracket
         "]" @punctuation.bracket
-        (pattern_bracket_negation_source
-          "!" @operator)
+        (pattern_bracket_negation_source) @operator
         (pattern_bracket_members_source
           [
             (pattern_bracket_character_source) @character
@@ -697,8 +586,7 @@
       [
         "[" @punctuation.bracket
         "]" @punctuation.bracket
-        (pattern_bracket_negation_source
-          "!" @operator)
+        (pattern_bracket_negation_source) @operator
         (pattern_bracket_members_source
           [
             (pattern_bracket_character_source) @character
@@ -746,8 +634,7 @@
       [
         "[" @punctuation.bracket
         "]" @punctuation.bracket
-        (pattern_bracket_negation_source
-          "!" @operator)
+        (pattern_bracket_negation_source) @operator
         (pattern_bracket_members_source
           [
             (pattern_bracket_character_source) @character
@@ -795,8 +682,7 @@
       [
         "[" @punctuation.bracket
         "]" @punctuation.bracket
-        (pattern_bracket_negation_source
-          "!" @operator)
+        (pattern_bracket_negation_source) @operator
         (pattern_bracket_members_source
           [
             (pattern_bracket_character_source) @character

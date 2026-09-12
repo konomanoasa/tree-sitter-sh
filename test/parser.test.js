@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 import nodeTypes from "../src/node-types.json" with { type: "json" };
 import {
   assertContains,
@@ -325,6 +326,115 @@ test("sh: realistic function structure remains queryable", () => {
   const queryOutput = runQuery(source);
   assertContains(queryOutput, "sample_log");
   assertContains(queryOutput, "summarize");
+});
+
+test("sh: lexical leaves retain complete source without internal token children", () => {
+  const source = writeSource(
+    "lexical-source-leaves",
+    lines(
+      ": abc:def=a~b",
+      ': "a\\q$"',
+      ": [!:] [[:alpha:]] [[.a.b.]] [[=a=b=]]",
+      "if :; then :; fi",
+      ": && : || : >>out",
+      `: \${#-} \${x:-y} $((1+2))`,
+      "cat <<$",
+      "\\q$",
+      "$",
+    ),
+  );
+  const output = parseValidCst(source);
+  for (const [range, leaf] of [
+    ["0:2-0:13", "literal `abc:def=a~b`"],
+    ["1:3-1:6", "double_quote_text `a\\\\q`"],
+    ["1:6-1:7", "double_quote_text `$`"],
+    ["2:3-2:4", "pattern_bracket_negation_source `!`"],
+    ["2:4-2:5", "pattern_bracket_character_source `:`"],
+    ["2:10-2:15", "pattern_character_class_content_source `alpha`"],
+    ["2:23-2:24", "pattern_collating_symbol_character_source `.`"],
+    ["2:33-2:34", "pattern_equivalence_class_character_source `=`"],
+    ["3:0-3:2", "if_keyword `if`"],
+    ["3:6-3:10", "then_keyword `then`"],
+    ["3:14-3:16", "fi_keyword `fi`"],
+    ["4:2-4:4", "and_if `&&`"],
+    ["4:7-4:9", "or_if `||`"],
+    ["4:12-4:14", "dgreat `>>`"],
+    ["5:4-5:5", "parameter_length_operator `#`"],
+    ["5:5-5:6", "special_parameter `-`"],
+    ["5:11-5:13", "parameter_value_operator `:-`"],
+    ["5:20-5:21", "arithmetic_operator `+`"],
+    ["6:4-6:6", "dless `<<`"],
+    ["7:0-7:1", "here_document_text `\\\\`"],
+    ["7:2-7:3", "here_document_text `$`"],
+    ["8:0-8:1", "here_document_end_text `$`"],
+  ]) {
+    assertCstRange(output, range, leaf);
+  }
+});
+
+test("sh: parameter bracket elements retain literal spaces and dollars", () => {
+  for (const [name, contents, range, leaf] of [
+    [
+      "collating-space",
+      `: \${x#[[. .]]}\n`,
+      "0:9-0:10",
+      "pattern_collating_symbol_character_source ` `",
+    ],
+    [
+      "equivalence-space",
+      `: \${x#[[= =]]}\n`,
+      "0:9-0:10",
+      "pattern_equivalence_class_character_source ` `",
+    ],
+    [
+      "collating-semicolon",
+      `: \${x#[[.;.]]}\n`,
+      "0:9-0:10",
+      "pattern_collating_symbol_character_source `;`",
+    ],
+    [
+      "collating-literal-dollar",
+      `: \${x#[[.$ .]]}\n`,
+      "0:9-0:10",
+      "pattern_collating_symbol_character_source `$`",
+    ],
+    [
+      "deferred-literal-dollar",
+      `: \${x#[[:$ ]}\n`,
+      "0:9-0:10",
+      "pattern_bracket_character_source `$`",
+    ],
+  ]) {
+    const source = writeSource(name, contents);
+    const output = parseValidCst(source);
+    assertCstRange(output, range, leaf);
+    assertOccurrenceCount(output, "parameter_expansion", 1);
+    assertOccurrenceCount(output, "parameter_pattern_operator", 1);
+    assertOccurrenceCount(output, "pattern_bracket_source", 1);
+  }
+});
+
+test("sh: missing closing keywords remain public recovery tokens", () => {
+  const directory = mkdtempSync(join(tmpdir(), "sh-missing-keywords-"));
+  try {
+    const query = join(directory, "missing.scm");
+    writeFileSync(query, "(MISSING) @missing\n");
+    for (const [name, contents, keyword] of [
+      ["conditional", "if :; then :; f\n", "fi_keyword"],
+      ["loop", "while :; do :;\n", "done_keyword"],
+      ["case", "case x in x) :;;\n", "esac_keyword"],
+    ]) {
+      const source = writeSource(`missing-${name}-closer`, contents);
+      const parsed = runParse({ source, description: name, mode: "recovery" });
+      assert.equal(parsed.status, 1);
+      assertCstRange(parsed.output, "1:0-1:0", keyword);
+      const captures = runQuery(source, query);
+      assertOccurrenceCount(captures, "capture: 0 - missing", 1);
+      assertContains(captures, "start: (1, 0), end: (1, 0)");
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("sh: pattern bracket ranges require one start and one end", () => {
@@ -661,7 +771,7 @@ test("sh: long unterminated quotes parse through EOF with native recovery", () =
 });
 
 test("sh: corpus fuzz propagates CLI failures even when its exit status is zero", () => {
-  const directory = mkdtempSync(join(tmpdir(), "tree-sitter-fuzz-exit-"));
+  const directory = mkdtempSync(join(tmpdir(), "tree-sitter-fuzz-exit-#-"));
   const preload = join(directory, "cli.mjs");
   const script = join(import.meta.dirname, "..", "scripts", "tree-sitter.js");
   const fixtures = [
@@ -705,7 +815,7 @@ syncBuiltinESMExports();
       );
       const result = spawnSync(
         process.execPath,
-        ["--import", preload, script, "fuzz-all"],
+        ["--import", pathToFileURL(preload).href, script, "fuzz-all"],
         {
           encoding: "utf8",
           timeout: 60_000,

@@ -4108,7 +4108,6 @@ static void test_reserved_word_at_command_name_position_stays_reserved(void) {
     0
   );
 
-  // Clearing FNAME_TOKEN models a position after a command prefix.
   memset(valid_symbols, 0, sizeof(valid_symbols));
   valid_symbols[ASSIGNMENT_NAME_TOKEN] = true;
   assert_scan_result(

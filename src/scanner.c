@@ -176,7 +176,6 @@ static const enum TokenType
 struct HereDocument {
   uint8_t *delimiter;
   size_t delimiter_length;
-  // The body starts at a newline no deeper than its declaring redirection.
   size_t declaration_depth;
   bool quoted;
   bool strip_tabs;
@@ -807,8 +806,6 @@ static size_t fold_enclosed_escape_run(
   int32_t following
 );
 
-// Backquote closers terminate comments too; escaped closers retain their
-// prefix for the backquote-end token.
 static void advance_to_comment_end(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -831,7 +828,6 @@ static void advance_to_comment_end(
           return;
         }
         if (lexer->lookahead == '`') {
-          // Leave an enclosing closer's escape run outside the comment's mark.
           if (
             fold_backquote_escape_run(scanner->backquote_depth, escape_count)
               .acting_level > scanner->backquote_depth
@@ -1169,7 +1165,6 @@ static bool scan_delimiter_single_quoted_segment(
   bool dollar
 );
 
-// Skip nested constructs so their ']' cannot close the outer bracket.
 static bool
 skip_bracket_member_expansion(const struct Scanner *scanner, TSLexer *lexer) {
   int32_t character = lexer->lookahead;
@@ -1229,12 +1224,10 @@ skip_bracket_member_expansion(const struct Scanner *scanner, TSLexer *lexer) {
 
 enum BracketEscape {
   BRACKET_ESCAPE_CONTINUATION,
-  // An unescaped follower remains at lookahead for the bracket close scan.
   BRACKET_ESCAPE_MEMBER,
   BRACKET_ESCAPE_END_OF_INPUT,
 };
 
-// Fold backquote runs like the member parse before classifying the bracket.
 static enum BracketEscape
 skip_bracket_escape(const struct Scanner *scanner, TSLexer *lexer) {
   if (scanner->backquote_depth == 0) {
@@ -1308,7 +1301,6 @@ static bool is_bracket_literal_boundary(
       lexer->lookahead == '/');
 }
 
-// The opening '[' is consumed; lookahead is the class marker.
 static bool skip_bracket_class_element(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -1367,7 +1359,6 @@ static bool scan_bracket_literal_start(
   }
 
   lexer->advance(lexer, false);
-  // Mark only the opener; the grammar must parse subsequent source parts.
   lexer->mark_end(lexer);
 
   bool has_member = false;
@@ -1651,7 +1642,6 @@ enum CaseWordKind {
   CASE_WORD_FOR,
   CASE_WORD_DO,
   CASE_WORD_COMMAND_CLOSE,
-  // Reserved prefixes whose following word is still at command start.
   CASE_WORD_COMMAND_PREFIX,
 };
 
@@ -2008,7 +1998,6 @@ static void pop_delimiter_group(
   }
 }
 
-// Nested reopening requires an escape run and bypasses this toggle.
 static bool toggle_delimiter_backquote_group(
   struct DelimiterGroupBuffer *groups,
   struct CaseTrackerBuffer *cases,
@@ -2378,7 +2367,6 @@ static bool scan_dollar_single_quote_escape(
   return append_quoted_escape(delimiter, character);
 }
 
-// An odd remainder escapes the backquote into the next rescanning level.
 static struct BackquoteEscapeRunFold
 fold_backquote_escape_run(size_t depth, size_t escape_count) {
   struct BackquoteEscapeRunFold fold = {
@@ -2411,8 +2399,6 @@ classify_backquote_tick_prefix(size_t depth, size_t escape_count) {
   return BACKQUOTE_TICK_PREFIX_NONE;
 }
 
-// Body and delimiter scans must fold at the same enclosing depth; only the
-// delimiter then undergoes its own quote removal.
 static size_t fold_enclosed_plain_run(size_t run, size_t depth) {
   size_t folded = run;
   for (size_t level = 0; level < depth && folded > 1; level += 1) {
@@ -2553,7 +2539,6 @@ advance_here_document_source(TSLexer *lexer, struct ByteBuffer *source) {
   return true;
 }
 
-// Advance without moving the mark; depth counts enclosing backquote rescans.
 static enum HereDocumentLineKind read_here_document_line(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -2751,7 +2736,6 @@ static bool scan_nested_here_document_sequence(
   return true;
 }
 
-// Two logical backslashes complete an escape independently of the run's tail.
 static bool scan_dollar_single_quote_backslashes(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -3686,7 +3670,6 @@ static bool scan_here_end_commit(struct Scanner *scanner, TSLexer *lexer) {
   return true;
 }
 
-// The caller has verified that the lookahead is the token's character.
 static bool scan_delimited_character_token(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -3917,7 +3900,6 @@ right_brace_is_delimited(const struct Scanner *scanner, TSLexer *lexer) {
   return is_token_delimiter(scanner, lexer);
 }
 
-// The caller has consumed the first backslash.
 static bool
 escape_run_begins_word(const struct Scanner *scanner, TSLexer *lexer) {
   size_t escape_count;
@@ -4235,7 +4217,6 @@ static bool scan_element_boundary_core(
 
   if (character == ';') {
     if (scan_case_item_terminator(lexer)) {
-      // Complete-command reuse must depend on both characters of the operator.
       enum TokenType symbol =
         valid_symbols[CASE_ITEM_END] ? CASE_ITEM_END : TERM_BOUNDARY;
       if (!valid_symbols[symbol]) {
@@ -4248,7 +4229,6 @@ static bool scan_element_boundary_core(
   }
 
   if (character == '\n') {
-    // Attach the closer's lookahead to the term, not its following separator.
     if (
       crossed_layout &&
       !crossed_pairs &&
@@ -4285,8 +4265,6 @@ static bool scan_element_boundary_core(
         if (here_document_delimiter_line_follows(scanner, lexer)) {
           return false;
         }
-        // Expose closer lookahead before reducing the term. Pending documents
-        // instead need PRE_NEWLINE_BLANK to own their declaration's newline.
         if (
           valid_symbols[TERM_BOUNDARY] &&
           !has_startable_pending_document(scanner)
@@ -4312,8 +4290,6 @@ static bool scan_element_boundary_core(
       lexer->result_symbol = SEPARATOR_NEWLINE;
       return true;
     }
-    // EOF layout must invalidate the term when edited into a command.
-    // Immediate EOF has no layout dependency and preserves command reuse.
     bool trailing_layout_reaches_end = is_horizontal_blank(after_separator) ||
       after_separator ==
       '\\' ||
@@ -4460,7 +4436,6 @@ static bool scan_separator_operator_continuation(
     return false;
   }
 
-  // Probe before choosing a symbol so follower edits invalidate the boundary.
   int32_t character = lexer->lookahead;
   bool at_input_end = lexer_at_eof(lexer);
   bool term_continues = finish_term_continuation(scanner, lexer, valid_symbols);
@@ -4503,7 +4478,6 @@ static bool scan_separator_operator_continuation(
   return false;
 }
 
-// Pending here-documents prevent lookahead from crossing their body start.
 static bool finish_term_continuation(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -5146,7 +5120,6 @@ static bool embedded_word_is_delimited(const TSLexer *lexer) {
   );
 }
 
-// The introducer's '(' or '{' is at lookahead.
 static enum ArithmeticValidation embedded_push_dollar_group(
   const struct Scanner *scanner,
   struct EmbeddedSkip *skip,
@@ -5283,8 +5256,6 @@ static bool read_embedded_escape_run(
   return true;
 }
 
-// Command frames track case statements and here-documents because their
-// parentheses and body lines cannot end the enclosing skip.
 static enum ArithmeticValidation resume_embedded_construct(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -6136,7 +6107,6 @@ static size_t structured_assignment_head_end(
   return index + 1;
 }
 
-// Keep nesting on the heap so source depth, not the C stack, is the limit.
 static enum ArithmeticValidation
 validate_structured_expression(const struct StructuredValidation *validation) {
   uint8_t *contexts = NULL;
@@ -6531,7 +6501,6 @@ scan_backquote_start(struct Scanner *scanner, TSLexer *lexer, bool quoted) {
 }
 
 static bool scan_backquote_end(struct Scanner *scanner, TSLexer *lexer) {
-  // Nested substitutions close through BACKQUOTE_END_PREFIX, not a bare tick.
   if (scanner->backquote_depth != 1) {
     return false;
   }
@@ -6775,7 +6744,6 @@ static bool scan_backquote_prefix_after_first_backslash(
     fold.leftover_count == 0 && fold.acting_level == scanner->backquote_depth
   ) {
     if (!valid_symbols[BACKQUOTE_END_PREFIX]) {
-      // End the bracket before the run so the next scan can read the closer.
       bool word_end = valid_symbols[WORD_BRACKET_FALLBACK_END];
       bool parameter_end = valid_symbols[PARAMETER_BRACKET_FALLBACK_END];
       if (word_end != parameter_end) {
@@ -7509,7 +7477,6 @@ void tree_sitter_sh_external_scanner_deserialize(
   }
 }
 
-// Non-newline backslashes may start an enclosing backquote's escape token.
 static bool scan_tilde_end(
   struct Scanner *scanner,
   TSLexer *lexer,
@@ -7561,7 +7528,6 @@ static bool scan_dispatch(
       if (lexer->lookahead == '\\') {
         return false;
       }
-      // Keep the ordinary tail's backslash visible as a grammar leaf.
       if (
         lexer->lookahead !=
         '$' &&
@@ -7910,7 +7876,6 @@ static bool scan_dispatch(
     return true;
   }
 
-  // Member scans must precede the reserved-character dispatch.
   if (
     valid_symbols[PARAMETER_PATTERN_BRACKET_CHARACTER] &&
     scan_pattern_bracket_character(
@@ -7941,8 +7906,6 @@ static bool scan_dispatch(
   }
 
   if (lexer->lookahead == '}') {
-    // TERM_CONTINUATION alone does not glue a word to this brace; only a
-    // possible word, assignment or redirect continuation can do that.
     bool closer_is_reachable = valid_symbols[RIGHT_BRACE] &&
       (!valid_symbols[TERM_CONTINUATION] ||
         !(valid_symbols[WORD_SEPARATOR_BEGIN] ||
@@ -7991,7 +7954,6 @@ static bool scan_dispatch(
   }
 
   if (is_decimal_digit(lexer->lookahead)) {
-    // Unavailable IO_NUMBER must not fall back to a filename.
     bool at_word_start =
       valid_symbols[WORD_BRACKET_LITERAL_START] && !valid_symbols[LITERAL_HASH];
     return (valid_symbols[FILE_DESCRIPTOR] || at_word_start) &&

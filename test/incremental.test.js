@@ -137,13 +137,7 @@ test("sh: case closers and keyword headers survive edits", () => {
     assertCstRange(esacWordsOutput, range, "literal `esac`");
   }
   assertCstRange(esacWordsOutput, "0:17-0:21", "variable_name");
-  assertCstDirectChildRange(
-    esacWordsOutput,
-    "0:43-0:47",
-    "esac_keyword",
-    "0:43-0:47",
-    '"esac"',
-  );
+  assertCstRange(esacWordsOutput, "0:43-0:47", "esac_keyword `esac`");
 
   const emptyNsItem = writeSource(
     "case-esac-after-closed-pattern",
@@ -198,8 +192,6 @@ test("sh: case closers and keyword headers survive edits", () => {
 });
 
 test("sh: reserved-word closers keep their term stable across edits", () => {
-  // The no-blank cases require the full edit history; a single fresh-tree edit
-  // does not reproduce the stale reduction.
   const blankInitial = writeSource(
     "closer-blank-initial",
     lines("if a", "then b ", "else c", "fi"),
@@ -464,14 +456,14 @@ test("sh: compound-list and case branches retain their public structure", () => 
       "9:4-10:2",
       "item: case_item",
       "9:10-9:12",
-      "terminator: dsemi",
+      "terminator: dsemi `;;`",
     );
     assertCstDirectChildRange(
       output,
       "7:2-10:6",
       "case_clause",
       "10:2-10:6",
-      "esac_keyword",
+      "esac_keyword `esac`",
     );
     assertOccurrenceCount(output, "terminator: dsemi", 2);
     assertNotContains(output, "ERROR");
@@ -1237,7 +1229,7 @@ test("sh: tilde, assignment, and compound-tail classifications remain stable", (
     ["0:2-0:9", "tilde_expansion"],
     ["0:3-0:9", "user: tilde_user"],
     ["0:3-0:9", "literal"],
-    ["0:9-0:10", '"/"'],
+    ["0:9-0:10", "literal `/`"],
   ]) {
     assertCstRange(tildePercentOutput, range, item);
   }
@@ -1266,7 +1258,7 @@ test("sh: tilde, assignment, and compound-tail classifications remain stable", (
     ["0:2-0:11", "value: assignment_value"],
     ["0:2-0:9", "tilde_expansion"],
     ["0:3-0:9", "user: tilde_user"],
-    ["0:9-0:10", '":"'],
+    ["0:9-0:10", "literal `:`"],
   ]) {
     assertCstRange(assignmentPercentOutput, range, item);
   }
@@ -1296,7 +1288,7 @@ test("sh: tilde, assignment, and compound-tail classifications remain stable", (
     ["0:7-0:16", "word: parameter_word"],
     ["0:7-0:14", "tilde_expansion"],
     ["0:8-0:14", "user: tilde_user"],
-    ["0:14-0:15", '"/"'],
+    ["0:14-0:15", "literal `/`"],
     ["0:16-0:17", '"}"'],
   ]) {
     assertCstRange(parameterPercentOutput, range, item);
@@ -1327,8 +1319,8 @@ test("sh: tilde, assignment, and compound-tail classifications remain stable", (
     ["0:3-0:16", "user: tilde_user"],
     ["0:3-0:16", "double_quoted"],
     ["0:4-0:15", "command_substitution"],
-    ["0:12-0:13", '"/"'],
-    ["0:16-0:17", '"/"'],
+    ["0:12-0:13", "literal `/`"],
+    ["0:16-0:17", "literal `/`"],
   ]) {
     assertCstRange(nestedUserOutput, range, item);
   }
@@ -3686,7 +3678,6 @@ test("sh: closing layout owns trailing blanks before a continued closer", () => 
 });
 
 test("sh: terms own trailing layout that runs to the end of input", () => {
-  // These cases require the full edit history to reproduce stale reuse.
   const continuationInitial = writeSource(
     "trailing-layout-continuation-initial",
     "\n\\\n\\\n\necho\n\\\n\\\n\n",
@@ -5242,7 +5233,7 @@ const fuzzFragments = [
 
 const fuzzInsertions = "abcxyz12!{}();,\n\\/*[]().^$|+?-:=# \t'\"<>`";
 
-test("sh: fixed-seed generated histories converge", (context) => {
+test("sh: fixed-seed generated histories converge without line continuations", (context) => {
   const generateHistories = createEditHistoryGenerator();
   let checked = 0;
   let compared = 0;
@@ -5265,7 +5256,6 @@ test("sh: fixed-seed generated histories converge", (context) => {
       expectedSource: final,
       edits: history.edits,
     });
-    // Raw edits can split a token with a continuation, outside the CST guarantee.
     if (
       fresh.status === 0 &&
       !hasRecovery(fresh.output) &&
