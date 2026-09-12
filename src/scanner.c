@@ -38,8 +38,10 @@ enum TokenType {
   HERE_DOCUMENT_LINE_END,
   HERE_DOCUMENT_BODY_START,
   QUOTED_HERE_DOCUMENT_BODY_START,
-  QUOTED_HERE_DOCUMENT_END,
+  QUOTED_HERE_DOCUMENT_END_BEGIN,
+  QUOTED_HERE_DOCUMENT_END_TEXT,
   HERE_DOCUMENT_END_BEGIN,
+  HERE_DOCUMENT_END_LEADING_TABS,
   HERE_DOCUMENT_END_COMMIT,
   HERE_DOCUMENT_SEQUENCE_END,
   HERE_DOCUMENT_CONTENT_LINE_START,
@@ -118,11 +120,11 @@ enum TokenType {
   DOUBLE_QUOTED_BACKQUOTE_START,
   DOUBLE_QUOTED_BACKQUOTE_START_PREFIX,
   BACKQUOTE_QUOTE_PREFIX,
-  PIPELINE_NEGATION_BEGIN,
   BACKQUOTE_CONTINUATION_BEGIN,
   DOLLAR_SINGLE_QUOTE_ESCAPE,
   BACKQUOTE_DOLLAR_SINGLE_QUOTE_TEXT,
   BACKQUOTE_DOLLAR_SINGLE_QUOTE_PREFIX,
+  BACKQUOTE_PATTERN_ESCAPE,
   TOKEN_COUNT,
 };
 
@@ -210,6 +212,7 @@ struct ByteBuffer {
   size_t length;
   size_t capacity;
   size_t limit;
+  bool failed;
 };
 
 static bool scanner_state_fits(const struct Scanner *scanner);
@@ -379,53 +382,6 @@ append_pending_document(struct Scanner *scanner, struct HereDocument document) {
   return true;
 }
 
-static bool suspend_active_documents(struct Scanner *scanner) {
-  if (scanner->active_count == 0) {
-    return true;
-  }
-
-  if (
-    scanner->suspended_frame_count >=
-    SIZE_MAX /
-    sizeof(struct HereDocumentFrame)
-  ) {
-    return false;
-  }
-
-  size_t frame_index = scanner->suspended_frame_count;
-  size_t next_count = frame_index + 1;
-  struct HereDocumentFrame *resized = ts_realloc(
-    scanner->suspended_frames,
-    next_count * sizeof(struct HereDocumentFrame)
-  );
-  if (resized == NULL) {
-    return false;
-  }
-
-  struct HereDocumentFrame frame = {
-    .documents = scanner->active_documents,
-    .count = scanner->active_count,
-    .body_backquote_depth = scanner->body_backquote_depth,
-    .at_line_start = scanner->at_here_document_line_start,
-  };
-  resized[frame_index] = frame;
-  scanner->suspended_frames = resized;
-  scanner->suspended_frame_count = next_count;
-  scanner->active_documents = NULL;
-  scanner->active_count = 0;
-  scanner->at_here_document_line_start = false;
-
-  if (!scanner_state_fits(scanner)) {
-    scanner->active_documents = frame.documents;
-    scanner->active_count = frame.count;
-    scanner->at_here_document_line_start = frame.at_line_start;
-    scanner->suspended_frame_count = frame_index;
-    scanner->suspended_frames[frame_index] = (struct HereDocumentFrame){0};
-    return false;
-  }
-  return true;
-}
-
 static bool activate_startable_pending_documents(struct Scanner *scanner) {
   size_t startable_count = 0;
   for (size_t index = 0; index < scanner->pending_count; index += 1) {
@@ -452,17 +408,12 @@ static bool activate_startable_pending_documents(struct Scanner *scanner) {
     }
   }
 
-  if (!suspend_active_documents(scanner)) {
-    ts_free(startable);
-    ts_free(retained);
-    return false;
-  }
-
+  struct Scanner next = *scanner;
   if (retained_count == 0) {
-    scanner->active_documents = scanner->pending_documents;
-    scanner->active_count = scanner->pending_count;
-    scanner->pending_documents = NULL;
-    scanner->pending_count = 0;
+    next.active_documents = scanner->pending_documents;
+    next.active_count = scanner->pending_count;
+    next.pending_documents = NULL;
+    next.pending_count = 0;
   } else {
     size_t startable_index = 0;
     size_t retained_index = 0;
@@ -476,16 +427,57 @@ static bool activate_startable_pending_documents(struct Scanner *scanner) {
         retained_index += 1;
       }
     }
-    ts_free(scanner->pending_documents);
-    scanner->pending_documents = retained;
-    scanner->pending_count = retained_count;
-    scanner->active_documents = startable;
-    scanner->active_count = startable_count;
+    next.pending_documents = retained;
+    next.pending_count = retained_count;
+    next.active_documents = startable;
+    next.active_count = startable_count;
   }
 
-  // Removing declaration depths covers any growth of the body's depth.
-  scanner->body_backquote_depth = scanner->backquote_depth;
+  if (scanner->active_count > 0) {
+    if (
+      scanner->suspended_frame_count >=
+      SIZE_MAX /
+      sizeof(struct HereDocumentFrame)
+    ) {
+      goto fail;
+    }
+    next.suspended_frame_count += 1;
+    struct HereDocumentFrame *frames = ts_realloc(
+      scanner->suspended_frames,
+      next.suspended_frame_count * sizeof(struct HereDocumentFrame)
+    );
+    if (frames == NULL) {
+      goto fail;
+    }
+    scanner->suspended_frames = frames;
+    next.suspended_frames = frames;
+    frames[scanner->suspended_frame_count] = (struct HereDocumentFrame){
+      .documents = scanner->active_documents,
+      .count = scanner->active_count,
+      .body_backquote_depth = scanner->body_backquote_depth,
+      .at_line_start = scanner->at_here_document_line_start,
+    };
+    next.at_here_document_line_start = false;
+  }
+  next.body_backquote_depth = scanner->backquote_depth;
+  if (!scanner_state_fits(&next)) {
+    if (scanner->active_count > 0) {
+      scanner->suspended_frames[scanner->suspended_frame_count] =
+        (struct HereDocumentFrame){0};
+    }
+    goto fail;
+  }
+
+  if (retained_count > 0) {
+    ts_free(scanner->pending_documents);
+  }
+  *scanner = next;
   return true;
+
+fail:
+  ts_free(startable);
+  ts_free(retained);
+  return false;
 }
 
 static void restore_suspended_documents(struct Scanner *scanner) {
@@ -528,6 +520,7 @@ static void finish_active_document(struct Scanner *scanner) {
 
 static bool grow_byte_buffer(struct ByteBuffer *buffer, size_t minimum) {
   if (buffer->limit != 0 && minimum > buffer->limit) {
+    buffer->failed = true;
     return false;
   }
 
@@ -545,11 +538,13 @@ static bool grow_byte_buffer(struct ByteBuffer *buffer, size_t minimum) {
   }
 
   if (capacity < minimum) {
+    buffer->failed = true;
     return false;
   }
 
   char *resized = ts_realloc(buffer->data, capacity);
   if (resized == NULL) {
+    buffer->failed = true;
     return false;
   }
 
@@ -564,6 +559,7 @@ static bool append_byte(struct ByteBuffer *buffer, uint8_t byte) {
   }
 
   if (buffer->length == SIZE_MAX) {
+    buffer->failed = true;
     return false;
   }
 
@@ -586,6 +582,7 @@ append_bytes(struct ByteBuffer *buffer, const uint8_t *bytes, size_t length) {
   }
 
   if (length > SIZE_MAX - buffer->length) {
+    buffer->failed = true;
     return false;
   }
 
@@ -897,8 +894,7 @@ static bool is_bracket_scan_boundary(
     lexer_at_eof(lexer) ||
     lexer->lookahead ==
     '}' ||
-    is_active_backquote_boundary(scanner, lexer->lookahead) ||
-    (scanner->active_count > 0 && lexer->lookahead == '\n')
+    is_active_backquote_boundary(scanner, lexer->lookahead)
   );
 }
 
@@ -918,6 +914,7 @@ enum ArithmeticValidation {
   ARITHMETIC_VALIDATION_INVALID,
   ARITHMETIC_VALIDATION_INCOMPLETE,
   ARITHMETIC_VALIDATION_VALID,
+  ARITHMETIC_VALIDATION_RESOURCE_FAILURE,
 };
 struct ValidationToken {
   uint8_t kind;
@@ -1423,7 +1420,7 @@ static bool scan_bracket_literal_start(
 }
 
 static bool scan_pattern_bracket_character(
-  const struct Scanner *scanner,
+  struct Scanner *scanner,
   TSLexer *lexer,
   enum TokenType symbol,
   bool parameter_pattern
@@ -1459,6 +1456,10 @@ static bool scan_pattern_bracket_character(
 
   lexer->advance(lexer, false);
   lexer->mark_end(lexer);
+  if (character == '\n' && scanner->active_count > 0) {
+    reset_here_document_delimiter_scan(scanner);
+    scanner->at_here_document_line_start = true;
+  }
   lexer->result_symbol = (TSSymbol)symbol;
   return true;
 }
@@ -1482,36 +1483,97 @@ enum DelimiterQuote {
   DELIMITER_UNQUOTED,
   DELIMITER_SINGLE_QUOTED,
   DELIMITER_DOUBLE_QUOTED,
+  DELIMITER_PARAMETER_DOUBLE_QUOTED,
   DELIMITER_DOLLAR_SINGLE_QUOTED,
 };
+
+enum ParameterQuoteState {
+  PARAMETER_QUOTE_START,
+  PARAMETER_QUOTE_NAME,
+  PARAMETER_QUOTE_POSITIONAL,
+  PARAMETER_QUOTE_OPERATOR,
+  PARAMETER_QUOTE_WORD,
+  PARAMETER_QUOTE_PATTERN,
+};
+
+static enum ParameterQuoteState
+parameter_quote_state_after(enum ParameterQuoteState state, int32_t character) {
+  switch (state) {
+  case PARAMETER_QUOTE_START:
+    if (is_name_start_character(character)) {
+      return PARAMETER_QUOTE_NAME;
+    }
+    if (is_decimal_digit(character)) {
+      return PARAMETER_QUOTE_POSITIONAL;
+    }
+    return is_special_parameter_character(character) ? PARAMETER_QUOTE_OPERATOR
+                                                     : PARAMETER_QUOTE_WORD;
+  case PARAMETER_QUOTE_NAME:
+    if (is_name_character(character)) {
+      return state;
+    }
+    break;
+  case PARAMETER_QUOTE_POSITIONAL:
+    if (is_decimal_digit(character)) {
+      return state;
+    }
+    break;
+  case PARAMETER_QUOTE_OPERATOR:
+    break;
+  case PARAMETER_QUOTE_WORD:
+  case PARAMETER_QUOTE_PATTERN:
+    return state;
+  }
+  return character == '#' || character == '%' ? PARAMETER_QUOTE_PATTERN
+                                              : PARAMETER_QUOTE_WORD;
+}
 
 enum DelimiterGroupKind {
   DELIMITER_GROUP_PARAMETER,
   DELIMITER_GROUP_COMMAND,
   DELIMITER_GROUP_ARITHMETIC,
   DELIMITER_GROUP_SUBSHELL,
+  DELIMITER_GROUP_FUNCTION_HEADER,
   DELIMITER_GROUP_BACKQUOTE,
 };
 
-struct DelimiterWordTracker {
+struct CommandWord {
   char text[6];
   uint8_t length;
   bool active;
   bool candidate;
+  bool digits;
+  bool name;
+};
+
+enum CommandPosition {
+  COMMAND_POSITION_START,
+  COMMAND_POSITION_WORD,
+  COMMAND_POSITION_CLOSED,
+  COMMAND_POSITION_FOR_NAME,
+  COMMAND_POSITION_FOR_IN,
+};
+
+struct CommandTracker {
+  struct CommandWord word;
+  enum CommandPosition position;
+  bool redirect_operand;
+  bool function_name;
 };
 
 struct DelimiterGroupFrame {
   int32_t closing;
   enum DelimiterGroupKind kind;
   enum DelimiterQuote parent_quote;
-  struct DelimiterWordTracker word;
-  bool command_start;
+  enum ParameterQuoteState parameter_quote_state;
+  struct CommandTracker command;
 };
 
 struct DelimiterGroupBuffer {
   struct DelimiterGroupFrame *data;
   size_t length;
   size_t capacity;
+  bool failed;
 };
 
 // Delimiter scans and embedded skips share case tracking. EXPECT_PATTERN
@@ -1539,6 +1601,7 @@ struct CaseTrackerBuffer {
   struct CaseTracker *data;
   size_t length;
   size_t capacity;
+  bool failed;
 };
 
 static struct CaseTracker *
@@ -1562,6 +1625,9 @@ enum CaseWordKind {
   CASE_WORD_IN,
   CASE_WORD_ESAC,
   CASE_WORD_CASE,
+  CASE_WORD_FOR,
+  CASE_WORD_DO,
+  CASE_WORD_COMMAND_CLOSE,
   // Reserved prefixes whose following word is still at command start.
   CASE_WORD_COMMAND_PREFIX,
 };
@@ -1576,6 +1642,21 @@ static enum CaseWordKind classify_case_word(const char *word) {
   if (strcmp(word, "case") == 0) {
     return CASE_WORD_CASE;
   }
+  if (strcmp(word, "for") == 0) {
+    return CASE_WORD_FOR;
+  }
+  if (strcmp(word, "do") == 0) {
+    return CASE_WORD_DO;
+  }
+  if (
+    strcmp(word, "fi") ==
+    0 ||
+    strcmp(word, "done") ==
+    0 ||
+    strcmp(word, "}") == 0
+  ) {
+    return CASE_WORD_COMMAND_CLOSE;
+  }
 
   static const char *const COMMAND_PREFIXES[] = {
     "!",
@@ -1586,7 +1667,6 @@ static enum CaseWordKind classify_case_word(const char *word) {
     "else",
     "while",
     "until",
-    "do",
   };
   for (
     size_t index = 0;
@@ -1640,7 +1720,7 @@ static enum CaseTrackerNote case_tracker_note_word(
   if (kind == CASE_WORD_ESAC && tracker != NULL) {
     return CASE_TRACKER_NOTE_END;
   }
-  if (kind == CASE_WORD_COMMAND_PREFIX) {
+  if (kind == CASE_WORD_COMMAND_PREFIX || kind == CASE_WORD_DO) {
     return CASE_TRACKER_NOTE_COMMAND_PREFIX;
   }
   if (kind == CASE_WORD_CASE) {
@@ -1682,6 +1762,7 @@ static bool append_case_tracker(struct CaseTrackerBuffer *cases, size_t depth) {
         sizeof(struct CaseTracker),
         8
       )) {
+    cases->failed = true;
     return false;
   }
 
@@ -1720,6 +1801,7 @@ static bool push_delimiter_group(
       16
     )
   ) {
+    groups->failed = true;
     return false;
   }
 
@@ -1727,8 +1809,7 @@ static bool push_delimiter_group(
     .closing = closing,
     .kind = kind,
     .parent_quote = parent_quote,
-    .word = {.candidate = true},
-    .command_start = delimiter_group_holds_commands(kind),
+    .command = {.word = {.candidate = true, .digits = true, .name = true}},
   };
   groups->length += 1;
   return true;
@@ -1749,21 +1830,43 @@ static bool is_delimiter_word_character(int32_t character) {
   );
 }
 
-static void reset_delimiter_word(struct DelimiterWordTracker *word) {
+static void reset_command_word(struct CommandWord *word) {
   word->length = 0;
   word->active = false;
   word->candidate = true;
+  word->digits = true;
+  word->name = true;
 }
 
-static bool finish_delimiter_word(
-  struct CaseTrackerBuffer *cases,
-  struct DelimiterGroupBuffer *groups,
-  size_t group_depth
+static void reset_command_position(
+  struct CommandTracker *command,
+  enum CommandPosition position
 ) {
-  struct DelimiterGroupFrame *group = &groups->data[group_depth - 1];
-  struct DelimiterWordTracker *word = &group->word;
+  reset_command_word(&command->word);
+  command->position = position;
+  command->redirect_operand = false;
+  command->function_name = false;
+}
+
+static bool finish_command_word(
+  struct CaseTrackerBuffer *cases,
+  size_t depth,
+  struct CommandTracker *command,
+  bool before_redirect
+) {
+  struct CommandWord *word = &command->word;
   if (!word->active) {
-    reset_delimiter_word(word);
+    reset_command_word(word);
+    return true;
+  }
+  if (word->digits && before_redirect) {
+    reset_command_word(word);
+    return true;
+  }
+  command->function_name = false;
+  if (command->redirect_operand) {
+    command->redirect_operand = false;
+    reset_command_word(word);
     return true;
   }
 
@@ -1771,28 +1874,58 @@ static bool finish_delimiter_word(
   if (word->candidate) {
     memcpy(text, word->text, word->length);
   }
-  switch (case_tracker_note_word(
-    active_case_tracker(cases, group_depth),
-    word->candidate ? classify_case_word(text) : CASE_WORD_GENERIC,
-    group->command_start
-  )) {
+  enum CaseWordKind kind =
+    word->candidate ? classify_case_word(text) : CASE_WORD_GENERIC;
+  struct CaseTracker *tracker = active_case_tracker(cases, depth);
+  bool in_case_header = tracker != NULL && tracker->state != CASE_TRACKER_BODY;
+  enum CommandPosition position = command->position;
+  bool at_command_start =
+    position == COMMAND_POSITION_START || position == COMMAND_POSITION_CLOSED;
+  command->position = COMMAND_POSITION_WORD;
+  switch (case_tracker_note_word(tracker, kind, at_command_start)) {
   case CASE_TRACKER_NOTE_COMMAND_PREFIX:
-    reset_delimiter_word(word);
-    return true;
+    command->position = COMMAND_POSITION_START;
+    break;
   case CASE_TRACKER_NOTE_END:
     cases->length -= 1;
+    command->position = COMMAND_POSITION_CLOSED;
     break;
   case CASE_TRACKER_NOTE_BEGIN:
-    if (!append_case_tracker(cases, group_depth)) {
+    if (!append_case_tracker(cases, depth)) {
       return false;
     }
     break;
   default:
+    if (in_case_header) {
+      break;
+    }
+    if (position == COMMAND_POSITION_FOR_NAME) {
+      command->position = COMMAND_POSITION_FOR_IN;
+    } else if (position == COMMAND_POSITION_FOR_IN) {
+      if (kind == CASE_WORD_DO) {
+        command->position = COMMAND_POSITION_START;
+      }
+    } else if (at_command_start) {
+      if (kind == CASE_WORD_FOR) {
+        command->position = COMMAND_POSITION_FOR_NAME;
+      } else if (kind == CASE_WORD_COMMAND_CLOSE) {
+        command->position = COMMAND_POSITION_CLOSED;
+      } else {
+        command->function_name = word->name;
+      }
+    }
     break;
   }
-  group->command_start = false;
-  reset_delimiter_word(word);
+  reset_command_word(word);
   return true;
+}
+
+static void begin_command_redirect(struct CommandTracker *command) {
+  if (command->position != COMMAND_POSITION_CLOSED) {
+    command->position = COMMAND_POSITION_WORD;
+  }
+  command->redirect_operand = true;
+  command->function_name = false;
 }
 
 static size_t
@@ -1814,6 +1947,7 @@ append_repeated_byte(struct ByteBuffer *buffer, uint8_t byte, size_t count) {
   }
 
   if (count > SIZE_MAX - buffer->length) {
+    buffer->failed = true;
     return false;
   }
 
@@ -1836,9 +1970,19 @@ static void pop_delimiter_group(
   enum DelimiterQuote *quote
 ) {
   size_t group_depth = groups->length;
+  enum DelimiterGroupKind kind = groups->data[group_depth - 1].kind;
   *quote = groups->data[group_depth - 1].parent_quote;
   pop_case_trackers_at_depth(cases, group_depth);
   groups->length -= 1;
+  size_t command_depth = delimiter_command_group_depth(groups);
+  if (command_depth > 0) {
+    struct CommandTracker *command = &groups->data[command_depth - 1].command;
+    if (kind == DELIMITER_GROUP_FUNCTION_HEADER) {
+      reset_command_position(command, COMMAND_POSITION_START);
+    } else if (kind == DELIMITER_GROUP_SUBSHELL) {
+      reset_command_position(command, COMMAND_POSITION_CLOSED);
+    }
+  }
 }
 
 // Nested reopening requires an escape run and bypasses this toggle.
@@ -1896,6 +2040,7 @@ static enum DelimiterBackslashResult scan_delimiter_backslash_run(
   struct CaseTrackerBuffer *cases,
   enum DelimiterQuote *quote,
   size_t *backquote_depth,
+  size_t ambient_backquote_depth,
   bool at_delimiter_source_start,
   bool collecting_nested_delimiter,
   bool *quoted,
@@ -1929,11 +2074,13 @@ static enum DelimiterBackslashResult scan_delimiter_backslash_run(
     ) {
       return DELIMITER_BACKSLASH_ERROR;
     }
-    mark_delimiter_quoted(
-      quoted,
-      collecting_nested_delimiter,
-      nested_delimiter_quoted
-    );
+    if (fold_enclosed_special_run(escape_count, ambient_backquote_depth) > 0) {
+      mark_delimiter_quoted(
+        quoted,
+        collecting_nested_delimiter,
+        nested_delimiter_quoted
+      );
+    }
     lexer->advance(lexer, false);
 
     if (ends_group) {
@@ -1988,13 +2135,16 @@ static enum DelimiterBackslashResult scan_delimiter_backslash_run(
   );
 
   if (
-    *quote ==
-    DELIMITER_DOUBLE_QUOTED &&
+    (*quote ==
+      DELIMITER_DOUBLE_QUOTED ||
+      *quote == DELIMITER_PARAMETER_DOUBLE_QUOTED) &&
     lexer->lookahead !=
     '$' &&
     lexer->lookahead !=
     '`' &&
-    lexer->lookahead != '"'
+    lexer->lookahead !=
+    '"' &&
+    !(*quote == DELIMITER_PARAMETER_DOUBLE_QUOTED && lexer->lookahead == '}')
   ) {
     return append_repeated_byte(delimiter, '\\', folded)
       ? DELIMITER_BACKSLASH_OK
@@ -2029,13 +2179,17 @@ static enum DelimiterBackslashResult scan_delimiter_backslash_run(
   return DELIMITER_BACKSLASH_OK;
 }
 
-static void track_delimiter_word_character(
-  struct DelimiterWordTracker *word,
-  int32_t character
-) {
+static void
+track_command_word_character(struct CommandWord *word, int32_t character) {
   if (!word->active) {
-    reset_delimiter_word(word);
+    reset_command_word(word);
+    word->name = is_name_start_character(character);
     word->active = true;
+  } else if (!is_name_character(character)) {
+    word->name = false;
+  }
+  if (!is_decimal_digit(character)) {
+    word->digits = false;
   }
 
   if (!is_delimiter_word_character(character)) {
@@ -2051,13 +2205,13 @@ static void track_delimiter_word_character(
   }
 }
 
-static void track_command_word_character(
-  struct DelimiterWordTracker *command_word,
+static void track_delimiter_command_character(
+  struct CommandWord *command_word,
   bool at_nested_delimiter_base,
   int32_t character
 ) {
   if (command_word != NULL && !at_nested_delimiter_base) {
-    track_delimiter_word_character(command_word, character);
+    track_command_word_character(command_word, character);
   }
 }
 
@@ -2298,7 +2452,7 @@ fold_enclosed_backquote_run(size_t run, size_t depth, size_t *surviving) {
 static bool append_nested_here_document(
   struct HereDocument **documents,
   size_t *count,
-  const struct ByteBuffer *source,
+  struct ByteBuffer *source,
   size_t delimiter_start,
   bool quoted,
   bool strip_tabs
@@ -2312,6 +2466,7 @@ static bool append_nested_here_document(
   if (delimiter_length > 0) {
     delimiter = ts_malloc(delimiter_length);
     if (delimiter == NULL) {
+      source->failed = true;
       return false;
     }
     memcpy(delimiter, source->data + delimiter_start, delimiter_length);
@@ -2324,6 +2479,7 @@ static bool append_nested_here_document(
     .strip_tabs = strip_tabs,
   };
   if (!append_document(documents, count, document)) {
+    source->failed = true;
     clear_document(&document);
     return false;
   }
@@ -2671,7 +2827,10 @@ static bool push_dollar_delimiter_group(
       return true;
     }
     groups->data[groups->length - 1].kind = DELIMITER_GROUP_ARITHMETIC;
-    groups->data[groups->length - 1].command_start = false;
+    reset_command_position(
+      &groups->data[groups->length - 1].command,
+      COMMAND_POSITION_WORD
+    );
     if (
       !push_delimiter_group(
         groups,
@@ -2764,7 +2923,6 @@ static bool scan_delimiter_single_quoted_segment(
   return false;
 }
 
-// Substitution openers reset *quote and return control to the group scanner.
 static bool scan_delimiter_double_quoted_character(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -2790,17 +2948,19 @@ static bool scan_delimiter_double_quoted_character(
       return false;
     }
     if (lexer->lookahead == '(' || lexer->lookahead == '{') {
+      bool parameter = lexer->lookahead == '{';
       if (!push_dollar_delimiter_group(
             scanner,
             *backquote_depth,
             lexer,
             delimiter,
             groups,
-            DELIMITER_DOUBLE_QUOTED
+            *quote
           )) {
         return false;
       }
-      *quote = DELIMITER_UNQUOTED;
+      *quote =
+        parameter ? DELIMITER_PARAMETER_DOUBLE_QUOTED : DELIMITER_UNQUOTED;
     }
     return true;
   }
@@ -2810,12 +2970,7 @@ static bool scan_delimiter_double_quoted_character(
       *backquote_depth ==
       SIZE_MAX ||
       !append_byte(delimiter, '`') ||
-      !push_delimiter_group(
-        groups,
-        '`',
-        DELIMITER_GROUP_BACKQUOTE,
-        DELIMITER_DOUBLE_QUOTED
-      )
+      !push_delimiter_group(groups, '`', DELIMITER_GROUP_BACKQUOTE, *quote)
     ) {
       return false;
     }
@@ -2838,7 +2993,9 @@ static bool scan_delimiter_double_quoted_character(
       '`' ||
       lexer->lookahead ==
       '"' ||
-      lexer->lookahead == '\\'
+      lexer->lookahead ==
+      '\\' ||
+      (*quote == DELIMITER_PARAMETER_DOUBLE_QUOTED && lexer->lookahead == '}')
     ) {
       if (!append_codepoint(delimiter, lexer->lookahead)) {
         return false;
@@ -2858,6 +3015,7 @@ static bool scan_delimiter_double_quoted_character(
 
 enum DelimiterReadResult {
   DELIMITER_READ_INVALID,
+  DELIMITER_READ_RESOURCE_FAILURE,
   DELIMITER_READ_INCOMPLETE,
   DELIMITER_READ_CONTINUATION,
   DELIMITER_READ_FOLDED_CONTINUATION,
@@ -2892,6 +3050,20 @@ static enum DelimiterReadResult read_here_document_delimiter(
   while (valid) {
     int32_t character = lexer->lookahead;
 
+    if (quote == DELIMITER_PARAMETER_DOUBLE_QUOTED) {
+      struct DelimiterGroupFrame *group = &groups.data[groups.length - 1];
+      group->parameter_quote_state =
+        parameter_quote_state_after(group->parameter_quote_state, character);
+      if (group->parameter_quote_state == PARAMETER_QUOTE_PATTERN) {
+        quote = DELIMITER_UNQUOTED;
+      } else if (character == '}') {
+        valid = append_byte(&delimiter, '}');
+        pop_delimiter_group(&groups, &cases, &quote);
+        lexer->advance(lexer, false);
+        continue;
+      }
+    }
+
     if (
       quote ==
       DELIMITER_SINGLE_QUOTED ||
@@ -2911,8 +3083,9 @@ static enum DelimiterReadResult read_here_document_delimiter(
     }
 
     if (
-      quote ==
-      DELIMITER_DOUBLE_QUOTED &&
+      (quote ==
+        DELIMITER_DOUBLE_QUOTED ||
+        quote == DELIMITER_PARAMETER_DOUBLE_QUOTED) &&
       !(character == '\\' && delimiter_backquote_depth > 0)
     ) {
       valid = scan_delimiter_double_quoted_character(
@@ -2927,9 +3100,9 @@ static enum DelimiterReadResult read_here_document_delimiter(
     }
 
     size_t command_group_depth = delimiter_command_group_depth(&groups);
-    struct DelimiterWordTracker *command_word = command_group_depth == 0
+    struct CommandWord *command_word = command_group_depth == 0
       ? NULL
-      : &groups.data[command_group_depth - 1].word;
+      : &groups.data[command_group_depth - 1].command.word;
     if (
       collecting_nested_delimiter &&
       groups.length ==
@@ -2945,6 +3118,9 @@ static enum DelimiterReadResult read_here_document_delimiter(
         nested_delimiter_strips_tabs
       );
       collecting_nested_delimiter = false;
+      if (command_group_depth > 0) {
+        groups.data[command_group_depth - 1].command.redirect_operand = false;
+      }
       nested_delimiter_quoted = false;
       nested_delimiter_strips_tabs = false;
       if (!valid) {
@@ -2982,20 +3158,40 @@ static enum DelimiterReadResult read_here_document_delimiter(
       0 &&
       !collecting_nested_delimiter &&
       !in_case_pattern &&
-      character == '<'
+      (character == '<' || character == '>')
     ) {
-      valid = finish_delimiter_word(&cases, &groups, command_group_depth);
+      struct CommandTracker *command =
+        &groups.data[command_group_depth - 1].command;
+      valid = finish_command_word(&cases, command_group_depth, command, true);
       if (!valid) {
         continue;
       }
+      begin_command_redirect(command);
 
       has_word_content = true;
-      valid = append_byte(&delimiter, '<');
+      valid = append_codepoint(&delimiter, character);
       if (!valid) {
         continue;
       }
       lexer->advance(lexer, false);
+      if (character == '>') {
+        if (
+          lexer->lookahead ==
+          '>' ||
+          lexer->lookahead ==
+          '|' ||
+          lexer->lookahead == '&'
+        ) {
+          valid = append_codepoint(&delimiter, lexer->lookahead);
+          lexer->advance(lexer, false);
+        }
+        continue;
+      }
       if (lexer->lookahead != '<') {
+        if (lexer->lookahead == '>' || lexer->lookahead == '&') {
+          valid = append_codepoint(&delimiter, lexer->lookahead);
+          lexer->advance(lexer, false);
+        }
         continue;
       }
 
@@ -3008,8 +3204,8 @@ static enum DelimiterReadResult read_here_document_delimiter(
         continue;
       }
 
-      bool strip_tabs = lexer->lookahead == '-';
-      if (strip_tabs) {
+      bool nested_strip_tabs = lexer->lookahead == '-';
+      if (nested_strip_tabs) {
         valid = append_byte(&delimiter, '-');
         if (!valid) {
           continue;
@@ -3017,8 +3213,8 @@ static enum DelimiterReadResult read_here_document_delimiter(
         lexer->advance(lexer, false);
       }
       expecting_nested_delimiter = true;
-      nested_delimiter_strips_tabs = strip_tabs;
-      reset_delimiter_word(command_word);
+      nested_delimiter_strips_tabs = nested_strip_tabs;
+      reset_command_word(command_word);
       continue;
     }
 
@@ -3041,7 +3237,13 @@ static enum DelimiterReadResult read_here_document_delimiter(
       if (valid && lexer->lookahead == '\n') {
         valid = append_byte(&delimiter, '\n');
         lexer->advance(lexer, false);
-        groups.data[command_group_depth - 1].command_start = true;
+        struct CommandTracker *command =
+          &groups.data[command_group_depth - 1].command;
+        reset_command_position(
+          command,
+          command->position == COMMAND_POSITION_FOR_IN ? COMMAND_POSITION_FOR_IN
+                                                       : COMMAND_POSITION_START
+        );
         if (nested_document_count > 0) {
           valid = scan_nested_here_document_sequence(
             lexer,
@@ -3061,7 +3263,12 @@ static enum DelimiterReadResult read_here_document_delimiter(
       !at_nested_delimiter_base &&
       is_token_delimiter_at_depth(lexer, backquote_depth)
     ) {
-      valid = finish_delimiter_word(&cases, &groups, command_group_depth);
+      valid = finish_command_word(
+        &cases,
+        command_group_depth,
+        &groups.data[command_group_depth - 1].command,
+        false
+      );
       if (!valid) {
         continue;
       }
@@ -3079,7 +3286,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
       '$' &&
       character != '`'
     ) {
-      track_delimiter_word_character(command_word, character);
+      track_command_word_character(command_word, character);
     }
 
     if (
@@ -3094,7 +3301,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
     }
 
     if (character == '\'') {
-      track_command_word_character(
+      track_delimiter_command_character(
         command_word,
         at_nested_delimiter_base,
         character
@@ -3111,7 +3318,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
     }
 
     if (character == '"') {
-      track_command_word_character(
+      track_delimiter_command_character(
         command_word,
         at_nested_delimiter_base,
         character
@@ -3141,6 +3348,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
           &cases,
           &quote,
           &delimiter_backquote_depth,
+          backquote_depth,
           at_delimiter_source_start,
           collecting_nested_delimiter,
           &quoted,
@@ -3168,8 +3376,8 @@ static enum DelimiterReadResult read_here_document_delimiter(
             command_group_depth &&
             !at_nested_delimiter_base
           ) {
-            track_delimiter_word_character(
-              &groups.data[command_group_depth - 1].word,
+            track_command_word_character(
+              &groups.data[command_group_depth - 1].command.word,
               character
             );
           }
@@ -3192,7 +3400,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
           collecting_nested_delimiter,
           &nested_delimiter_quoted
         );
-        track_command_word_character(
+        track_delimiter_command_character(
           command_word,
           at_nested_delimiter_base,
           character
@@ -3204,7 +3412,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
     }
 
     if (character == '`') {
-      track_command_word_character(
+      track_delimiter_command_character(
         command_word,
         at_nested_delimiter_base,
         character
@@ -3226,8 +3434,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
 
     if (character == '$') {
       if (command_group_depth > 0 && !at_nested_delimiter_base) {
-        track_delimiter_word_character(command_word, character);
-        groups.data[command_group_depth - 1].command_start = false;
+        track_command_word_character(command_word, character);
       }
       has_word_content = true;
       lexer->advance(lexer, false);
@@ -3261,25 +3468,24 @@ static enum DelimiterReadResult read_here_document_delimiter(
       continue;
     }
 
-    if (
-      groups.length > 0 && character == groups.data[groups.length - 1].closing
-    ) {
+    if (command_group_depth > 0 && character == ')') {
       struct CaseTracker *active_case =
-        active_case_tracker(&cases, groups.length);
-      if (
-        character ==
-        ')' &&
-        active_case !=
-        NULL &&
-        case_tracker_in_pattern(active_case->state)
-      ) {
+        active_case_tracker(&cases, command_group_depth);
+      if (active_case != NULL && case_tracker_in_pattern(active_case->state)) {
         valid = append_codepoint(&delimiter, character);
         active_case->state = CASE_TRACKER_BODY;
-        groups.data[groups.length - 1].command_start = true;
+        reset_command_position(
+          &groups.data[groups.length - 1].command,
+          COMMAND_POSITION_START
+        );
         lexer->advance(lexer, false);
         continue;
       }
+    }
 
+    if (
+      groups.length > 0 && character == groups.data[groups.length - 1].closing
+    ) {
       valid = append_codepoint(&delimiter, character);
       pop_delimiter_group(&groups, &cases, &quote);
       lexer->advance(lexer, false);
@@ -3289,8 +3495,9 @@ static enum DelimiterReadResult read_here_document_delimiter(
     if (
       groups.length >
       0 &&
-      groups.data[groups.length - 1].closing ==
-      ')' &&
+      (command_group_depth >
+        0 ||
+        groups.data[groups.length - 1].kind == DELIMITER_GROUP_ARITHMETIC) &&
       character == '('
     ) {
       struct CaseTracker *active_case =
@@ -3306,12 +3513,12 @@ static enum DelimiterReadResult read_here_document_delimiter(
       enum DelimiterGroupKind parent_kind = groups.data[groups.length - 1].kind;
       enum DelimiterGroupKind nested_kind =
         parent_kind == DELIMITER_GROUP_ARITHMETIC ? DELIMITER_GROUP_ARITHMETIC
-                                                  : DELIMITER_GROUP_SUBSHELL;
-      if (
-        parent_kind !=
-        DELIMITER_GROUP_PARAMETER &&
-        !push_delimiter_group(&groups, ')', nested_kind, quote)
-      ) {
+        : command_group_depth >
+          0 &&
+          groups.data[command_group_depth - 1].command.function_name
+        ? DELIMITER_GROUP_FUNCTION_HEADER
+        : DELIMITER_GROUP_SUBSHELL;
+      if (!push_delimiter_group(&groups, ')', nested_kind, quote)) {
         valid = false;
         continue;
       }
@@ -3352,7 +3559,14 @@ static enum DelimiterReadResult read_here_document_delimiter(
           '|' &&
           !(active_case != NULL && case_tracker_in_pattern(active_case->state)))
       ) {
-        groups.data[active_command_depth - 1].command_start = true;
+        struct CommandTracker *command =
+          &groups.data[active_command_depth - 1].command;
+        reset_command_position(
+          command,
+          character == '\n' && command->position == COMMAND_POSITION_FOR_IN
+            ? COMMAND_POSITION_FOR_IN
+            : COMMAND_POSITION_START
+        );
       }
 
       if (character == '\n' && nested_document_count > 0) {
@@ -3383,6 +3597,9 @@ static enum DelimiterReadResult read_here_document_delimiter(
   clear_document_array(&nested_documents, &nested_document_count);
   if (!complete) {
     ts_free(delimiter.data);
+    if (delimiter.failed || groups.failed || cases.failed) {
+      return DELIMITER_READ_RESOURCE_FAILURE;
+    }
     return lexer_at_eof(lexer) ? DELIMITER_READ_INCOMPLETE
                                : DELIMITER_READ_INVALID;
   }
@@ -3424,7 +3641,9 @@ static bool scan_here_document_delimiter(
   if (result != DELIMITER_READ_WORD) {
     return false;
   }
-  if (!append_pending_document(scanner, document)) {
+  if (
+    lookahead_is_pending(lexer) || !append_pending_document(scanner, document)
+  ) {
     clear_document(&document);
     return false;
   }
@@ -3513,21 +3732,6 @@ static bool read_reserved_word(
   }
 
   return true;
-}
-
-static bool is_closing_reserved_word(const char *word) {
-  if (strcmp(word, "in") == 0) {
-    return true;
-  }
-  for (
-    size_t index = 0; index < sizeof(CLOSING_WORDS) / sizeof(CLOSING_WORDS[0]);
-    index += 1
-  ) {
-    if (strcmp(word, CLOSING_WORDS[index].text) == 0) {
-      return true;
-    }
-  }
-  return false;
 }
 
 static bool classify_case_item_ns_end(
@@ -3831,137 +4035,6 @@ static bool probe_here_document_continuation(
   }
 }
 
-static bool is_function_body_reserved_word(const char *word) {
-  return find_reserved_word(word) != NULL && !is_closing_reserved_word(word);
-}
-
-static bool finish_function_body_boundary(
-  TSLexer *lexer,
-  const bool *valid_symbols,
-  bool has_function_body
-) {
-  if (
-    !has_function_body || !valid_symbols[FUNCTION_BODY_CONTINUATION_BOUNDARY]
-  ) {
-    return false;
-  }
-
-  lexer->result_symbol = FUNCTION_BODY_CONTINUATION_BOUNDARY;
-  return true;
-}
-
-static bool scan_function_body_boundary(
-  const struct Scanner *scanner,
-  TSLexer *lexer,
-  const bool *valid_symbols
-) {
-  lexer->mark_end(lexer);
-
-  bool has_valid_layout = true;
-  while (true) {
-    scan_horizontal_blanks(lexer);
-
-    if (lexer->lookahead == '\\') {
-      if (!skip_line_continuations(lexer)) {
-        has_valid_layout = false;
-        break;
-      }
-      continue;
-    }
-
-    if (lexer->lookahead == '#') {
-      advance_to_comment_end(scanner, lexer, false);
-    }
-
-    if (lexer->lookahead != '\n') {
-      break;
-    }
-    lexer->advance(lexer, false);
-
-    if (has_startable_pending_document(scanner)) {
-      bool reached_input_end = false;
-      for (
-        size_t index = 0; !reached_input_end && index < scanner->pending_count;
-        index += 1
-      ) {
-        if (!here_document_is_startable(
-              scanner,
-              &scanner->pending_documents[index]
-            )) {
-          continue;
-        }
-        while (true) {
-          struct HereDocumentLineStart start;
-          enum HereDocumentLineKind kind = read_here_document_line(
-            scanner,
-            lexer,
-            &scanner->pending_documents[index],
-            scanner->backquote_depth,
-            NULL,
-            &start
-          );
-          if (kind == HERE_DOCUMENT_LINE_DELIMITER) {
-            break;
-          }
-          if (kind == HERE_DOCUMENT_LINE_END_OF_INPUT) {
-            reached_input_end = true;
-            break;
-          }
-        }
-      }
-      if (reached_input_end) {
-        return finish_function_body_boundary(lexer, valid_symbols, false);
-      }
-      continue;
-    }
-
-    if (scanner->active_count > 0) {
-      const struct HereDocument *document = &scanner->active_documents[0];
-      while (true) {
-        struct HereDocumentLineStart start;
-        enum HereDocumentLineKind kind = read_here_document_line(
-          scanner,
-          lexer,
-          document,
-          scanner->body_backquote_depth,
-          NULL,
-          &start
-        );
-        if (kind == HERE_DOCUMENT_LINE_LAYOUT) {
-          continue;
-        }
-        bool has_function_body = kind ==
-          HERE_DOCUMENT_LINE_CONTENT &&
-          (start.first_character ==
-            '(' ||
-            (start.first_character == '{' && start.first_is_delimited) ||
-            (start.first_word_is_reserved_candidate &&
-              start.first_is_delimited &&
-              is_function_body_reserved_word(start.first_word)));
-        return finish_function_body_boundary(
-          lexer,
-          valid_symbols,
-          has_function_body
-        );
-      }
-    }
-  }
-
-  bool has_function_body = has_valid_layout && lexer->lookahead == '(';
-  if (has_valid_layout && lexer->lookahead == '{') {
-    lexer->advance(lexer, false);
-    has_function_body =
-      skip_line_continuations(lexer) && is_token_delimiter(scanner, lexer);
-  } else if (has_valid_layout && is_lowercase_letter(lexer->lookahead)) {
-    char word[6];
-    if (read_reserved_word(scanner, lexer, word, NULL)) {
-      has_function_body = is_function_body_reserved_word(word);
-    }
-  }
-
-  return finish_function_body_boundary(lexer, valid_symbols, has_function_body);
-}
-
 static bool scan_horizontal_blanks(TSLexer *lexer) {
   bool found = false;
   while (is_horizontal_blank(lexer->lookahead)) {
@@ -4081,7 +4154,6 @@ static bool scan_element_boundary_core(
 ) {
   bool crossed_layout = false;
   bool crossed_pairs = false;
-  bool blank_mark_committed = false;
   bool blank_before_continuation = false;
   while (true) {
     if (leading_backslash_consumed) {
@@ -4093,7 +4165,7 @@ static bool scan_element_boundary_core(
       if (lexer->lookahead != '\\') {
         break;
       }
-      if (crossed_layout && !crossed_pairs && !blank_mark_committed) {
+      if (crossed_layout && !crossed_pairs) {
         // Keep the mark before blanks so edits beyond the continuation
         // invalidate the preceding term or command.
         blank_before_continuation = true;
@@ -4174,7 +4246,6 @@ static bool scan_element_boundary_core(
     if (
       crossed_layout &&
       !crossed_pairs &&
-      !blank_mark_committed &&
       valid_symbols[TERM_BOUNDARY] &&
       valid_symbols[TERM_CONTINUATION] &&
       !has_startable_pending_document(scanner)
@@ -4186,9 +4257,8 @@ static bool scan_element_boundary_core(
       lexer->result_symbol = TERM_BOUNDARY;
       return true;
     }
-    if (crossed_layout && !crossed_pairs && !blank_mark_committed) {
+    if (crossed_layout && !crossed_pairs) {
       lexer->mark_end(lexer);
-      blank_mark_committed = true;
     }
     if (crossed_layout) {
       if (
@@ -4202,7 +4272,7 @@ static bool scan_element_boundary_core(
       // remains valid for a closed command or assignment.
       if (
         valid_symbols[PRE_NEWLINE_BLANK] &&
-        (blank_mark_committed ||
+        (!crossed_pairs ||
           blank_before_continuation ||
           !valid_symbols[LINE_CONTINUATION])
       ) {
@@ -4282,11 +4352,7 @@ static bool scan_element_boundary_core(
       valid_symbols[REDIRECT_SEPARATOR_BEGIN]) &&
     is_word_element_start(scanner, lexer)
   ) {
-    return classify_word_separator(
-      lexer,
-      valid_symbols,
-      !crossed_pairs && !blank_mark_committed
-    );
+    return classify_word_separator(lexer, valid_symbols, !crossed_pairs);
   }
 
   bool at_closer = lexer_at_eof(lexer) ||
@@ -4304,7 +4370,6 @@ static bool scan_element_boundary_core(
 
   if (
     crossed_pairs &&
-    !blank_mark_committed &&
     !blank_before_continuation &&
     valid_symbols[TRAILING_CONTINUATION_BEGIN] &&
     !valid_symbols[LINE_CONTINUATION] &&
@@ -4991,9 +5056,19 @@ static bool append_validation_token(
   return true;
 }
 
+enum EmbeddedFrameKind {
+  EMBEDDED_SOURCE,
+  EMBEDDED_COMMAND_SUBSTITUTION,
+  EMBEDDED_SUBSHELL,
+  EMBEDDED_FUNCTION_HEADER,
+};
+
 struct EmbeddedFrame {
   char closer;
-  bool command_context;
+  enum EmbeddedFrameKind kind;
+  struct CommandTracker command;
+  bool double_quoted_parameter;
+  enum ParameterQuoteState parameter_quote;
 };
 
 struct EmbeddedSkip {
@@ -5004,8 +5079,6 @@ struct EmbeddedSkip {
   struct HereDocument *pending;
   size_t pending_count;
   size_t pending_capacity;
-  bool at_word;
-  bool at_command_position;
   bool started;
 };
 
@@ -5031,7 +5104,8 @@ static void clear_arithmetic_scan(struct ArithmeticScan *scan) {
 static bool embedded_push_frame(
   struct EmbeddedSkip *skip,
   char closer,
-  bool command_context
+  enum EmbeddedFrameKind kind,
+  bool double_quoted
 ) {
   if (!grow_element_buffer(
         (void **)&skip->frames,
@@ -5044,8 +5118,13 @@ static bool embedded_push_frame(
   }
   skip->frames[skip->frame_count] = (struct EmbeddedFrame){
     .closer = closer,
-    .command_context = command_context,
+    .kind = kind,
+    .double_quoted_parameter = closer == '}' && double_quoted,
   };
+  reset_command_position(
+    &skip->frames[skip->frame_count].command,
+    COMMAND_POSITION_START
+  );
   skip->frame_count += 1;
   return true;
 }
@@ -5054,10 +5133,9 @@ static void embedded_note_word(struct EmbeddedSkip *skip, bool in_command) {
   if (!in_command) {
     return;
   }
-  (void)case_tracker_note_word(
-    active_case_tracker(&skip->cases, skip->frame_count),
-    CASE_WORD_GENERIC,
-    false
+  track_command_word_character(
+    &skip->frames[skip->frame_count - 1].command.word,
+    '\\'
   );
 }
 
@@ -5076,18 +5154,21 @@ static enum ArithmeticValidation embedded_push_dollar_group(
   const struct Scanner *scanner,
   struct EmbeddedSkip *skip,
   TSLexer *lexer,
-  bool *entered_group
+  bool double_quoted
 ) {
-  *entered_group = false;
   bool command_context = lexer->lookahead == '(';
   lexer->advance(lexer, false);
   if (command_context && lexer->lookahead == '(') {
     return skip_ambiguous_substitution(scanner, lexer);
   }
-  *entered_group =
-    embedded_push_frame(skip, command_context ? ')' : '}', command_context);
-  return *entered_group ? ARITHMETIC_VALIDATION_VALID
-                        : ARITHMETIC_VALIDATION_INVALID;
+  return embedded_push_frame(
+           skip,
+           command_context ? ')' : '}',
+           command_context ? EMBEDDED_COMMAND_SUBSTITUTION : EMBEDDED_SOURCE,
+           double_quoted
+         )
+    ? ARITHMETIC_VALIDATION_VALID
+    : ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
 }
 
 static bool embedded_append_pending(
@@ -5128,6 +5209,9 @@ static enum ArithmeticValidation read_embedded_here_document_delimiter(
   );
   if (result == DELIMITER_READ_WORD) {
     return ARITHMETIC_VALIDATION_VALID;
+  }
+  if (result == DELIMITER_READ_RESOURCE_FAILURE) {
+    return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
   }
   return result == DELIMITER_READ_INCOMPLETE ? ARITHMETIC_VALIDATION_INCOMPLETE
                                              : ARITHMETIC_VALIDATION_INVALID;
@@ -5208,21 +5292,28 @@ static enum ArithmeticValidation resume_embedded_construct(
   const struct Scanner *scanner,
   TSLexer *lexer,
   char initial_closer,
+  bool double_quoted,
   struct EmbeddedSkip *skip
 ) {
   enum ArithmeticValidation result = ARITHMETIC_VALIDATION_VALID;
   struct LookaheadLexer *lookahead = (struct LookaheadLexer *)lexer;
   size_t resume = lookahead->position;
-  bool previous_word = skip->at_word;
-  bool previous_command_position = skip->at_command_position;
-  struct CaseTracker *previous_case = NULL;
+  size_t previous_depth = 0;
+  struct EmbeddedFrame previous_frame = {0};
+  size_t previous_case_count = 0;
   uint8_t previous_case_state = 0;
 
   if (!skip->started) {
-    if (!embedded_push_frame(skip, initial_closer, initial_closer == ')')) {
-      return ARITHMETIC_VALIDATION_INVALID;
+    if (!embedded_push_frame(
+          skip,
+          initial_closer,
+          initial_closer == ')' ? EMBEDDED_COMMAND_SUBSTITUTION
+                                : EMBEDDED_SOURCE,
+          double_quoted
+        )) {
+      lookahead->failed = true;
+      return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
     }
-    skip->at_command_position = true;
     skip->started = true;
   }
 
@@ -5233,15 +5324,38 @@ static enum ArithmeticValidation resume_embedded_construct(
     }
 
     struct EmbeddedFrame *frame = &skip->frames[skip->frame_count - 1];
-    bool in_command = frame->closer == ')' && frame->command_context;
-    struct CaseTracker *active_case =
-      in_command ? active_case_tracker(&skip->cases, skip->frame_count) : NULL;
+    bool in_command = frame->kind != EMBEDDED_SOURCE;
     int32_t character = lexer->lookahead;
     resume = lookahead->position;
-    previous_word = skip->at_word;
-    previous_command_position = skip->at_command_position;
-    previous_case = active_case;
-    previous_case_state = active_case == NULL ? 0 : active_case->state;
+    previous_depth = skip->frame_count;
+    previous_frame = *frame;
+    previous_case_count = skip->cases.length;
+    if (previous_case_count > 0) {
+      previous_case_state = skip->cases.data[previous_case_count - 1].state;
+    }
+
+    if (
+      in_command &&
+      embedded_word_is_delimited(lexer) &&
+      !finish_command_word(
+        &skip->cases,
+        skip->frame_count,
+        &frame->command,
+        character == '<' || character == '>'
+      )
+    ) {
+      result = ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
+      break;
+    }
+    struct CaseTracker *active_case =
+      in_command ? active_case_tracker(&skip->cases, skip->frame_count) : NULL;
+
+    if (frame->closer == '}') {
+      frame->parameter_quote =
+        parameter_quote_state_after(frame->parameter_quote, character);
+    }
+    bool quoted_parameter = frame->double_quoted_parameter &&
+      frame->parameter_quote != PARAMETER_QUOTE_PATTERN;
 
     if (frame->closer == '`') {
       if (character == '\\') {
@@ -5262,7 +5376,7 @@ static enum ArithmeticValidation resume_embedded_construct(
       continue;
     }
 
-    if (frame->closer == '"') {
+    if (frame->closer == '"' || quoted_parameter) {
       if (character == '\\') {
         size_t run;
         if (!read_embedded_escape_run(scanner, lexer, &run)) {
@@ -5274,15 +5388,20 @@ static enum ArithmeticValidation resume_embedded_construct(
         }
         continue;
       }
-      if (character == '"') {
+      if (character == frame->closer) {
         lexer->advance(lexer, false);
         skip->frame_count -= 1;
         continue;
       }
-      if (character == '`') {
+      if (character == '`' || character == '"') {
         lexer->advance(lexer, false);
-        if (!embedded_push_frame(skip, '`', false)) {
-          result = ARITHMETIC_VALIDATION_INVALID;
+        if (!embedded_push_frame(
+              skip,
+              (char)character,
+              EMBEDDED_SOURCE,
+              false
+            )) {
+          result = ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
           break;
         }
         continue;
@@ -5290,12 +5409,7 @@ static enum ArithmeticValidation resume_embedded_construct(
       if (character == '$') {
         lexer->advance(lexer, false);
         if (lexer->lookahead == '(' || lexer->lookahead == '{') {
-          result = embedded_push_dollar_group(
-            scanner,
-            skip,
-            lexer,
-            &skip->at_command_position
-          );
+          result = embedded_push_dollar_group(scanner, skip, lexer, true);
           if (result != ARITHMETIC_VALIDATION_VALID) {
             break;
           }
@@ -5316,12 +5430,9 @@ static enum ArithmeticValidation resume_embedded_construct(
       if ((run & 1) != 0) {
         lexer->advance(lexer, false);
       }
-      if (run == 0 || continuation) {
-        continue;
+      if (run != 0 && !continuation) {
+        embedded_note_word(skip, in_command);
       }
-      embedded_note_word(skip, in_command);
-      skip->at_word = true;
-      skip->at_command_position = false;
       continue;
     }
 
@@ -5336,35 +5447,24 @@ static enum ArithmeticValidation resume_embedded_construct(
       }
       lexer->advance(lexer, false);
       embedded_note_word(skip, in_command);
-      skip->at_word = true;
-      skip->at_command_position = false;
       continue;
     }
 
     if (character == '"' || character == '`') {
       lexer->advance(lexer, false);
       embedded_note_word(skip, in_command);
-      if (!embedded_push_frame(skip, (char)character, false)) {
-        result = ARITHMETIC_VALIDATION_INVALID;
+      if (!embedded_push_frame(skip, (char)character, EMBEDDED_SOURCE, false)) {
+        result = ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
         break;
       }
-      skip->at_word = true;
-      skip->at_command_position = false;
       continue;
     }
 
     if (character == '$') {
       lexer->advance(lexer, false);
       embedded_note_word(skip, in_command);
-      skip->at_word = true;
-      skip->at_command_position = false;
       if (lexer->lookahead == '(' || lexer->lookahead == '{') {
-        result = embedded_push_dollar_group(
-          scanner,
-          skip,
-          lexer,
-          &skip->at_command_position
-        );
+        result = embedded_push_dollar_group(scanner, skip, lexer, false);
         if (result != ARITHMETIC_VALIDATION_VALID) {
           break;
         }
@@ -5398,20 +5498,29 @@ static enum ArithmeticValidation resume_embedded_construct(
       continue;
     }
 
-    if (character == '#' && frame->closer == ')' && !skip->at_word) {
+    if (character == '#' && in_command && !frame->command.word.active) {
       advance_to_line_end(lexer);
       continue;
     }
 
     if (
       in_command &&
-      character ==
-      '<' &&
+      (character == '<' || character == '>') &&
       (active_case == NULL || active_case->state == CASE_TRACKER_BODY)
     ) {
+      begin_command_redirect(&frame->command);
       lexer->advance(lexer, false);
-      if (lexer->lookahead != '<') {
-        skip->at_word = false;
+      if (character != '<' || lexer->lookahead != '<') {
+        if (
+          lexer->lookahead ==
+          '&' ||
+          (character == '<' && lexer->lookahead == '>') ||
+          (character ==
+            '>' &&
+            (lexer->lookahead == '>' || lexer->lookahead == '|'))
+        ) {
+          lexer->advance(lexer, false);
+        }
         continue;
       }
       lexer->advance(lexer, false);
@@ -5432,63 +5541,67 @@ static enum ArithmeticValidation resume_embedded_construct(
       document.declaration_depth = skip->frame_count;
       if (!embedded_append_pending(skip, document)) {
         clear_document(&document);
-        result = ARITHMETIC_VALIDATION_INVALID;
+        result = ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
         break;
       }
-      skip->at_word = false;
+      frame->command.redirect_operand = false;
       continue;
     }
 
     if (character == '\n' && skip->pending_count > 0) {
       lexer->advance(lexer, false);
       result = skip_embedded_here_document_bodies(scanner, lexer, skip);
-      skip->at_word = false;
-      skip->at_command_position = true;
+      reset_command_position(&frame->command, COMMAND_POSITION_START);
       continue;
     }
 
-    if (character == '(' && frame->closer == ')') {
+    if (character == '(' && in_command) {
       lexer->advance(lexer, false);
       if (active_case != NULL && case_tracker_in_pattern(active_case->state)) {
         active_case->state = CASE_TRACKER_IN_PATTERN;
-        skip->at_word = false;
+        reset_command_position(&frame->command, COMMAND_POSITION_START);
         continue;
       }
-      if (!embedded_push_frame(skip, ')', in_command)) {
-        result = ARITHMETIC_VALIDATION_INVALID;
+      enum EmbeddedFrameKind kind = frame->command.function_name
+        ? EMBEDDED_FUNCTION_HEADER
+        : EMBEDDED_SUBSHELL;
+      if (!embedded_push_frame(skip, ')', kind, false)) {
+        result = ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
         break;
       }
-      skip->at_word = false;
-      skip->at_command_position = true;
       continue;
     }
 
-    if (character == ')' && frame->closer == ')') {
+    if (character == ')' && in_command) {
       if (active_case != NULL) {
         lexer->advance(lexer, false);
         if (case_tracker_in_pattern(active_case->state)) {
           active_case->state = CASE_TRACKER_BODY;
-          skip->at_word = false;
-          skip->at_command_position = true;
-          continue;
+          reset_command_position(&frame->command, COMMAND_POSITION_START);
         }
-        skip->at_word = true;
-        skip->at_command_position = false;
         continue;
       }
       lexer->advance(lexer, false);
+      enum EmbeddedFrameKind kind = frame->kind;
       skip->frame_count -= 1;
       pop_case_trackers_at_depth(&skip->cases, skip->frame_count + 1);
-      skip->at_word = true;
-      skip->at_command_position = false;
+      if (
+        skip->frame_count >
+        0 &&
+        (kind == EMBEDDED_FUNCTION_HEADER || kind == EMBEDDED_SUBSHELL)
+      ) {
+        reset_command_position(
+          &skip->frames[skip->frame_count - 1].command,
+          kind == EMBEDDED_FUNCTION_HEADER ? COMMAND_POSITION_START
+                                           : COMMAND_POSITION_CLOSED
+        );
+      }
       continue;
     }
 
     if (character == '}' && frame->closer == '}') {
       lexer->advance(lexer, false);
       skip->frame_count -= 1;
-      skip->at_word = true;
-      skip->at_command_position = false;
       continue;
     }
 
@@ -5505,76 +5618,15 @@ static enum ArithmeticValidation resume_embedded_construct(
         lexer->advance(lexer, false);
         active_case->state = CASE_TRACKER_EXPECT_PATTERN;
       }
-      skip->at_word = false;
-      skip->at_command_position = true;
-      continue;
-    }
-
-    if (!skip->at_word && (character == '{' || character == '!')) {
-      lexer->advance(lexer, false);
-      if (
-        in_command &&
-        skip->at_command_position &&
-        embedded_word_is_delimited(lexer)
-      ) {
-        skip->at_word = true;
-        continue;
-      }
-      embedded_note_word(skip, in_command);
-      skip->at_word = true;
-      skip->at_command_position = false;
-      continue;
-    }
-
-    if (!skip->at_word && is_lowercase_letter(character)) {
-      char word[6];
-      size_t length = 0;
-      bool candidate = true;
-      bool position = skip->at_command_position;
-      while (is_lowercase_letter(lexer->lookahead)) {
-        if (length < sizeof(word) - 1) {
-          word[length] = (char)lexer->lookahead;
-          length += 1;
-        } else {
-          candidate = false;
-        }
-        lexer->advance(lexer, false);
-      }
-      word[length] = '\0';
-      candidate = candidate && embedded_word_is_delimited(lexer);
-      if (in_command) {
-        switch (case_tracker_note_word(
-          active_case,
-          candidate ? classify_case_word(word) : CASE_WORD_GENERIC,
-          position
-        )) {
-        case CASE_TRACKER_NOTE_COMMAND_PREFIX:
-          skip->at_word = true;
-          continue;
-        case CASE_TRACKER_NOTE_END:
-          skip->cases.length -= 1;
-          break;
-        case CASE_TRACKER_NOTE_BEGIN:
-          if (!append_case_tracker(&skip->cases, skip->frame_count)) {
-            result = ARITHMETIC_VALIDATION_INVALID;
-          }
-          break;
-        default:
-          break;
-        }
-        if (result != ARITHMETIC_VALIDATION_VALID) {
-          break;
-        }
-      }
-      skip->at_word = true;
-      skip->at_command_position = false;
+      reset_command_position(&frame->command, COMMAND_POSITION_START);
       continue;
     }
 
     lexer->advance(lexer, false);
-    if (is_horizontal_blank(character)) {
-      skip->at_word = false;
-    } else if (
+    if (!in_command || is_horizontal_blank(character)) {
+      continue;
+    }
+    if (
       character ==
       '\n' ||
       character ==
@@ -5583,24 +5635,28 @@ static enum ArithmeticValidation resume_embedded_construct(
       '&' ||
       character == '|'
     ) {
-      skip->at_word = false;
-      skip->at_command_position = true;
-    } else if (character == '<' || character == '>') {
-      skip->at_word = false;
+      enum CommandPosition position =
+        character == '\n' && frame->command.position == COMMAND_POSITION_FOR_IN
+        ? COMMAND_POSITION_FOR_IN
+        : COMMAND_POSITION_START;
+      reset_command_position(&frame->command, position);
     } else {
-      embedded_note_word(skip, in_command);
-      skip->at_word = true;
-      skip->at_command_position = false;
+      track_command_word_character(&frame->command.word, character);
     }
   }
 
   if (!lookahead->failed && lookahead->requested != SIZE_MAX) {
     lookahead_seek(lookahead, resume);
-    skip->at_word = previous_word;
-    skip->at_command_position = previous_command_position;
-    if (previous_case != NULL) {
-      previous_case->state = previous_case_state;
+    if (previous_depth > 0) {
+      skip->frames[previous_depth - 1] = previous_frame;
     }
+    skip->cases.length = previous_case_count;
+    if (previous_case_count > 0) {
+      skip->cases.data[previous_case_count - 1].state = previous_case_state;
+    }
+  }
+  if (result == ARITHMETIC_VALIDATION_RESOURCE_FAILURE) {
+    lookahead->failed = true;
   }
   return result;
 }
@@ -5612,7 +5668,7 @@ static enum ArithmeticValidation skip_embedded_construct_core(
 ) {
   struct EmbeddedSkip skip = {0};
   enum ArithmeticValidation result =
-    resume_embedded_construct(scanner, lexer, initial_closer, &skip);
+    resume_embedded_construct(scanner, lexer, initial_closer, false, &skip);
   clear_embedded_skip(&skip);
   return result;
 }
@@ -5816,7 +5872,6 @@ static enum ArithmeticValidation validate_arithmetic_content(
 ) {
   struct ValidationTokenBuffer *tokens = &scan->tokens;
   bool *has_expansion = &scan->has_expansion;
-  struct LookaheadLexer *lookahead = (struct LookaheadLexer *)lexer;
 
   while (true) {
     if (scan->embedded != NULL) {
@@ -5824,11 +5879,12 @@ static enum ArithmeticValidation validate_arithmetic_content(
           scan->embedded_closer ==
           ')' &&
           lexer->lookahead == '('
-        ? skip_ambiguous_substitution(NULL, lexer)
+        ? skip_ambiguous_substitution(scanner, lexer)
         : resume_embedded_construct(
-            NULL,
+            scanner,
             lexer,
             scan->embedded_closer,
+            true,
             scan->embedded
           );
       if (lookahead_is_pending(lexer)) {
@@ -5842,7 +5898,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
       }
       *has_expansion = true;
       if (!append_validation_token(tokens, VALIDATION_TOKEN_EXPANSION, 0)) {
-        return ARITHMETIC_VALIDATION_INVALID;
+        return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
     }
@@ -5867,7 +5923,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
           }
           *has_expansion = true;
           if (!append_validation_token(tokens, VALIDATION_TOKEN_EXPANSION, 0)) {
-            return ARITHMETIC_VALIDATION_INVALID;
+            return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
           }
           continue;
         }
@@ -5879,7 +5935,16 @@ static enum ArithmeticValidation validate_arithmetic_content(
       if (lexer_at_eof(lexer)) {
         return ARITHMETIC_VALIDATION_INCOMPLETE;
       }
-      return ARITHMETIC_VALIDATION_INVALID;
+      if (
+        fold_enclosed_escape_run(
+          scanner,
+          escape_run,
+          scanner->backquote_depth,
+          character
+        ) != 0
+      ) {
+        return ARITHMETIC_VALIDATION_INVALID;
+      }
     }
 
     if (lexer_at_eof(lexer)) {
@@ -5893,7 +5958,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
 
     if (character == '(') {
       if (scan->group_depth == SIZE_MAX) {
-        return ARITHMETIC_VALIDATION_INVALID;
+        return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       scan->group_depth += 1;
       lexer->advance(lexer, false);
@@ -5902,7 +5967,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
             VALIDATION_TOKEN_LEFT_PARENTHESIS,
             0
           )) {
-        return ARITHMETIC_VALIDATION_INVALID;
+        return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
     }
@@ -5916,7 +5981,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
               VALIDATION_TOKEN_RIGHT_PARENTHESIS,
               0
             )) {
-          return ARITHMETIC_VALIDATION_INVALID;
+          return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
         }
         continue;
       }
@@ -5930,7 +5995,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
 
     if (is_decimal_digit(character)) {
       if (!validate_number_source(lexer, tokens)) {
-        return ARITHMETIC_VALIDATION_INVALID;
+        return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
     }
@@ -5940,7 +6005,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
         lexer->advance(lexer, false);
       }
       if (!append_validation_token(tokens, VALIDATION_TOKEN_VARIABLE, 0)) {
-        return ARITHMETIC_VALIDATION_INVALID;
+        return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
     }
@@ -5953,8 +6018,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
         scan->embedded_closer = introducer == '(' ? ')' : '}';
         scan->embedded = ts_calloc(1, sizeof(struct EmbeddedSkip));
         if (scan->embedded == NULL) {
-          lookahead->failed = true;
-          return ARITHMETIC_VALIDATION_INVALID;
+          return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
         }
         continue;
       } else if (is_name_start_character(introducer)) {
@@ -5973,7 +6037,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
       }
       *has_expansion = true;
       if (!append_validation_token(tokens, VALIDATION_TOKEN_EXPANSION, 0)) {
-        return ARITHMETIC_VALIDATION_INVALID;
+        return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
     }
@@ -5989,7 +6053,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
       }
       *has_expansion = true;
       if (!append_validation_token(tokens, VALIDATION_TOKEN_EXPANSION, 0)) {
-        return ARITHMETIC_VALIDATION_INVALID;
+        return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
     }
@@ -5997,7 +6061,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
     if (is_arithmetic_operator_start(character) || character == '~') {
       lexer->advance(lexer, false);
       if (!validate_operator_source(lexer, tokens, character)) {
-        return ARITHMETIC_VALIDATION_INVALID;
+        return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
     }
@@ -6076,8 +6140,8 @@ static size_t structured_assignment_head_end(
 }
 
 // Keep nesting on the heap so source depth, not the C stack, is the limit.
-static bool
-structured_expression_is_valid(const struct StructuredValidation *validation) {
+static enum ArithmeticValidation
+validate_structured_expression(const struct StructuredValidation *validation) {
   uint8_t *contexts = NULL;
   size_t context_count = 0;
   size_t context_capacity = 0;
@@ -6116,8 +6180,8 @@ structured_expression_is_valid(const struct StructuredValidation *validation) {
               sizeof(uint8_t),
               16
             )) {
-          valid = false;
-          break;
+          ts_free(contexts);
+          return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
         }
         contexts[context_count] = STRUCTURED_CONTEXT_GROUP;
         context_count += 1;
@@ -6177,8 +6241,8 @@ structured_expression_is_valid(const struct StructuredValidation *validation) {
             sizeof(uint8_t),
             16
           )) {
-        valid = false;
-        break;
+        ts_free(contexts);
+        return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       contexts[context_count] = STRUCTURED_CONTEXT_TERNARY;
       context_count += 1;
@@ -6208,7 +6272,7 @@ structured_expression_is_valid(const struct StructuredValidation *validation) {
 
   valid = valid && !expecting_operand && context_count == 0;
   ts_free(contexts);
-  return valid;
+  return valid ? ARITHMETIC_VALIDATION_VALID : ARITHMETIC_VALIDATION_INVALID;
 }
 
 static bool increase_substitution_depth(struct Scanner *scanner) {
@@ -6250,7 +6314,11 @@ static enum TokenType classify_arithmetic_source(
       .tokens = scan->tokens.data,
       .count = scan->tokens.length,
     };
-    if (structured_expression_is_valid(&validation)) {
+    enum ArithmeticValidation structured =
+      validate_structured_expression(&validation);
+    if (structured == ARITHMETIC_VALIDATION_RESOURCE_FAILURE) {
+      *result = structured;
+    } else if (structured == ARITHMETIC_VALIDATION_VALID) {
       symbol = ARITHMETIC_LEFT_PARENTHESIS;
     } else if (scan->has_expansion) {
       symbol = ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS;
@@ -6259,6 +6327,9 @@ static enum TokenType classify_arithmetic_source(
     symbol = ARITHMETIC_LEFT_PARENTHESIS;
   }
 
+  if (*result == ARITHMETIC_VALIDATION_RESOURCE_FAILURE) {
+    ((struct LookaheadLexer *)lexer)->failed = true;
+  }
   return symbol;
 }
 
@@ -6525,13 +6596,10 @@ static bool scan_backquote_ordinary_escape_run(
     scanner->backquote_depth,
     lexer->lookahead
   );
-  if (
-    lexer->lookahead ==
-    '"' &&
-    folded ==
-    0 &&
-    valid_symbols[BACKQUOTE_QUOTE_PREFIX]
-  ) {
+  if (lexer->lookahead == '"' && folded == 0) {
+    if (!valid_symbols[BACKQUOTE_QUOTE_PREFIX]) {
+      return false;
+    }
     lexer->mark_end(lexer);
     lexer->result_symbol = BACKQUOTE_QUOTE_PREFIX;
     return true;
@@ -6545,13 +6613,67 @@ static bool scan_backquote_ordinary_escape_run(
   return true;
 }
 
+static bool scan_backquote_pattern_escape(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  size_t *escape_count
+) {
+  size_t depth = scanner->backquote_depth;
+  // A complete raw block yields two backslashes without changing the tail's
+  // fold.
+  size_t pair_width =
+    depth < sizeof(size_t) * CHAR_BIT - 1 ? (size_t)1 << (depth + 1) : 0;
+  while (lexer->lookahead == '\\') {
+    if (*escape_count == SIZE_MAX) {
+      return false;
+    }
+    *escape_count += 1;
+    lexer->advance(lexer, false);
+    if (*escape_count == pair_width) {
+      lexer->mark_end(lexer);
+      lexer->result_symbol = BACKQUOTE_PATTERN_ESCAPE;
+      return true;
+    }
+  }
+
+  if (lexer_at_eof(lexer) || lexer->lookahead == '\n') {
+    return false;
+  }
+  if (
+    lexer->lookahead ==
+    '`' &&
+    fold_backquote_escape_run(depth, *escape_count).acting_level <=
+    depth +
+    1
+  ) {
+    return false;
+  }
+  size_t folded =
+    fold_enclosed_escape_run(scanner, *escape_count, depth, lexer->lookahead);
+  if (folded == 0) {
+    return false;
+  }
+  if (folded == 1) {
+    lexer->advance(lexer, false);
+  }
+  lexer->mark_end(lexer);
+  lexer->result_symbol = BACKQUOTE_PATTERN_ESCAPE;
+  return true;
+}
+
 static bool scan_backquote_prefix_after_first_backslash(
   struct Scanner *scanner,
   TSLexer *lexer,
   const bool *valid_symbols
 ) {
-  size_t escape_count;
-  if (!count_escape_run(lexer, 1, &escape_count)) {
+  size_t escape_count = 1;
+  if (
+    valid_symbols[BACKQUOTE_PATTERN_ESCAPE] &&
+    scan_backquote_pattern_escape(scanner, lexer, &escape_count)
+  ) {
+    return true;
+  }
+  if (!count_escape_run(lexer, escape_count, &escape_count)) {
     return false;
   }
 
@@ -6566,6 +6688,17 @@ static bool scan_backquote_prefix_after_first_backslash(
   ) {
     lexer->result_symbol = BACKQUOTE_CONTINUATION_BEGIN;
     return true;
+  }
+
+  if (lexer->lookahead == '\n' && escape_count > 1) {
+    size_t folded =
+      fold_enclosed_plain_run(escape_count, scanner->backquote_depth);
+    enum TokenType symbol = (folded & 1) != 0 ? BACKQUOTE_CONTENT_RUN_BEGIN
+                                              : BACKQUOTE_PAIR_RUN_BEGIN;
+    if (valid_symbols[symbol]) {
+      lexer->result_symbol = (TSSymbol)symbol;
+      return true;
+    }
   }
 
   if (escape_count == 1 && lexer->lookahead == '\n') {
@@ -6743,6 +6876,34 @@ scan_here_document_end_commit(struct Scanner *scanner, TSLexer *lexer) {
   return true;
 }
 
+static bool scan_quoted_here_document_end_text(
+  const struct Scanner *scanner,
+  TSLexer *lexer
+) {
+  bool consumed = false;
+  while (
+    !lexer_at_eof(lexer) &&
+    lexer->lookahead !=
+    '\n' &&
+    !(scanner->body_backquote_depth > 0 && lexer->lookahead == '`')
+  ) {
+    if (scanner->body_backquote_depth > 0 && lexer->lookahead == '\\') {
+      do {
+        lexer->advance(lexer, false);
+      } while (lexer->lookahead == '\\');
+      if (lexer->lookahead == '`') {
+        lexer->advance(lexer, false);
+      }
+    } else {
+      lexer->advance(lexer, false);
+    }
+    consumed = true;
+  }
+  lexer->mark_end(lexer);
+  lexer->result_symbol = QUOTED_HERE_DOCUMENT_END_TEXT;
+  return consumed;
+}
+
 static bool scan_active_here_document(
   struct Scanner *scanner,
   TSLexer *lexer,
@@ -6769,16 +6930,10 @@ static bool scan_active_here_document(
                     NULL,
                     NULL
                   ) == HERE_DOCUMENT_LINE_DELIMITER;
-    if (is_end && document->quoted && valid_symbols[QUOTED_HERE_DOCUMENT_END]) {
-      lexer->mark_end(lexer);
-      lexer->result_symbol = QUOTED_HERE_DOCUMENT_END;
-      finish_active_document(scanner);
-      scanner->at_here_document_line_start = false;
-      return true;
-    }
-
-    if (is_end && !document->quoted && valid_symbols[HERE_DOCUMENT_END_BEGIN]) {
-      lexer->result_symbol = HERE_DOCUMENT_END_BEGIN;
+    enum TokenType end_begin = document->quoted ? QUOTED_HERE_DOCUMENT_END_BEGIN
+                                                : HERE_DOCUMENT_END_BEGIN;
+    if (is_end && valid_symbols[end_begin]) {
+      lexer->result_symbol = (TSSymbol)end_begin;
       scanner->at_here_document_line_start = false;
       return true;
     }
@@ -6816,9 +6971,7 @@ static bool scan_here_document_body_newline(
   TSLexer *lexer,
   const bool *valid_symbols
 ) {
-  if (
-    !valid_symbols[SEPARATOR_NEWLINE] || has_startable_pending_document(scanner)
-  ) {
+  if (has_startable_pending_document(scanner)) {
     return false;
   }
 
@@ -7411,18 +7564,15 @@ static bool scan_dispatch(
       if (lexer->lookahead == '\\') {
         return false;
       }
-      // Leave special-character prefixes unread; ordinary followers consume
-      // the final backslash during rescanning.
+      // Keep the ordinary tail's backslash visible as a grammar leaf.
       if (
         lexer->lookahead !=
         '$' &&
         lexer->lookahead !=
         '`' &&
-        lexer->lookahead !=
-        '\n' &&
         !lexer_at_eof(lexer)
       ) {
-        lexer->mark_end(lexer);
+        return false;
       }
     }
     lexer->result_symbol = BACKQUOTE_PAIR_RUN_END;
@@ -7546,6 +7696,24 @@ static bool scan_dispatch(
     return true;
   }
 
+  if (scanner->active_count > 0) {
+    if (
+      valid_symbols[HERE_DOCUMENT_END_LEADING_TABS] &&
+      scanner->active_documents[0].strip_tabs &&
+      lexer->lookahead == '\t'
+    ) {
+      do {
+        lexer->advance(lexer, false);
+      } while (lexer->lookahead == '\t');
+      lexer->mark_end(lexer);
+      lexer->result_symbol = HERE_DOCUMENT_END_LEADING_TABS;
+      return true;
+    }
+    if (valid_symbols[QUOTED_HERE_DOCUMENT_END_TEXT]) {
+      return scan_quoted_here_document_end_text(scanner, lexer);
+    }
+  }
+
   if (
     scanner->active_count >
     0 &&
@@ -7585,6 +7753,7 @@ static bool scan_dispatch(
     0 &&
     lexer->lookahead ==
     '\n' &&
+    valid_symbols[SEPARATOR_NEWLINE] &&
     !scanner->expecting_delimiter &&
     !valid_symbols[HERE_END_COMMIT] &&
     !valid_symbols[FUNCTION_BODY_CONTINUATION_BOUNDARY]
@@ -7617,7 +7786,9 @@ static bool scan_dispatch(
   }
 
   if (valid_symbols[FUNCTION_BODY_CONTINUATION_BOUNDARY]) {
-    return scan_function_body_boundary(scanner, lexer, valid_symbols);
+    lexer->mark_end(lexer);
+    lexer->result_symbol = FUNCTION_BODY_CONTINUATION_BOUNDARY;
+    return true;
   }
 
   bool element_boundary_is_valid =
@@ -7836,17 +8007,6 @@ static bool scan_dispatch(
   }
 
   if (lexer->lookahead == '!') {
-    if (valid_symbols[PIPELINE_NEGATION_BEGIN]) {
-      lexer->mark_end(lexer);
-      lexer->advance(lexer, false);
-      if (
-        !skip_line_continuations(lexer) || !is_token_delimiter(scanner, lexer)
-      ) {
-        return false;
-      }
-      lexer->result_symbol = PIPELINE_NEGATION_BEGIN;
-      return true;
-    }
     return (valid_symbols[PIPELINE_NEGATION] || valid_symbols[FNAME_BEGIN]) &&
       scan_delimited_character_token(scanner, lexer, PIPELINE_NEGATION);
   }
@@ -7913,6 +8073,7 @@ static void complete_ambiguous_substitutions(struct LookaheadLexer *lookahead) {
             substitution.raw ? NULL : &substitution.context,
             &lookahead->lexer,
             ')',
+            false,
             substitution.command
           );
           substitution.command_resume = lookahead->position;

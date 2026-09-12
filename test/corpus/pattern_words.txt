@@ -65,6 +65,7 @@ printf src/*/file?.[ch]
                           (pattern_bracket_character_source)))))))))))))
   (linebreak
     (newline_list)))
+
 ==================
 Assignments and redirections reuse word pattern source
 ==================

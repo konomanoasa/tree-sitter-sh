@@ -480,6 +480,16 @@ body
 # <- label
 #^^^^^^^^^^^^^^^^^^^^ label
 
+cat <<CONTINUED
+\
+CONTINUED
+# <- label
+#^^^^^^^^ label
+
+cat <<-STRIPPED
+	\
+STRIPPED
+
 # Pattern captures stay within their owning word
 pre*tail plain
 # <- string.regexp

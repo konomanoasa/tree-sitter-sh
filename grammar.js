@@ -57,18 +57,24 @@ const structuredSourceParts = ($) =>
     $._backquote_escaped_pair_run,
   ]);
 
-const patternRangeEndpointStructuredSourceParts = ($) =>
+const patternBracketStructuredSourceParts = ($) =>
   structuredSourcePartsWithBackquoteRuns($, [
-    $._backquote_single_escaped_pair_run,
+    alias($._backquote_pattern_escape, $.escaped_character),
   ]);
 
 // Keep runs atomic: consuming a pair first changes the remainder's fold.
-const backquoteContentEscapeRun = ($, escapeName, literalName) =>
+const backquoteContentEscapeRun = (
+  $,
+  escapeName,
+  literalName,
+  tail = alias($._backquote_escaped_tail, escapeName),
+) =>
   seq(
     $._backquote_content_run_begin,
     repeat(alias($._backquote_escaped_pair, escapeName)),
     choice(
-      alias($._backquote_escaped_tail, escapeName),
+      $._line_continuation,
+      tail,
       alias("$", literalName),
       alias($._backquote_escaped_ordinary, literalName),
     ),
@@ -78,13 +84,7 @@ const backquoteEscapedPairRun = ($, pair) =>
   seq(
     $._backquote_pair_run_begin,
     repeat1(alias($._backquote_escaped_pair, pair)),
-    $._backquote_pair_run_end,
-  );
-
-const backquoteSingleEscapedPairRun = ($, pair) =>
-  seq(
-    $._backquote_pair_run_begin,
-    alias($._backquote_escaped_pair, pair),
+    optional("\\"),
     $._backquote_pair_run_end,
   );
 
@@ -521,7 +521,7 @@ const patternDeferredBracketRangeEndpoint = ($, character, collatingSymbol) =>
     alias(character, $.pattern_bracket_character_source),
     collatingSymbol,
     $.pattern_bracket_hyphen_source,
-    ...patternRangeEndpointStructuredSourceParts($),
+    ...patternBracketStructuredSourceParts($),
   );
 
 const patternDeferredBracketMember = ($, character, range, specialSources) =>
@@ -530,7 +530,7 @@ const patternDeferredBracketMember = ($, character, range, specialSources) =>
     alias(range, $.pattern_bracket_range_source),
     alias(character, $.pattern_bracket_character_source),
     $.pattern_bracket_hyphen_source,
-    ...structuredSourceParts($),
+    ...patternBracketStructuredSourceParts($),
   );
 
 const parameterExpansion = ($, bracedExpansion) =>
@@ -824,8 +824,10 @@ export default grammar({
     $.here_document_line_end,
     $._here_document_body_start,
     $._quoted_here_document_body_start,
-    $._quoted_here_document_end,
+    $._quoted_here_document_end_begin,
+    $._quoted_here_document_end_text,
     $._here_document_end_begin,
+    $._here_document_end_leading_tabs,
     $._here_document_end_commit,
     $._here_document_sequence_end,
     $._here_document_content_line_start,
@@ -895,11 +897,11 @@ export default grammar({
     $._double_quoted_backquote_start,
     $._double_quoted_backquote_start_prefix,
     $._backquote_quote_prefix,
-    $._pipeline_negation_begin,
     $._backquote_continuation_begin,
     $.dollar_single_quote_escape,
     $._backquote_dollar_single_quote_text,
     $._backquote_dollar_single_quote_prefix,
+    $._backquote_pattern_escape,
   ],
 
   conflicts: ($) => [
@@ -936,9 +938,6 @@ export default grammar({
     [$._parenthesized_arithmetic_lvalue, $._arithmetic_primary_expression],
     [$.arithmetic_dynamic_expression],
     [$.complete_command],
-    // Defer member-versus-range-endpoint reduction until the following token;
-    // dynamic precedence selects the range when an operator follows.
-    [$._backquote_single_escaped_pair_run, $._backquote_escaped_pair_run],
   ],
 
   rules: {
@@ -1037,11 +1036,7 @@ export default grammar({
     pipeline: ($) =>
       seq(
         optional(
-          seq(
-            $._pipeline_negation_begin,
-            field("negation", $.bang),
-            optional($._horizontal_layout),
-          ),
+          seq(field("negation", $.bang), optional($._horizontal_layout)),
         ),
         field("sequence", $.pipe_sequence),
       ),
@@ -1508,27 +1503,44 @@ export default grammar({
       ),
 
     here_document_end: ($) =>
-      choice(
-        $._quoted_here_document_end,
-        seq(
-          $._here_document_end_begin,
-          repeat1(
-            choice(
-              $._here_document_end_text,
-              $._here_document_backslash,
-              $._here_document_end_backquote,
-              $._line_continuation,
+      seq(
+        choice(
+          seq(
+            $._quoted_here_document_end_begin,
+            optional($._here_document_end_leading_tabs),
+            optional(
+              alias($._quoted_here_document_end_text, $.here_document_end_text),
             ),
           ),
-          $._here_document_end_commit,
+          seq(
+            $._here_document_end_begin,
+            repeat(
+              choice($._here_document_end_leading_tabs, $._line_continuation),
+            ),
+            optional(
+              seq(
+                $._here_document_end_part,
+                repeat(choice($._here_document_end_part, $._line_continuation)),
+              ),
+            ),
+          ),
         ),
+        $._here_document_end_commit,
       ),
 
-    _here_document_end_text: (_) => token.immediate(/[^\\\n`]+/),
+    _here_document_end_part: ($) =>
+      choice(
+        $.here_document_end_text,
+        alias($._here_document_backslash, $.here_document_end_text),
+        alias($._here_document_end_backquote, $.here_document_end_text),
+      ),
+
+    here_document_end_text: (_) => token.immediate(/[^\\\n`]+/),
 
     // Backquote folding removes escapes for comparison, not from the CST;
     // a bare backtick ends the substitution rather than the delimiter line.
-    _here_document_end_backquote: (_) => token.immediate(prec(-2, "`")),
+    _here_document_end_backquote: (_) =>
+      token.immediate(prec(-2, seq(repeat("\\"), "`"))),
 
     here_document_body: ($) =>
       repeat1(
@@ -1537,6 +1549,8 @@ export default grammar({
           alias($._here_document_dollar, $.here_document_text),
           alias($._here_document_backslash, $.here_document_text),
           $.here_document_escape,
+          $._backquote_here_document_content_escape_run,
+          $._backquote_here_document_escaped_pair_run,
           $._line_continuation,
           $.parameter_expansion,
           $.command_substitution,
@@ -1554,6 +1568,26 @@ export default grammar({
 
     here_document_escape: (_) =>
       token.immediate(seq("\\", choice("$", "`", "\\"))),
+
+    _backquote_here_document_content_escape_run: ($) =>
+      backquoteContentEscapeRun(
+        $,
+        $.here_document_escape,
+        $.here_document_text,
+        choice(
+          alias($._backquote_here_document_escape_tail, $.here_document_escape),
+          alias($._backquote_here_document_text_tail, $.here_document_text),
+        ),
+      ),
+
+    _backquote_here_document_escaped_pair_run: ($) =>
+      backquoteEscapedPairRun($, $.here_document_escape),
+
+    _backquote_here_document_escape_tail: (_) =>
+      token.immediate(seq("\\", choice("$", "`"))),
+
+    _backquote_here_document_text_tail: (_) =>
+      token.immediate(seq("\\", /[^\\\n$`]/)),
 
     quoted_here_document_body: ($) =>
       repeat1(choice($.quoted_here_document_text, $._newline)),
@@ -1786,7 +1820,7 @@ export default grammar({
         $.pattern_bracket_character_source,
         $._pattern_operator_bracket_character,
         $.pattern_bracket_hyphen_source,
-        ...structuredSourceParts($),
+        ...patternBracketStructuredSourceParts($),
       ),
 
     _parameter_pattern_bracket_member: ($) =>
@@ -1802,7 +1836,7 @@ export default grammar({
         ),
         $._pattern_operator_bracket_character,
         $.pattern_bracket_hyphen_source,
-        ...structuredSourceParts($),
+        ...patternBracketStructuredSourceParts($),
       ),
 
     pattern_bracket_range_source: ($) =>
@@ -1826,7 +1860,7 @@ export default grammar({
         $._pattern_operator_bracket_character,
         $.pattern_collating_symbol_source,
         $.pattern_bracket_hyphen_source,
-        ...patternRangeEndpointStructuredSourceParts($),
+        ...patternBracketStructuredSourceParts($),
       ),
 
     _parameter_pattern_bracket_range_endpoint: ($) =>
@@ -1838,7 +1872,7 @@ export default grammar({
         $._pattern_operator_bracket_character,
         parameterPatternCollatingSymbolSource($),
         $.pattern_bracket_hyphen_source,
-        ...patternRangeEndpointStructuredSourceParts($),
+        ...patternBracketStructuredSourceParts($),
       ),
 
     pattern_bracket_character_source: ($) =>
@@ -2033,11 +2067,22 @@ export default grammar({
     _backquote_escaped_pair_run: ($) =>
       backquoteEscapedPairRun($, $.escaped_character),
 
-    _backquote_single_escaped_pair_run: ($) =>
-      backquoteSingleEscapedPairRun($, $.escaped_character),
-
     _backquote_double_quote_content_escape_run: ($) =>
-      backquoteContentEscapeRun($, $.double_quote_escape, $.double_quote_text),
+      backquoteContentEscapeRun(
+        $,
+        $.double_quote_escape,
+        $.double_quote_text,
+        choice(
+          alias($._backquote_double_quote_escape_tail, $.double_quote_escape),
+          alias($._backquote_double_quote_text_tail, $.double_quote_text),
+        ),
+      ),
+
+    _backquote_double_quote_escape_tail: (_) =>
+      token.immediate(seq("\\", choice("$", "`", '"'))),
+
+    _backquote_double_quote_text_tail: (_) =>
+      token.immediate(seq("\\", /[^\\\n$`"]/)),
 
     _backquote_double_quote_escaped_pair_run: ($) =>
       backquoteEscapedPairRun($, $.double_quote_escape),
@@ -2187,7 +2232,7 @@ export default grammar({
       choice(
         alias($._double_quoted_parameter_text, $.double_quote_text),
         alias($._double_quoted_parameter_escape, $.double_quote_escape),
-        $._backquote_double_quote_content_escape_run,
+        $._backquote_double_quoted_parameter_content_escape_run,
         $._backquote_double_quote_escaped_pair_run,
         alias($._newline, $.double_quote_text),
         $.double_quoted,
@@ -2280,6 +2325,29 @@ export default grammar({
 
     _double_quoted_parameter_escape: (_) =>
       token.immediate(seq("\\", choice("$", "`", '"', "\\", "}"))),
+
+    _backquote_double_quoted_parameter_content_escape_run: ($) =>
+      backquoteContentEscapeRun(
+        $,
+        $.double_quote_escape,
+        $.double_quote_text,
+        choice(
+          alias(
+            $._backquote_double_quoted_parameter_escape_tail,
+            $.double_quote_escape,
+          ),
+          alias(
+            $._backquote_double_quoted_parameter_text_tail,
+            $.double_quote_text,
+          ),
+        ),
+      ),
+
+    _backquote_double_quoted_parameter_escape_tail: (_) =>
+      token.immediate(seq("\\", choice("$", "`", '"', "}"))),
+
+    _backquote_double_quoted_parameter_text_tail: (_) =>
+      token.immediate(seq("\\", /[^\\\n$`"}]/)),
 
     command_substitution: ($) =>
       commandSubstitution($, $._command_or_arithmetic_substitution_start),

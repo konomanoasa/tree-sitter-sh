@@ -16,6 +16,7 @@ const contractsQuerySource = `(line_continuation) @line.continuation
   name: (fname) @function)
 `;
 const defaultParseTimeout = 10_000_000;
+const parserProcessTimeout = 60_000;
 let contractsQuery;
 let runtimeDirectory;
 let parserLibrary;
@@ -37,6 +38,14 @@ before(() => {
 after(() => {
   fs.rmSync(runtimeDirectory, { force: true, recursive: true });
 });
+
+function runParserCommand(arguments_, allowedStatuses = [0]) {
+  return runTreeSitter(arguments_, {
+    allowedStatuses,
+    environmentDirectory: runtimeDirectory,
+    timeout: parserProcessTimeout,
+  });
+}
 
 function lines(...sourceLines) {
   return `${sourceLines.join("\n")}\n`;
@@ -102,6 +111,84 @@ function applyEdits(source, edits) {
   return edited;
 }
 
+function incrementalParseArguments(source, edit, ...extra) {
+  return [
+    "parse",
+    "--lib-path",
+    parserLibrary,
+    "--lang-name",
+    grammarName,
+    "--edits",
+    edit,
+    ...extra,
+    "--",
+    source,
+  ];
+}
+
+const measurementSamples = 9;
+
+function medianDuration(samples) {
+  const sorted = [...samples].sort((left, right) => left - right);
+  return sorted[(sorted.length - 1) >> 1];
+}
+
+function readDuration(stdout, label, description) {
+  const value = Number(
+    stdout.match(new RegExp(`${label}:[ ]+([0-9.]+) ms`))?.[1],
+  );
+  assert.ok(
+    Number.isFinite(value),
+    `${description}: ${label} timing is unreadable\n${stdout}`,
+  );
+  return value;
+}
+
+function medianOperationDuration(arguments_, label, description, mode) {
+  const samples = [];
+  for (let run = 0; run < measurementSamples + 1; run += 1) {
+    const result = runParserCommand(
+      arguments_,
+      mode === "recovery" ? [0, 1] : [0],
+    );
+    samples.push(readDuration(result.stdout, label, description));
+  }
+  return medianDuration(samples.slice(1));
+}
+
+function medianFreshParseDuration(source, description, mode = "valid") {
+  return medianOperationDuration(
+    [
+      "parse",
+      "--lib-path",
+      parserLibrary,
+      "--lang-name",
+      grammarName,
+      "--time",
+      "--quiet",
+      "--",
+      source,
+    ],
+    "Parse",
+    description,
+    mode,
+  );
+}
+
+function medianIncrementalParseDuration(
+  source,
+  edit,
+  description,
+  mode = "valid",
+) {
+  return medianOperationDuration(
+    incrementalParseArguments(source, edit, "--time", "--quiet"),
+    "Edit",
+    description,
+    mode,
+  );
+}
+
 function rootEndPoint(format, output) {
   const firstLine = output.split("\n", 1)[0];
   if (format === "tree") {
@@ -124,6 +211,7 @@ function rootEndPoint(format, output) {
 }
 
 function runParse({
+  debug = false,
   description,
   edits = [],
   format = "cst",
@@ -139,6 +227,9 @@ function runParse({
     "--lang-name",
     grammarName,
   ];
+  if (debug) {
+    arguments_.push("-d");
+  }
   if (format === "cst") {
     arguments_.push("--cst");
   } else if (format === "summary") {
@@ -157,10 +248,7 @@ function runParse({
   }
   arguments_.push("--", source);
 
-  const result = runTreeSitter(arguments_, {
-    allowedStatuses: [0, 1],
-    environmentDirectory: runtimeDirectory,
-  });
+  const result = runParserCommand(arguments_, [0, 1]);
   const output = result.stdout;
   assert.ok(
     output.length > 0,
@@ -207,24 +295,21 @@ function runParse({
     expectedEnd,
     `${description}: parser stopped at ${actualEnd} before source EOF ${expectedEnd}`,
   );
-  return { output, status: result.status };
+  return { debugOutput: result.stderr, output, status: result.status };
 }
 
 function runQuery(source, queryPath = contractsQuery) {
-  return runTreeSitter(
-    [
-      "query",
-      "--lib-path",
-      parserLibrary,
-      "--lang-name",
-      grammarName,
-      "--captures",
-      queryPath,
-      "--",
-      source,
-    ],
-    { environmentDirectory: runtimeDirectory },
-  ).stdout;
+  return runParserCommand([
+    "query",
+    "--lib-path",
+    parserLibrary,
+    "--lang-name",
+    grammarName,
+    "--captures",
+    queryPath,
+    "--",
+    source,
+  ]).stdout;
 }
 
 function parseCst(output) {
@@ -407,7 +492,7 @@ function assertRepeatedColdParse(
 }
 
 function compareIncrementalAndFresh(
-  mode,
+  { debug = false, mode = "valid" },
   initialSource,
   finalSource,
   name,
@@ -424,6 +509,7 @@ function compareIncrementalAndFresh(
     `${name}: edit sequence does not produce the final source`,
   );
   const incremental = runParse({
+    debug,
     description: `${name} incremental`,
     edits,
     expectedSource: finalSource,
@@ -442,7 +528,7 @@ function compareIncrementalAndFresh(
       fresh,
     );
   }
-  return [incremental.output, fresh.output];
+  return [incremental, fresh];
 }
 
 function assertIncrementalEqualsFresh(
@@ -452,22 +538,22 @@ function assertIncrementalEqualsFresh(
   ...edits
 ) {
   return compareIncrementalAndFresh(
-    "valid",
+    {},
     initialSource,
     finalSource,
     name,
     ...edits,
-  );
+  ).map(({ output }) => output);
 }
 
 function parseRecoveryAfterEdits(initialSource, finalSource, name, ...edits) {
   return compareIncrementalAndFresh(
-    "recovery",
+    { mode: "recovery" },
     initialSource,
     finalSource,
     name,
     ...edits,
-  );
+  ).map(({ output }) => output);
 }
 
 function logicalProjection(output) {
@@ -565,6 +651,294 @@ function assertNoLineContinuations(name, source) {
     `${name}: literal backslash-newline became line_continuation`,
   );
 }
+
+test("here-document terminators separate text from continuations and line layout", () => {
+  const fixtures = [
+    {
+      name: "plain",
+      source: lines("cat <<EOF", "body", "EOF", "after"),
+      end: "2:0-3:0",
+      text: ["2:0-2:3"],
+      continuations: [],
+    },
+    {
+      name: "quoted",
+      source: lines("cat <<'EOF'", "body", "EOF", "after"),
+      end: "2:0-3:0",
+      text: ["2:0-2:3"],
+      continuations: [],
+    },
+    {
+      name: "continued",
+      source: lines("cat <<EOF", "body", "\\", "EOF", "after"),
+      end: "2:0-4:0",
+      text: ["3:0-3:3"],
+      continuations: ["2:0-3:0"],
+    },
+    {
+      name: "continued-after-text",
+      source: lines("cat <<EOF", "body", "EOF\\", "", "after"),
+      end: "2:0-4:0",
+      text: ["2:0-2:3"],
+      continuations: ["2:3-3:0"],
+    },
+    {
+      name: "stripped-tabs",
+      source: lines("cat <<-EOF", "body", "\t\tEOF", "after"),
+      end: "2:0-3:0",
+      text: ["2:2-2:5"],
+      continuations: [],
+    },
+    {
+      name: "quoted-stripped-tabs",
+      source: lines("cat <<-'EOF'", "body", "\t\tEOF", "after"),
+      end: "2:0-3:0",
+      text: ["2:2-2:5"],
+      continuations: [],
+    },
+    {
+      name: "continued-stripped-tabs",
+      source: lines("cat <<-EOF", "body", "\t\\", "\tEOF", "after"),
+      end: "2:0-4:0",
+      text: ["3:1-3:4"],
+      continuations: ["2:1-3:0"],
+    },
+    {
+      name: "repeated-continuations-and-stripped-tabs",
+      source: lines("cat <<-EOF", "body", "\t\\", "\t\t\\", "\tEOF", "after"),
+      end: "2:0-5:0",
+      text: ["4:1-4:4"],
+      continuations: ["2:1-3:0", "3:2-4:0"],
+    },
+    {
+      name: "literal-leading-tab",
+      source: lines("cat <<'\tEOF'", "body", "\tEOF", "after"),
+      end: "2:0-3:0",
+      text: ["2:0-2:4"],
+      continuations: [],
+    },
+    {
+      name: "empty",
+      source: lines("cat <<''", "body", "", "after"),
+      end: "2:0-3:0",
+      text: [],
+      continuations: [],
+    },
+    {
+      name: "empty-stripped-tabs",
+      source: lines("cat <<-''", "body", "\t\t", "after"),
+      end: "2:0-3:0",
+      text: [],
+      continuations: [],
+    },
+    {
+      name: "empty-stripped-tabs-at-eof",
+      source: "cat <<-''\nbody\n\t\t",
+      end: "2:0-2:2",
+      text: [],
+      continuations: [],
+    },
+    {
+      name: "quoted-backslash",
+      source: lines("cat <<'\\$END'", "body", "\\$END", "after"),
+      end: "2:0-3:0",
+      text: ["2:0-2:5"],
+      continuations: [],
+    },
+    {
+      name: "quoted-trailing-backslash",
+      source: lines("cat <<'END\\'", "body", "END\\", "after"),
+      end: "2:0-3:0",
+      text: ["2:0-2:4"],
+      continuations: [],
+    },
+    {
+      name: "escaped-backtick",
+      source: lines(': `cat <<"\\\\\\`"', "body", "\\`", "`", "after"),
+      end: "2:0-3:0",
+      text: ["2:0-2:2"],
+      continuations: [],
+    },
+    {
+      name: "quoted-before-backquote-closer",
+      source: lines(": `cat <<'EOF'", "body", "EOF`", "after"),
+      end: "2:0-2:3",
+      text: ["2:0-2:3"],
+      continuations: [],
+    },
+    {
+      name: "unicode",
+      source: lines("cat <<'終'", "body", "終", "after"),
+      end: "2:0-3:0",
+      text: ["2:0-2:3"],
+      continuations: [],
+    },
+    {
+      name: "non-bmp-unicode-at-eof",
+      source: "cat <<'𠮷'\nbody\n𠮷",
+      end: "2:0-2:4",
+      text: ["2:0-2:4"],
+      continuations: [],
+    },
+  ];
+  for (const fixture of fixtures) {
+    const source = writeSource(`terminator-${fixture.name}`, fixture.source);
+    const output = parseValidCst(source);
+    assertCstRange(output, fixture.end, "end: here_document_end");
+    assertOccurrenceCount(
+      output,
+      "here_document_end_text",
+      fixture.text.length,
+    );
+    for (const range of fixture.text) {
+      assertCstRange(output, range, "here_document_end_text");
+    }
+    assert.deepEqual(
+      lineContinuationManifest(runQuery(source)),
+      fixture.continuations,
+    );
+  }
+
+  const initial = writeSource("terminator-edit-initial", fixtures[0].source);
+  const continued = writeSource(
+    "terminator-edit-continued",
+    fixtures[2].source,
+  );
+  assertIncrementalEqualsFresh(
+    initial,
+    continued,
+    "continue-terminator",
+    "15 0 \\\n",
+  );
+  assertIncrementalEqualsFresh(
+    continued,
+    initial,
+    "restore-terminator",
+    "15 2",
+  );
+
+  const quoted = writeSource("terminator-edit-quoted", fixtures[1].source);
+  assertIncrementalEqualsFresh(
+    initial,
+    quoted,
+    "quote-terminator-declaration",
+    "9 0 '",
+    "6 0 '",
+  );
+  assertIncrementalEqualsFresh(
+    quoted,
+    initial,
+    "unquote-terminator-declaration",
+    "10 1",
+    "6 1",
+  );
+});
+
+test("editing a quoted terminator to empty preserves the following document", () => {
+  const namedSource = lines(
+    "cat <<-'A' <<-'B'",
+    "body-a",
+    "\tA",
+    "body-b",
+    "\tB",
+    "after",
+  );
+  const emptySource = lines(
+    "cat <<-'' <<-'B'",
+    "body-a",
+    "\t",
+    "body-b",
+    "\tB",
+    "after",
+  );
+  const named = writeSource("queued-named-terminator", namedSource);
+  const empty = writeSource("queued-empty-terminator", emptySource);
+  const fixtures = [
+    {
+      name: "remove-first-terminator-text",
+      initial: named,
+      final: empty,
+      edits: ["26 1", "8 1"],
+      text: ["4:1-4:2"],
+    },
+    {
+      name: "restore-first-terminator-text",
+      initial: empty,
+      final: named,
+      edits: ["25 0 A", "8 0 A"],
+      text: ["2:1-2:2", "4:1-4:2"],
+    },
+  ];
+  for (const fixture of fixtures) {
+    for (const output of assertIncrementalEqualsFresh(
+      fixture.initial,
+      fixture.final,
+      fixture.name,
+      ...fixture.edits,
+    )) {
+      assertOccurrenceCount(output, "end: here_document_end", 2);
+      assertCstRange(output, "2:0-3:0", "end: here_document_end");
+      assertCstRange(output, "3:0-4:0", "body: quoted_here_document_body");
+      assertCstRange(output, "4:0-5:0", "end: here_document_end");
+      assertOccurrenceCount(
+        output,
+        "here_document_end_text",
+        fixture.text.length,
+      );
+      for (const range of fixture.text) {
+        assertCstRange(output, range, "here_document_end_text");
+      }
+      assertCstDirectChildRange(
+        output,
+        "4:0-5:0",
+        "end: here_document_end",
+        "4:1-4:2",
+        "here_document_end_text `B`",
+      );
+    }
+  }
+});
+
+test("here-document parameter brackets keep raw newline members across edits", () => {
+  const closedSource = lines("cat <<EOF", "${x#[a", "b]}", "EOF");
+  const openSource = lines("cat <<EOF", "${x#[a", "b}", "EOF");
+  const closed = writeSource("here-document-multiline-bracket", closedSource);
+  const open = writeSource(
+    "here-document-unclosed-multiline-bracket",
+    openSource,
+  );
+  const closerOffset = closedSource.indexOf("]");
+
+  for (const output of assertIncrementalEqualsFresh(
+    open,
+    closed,
+    "close-multiline-here-document-bracket",
+    `${closerOffset} 0 ]`,
+  )) {
+    assertOccurrenceCount(output, "pattern_bracket_source", 1);
+    assertCstRange(output, "1:4-2:2", "pattern_bracket_source");
+    assertCstRange(
+      output,
+      "1:6-2:0",
+      "member: pattern_bracket_character_source",
+    );
+    assertCstRange(
+      output,
+      "2:0-2:1",
+      "member: pattern_bracket_character_source",
+    );
+    assertCstRange(output, "3:0-4:0", "end: here_document_end");
+  }
+  for (const output of assertIncrementalEqualsFresh(
+    closed,
+    open,
+    "open-multiline-here-document-bracket",
+    `${closerOffset} 1`,
+  )) {
+    assertNotContains(output, "pattern_bracket_source");
+    assertCstRange(output, "3:0-4:0", "end: here_document_end");
+  }
+});
 
 test("parser rejects a timeout as structural recovery", () => {
   const source = writeSource("timeout-guard", `${":\n".repeat(10_000)}`);
@@ -1658,6 +2032,240 @@ test("substitution, redirection, and token boundaries retain ownership", () => {
   );
 });
 
+test("here-document body escape runs fold all enclosing backquotes", () => {
+  for (const [
+    name,
+    initialText,
+    finalText,
+    offset,
+    parameterRange,
+    escapeRanges,
+  ] of [
+    [
+      "plain",
+      ": `cat <<EOF\n\\$x\nEOF\n`\n",
+      ": `cat <<EOF\n\\\\$x\nEOF\n`\n",
+      13,
+      "1:0-1:3",
+      ["1:0-1:2"],
+    ],
+    [
+      "nested",
+      ": `: \\`cat <<EOF\n\\\\\\$x\nEOF\n\\`\n`\n",
+      ": `: \\`cat <<EOF\n\\\\\\\\$x\nEOF\n\\`\n`\n",
+      17,
+      "1:0-1:5",
+      ["1:0-1:2", "1:2-1:4"],
+    ],
+    [
+      "strip-tabs",
+      ": `cat <<-EOF\n\t\\$x\n\tEOF\n`\n",
+      ": `cat <<-EOF\n\t\\\\$x\n\tEOF\n`\n",
+      15,
+      "1:1-1:4",
+      ["1:1-1:3"],
+    ],
+  ]) {
+    const initial = writeSource(`${name}-body-expansion`, initialText);
+    const final = writeSource(`${name}-body-literal-dollar`, finalText);
+    const initialOutput = parseValidCst(initial);
+    assertCstRange(initialOutput, parameterRange, "parameter_expansion");
+    assertOccurrenceCount(initialOutput, "parameter_expansion\n", 1);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `${name}-escape-body-dollar`,
+      `${offset} 0 \\`,
+    )) {
+      assertNotContains(output, "parameter_expansion");
+      for (const range of escapeRanges)
+        assertCstRange(output, range, "here_document_escape");
+      assertCstRange(output, "1:0-2:0", "body: here_document_body");
+      assertCstRange(output, "2:0-3:0", "end: here_document_end");
+    }
+    assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `${name}-restore-body-expansion`,
+      `${offset} 1`,
+    );
+  }
+
+  const quotedTail = writeSource(
+    "body-quote-after-enclosing-backquote",
+    ': "`cat <<EOF\n\\"\nEOF\n`"\n',
+  );
+  const quotedTailOutput = parseValidCst(quotedTail);
+  assertCstRange(quotedTailOutput, "1:0-1:1", "here_document_text");
+  assertCstRange(quotedTailOutput, "1:1-1:2", "here_document_text");
+  assertOccurrenceCount(quotedTailOutput, "double_quoted\n", 1);
+  assertNotContains(quotedTailOutput, "here_document_escape");
+
+  const quotedDelimiter = writeSource(
+    "quoted-body-retains-raw-run",
+    ": `cat <<'EOF'\n\\\\$x\nEOF\n`\n",
+  );
+  const quotedOutput = parseValidCst(quotedDelimiter);
+  assertCstRange(quotedOutput, "1:0-1:4", "quoted_here_document_text");
+  assertNotContains(quotedOutput, "parameter_expansion");
+  assertNotContains(quotedOutput, "here_document_escape");
+});
+
+test("paired here-document backslashes retain the newline before the delimiter", () => {
+  for (const [name, initialText, finalText, offset, width] of [
+    [
+      "plain",
+      ": `cat <<EOF\nbody\nEOF\n`\n",
+      ": `cat <<EOF\n\\\\\\\\\nEOF\n`\n",
+      13,
+      4,
+    ],
+    [
+      "quoted",
+      ': "`cat <<EOF\nbody\nEOF\n`"\n',
+      ': "`cat <<EOF\n\\\\\\\\\nEOF\n`"\n',
+      14,
+      4,
+    ],
+    [
+      "nested",
+      ": `: \\`cat <<EOF\nbody\nEOF\n\\`\n`\n",
+      ": `: \\`cat <<EOF\n\\\\\\\\\\\\\\\\\nEOF\n\\`\n`\n",
+      17,
+      8,
+    ],
+  ]) {
+    const initial = writeSource(`${name}-body-before-paired-run`, initialText);
+    const final = writeSource(`${name}-body-paired-newline`, finalText);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `${name}-replace-body-with-paired-run`,
+      `${offset} 4 ${"\\".repeat(width)}`,
+    )) {
+      assertCstRange(output, "1:0-2:0", "body: here_document_body");
+      assertCstRange(output, "2:0-3:0", "end: here_document_end");
+      assertNotContains(output, "line_continuation");
+    }
+    assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `${name}-restore-body-before-paired-run`,
+      `${offset} ${width} body`,
+    );
+  }
+});
+
+test("backquote pair runs retain the ordinary tail backslash in the CST", () => {
+  for (const [
+    name,
+    initialText,
+    finalText,
+    offset,
+    tailRange,
+    literalRange,
+    literalNode,
+  ] of [
+    [
+      "word",
+      ": `: \\\\q`\n",
+      ": `: \\\\\\q`\n",
+      5,
+      "0:7-0:8",
+      "0:8-0:9",
+      "literal",
+    ],
+    [
+      "double-quote",
+      ': `: "\\\\q"`\n',
+      ': `: "\\\\\\q"`\n',
+      6,
+      "0:8-0:9",
+      "0:9-0:10",
+      "double_quote_text",
+    ],
+    [
+      "here-document",
+      ": `cat <<EOF\n\\\\q\nEOF\n`\n",
+      ": `cat <<EOF\n\\\\\\q\nEOF\n`\n",
+      13,
+      "1:2-1:3",
+      "1:3-1:4",
+      "here_document_text",
+    ],
+  ]) {
+    const initial = writeSource(`${name}-paired-run`, initialText);
+    const final = writeSource(`${name}-ordinary-tail`, finalText);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `${name}-grow-ordinary-run`,
+      `${offset} 0 \\`,
+    )) {
+      assertCstRange(output, tailRange, '"\\\\"');
+      assertCstRange(output, literalRange, literalNode);
+    }
+    assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `${name}-shrink-ordinary-run`,
+      `${offset} 1`,
+    );
+  }
+});
+
+test("backquote tails follow double-quote and parameter operand escape rules", () => {
+  for (const [
+    name,
+    initialText,
+    finalText,
+    offset,
+    range,
+    finalNode,
+    finalEscapeCount,
+  ] of [
+    [
+      "ordinary",
+      ': `: "\\a"`\n',
+      ': `: "\\}"`\n',
+      7,
+      "0:6-0:8",
+      "double_quote_text",
+      0,
+    ],
+    [
+      "parameter",
+      ': `: "$' + '{x:-\\a}"`\n',
+      ': `: "$' + '{x:-\\}}"`\n',
+      12,
+      "0:11-0:13",
+      "double_quote_escape",
+      1,
+    ],
+  ]) {
+    const initial = writeSource(`${name}-ordinary-quoted-tail`, initialText);
+    const final = writeSource(`${name}-closing-brace-tail`, finalText);
+    const initialOutput = parseValidCst(initial);
+    assertCstRange(initialOutput, range, "double_quote_text");
+    assertNotContains(initialOutput, "double_quote_escape");
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `${name}-replace-tail-with-brace`,
+      `${offset} 1 }`,
+    )) {
+      assertCstRange(output, range, finalNode);
+      assertOccurrenceCount(output, "double_quote_escape", finalEscapeCount);
+    }
+    assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `${name}-restore-ordinary-tail`,
+      `${offset} 1 a`,
+    );
+  }
+});
+
 test("here-document state, delimiters, and bodies remain deterministic", () => {
   for (const fixture of [
     {
@@ -2070,7 +2678,235 @@ test("here-document state, delimiters, and bodies remain deterministic", () => {
   }
 });
 
-test("word, parameter, and arithmetic categories survive edits", () => {
+test("embedded command boundaries preserve enclosing source structure", () => {
+  for (const [name, source, range, node] of [
+    [
+      "nested-case",
+      lines(": [$(: $(case x in x) :;; esac))]"),
+      "0:2-0:33",
+      "pattern_bracket_source",
+    ],
+    [
+      "nested-comment",
+      lines(": [$(: $(# comment )", ":))]"),
+      "0:2-1:4",
+      "pattern_bracket_source",
+    ],
+    [
+      "quoted-nested-case",
+      lines(': [$(: "$(case x in x) : \'"\';; esac)")]'),
+      "0:2-0:39",
+      "pattern_bracket_source",
+    ],
+    [
+      "function-case-body",
+      lines(": [$(f() case x in x) :;; esac)]"),
+      "0:2-0:32",
+      "pattern_bracket_source",
+    ],
+    [
+      "function-brace-body",
+      lines(": [$(f() { case x in x) :;; esac; })]"),
+      "0:2-0:37",
+      "pattern_bracket_source",
+    ],
+    [
+      "arithmetic-nested-case",
+      lines(': "$(( $(printf %s $(case x in x) printf 1;; esac)) ))"'),
+      "0:3-0:54",
+      "arithmetic_expansion",
+    ],
+    [
+      "for-name-without-separator",
+      lines(": [$(for case do case x in x) :;; esac; done)]"),
+      "0:2-0:46",
+      "pattern_bracket_source",
+    ],
+    [
+      "for-header-linebreak-and-reserved-wordlist",
+      lines(
+        ": [$(for x",
+        "in case esac do for; do case x in x) :;; esac; done)]",
+      ),
+      "0:2-1:53",
+      "pattern_bracket_source",
+    ],
+    [
+      "closed-subshell-with-redirects",
+      lines(": [$(case x in x) (: )2>pre$(:)esac 3<case esac)]"),
+      "0:2-0:49",
+      "pattern_bracket_source",
+    ],
+    [
+      "closed-brace-group",
+      lines(": [$(case x in x) { :; } esac)]"),
+      "0:2-0:31",
+      "pattern_bracket_source",
+    ],
+    [
+      "closed-if-clause",
+      lines(": [$(case x in x) if :; then :; fi esac)]"),
+      "0:2-0:41",
+      "pattern_bracket_source",
+    ],
+    [
+      "simple-command-redirect-keeps-suffix-word",
+      lines(": [$(case x in x) : >case esac;; y) :;; esac)]"),
+      "0:2-0:46",
+      "pattern_bracket_source",
+    ],
+  ]) {
+    const file = writeSource(name, source);
+    const { output } = runParse({ source: file, description: name });
+    assertCstRange(output, range, node);
+    assertOccurrenceCount(output, node, 1);
+  }
+
+  const initial = writeSource(
+    "nested-case-with-opening-blank",
+    lines(": [$(: $( case x in x) :;; esac))]"),
+  );
+  const final = writeSource(
+    "nested-case-without-opening-blank",
+    lines(": [$(: $(case x in x) :;; esac))]"),
+  );
+  for (const output of assertIncrementalEqualsFresh(
+    initial,
+    final,
+    "remove-nested-command-opening-blank",
+    "9 1",
+  )) {
+    assertCstRange(output, "0:2-0:33", "pattern_bracket_source");
+  }
+  for (const output of assertIncrementalEqualsFresh(
+    final,
+    initial,
+    "restore-nested-command-opening-blank",
+    "9 0  ",
+  )) {
+    assertCstRange(output, "0:2-0:34", "pattern_bracket_source");
+  }
+});
+
+test("enclosing backquote escapes leave an unquoted delimiter unquoted", () => {
+  for (const [name, contents, endRange, parameterRange] of [
+    [
+      "delimiter-outer-raw-escaping",
+      lines(": `cat <<\\`printf x\\`", "\\$name", "\\`printf x\\`", "`"),
+      "0:9-0:21",
+      "1:0-1:6",
+    ],
+    [
+      "delimiter-outer-double-quoted-escaping",
+      lines(': "`cat <<\\`printf x\\`', "\\$name", "\\`printf x\\`", '`"'),
+      "0:10-0:22",
+      "1:0-1:6",
+    ],
+    [
+      "delimiter-outer-nested-escaping",
+      lines(
+        ': `: "\\`cat <<\\\\\\`printf x\\\\\\`',
+        "\\\\\\$name",
+        "\\\\\\`printf x\\\\\\`",
+        '\\`"',
+        "`",
+      ),
+      "0:14-0:30",
+      "1:0-1:8",
+    ],
+  ]) {
+    const source = writeSource(name, contents);
+    const { output } = runParse({ source, description: name });
+    assertCstRange(output, endRange, "end: here_end");
+    assertOccurrenceCount(output, "quoted_here_document_body", 0);
+    assertOccurrenceCount(output, "here_document_body", 1);
+    assertCstRange(output, parameterRange, "parameter_expansion");
+    assertCstRange(output, "2:0-3:0", "end: here_document_end");
+  }
+});
+
+test("here-document delimiter commands share command boundary transitions", () => {
+  for (const [name, contents, range] of [
+    [
+      "delimiter-for-without-separator",
+      lines(
+        "cat <<$(for x do case y in y) : ;; esac; done)",
+        "$(for x do case y in y) : ;; esac; done)",
+        "echo after",
+      ),
+      "0:6-0:46",
+    ],
+    [
+      "delimiter-closed-command-redirect",
+      lines(
+        "cat <<$(case x in x) case y in y) { :; } >file esac;; z) : ;; esac)",
+        "$(case x in x) case y in y) { :; } >file esac;; z) : ;; esac)",
+        "echo after",
+      ),
+      "0:6-0:67",
+    ],
+  ]) {
+    const source = writeSource(name, contents);
+    const { output } = runParse({ source, description: name });
+    assertCstDirectChildRange(
+      output,
+      range,
+      "end: here_end",
+      range,
+      "word: word",
+    );
+    assertCstRange(output, "1:0-2:0", "end: here_document_end");
+    assertCstRange(output, "2:0-2:10", "command: complete_command");
+  }
+});
+
+test("word, pipeline, parameter, and arithmetic categories survive edits", () => {
+  for (const fixture of [
+    {
+      name: "separate-pipeline-negation-from-word",
+      initial: "!foo\n",
+      final: "! foo\n",
+      edit: "1 0  ",
+      reverse: "1 1",
+      initialBangCount: 0,
+    },
+    {
+      name: "move-pipeline-negation-out-of-command-suffix",
+      initial: "echo ! foo\n",
+      final: "! foo\n",
+      edit: "0 5",
+      reverse: "0 0 echo ",
+      initialBangCount: 0,
+    },
+    {
+      name: "continue-layout-after-pipeline-negation",
+      initial: "! :\n",
+      final: "!\\\n :\n",
+      edit: "1 0 \\\n",
+      reverse: "1 2",
+      initialBangCount: 1,
+    },
+  ]) {
+    const initial = writeSource(`${fixture.name}-initial`, fixture.initial);
+    const final = writeSource(`${fixture.name}-final`, fixture.final);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      fixture.name,
+      fixture.edit,
+    )) {
+      assertCstRange(output, "0:0-0:1", "negation: bang");
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `reverse-${fixture.name}`,
+      fixture.reverse,
+    )) {
+      assertOccurrenceCount(output, "negation: bang", fixture.initialBangCount);
+    }
+  }
+
   const descriptorInitial = writeSource(
     "descriptor-initial",
     lines("<input 2x>output"),
@@ -2636,6 +3472,187 @@ test("editing enclosing quotes updates backquote command word structure", () => 
         quoteNode === "dollar_single_quoted" ? 1 : 0,
       );
     }
+  }
+});
+
+test("embedded lookahead inherits parameter quoting and resets it for patterns and commands", () => {
+  const cases = [
+    {
+      name: "arithmetic-quoted-parameter-apostrophe",
+      source: 'echo "$(( $' + "{x:-'} $op 1 ))\"",
+      range: "0:10-0:23",
+      node: "arithmetic_dynamic_expression",
+      singleQuotes: 0,
+    },
+    {
+      name: "bracket-quoted-parameter-apostrophe",
+      source: ": $" + '{v#["$' + "{x-'}\"]}",
+      range: "0:6-0:16",
+      node: "pattern_bracket_source",
+      singleQuotes: 0,
+    },
+    {
+      name: "arithmetic-nested-quoted-parameter",
+      source: ": $(( $" + "{x-$" + "{y-'}} $op 1 ))",
+      range: "0:6-0:23",
+      node: "arithmetic_dynamic_expression",
+      singleQuotes: 0,
+    },
+    {
+      name: "arithmetic-positional-parameter-pattern",
+      source: ": $(( $" + "{10#'}'} $op 1 ))",
+      range: "0:6-0:21",
+      node: "arithmetic_dynamic_expression",
+      singleQuotes: 1,
+    },
+    {
+      name: "arithmetic-named-parameter-pattern",
+      source: ": $(( $" + "{name%%'}'} $op 1 ))",
+      range: "0:6-0:24",
+      node: "arithmetic_dynamic_expression",
+      singleQuotes: 1,
+    },
+    {
+      name: "arithmetic-command-quoted-parameter",
+      source: ': $(( $(printf %s "$' + "{x-'}\") $op 1 ))",
+      range: "0:6-0:33",
+      node: "arithmetic_dynamic_expression",
+      singleQuotes: 0,
+    },
+    {
+      name: "arithmetic-command-single-quoted-parenthesis",
+      source: ": $(( $(printf %s ')') $op 1 ))",
+      range: "0:6-0:28",
+      node: "arithmetic_dynamic_expression",
+      singleQuotes: 1,
+    },
+    {
+      name: "bracket-quoted-parameter-literal-dollar-apostrophe",
+      source: ": $" + '{v#["$' + "{x-$'}\"]}",
+      range: "0:6-0:17",
+      node: "pattern_bracket_source",
+      singleQuotes: 0,
+    },
+  ];
+  for (const { name, source, range, node, singleQuotes } of cases) {
+    const sourcePath = writeSource(name, lines(source));
+    const output = parseValidCst(sourcePath);
+    assertCstRange(output, range, node);
+    assertOccurrenceCount(output, "single_quoted", singleQuotes);
+    assertOccurrenceCount(output, "dollar_single_quoted", 0);
+  }
+
+  const initial = writeSource(
+    "quoted-parameter-bracket-before-apostrophe-edit",
+    lines(": $" + '{v#["$' + '{x-a}"]}'),
+  );
+  const final = writeSource(
+    "quoted-parameter-bracket-after-apostrophe-edit",
+    lines(": $" + '{v#["$' + "{x-'}\"]}"),
+  );
+  assertIncrementalEqualsFresh(
+    initial,
+    final,
+    "quoted-parameter-apostrophe-retains-bracket",
+    "12 1 '",
+  );
+});
+
+test("arithmetic lookahead folds surrounding backquote escapes", () => {
+  const cases = [
+    {
+      name: "parameter-prefix",
+      initial: ": `: $((x))`",
+      final: ": `: $((\\$x))`",
+      edit: "8 0 \\$",
+      reverse: "8 2",
+      arithmetic: 1,
+      commands: 0,
+      ranges: [
+        ["0:5-0:13", "arithmetic_expansion"],
+        ["0:8-0:11", "expression: parameter_expansion"],
+      ],
+    },
+    {
+      name: "nested-arithmetic-parameter-prefix",
+      initial: ": `: $(( $((x)) ))`",
+      final: ": `: $(( $((\\$x)) ))`",
+      edit: "12 0 \\$",
+      reverse: "12 2",
+      arithmetic: 2,
+      commands: 0,
+      ranges: [
+        ["0:5-0:20", "arithmetic_expansion"],
+        ["0:9-0:17", "expression: arithmetic_expansion"],
+        ["0:12-0:15", "expression: parameter_expansion"],
+      ],
+    },
+    {
+      name: "command-quoted-parenthesis",
+      initial: ': "`: $(( $(printf 1; : \\"a\\") ))`"',
+      final: ': "`: $(( $(printf 1; : \\")\\") ))`"',
+      edit: "26 1 )",
+      reverse: "26 1 a",
+      arithmetic: 1,
+      commands: 1,
+      ranges: [
+        ["0:6-0:33", "arithmetic_expansion"],
+        ["0:10-0:30", "expression: command_substitution"],
+        ["0:24-0:29", "double_quoted"],
+      ],
+    },
+    {
+      name: "parameter-quoted-brace",
+      initial: ': "`: $(( $' + '{x:-\\"a\\"} ))`"',
+      final: ': "`: $(( $' + '{x:-\\"}\\"} ))`"',
+      edit: "17 1 }",
+      reverse: "17 1 a",
+      arithmetic: 1,
+      commands: 0,
+      ranges: [
+        ["0:6-0:24", "arithmetic_expansion"],
+        ["0:10-0:21", "expression: parameter_expansion"],
+        ["0:15-0:20", "double_quoted"],
+      ],
+    },
+    {
+      name: "surviving-parameter-escape",
+      initial: ": `: $((\\$x))`",
+      final: ": `: $((\\\\$x))`",
+      edit: "8 0 \\",
+      reverse: "8 1",
+      arithmetic: 0,
+      commands: 1,
+      ranges: [["0:5-0:14", "command_substitution"]],
+    },
+  ];
+  for (const entry of cases) {
+    const initial = writeSource(
+      `arithmetic-backquote-${entry.name}-initial`,
+      lines(entry.initial),
+    );
+    const final = writeSource(
+      `arithmetic-backquote-${entry.name}-final`,
+      lines(entry.final),
+    );
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `change-arithmetic-backquote-${entry.name}`,
+      entry.edit,
+    )) {
+      assertOccurrenceCount(output, "arithmetic_expansion\n", entry.arithmetic);
+      assertOccurrenceCount(output, "command_substitution\n", entry.commands);
+      for (const [range, node] of entry.ranges) {
+        assertCstRange(output, range, node);
+      }
+    }
+    assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `restore-arithmetic-backquote-${entry.name}`,
+      entry.reverse,
+    );
   }
 });
 
@@ -3714,6 +4731,133 @@ test("an elif consequence owns the continued layout before its else", () => {
   );
 });
 
+test("backquote bracket escapes retain logical range endpoints and separate members", () => {
+  const slash = "\\";
+  const cases = [
+    {
+      name: "escaped-ordinary-endpoint",
+      source: lines(`: \`: [0-${slash.repeat(2)}z]\``),
+      range: "0:6-0:11",
+      escapes: ["0:8-0:11"],
+    },
+    {
+      name: "odd-raw-pair-endpoint",
+      source: lines(`: \`: [0-${slash.repeat(3)}z]\``),
+      range: "0:6-0:11",
+      escapes: ["0:8-0:11"],
+    },
+    {
+      name: "complete-raw-pair-endpoint",
+      source: lines(`: \`: [0-${slash.repeat(4)}z]\``),
+      range: "0:6-0:12",
+      escapes: ["0:8-0:12"],
+    },
+    {
+      name: "odd-trailing-member",
+      source: lines(`: \`: [0-${slash.repeat(7)}z]\``),
+      range: "0:6-0:12",
+      escapes: ["0:8-0:12", "0:12-0:15"],
+    },
+    {
+      name: "complete-trailing-member",
+      source: lines(`: \`: [0-${slash.repeat(8)}z]\``),
+      range: "0:6-0:12",
+      escapes: ["0:8-0:12", "0:12-0:16"],
+    },
+    {
+      name: "parameter-pattern-endpoint",
+      source: lines(`: \`: \${v#[0-${slash.repeat(4)}z]}\``),
+      range: "0:10-0:16",
+      escapes: ["0:12-0:16"],
+    },
+    {
+      name: "special-marker-prefixed-range",
+      source: lines(`: \`: [:-${slash.repeat(4)}z]\``),
+      range: "0:6-0:12",
+      escapes: ["0:8-0:12"],
+    },
+    {
+      name: "escaped-range-start",
+      source: lines(`: \`: [${slash.repeat(4)}-z]\``),
+      range: "0:6-0:12",
+      escapes: ["0:6-0:10"],
+    },
+    {
+      name: "nested-backquote-endpoint",
+      source: lines(`: \`: \\\`: [0-${slash.repeat(8)}z]\\\`\``),
+      range: "0:10-0:20",
+      escapes: ["0:12-0:20"],
+    },
+    {
+      name: "nested-backquote-separate-member",
+      source: lines(`: \`: \\\`: [0-${slash.repeat(16)}z]\\\`\``),
+      range: "0:10-0:20",
+      escapes: ["0:12-0:20", "0:20-0:28"],
+    },
+    {
+      name: "escaped-dollar-endpoint",
+      source: lines(`: \`: [0-${slash.repeat(3)}$v]\``),
+      range: "0:6-0:12",
+      escapes: ["0:8-0:12"],
+    },
+    {
+      name: "parameter-after-escaped-endpoint",
+      source: lines(`: \`: [0-${slash.repeat(5)}$v]\``),
+      range: "0:6-0:12",
+      escapes: ["0:8-0:12"],
+      parameter: "0:12-0:15",
+    },
+    {
+      name: "escaped-backtick-endpoint",
+      source: lines(`: \`: [0-${slash.repeat(3)}\`z]\``),
+      range: "0:6-0:12",
+      escapes: ["0:8-0:12"],
+    },
+    {
+      name: "enclosing-double-quote-fold",
+      source: lines(`: "\`: [0-${slash.repeat(3)}"]\`"`),
+      range: "0:7-0:13",
+      escapes: ["0:9-0:13"],
+    },
+  ];
+  const paths = new Map();
+  for (const entry of cases) {
+    const source = writeSource(entry.name, entry.source);
+    paths.set(entry.name, source);
+    const output = parseValidCst(source);
+    assertOccurrenceCount(output, "pattern_bracket_range_source", 1);
+    assertCstRange(output, entry.range, "pattern_bracket_range_source");
+    assertOccurrenceCount(output, "escaped_character", entry.escapes.length);
+    for (const range of entry.escapes) {
+      assertCstRange(output, range, "escaped_character");
+    }
+    if (entry.parameter !== undefined) {
+      assertCstRange(output, entry.parameter, "parameter_expansion");
+    }
+  }
+
+  for (const [initialName, finalName, offset, inserted] of [
+    ["escaped-ordinary-endpoint", "complete-raw-pair-endpoint", 8, 2],
+    ["complete-raw-pair-endpoint", "complete-trailing-member", 8, 4],
+    ["nested-backquote-endpoint", "nested-backquote-separate-member", 12, 8],
+  ]) {
+    const initial = paths.get(initialName);
+    const final = paths.get(finalName);
+    assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `grow-${initialName}`,
+      `${offset} 0 ${slash.repeat(inserted)}`,
+    );
+    assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `shrink-${finalName}`,
+      `${offset} ${inserted}`,
+    );
+  }
+});
+
 test("enclosing backquote escape runs keep bracket classification across edits", () => {
   for (const [
     name,
@@ -4243,6 +5387,46 @@ test("compound-list and case branches retain their public structure", () => {
   );
 });
 
+test("function bodies become complete after recovery edits", () => {
+  for (const [name, initialContents, finalContents, edit, bodyRange] of [
+    [
+      "missing-function-body",
+      "f()\n",
+      "f()\n{ :; }\n",
+      "4 0 { :; }\n",
+      "1:0-1:6",
+    ],
+    [
+      "replace-invalid-function-body",
+      "f() words\n",
+      "f() { :; }\n",
+      "4 6 { :; }\n",
+      "0:4-0:10",
+    ],
+    [
+      "complete-function-after-here-document",
+      "cat <<E; f()\nbody\nE\n",
+      "cat <<E; f()\nbody\nE\n{ :; }\n",
+      "20 0 { :; }\n",
+      "3:0-3:6",
+    ],
+  ]) {
+    const initial = writeSource(`${name}-initial`, initialContents);
+    const final = writeSource(`${name}-final`, finalContents);
+    parseRecovery(initial, `${name} recovery`);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      name,
+      edit,
+    )) {
+      assertOccurrenceCount(output, "function_definition", 1);
+      assertCstRange(output, bodyRange, "body: function_body");
+      assertCstRange(output, bodyRange, "brace_group");
+    }
+  }
+});
+
 test("realistic function structure remains queryable", () => {
   const functionStructure = [
     "sample_log() {",
@@ -4618,8 +5802,73 @@ test("bracket fallback remains stable across complete and incomplete edits", () 
   }
 });
 
+test("nested here-documents activate at the scanner state capacity", () => {
+  function source(outerLength) {
+    const outer = "A".repeat(outerLength);
+    const first = "B".repeat(251);
+    const second = "C".repeat(251);
+    return lines(
+      `cat <<${outer}`,
+      `$(cat <<${first} <<${second}`,
+      "b",
+      first,
+      "c",
+      second,
+      ")",
+      outer,
+      "after",
+    );
+  }
+
+  const below = writeSource("nested-documents-below-capacity", source(501));
+  const exact = writeSource("nested-documents-at-capacity", source(503));
+  const above = writeSource("nested-documents-above-capacity", source(504));
+  const outputs = [parseValidCst(exact)];
+  outputs.push(
+    ...assertIncrementalEqualsFresh(
+      below,
+      exact,
+      "grow-nested-document-metadata-to-capacity",
+      `${source(501).lastIndexOf("\nA") + 1} 0 AA`,
+      "6 0 AA",
+    ),
+    ...assertIncrementalEqualsFresh(
+      above,
+      exact,
+      "restore-nested-document-metadata-within-capacity",
+      `${source(504).lastIndexOf("\nA") + 1} 1`,
+      "6 1",
+    ),
+  );
+  for (const output of outputs) {
+    assertOccurrenceCount(output, "document: here_document", 3);
+    assertCstRange(output, "0:6-0:509", "end: here_end");
+    assertCstRange(output, "1:8-1:259", "end: here_end");
+    assertCstRange(output, "1:262-1:513", "end: here_end");
+    assertCstRange(output, "1:0-7:0", "body: here_document_body");
+    assertCstRange(output, "2:0-3:0", "body: here_document_body");
+    assertCstRange(output, "4:0-5:0", "body: here_document_body");
+    assertCstRange(output, "3:0-4:0", "end: here_document_end");
+    assertCstRange(output, "5:0-6:0", "end: here_document_end");
+    assertCstRange(output, "7:0-8:0", "end: here_document_end");
+    assertCstRange(output, "8:0-8:5", "literal `after`");
+  }
+  assertIncrementalEqualsFresh(
+    exact,
+    below,
+    "shrink-nested-document-metadata-below-capacity",
+    `${source(503).lastIndexOf("\nA") + 1} 2`,
+    "6 2",
+  );
+  assertRepeatedColdParse("resource", above, "nested-documents-above-capacity");
+});
+
 test("parser resource bounds preserve complete roots and deterministic recovery", () => {
   const largeValidSources = [
+    [
+      "deep-arithmetic-expansions",
+      `echo ${"$((".repeat(2000)}1${"))".repeat(2000)}\n`,
+    ],
     ["unmatched-brackets", `printf ${"[".repeat(80_000)}\n`],
     ["long-bracket-list", `printf [${"a".repeat(16_000)}]\n`],
     ["repeated-brackets", `printf ${"[abc]".repeat(4_000)}\n`],
@@ -4682,13 +5931,70 @@ test("parser resource bounds preserve complete roots and deterministic recovery"
   assertValid(writeSource("nested-backquotes", nestedBackquotes));
 });
 
-test("parser scaling remains linear within the existing guard", () => {
-  function measure(source, name) {
-    const started = process.hrtime.bigint();
-    runParse({ description: `${name} performance`, format: "summary", source });
-    return Number((process.hrtime.bigint() - started) / 1_000_000n);
+test("nested arithmetic classification follows edits and recovery", () => {
+  const fixtures = [
+    {
+      name: "structured-to-dynamic-inner-expression",
+      initial: ": $(( $((1 + 2)) + $((3)) ))\n",
+      removed: "+",
+      inserted: "$op",
+      expected: "arithmetic_dynamic_expression",
+    },
+    {
+      name: "parameter-word-has-an-independent-arithmetic-context",
+      initial: ": $(( $((1)) + $value + $((4)) ))\n",
+      removed: "$value",
+      inserted: `\${value:-$((2 $op 3))}`,
+      expected: "parameter_word",
+    },
+    {
+      name: "command-substitution-fallback-inside-arithmetic",
+      initial: ": $(( $((1)) + $((2)) ))\n",
+      removed: "1",
+      inserted: "echo 1",
+      expected: "command_substitution",
+    },
+    {
+      name: "repair-an-incomplete-outer-expression",
+      initial: ": $(( $((1)) + $((2)) \n",
+      removed: "\n",
+      inserted: "))\n",
+      expected: "arithmetic_binary_expression",
+    },
+    {
+      name: "repair-a-broken-inner-expression",
+      initial: ": $(( $((1)) + $((#)) )) $((3 $op 4))\n",
+      removed: "#",
+      inserted: "2",
+      expected: "arithmetic_dynamic_expression",
+    },
+    {
+      name: "here-document-body-has-an-independent-arithmetic-context",
+      initial: ": $(( $((1)) + $value + $((4)) ))\n",
+      removed: "$value",
+      inserted: "$(cat <<E\n$((2 $op 3))\nE\n)",
+      expected: "here_document_body",
+    },
+  ];
+  for (const fixture of fixtures) {
+    const offset = fixture.initial.indexOf(fixture.removed);
+    const edit = `${offset} ${fixture.removed.length} ${fixture.inserted}`;
+    const initial = writeSource(`${fixture.name}-initial`, fixture.initial);
+    const final = writeSource(
+      `${fixture.name}-final`,
+      applyEdits(Buffer.from(fixture.initial), [edit]),
+    );
+    const [, output] = assertIncrementalEqualsFresh(
+      initial,
+      final,
+      fixture.name,
+      edit,
+    );
+    assertContains(output, fixture.expected);
   }
+});
 
+test("parser scaling remains linear within the existing guard", () => {
   const scalingSources = [
     {
       large: `printf value${" \\\n".repeat(12_000)}after\n`,
@@ -4720,8 +6026,16 @@ test("parser scaling remains linear within the existing guard", () => {
   for (const contract of scalingSources) {
     const smallSource = writeSource(`${contract.name}-small`, contract.small);
     const largeSource = writeSource(`${contract.name}-large`, contract.large);
-    const smallMilliseconds = measure(smallSource, contract.name);
-    const largeMilliseconds = measure(largeSource, contract.name);
+    assertValid(smallSource, `${contract.name} small`);
+    assertValid(largeSource, `${contract.name} large`);
+    const smallMilliseconds = medianFreshParseDuration(
+      smallSource,
+      contract.name,
+    );
+    const largeMilliseconds = medianFreshParseDuration(
+      largeSource,
+      contract.name,
+    );
     const maximumScale = 8;
     assert.ok(
       largeMilliseconds <= smallMilliseconds * maximumScale + 100,
@@ -4730,96 +6044,24 @@ test("parser scaling remains linear within the existing guard", () => {
   }
 });
 
-test("incremental parsing reuses unchanged commands", () => {
-  function parseArguments(source, edit, ...extra) {
-    return [
-      "parse",
-      "--lib-path",
-      parserLibrary,
-      "--lang-name",
-      grammarName,
-      "--edits",
-      edit,
-      ...extra,
-      "--",
-      source,
-    ];
-  }
-
-  function debugIncrementalParse(source, edit) {
-    const result = runTreeSitter(parseArguments(source, edit, "--cst", "-d"), {
-      allowedStatuses: [0, 1],
-      environmentDirectory: runtimeDirectory,
-    });
-    const reusedCommands = (
-      result.stderr.match(/^reuse_node symbol:complete_command$/gm) ?? []
-    ).length;
-    return {
-      fingerprint: cstFingerprint(result.stdout),
-      reusedCommands,
-    };
-  }
-
-  function assertCommandReuse(parse, name, commandCount) {
-    assert.ok(
-      parse.reusedCommands >= commandCount - 2,
-      `${name}: reused ${parse.reusedCommands} of ${commandCount - 1} unchanged complete_commands`,
+test("incremental parsing reuses unchanged source and records editing timings", (context) => {
+  function assertSourceReuse(parse, name) {
+    assert.match(
+      parse.debugOutput,
+      /^reuse_node /m,
+      `${name}: no source reuse recorded`,
     );
   }
 
-  const measurementSamples = 9;
-
-  function medianDuration(samples) {
-    const sorted = [...samples].sort((left, right) => left - right);
-    return sorted[(sorted.length - 1) >> 1];
-  }
-
-  function readDuration(stdout, label, description) {
-    const value = Number(
-      stdout.match(new RegExp(`${label}:[ ]+([0-9.]+) ms`))?.[1],
-    );
-    assert.ok(
-      Number.isFinite(value),
-      `${description}: ${label} timing is unreadable\n${stdout}`,
-    );
-    return value;
-  }
-
-  function medianOperationDuration(arguments_, label, description) {
-    const samples = [];
-    for (let run = 0; run < measurementSamples + 1; run += 1) {
-      const result = runTreeSitter(arguments_, {
-        allowedStatuses: [0, 1],
-        environmentDirectory: runtimeDirectory,
-      });
-      samples.push(readDuration(result.stdout, label, description));
-    }
-    return medianDuration(samples.slice(1));
-  }
-
-  function medianFreshParseDuration(source, description) {
-    return medianOperationDuration(
-      [
-        "parse",
-        "--lib-path",
-        parserLibrary,
-        "--lang-name",
-        grammarName,
-        "--time",
-        "--quiet",
-        "--",
-        source,
-      ],
-      "Parse",
-      description,
-    );
-  }
-
-  function medianIncrementalParseDuration(source, edit, description) {
-    return medianOperationDuration(
-      parseArguments(source, edit, "--time", "--quiet"),
-      "Edit",
-      description,
+  function reportTiming(name, incremental, fresh, reference) {
+    const ratio =
+      fresh === 0
+        ? "below timing resolution"
+        : `${(incremental / fresh).toFixed(2)}x`;
+    const assessment =
+      incremental > fresh * reference ? "investigate" : "within reference";
+    context.diagnostic(
+      `${name}: incremental ${incremental}ms, fresh ${fresh}ms (${ratio}; reference ${reference}x, ${assessment})`,
     );
   }
 
@@ -4828,25 +6070,6 @@ test("incremental parsing reuses unchanged commands", () => {
       `${name}-edited`,
       applyEdits(Buffer.from(initialContents), [edit]),
     );
-  }
-
-  function freshFingerprint(name, initialContents, edit) {
-    const finalContents = applyEdits(Buffer.from(initialContents), [edit]);
-    const finalSource = writeSource(`${name}-fresh`, finalContents);
-    const result = runTreeSitter(
-      [
-        "parse",
-        "--lib-path",
-        parserLibrary,
-        "--lang-name",
-        grammarName,
-        "--cst",
-        "--",
-        finalSource,
-      ],
-      { allowedStatuses: [0, 1], environmentDirectory: runtimeDirectory },
-    );
-    return cstFingerprint(result.stdout);
   }
 
   const commandLine = "echo aaaa\n";
@@ -4861,26 +6084,22 @@ test("incremental parsing reuses unchanged commands", () => {
   ]) {
     const name = `${position}-command-replace`;
     const edit = commandEditAt(index);
-    const parse = debugIncrementalParse(commandSource, edit);
-    assert.equal(
-      parse.fingerprint,
-      freshFingerprint(name, commandContents, edit),
-      `${name}: incremental and fresh CSTs differ`,
+    const edited = editedSource(name, commandContents, edit);
+    const [parse] = compareIncrementalAndFresh(
+      { debug: true },
+      commandSource,
+      edited,
+      name,
+      edit,
     );
-    assertCommandReuse(parse, name, commandCount);
+    assertSourceReuse(parse, name);
     const incremental = medianIncrementalParseDuration(
       commandSource,
       edit,
       name,
     );
-    const fresh = medianFreshParseDuration(
-      editedSource(name, commandContents, edit),
-      name,
-    );
-    assert.ok(
-      incremental <= fresh * 0.75,
-      `${name}: incremental median ${incremental}ms over 75% of fresh median ${fresh}ms`,
-    );
+    const fresh = medianFreshParseDuration(edited, name);
+    reportTiming(name, incremental, fresh, 0.75);
   }
 
   const largeCommandCount = 4800;
@@ -4896,26 +6115,22 @@ test("incremental parsing reuses unchanged commands", () => {
   ]) {
     const name = `large-${position}-command-replace`;
     const edit = commandEditAt(index);
-    const parse = debugIncrementalParse(largeCommandSource, edit);
-    assert.equal(
-      parse.fingerprint,
-      freshFingerprint(name, largeCommandContents, edit),
-      `${name}: incremental and fresh CSTs differ`,
+    const edited = editedSource(name, largeCommandContents, edit);
+    const [parse] = compareIncrementalAndFresh(
+      { debug: true },
+      largeCommandSource,
+      edited,
+      name,
+      edit,
     );
-    assertCommandReuse(parse, name, largeCommandCount);
+    assertSourceReuse(parse, name);
     const incremental = medianIncrementalParseDuration(
       largeCommandSource,
       edit,
       name,
     );
-    const fresh = medianFreshParseDuration(
-      editedSource(name, largeCommandContents, edit),
-      name,
-    );
-    assert.ok(
-      incremental <= fresh * 0.5,
-      `${name}: incremental median ${incremental}ms over 50% of fresh median ${fresh}ms`,
-    );
+    const fresh = medianFreshParseDuration(edited, name);
+    reportTiming(name, incremental, fresh, 0.5);
   }
 
   const functionLine = "alpha() { : beta; }\n";
@@ -4929,28 +6144,15 @@ test("incremental parsing reuses unchanged commands", () => {
     const name = `${position}-function-closer-delete`;
     const edit = `${functionLine.length * index + 18} 1`;
     const edited = editedSource(name, functionContents, edit);
-    runParse({
-      description: `${name} incremental completion`,
-      edits: [edit],
-      expectedSource: edited,
-      mode: "recovery",
-      source: functionSource,
-    });
-    runParse({
-      description: `${name} fresh completion`,
-      mode: "recovery",
-      source: edited,
-    });
+    parseRecoveryAfterEdits(functionSource, edited, name, edit);
     const incremental = medianIncrementalParseDuration(
       functionSource,
       edit,
       name,
+      "recovery",
     );
-    const fresh = medianFreshParseDuration(edited, name);
-    assert.ok(
-      incremental <= fresh * 1.5,
-      `${name}: incremental median ${incremental}ms over 1.5x fresh median ${fresh}ms`,
-    );
+    const fresh = medianFreshParseDuration(edited, name, "recovery");
+    reportTiming(name, incremental, fresh, 1.5);
   }
 
   const commentLine = "# comment\n";
@@ -4961,11 +6163,16 @@ test("incremental parsing reuses unchanged commands", () => {
   );
   const commentName = "final-comment-byte-replace";
   const largeCommentEdit = `${largeCommentContents.length - 2} 1 x`;
-  parseValidCst(largeCommentSource, "comment-dense large fresh parse");
-  assert.equal(
-    debugIncrementalParse(largeCommentSource, largeCommentEdit).fingerprint,
-    freshFingerprint(commentName, largeCommentContents, largeCommentEdit),
-    `${commentName}: incremental and fresh CSTs differ`,
+  const editedComments = editedSource(
+    commentName,
+    largeCommentContents,
+    largeCommentEdit,
+  );
+  assertIncrementalEqualsFresh(
+    largeCommentSource,
+    editedComments,
+    commentName,
+    largeCommentEdit,
   );
   const largeCommentIncremental = medianIncrementalParseDuration(
     largeCommentSource,
@@ -4973,12 +6180,14 @@ test("incremental parsing reuses unchanged commands", () => {
     commentName,
   );
   const largeCommentFreshEdited = medianFreshParseDuration(
-    editedSource(commentName, largeCommentContents, largeCommentEdit),
+    editedComments,
     commentName,
   );
-  assert.ok(
-    largeCommentIncremental <= largeCommentFreshEdited * 1.5,
-    `${commentName}: incremental median ${largeCommentIncremental}ms over 1.5x fresh median ${largeCommentFreshEdited}ms`,
+  reportTiming(
+    commentName,
+    largeCommentIncremental,
+    largeCommentFreshEdited,
+    1.5,
   );
 });
 
@@ -5143,6 +6352,49 @@ test("empty quoted here-document delimiters preserve enclosing source after reco
       assertCstRange(output, fixture.delimiterRange, fixture.delimiterNode);
       assertCstRange(output, "1:0-2:0", "quoted_here_document_body");
       assertCstRange(output, "2:0-3:0", "here_document_end");
+    }
+  }
+});
+
+test("nested arithmetic measurements cover ordinary editing depth", (context) => {
+  for (const [kind, initialLeaf, finalLeaf] of [
+    ["number", "1", "2"],
+    ["parameter", `\${x:-1}`, `\${x:-2}`],
+  ]) {
+    const measurements = [];
+    for (const depth of [16, 32]) {
+      const name = `nested-arithmetic-${kind}-${depth}`;
+      const prefix = `echo ${"$((".repeat(depth)}`;
+      const suffix = `${"))".repeat(depth)}\n`;
+      const edit = `${prefix.length + initialLeaf.indexOf("1")} 1 2`;
+      const initial = writeSource(
+        `${name}-initial`,
+        prefix + initialLeaf + suffix,
+      );
+      const final = writeSource(`${name}-final`, prefix + finalLeaf + suffix);
+      for (const output of assertIncrementalEqualsFresh(
+        initial,
+        final,
+        name,
+        edit,
+      )) {
+        assertOccurrenceCount(output, "arithmetic_expansion", depth);
+      }
+      measurements.push({
+        fresh: medianFreshParseDuration(final, name),
+        incremental: medianIncrementalParseDuration(initial, edit, name),
+      });
+    }
+    for (const operation of ["fresh", "incremental"]) {
+      const small = measurements[0][operation];
+      const large = measurements[1][operation];
+      const ratio =
+        small === 0
+          ? "below timing resolution"
+          : `${(large / small).toFixed(2)}x`;
+      context.diagnostic(
+        `${operation} nested arithmetic with ${kind} leaf, 16 to 32 levels: ${small}ms to ${large}ms (${ratio})`,
+      );
     }
   }
 });

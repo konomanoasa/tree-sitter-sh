@@ -401,3 +401,57 @@ Backquotes fold dollar-single-quote escapes before finding the closing quote
                                                 (dollar_single_quote_escape))))))))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+Backquote double-quoted tails distinguish literal and parameter brace escapes
+==================
+
+: `: "\a" "\}" "${x:-\}}"`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (double_quoted
+                                                (double_quote_text)))
+                                            (word
+                                              (double_quoted
+                                                (double_quote_text)))
+                                            (word
+                                              (double_quoted
+                                                (parameter_expansion
+                                                  (variable_name)
+                                                  (parameter_value_operator)
+                                                  (parameter_word
+                                                    (double_quote_escape))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))

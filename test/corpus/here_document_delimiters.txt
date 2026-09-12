@@ -1,4 +1,44 @@
 ==================
+Terminator text is separate from leading tabs and a line continuation
+==================
+
+cat <<-EOF
+	\
+	EOF
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dlessdash)
+                        end: (here_end
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          end: (here_document_end
+            (line_continuation)
+            (here_document_end_text)))))))
+
+==================
 A continuation before the delimiter word remains in io_here
 ==================
 
@@ -38,7 +78,8 @@ after
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))))
+          end: (here_document_end
+            (here_document_end_text)))))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -94,7 +135,8 @@ after
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))))
+          end: (here_document_end
+            (here_document_end_text)))))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -147,7 +189,8 @@ EOF
         document: (here_document
           body: (quoted_here_document_body
             (quoted_here_document_text))
-          end: (here_document_end))))))
+          end: (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 Quoted delimiter forms disable body expansion structure
@@ -196,7 +239,8 @@ STOP
         document: (here_document
           body: (quoted_here_document_body
             (quoted_here_document_text))
-          end: (here_document_end))))
+          end: (here_document_end
+            (here_document_end_text)))))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -221,7 +265,8 @@ STOP
         document: (here_document
           body: (quoted_here_document_body
             (quoted_here_document_text))
-          end: (here_document_end))))
+          end: (here_document_end
+            (here_document_end_text)))))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -247,7 +292,8 @@ STOP
         document: (here_document
           body: (quoted_here_document_body
             (quoted_here_document_text))
-          end: (here_document_end))))
+          end: (here_document_end
+            (here_document_end_text)))))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -273,7 +319,8 @@ STOP
         document: (here_document
           body: (quoted_here_document_body
             (quoted_here_document_text))
-          end: (here_document_end))))))
+          end: (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 A case command can occur in a here-document delimiter word
@@ -348,7 +395,8 @@ $(case x in x) printf END;; esac)
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))))))
+          end: (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 A parameter pattern parenthesis does not consume its closing brace
@@ -392,7 +440,8 @@ ${value#(}
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))))))
+          end: (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 Quotes nested in a delimiter substitution preserve quote removal
@@ -449,7 +498,8 @@ $(printf ")
         document: (here_document
           body: (quoted_here_document_body
             (quoted_here_document_text))
-          end: (here_document_end))))))
+          end: (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 Delimiter command substitutions recognize empty and nested case commands
@@ -513,7 +563,8 @@ $(printf $(case w in esac))
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -578,7 +629,8 @@ $(printf $(case w in esac))
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -619,7 +671,8 @@ $(printf $(case w in esac))
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -675,7 +728,8 @@ $(printf $(case w in esac))
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))))
+          (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 Delimiter command substitutions retain quoted parentheses inside case brackets
@@ -753,7 +807,8 @@ after
         (here_document
           (quoted_here_document_body
             (quoted_here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -809,7 +864,8 @@ after
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -899,7 +955,8 @@ after
         (here_document
           (quoted_here_document_body
             (quoted_here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -955,7 +1012,8 @@ body
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))))
+          (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 Here-document delimiters preserve bracket fallback source ownership
@@ -997,7 +1055,8 @@ first
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))))
+          (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 Backquote delimiter backslashes fold to the owning level
@@ -1058,7 +1117,8 @@ $v
                                 document: (here_document
                                   body: (quoted_here_document_body
                                     (quoted_here_document_text))
-                                  end: (here_document_end))))))))))))))))
+                                  end: (here_document_end
+                                    (here_document_end_text)))))))))))))))))
     separator: (newline_list)
     command: (complete_command
       body: (list
@@ -1100,7 +1160,8 @@ $v
                                 document: (here_document
                                   body: (here_document_body
                                     (here_document_text))
-                                  end: (here_document_end)))))))))))))))))
+                                  end: (here_document_end
+                                    (here_document_end_text))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
 
@@ -1160,7 +1221,8 @@ EOF
                                   document: (here_document
                                     body: (quoted_here_document_body
                                       (quoted_here_document_text))
-                                    end: (here_document_end))))))))))))))))))
+                                    end: (here_document_end
+                                      (here_document_end_text)))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
 
@@ -1236,7 +1298,8 @@ echo after
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -1323,7 +1386,8 @@ echo after
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -1351,6 +1415,7 @@ body
 echo after
 
 ---
+
 
 
 ==================
@@ -1414,7 +1479,8 @@ y
                                   document: (here_document
                                     body: (quoted_here_document_body
                                       (quoted_here_document_text))
-                                    end: (here_document_end)))))))))))))))))
+                                    end: (here_document_end
+                                      (here_document_end_text))))))))))))))))))
     separator: (newline_list)
     command: (complete_command
       body: (list
@@ -1472,7 +1538,8 @@ y
                                                           document: (here_document
                                                             body: (quoted_here_document_body
                                                               (quoted_here_document_text))
-                                                            end: (here_document_end)))))))))))))))))
+                                                            end: (here_document_end
+                                                              (here_document_end_text))))))))))))))))))
                             (linebreak
                               (newline_list)))))))))))))))
   trailing: (linebreak
@@ -1552,7 +1619,8 @@ echo after
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -1634,10 +1702,70 @@ second
                                 document: (here_document
                                   body: (quoted_here_document_body
                                     (quoted_here_document_text))
-                                  end: (here_document_end))
+                                  end: (here_document_end
+                                    (here_document_end_text)))
                                 document: (here_document
                                   body: (quoted_here_document_body
                                     (quoted_here_document_text))
-                                  end: (here_document_end)))))))))))))))))
+                                  end: (here_document_end
+                                    (here_document_end_text))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Double-quoted parameter delimiters preserve literal quotes
+==================
+
+cat <<"${x:-'EOF'}"
+body
+${x:-'EOF'}
+after
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (double_quoted
+                              (parameter_expansion
+                                parameter: (variable_name)
+                                operator: (parameter_value_operator)
+                                word: (parameter_word
+                                  (double_quote_text))))))))))))))))
+    separator: (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (quoted_here_document_body
+            (quoted_here_document_text))
+          end: (here_document_end
+            (here_document_end_text)))))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
   trailing: (linebreak
     (newline_list)))

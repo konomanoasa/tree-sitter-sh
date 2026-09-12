@@ -48,7 +48,8 @@ INNER
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))))
+          end: (here_document_end
+            (here_document_end_text)))))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -86,7 +87,8 @@ INNER
                                 document: (here_document
                                   body: (here_document_body
                                     (here_document_text))
-                                  end: (here_document_end)))))))))))))))))
+                                  end: (here_document_end
+                                    (here_document_end_text))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
 
@@ -151,7 +153,8 @@ BACK
                                   document: (here_document
                                     body: (here_document_body
                                       (here_document_text))
-                                    end: (here_document_end)))))))))
+                                    end: (here_document_end
+                                      (here_document_end_text))))))))))
                     word: (word
                       (backquote_substitution
                         body: (backquote_substitution_body
@@ -180,7 +183,8 @@ BACK
                                 document: (here_document
                                   body: (here_document_body
                                     (here_document_text))
-                                  end: (here_document_end)))))))))))))))))
+                                  end: (here_document_end
+                                    (here_document_end_text))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
 
@@ -254,9 +258,11 @@ OUTER
                       document: (here_document
                         body: (here_document_body
                           (here_document_text))
-                        end: (here_document_end)))))))
+                        end: (here_document_end
+                          (here_document_end_text))))))))
             (here_document_text))
-          end: (here_document_end))))))
+          end: (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 An empty single-quoted delimiter preserves arithmetic expansion
@@ -499,7 +505,8 @@ I
                                       body: (here_document_body
                                         (here_document_text)
                                         (here_document_escape))
-                                      end: (here_document_end)))))))
+                                      end: (here_document_end
+                                        (here_document_end_text))))))))
                           operator: (arithmetic_operator)
                           right: (arithmetic_number)))))))))))))
   trailing: (linebreak
@@ -573,9 +580,12 @@ text
                               (here_document_sequence
                                 (here_document_line_end)
                                 (here_document
-                                  (quoted_here_document_body
-                                    (quoted_here_document_text))
-                                  (here_document_end))))))))))))))))
+                                  (here_document_body
+                                    (here_document_text))
+                                  (here_document_end
+                                    (here_document_end_text)
+                                    (here_document_end_text)
+                                    (here_document_end_text)))))))))))))))))
     (newline_list)
     (complete_command
       (list
@@ -617,7 +627,9 @@ text
                                 (here_document
                                   (here_document_body
                                     (here_document_text))
-                                  (here_document_end)))))))))))))))))
+                                  (here_document_end
+                                    (here_document_end_text)
+                                    (here_document_end_text))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -700,9 +712,12 @@ b
                                                       (here_document_sequence
                                                         (here_document_line_end)
                                                         (here_document
-                                                          (quoted_here_document_body
-                                                            (quoted_here_document_text))
-                                                          (here_document_end)))))))))))))))))))))))))))))
+                                                          (here_document_body
+                                                            (here_document_text))
+                                                          (here_document_end
+                                                            (here_document_end_text)
+                                                            (here_document_end_text)
+                                                            (here_document_end_text))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -771,7 +786,8 @@ END
                                     (line_continuation)
                                     (parameter_expansion
                                       parameter: (variable_name)))
-                                  end: (here_document_end))))))))))))))))
+                                  end: (here_document_end
+                                    (here_document_end_text)))))))))))))))))
     separator: (newline_list)
     command: (complete_command
       body: (list
@@ -828,7 +844,8 @@ END
                                                         document: (here_document
                                                           body: (here_document_body
                                                             (here_document_text))
-                                                          end: (here_document_end)))))))))))))))))))))))))))))
+                                                          end: (here_document_end
+                                                            (here_document_end_text))))))))))))))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
 

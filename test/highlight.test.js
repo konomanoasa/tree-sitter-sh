@@ -65,6 +65,53 @@ test("assignment patterns have no pattern captures", () => {
   );
 });
 
+test("here-document terminators label only text and retain continuations", () => {
+  const lines = readFileSync(highlightFixture, "utf8").split("\n");
+  const captures = queryCaptures(highlightFixture);
+  for (const [declaration, firstRowOffset, expected] of [
+    [
+      "cat <<*?[!a-z[:alpha:][.x.][=y=]]",
+      2,
+      [{ name: "label", start: [2, 0], end: [2, 27] }],
+    ],
+    ["cat <<'EOF'", 2, [{ name: "label", start: [2, 0], end: [2, 3] }]],
+    [
+      "cat <<CONTINUED",
+      1,
+      [
+        { name: "punctuation.special", start: [1, 0], end: [2, 0] },
+        { name: "label", start: [2, 0], end: [2, 9] },
+      ],
+    ],
+    [
+      "cat <<-STRIPPED",
+      1,
+      [
+        { name: "punctuation.special", start: [1, 1], end: [2, 0] },
+        { name: "label", start: [2, 0], end: [2, 8] },
+      ],
+    ],
+  ]) {
+    const declarationRow = lines.indexOf(declaration);
+    assert.notEqual(declarationRow, -1, declaration);
+    const firstRow = declarationRow + firstRowOffset;
+    assert.deepEqual(
+      captures.filter(
+        (capture) =>
+          capture.start[0] < declarationRow + 3 &&
+          (capture.end[0] > firstRow ||
+            (capture.end[0] === firstRow && capture.end[1] > 0)),
+      ),
+      expected.map(({ name, start, end }) => ({
+        name,
+        start: [declarationRow + start[0], start[1]],
+        end: [declarationRow + end[0], end[1]],
+      })),
+      declaration,
+    );
+  }
+});
+
 // Declaration annotations would be here-document body text, so check captures directly.
 test("here-document declarations preserve label, quote, and escape captures", () => {
   const lines = readFileSync(highlightFixture, "utf8").split("\n");

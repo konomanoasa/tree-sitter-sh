@@ -699,6 +699,7 @@ printf [!-a] [!-] [!!-a] [{] [}] ${v#[)]}
                               member: (pattern_bracket_character_source)))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
 ==================
 A dollar sign that opens no expansion is a bracket member
 ==================
@@ -782,5 +783,120 @@ case x in [a$]) ;; esac
                                 member: (pattern_bracket_character_source)))))
                         terminator: (dsemi)))
                     (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Here-document parameter brackets include raw newline members
+==================
+
+cat <<END
+${x#[a
+b]}
+END
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (parameter_expansion
+              parameter: (variable_name)
+              operator: (parameter_pattern_operator)
+              pattern: (parameter_pattern
+                (pattern_bracket_source
+                  members: (pattern_bracket_members_source
+                    member: (pattern_bracket_character_source)
+                    member: (pattern_bracket_character_source)
+                    member: (pattern_bracket_character_source))))))
+          end: (here_document_end
+            (here_document_end_text)))))))
+
+==================
+Backquote bracket escape members retain range endpoints
+==================
+
+: `: [0-\\\\z] [\\\\-z] [0-\\\\\\\\z]`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (pattern_bracket_source
+                                                members: (pattern_bracket_members_source
+                                                  member: (pattern_bracket_range_source
+                                                    start: (pattern_bracket_character_source)
+                                                    operator: (pattern_bracket_range_operator_source)
+                                                    end: (escaped_character))
+                                                  member: (pattern_bracket_character_source))))
+                                            word: (word
+                                              (pattern_bracket_source
+                                                members: (pattern_bracket_members_source
+                                                  member: (pattern_bracket_range_source
+                                                    start: (escaped_character)
+                                                    operator: (pattern_bracket_range_operator_source)
+                                                    end: (pattern_bracket_character_source)))))
+                                            word: (word
+                                              (pattern_bracket_source
+                                                members: (pattern_bracket_members_source
+                                                  member: (pattern_bracket_range_source
+                                                    start: (pattern_bracket_character_source)
+                                                    operator: (pattern_bracket_range_operator_source)
+                                                    end: (escaped_character))
+                                                  member: (escaped_character)
+                                                  member: (pattern_bracket_character_source)))))))))))))))))))))))))
   trailing: (linebreak
     (newline_list)))

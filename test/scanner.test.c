@@ -12,11 +12,23 @@ static size_t reuse_calloc_calls;
 static size_t reuse_realloc_calls;
 static size_t reuse_free_calls;
 static size_t reuse_live_allocations;
+static size_t reuse_allocation_calls;
+static size_t reuse_fail_allocation_call;
 static bool reuse_fail_next_calloc;
 static bool reuse_fail_next_realloc;
 
+static bool reuse_allocation_fails(void) {
+  reuse_allocation_calls += 1;
+  return reuse_fail_allocation_call !=
+    0 &&
+    reuse_allocation_calls == reuse_fail_allocation_call;
+}
+
 static void *reuse_malloc(size_t size) {
   reuse_malloc_calls += 1;
+  if (reuse_allocation_fails()) {
+    return NULL;
+  }
   void *result = malloc(size);
   if (result != NULL) {
     reuse_live_allocations += 1;
@@ -26,7 +38,7 @@ static void *reuse_malloc(size_t size) {
 
 static void *reuse_calloc(size_t count, size_t size) {
   reuse_calloc_calls += 1;
-  if (reuse_fail_next_calloc) {
+  if (reuse_allocation_fails() || reuse_fail_next_calloc) {
     reuse_fail_next_calloc = false;
     return NULL;
   }
@@ -40,7 +52,7 @@ static void *reuse_calloc(size_t count, size_t size) {
 
 static void *reuse_realloc(void *allocation, size_t size) {
   reuse_realloc_calls += 1;
-  if (reuse_fail_next_realloc) {
+  if (reuse_allocation_fails() || reuse_fail_next_realloc) {
     reuse_fail_next_realloc = false;
     return NULL;
   }
@@ -454,21 +466,54 @@ static void assert_pending_activation_fits_after_depth_growth(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-static void assert_active_suspend_rejects_oversized_state(void) {
+static void assert_pending_activation_fits_after_suspension(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
-
+  assert(append_pending_document(scanner, make_repeated_document(503)));
+  assert(activate_startable_pending_documents(scanner));
   scanner->at_here_document_line_start = true;
-  assert(append_document(
-    &scanner->active_documents,
-    &scanner->active_count,
-    make_repeated_document(1013)
-  ));
+  scanner->substitution_depth = 1;
+  assert(append_pending_document(scanner, make_repeated_document(251)));
+  assert(append_pending_document(scanner, make_repeated_document(251)));
 
   char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
   unsigned before_length = snapshot_scanner(scanner, before);
   assert(before_length == TREE_SITTER_SERIALIZATION_BUFFER_SIZE);
-  assert(!suspend_active_documents(scanner));
+  assert(activate_startable_pending_documents(scanner));
+  assert(scanner->pending_count == 0);
+  assert(scanner->active_count == 2);
+  assert_repeated_document(&scanner->active_documents[0], 'D', 251);
+  assert_repeated_document(&scanner->active_documents[1], 'D', 251);
+  assert(scanner->suspended_frame_count == 1);
+  assert(scanner->suspended_frames[0].count == 1);
+  assert(scanner->suspended_frames[0].at_line_start);
+  assert_repeated_document(
+    &scanner->suspended_frames[0].documents[0],
+    'D',
+    503
+  );
+  char after[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned after_length = snapshot_scanner(scanner, after);
+  assert(after_length == TREE_SITTER_SERIALIZATION_BUFFER_SIZE);
+  struct Scanner restored = {0};
+  tree_sitter_sh_external_scanner_deserialize(&restored, after, after_length);
+  assert_scanner_matches_snapshot(&restored, after, after_length);
+  clear_scanner(&restored);
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+static void assert_pending_activation_rejects_oversized_state(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  assert(append_pending_document(scanner, make_repeated_document(503)));
+  assert(activate_startable_pending_documents(scanner));
+  scanner->at_here_document_line_start = true;
+  scanner->substitution_depth = 1;
+  assert(append_pending_document(scanner, make_repeated_document(506)));
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(scanner, before);
+  assert(before_length == TREE_SITTER_SERIALIZATION_BUFFER_SIZE);
+  assert(!activate_startable_pending_documents(scanner));
   assert_scanner_matches_snapshot(scanner, before, before_length);
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
@@ -755,6 +800,36 @@ static void assert_text_delimiter_fixture(
   clear_scanner(scanner);
 }
 
+static void assert_double_quoted_parameter_delimiters(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+
+  const char *fixtures[][2] = {
+    {"\"${x:-'EOF'}\"\n", "${x:-'EOF'}"},
+    {"\"${x:-'}\"\n", "${x:-'}"},
+    {"\"${x:-a\\qb}\"\n", "${x:-a\\qb}"},
+    {"\"${x:-a\\}b}\"\n", "${x:-a}b}"},
+    {"\"${x:-${y:-'EOF'}}\"\n", "${x:-${y:-'EOF'}}"},
+    {"\"${x:-$(printf 'EOF')}\"\n", "${x:-$(printf EOF)}"},
+    {"\"${x#'EOF'}\"\n", "${x#EOF}"},
+    {"\"${12%%'EOF'}\"\n", "${12%%EOF}"},
+    {"\"${?#'EOF'}\"\n", "${?#EOF}"},
+    {"\"${x:-${y#'EOF'}'tail'}\"\n", "${x:-${y#EOF}'tail'}"},
+  };
+  for (
+    size_t index = 0; index < sizeof(fixtures) / sizeof(fixtures[0]); index += 1
+  ) {
+    assert_text_delimiter_fixture(
+      scanner,
+      fixtures[index][0],
+      fixtures[index][1],
+      true
+    );
+  }
+
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
 static void assert_substitution_hash_delimiter_words(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -1012,7 +1087,7 @@ static void assert_recursive_backquote_delimiters(void) {
     sizeof(ambient_input) / sizeof(ambient_input[0])
   ));
   assert(scanner->backquote_depth == 1);
-  assert_document(&scanner->pending_documents[0], "`x`", true, false);
+  assert_document(&scanner->pending_documents[0], "`x`", false, false);
   clear_scanner(scanner);
 
   const struct {
@@ -1747,6 +1822,32 @@ static void assert_backquote_ordinary_escape_run_contract(void) {
     ';'
   );
 
+  const int32_t paired_before_newline[] = {'\\', '\\', '\\', '\\', '\n'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    paired_before_newline,
+    5,
+    true,
+    BACKQUOTE_PAIR_RUN_BEGIN,
+    0,
+    4,
+    '\n'
+  );
+  const int32_t continued_before_newline[] =
+    {'\\', '\\', '\\', '\\', '\\', '\\', '\n'};
+  assert_scan_result(
+    scanner,
+    run_symbols,
+    continued_before_newline,
+    7,
+    true,
+    BACKQUOTE_CONTENT_RUN_BEGIN,
+    0,
+    6,
+    '\n'
+  );
+
   scanner->backquote_depth = 2;
   assert_scan_result(
     scanner,
@@ -1779,10 +1880,22 @@ static void assert_backquote_ordinary_escape_run_contract(void) {
     end_symbols,
     single_before_semicolon,
     2,
+    false,
+    0,
+    0,
+    1,
+    ';'
+  );
+  const int32_t ordinary_after_tail[] = {';'};
+  assert_scan_result(
+    scanner,
+    end_symbols,
+    ordinary_after_tail,
+    1,
     true,
     BACKQUOTE_PAIR_RUN_END,
-    1,
-    1,
+    0,
+    0,
     ';'
   );
   const int32_t single_before_dollar[] = {'\\', '$'};
@@ -2256,133 +2369,31 @@ static void assert_enclosing_closer_ends_incomplete_bracket(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
-static void
-assert_function_body_boundary_classifies_after_horizontal_layout(void) {
+static void assert_function_body_boundary_preserves_input_and_state(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
+  assert(append_pending_document(scanner, make_document("EOF", false, false)));
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(scanner, before);
 
   bool valid_symbols[TOKEN_COUNT] = {false};
   valid_symbols[FUNCTION_BODY_CONTINUATION_BOUNDARY] = true;
-
   valid_symbols[LINE_CONTINUATION] = true;
   valid_symbols[NEWLINE] = true;
   valid_symbols[COMMENT_BOUNDARY] = true;
-
-  const int32_t continued_layout_input[] = {'\\', '\n', '{', ' '};
-  struct MockLexer continued_layout;
-  init_mock_lexer(
-    &continued_layout,
-    continued_layout_input,
-    sizeof(continued_layout_input) / sizeof(continued_layout_input[0])
-  );
-  assert(tree_sitter_sh_external_scanner_scan(
+  const int32_t input[] = {'\n', 'E', 'O', 'F', '\n', '{', ' '};
+  assert_scan_result(
     scanner,
-    &continued_layout.lexer,
-    valid_symbols
-  ));
-  assert(
-    continued_layout.lexer.result_symbol == FUNCTION_BODY_CONTINUATION_BOUNDARY
+    valid_symbols,
+    input,
+    sizeof(input) / sizeof(input[0]),
+    true,
+    FUNCTION_BODY_CONTINUATION_BOUNDARY,
+    0,
+    0,
+    '\n'
   );
-  assert(continued_layout.mark == 0);
-  assert(continued_layout.offset == 3);
-  assert(continued_layout.lexer.lookahead == ' ');
-
-  const int32_t newline_input[] = {'\n', '{', ' '};
-  struct MockLexer newline;
-  init_mock_lexer(
-    &newline,
-    newline_input,
-    sizeof(newline_input) / sizeof(newline_input[0])
-  );
-  assert(
-    tree_sitter_sh_external_scanner_scan(scanner, &newline.lexer, valid_symbols)
-  );
-  assert(newline.lexer.result_symbol == FUNCTION_BODY_CONTINUATION_BOUNDARY);
-  assert(newline.mark == 0);
-  assert(newline.offset == 2);
-  assert(newline.lexer.lookahead == ' ');
-
-  const int32_t comment_input[] = {
-    ' ',
-    '#',
-    'x',
-    '\n',
-    '\t',
-    '{',
-    ' ',
-  };
-  struct MockLexer comment;
-  init_mock_lexer(
-    &comment,
-    comment_input,
-    sizeof(comment_input) / sizeof(comment_input[0])
-  );
-  assert(
-    tree_sitter_sh_external_scanner_scan(scanner, &comment.lexer, valid_symbols)
-  );
-  assert(comment.lexer.result_symbol == FUNCTION_BODY_CONTINUATION_BOUNDARY);
-  assert(comment.mark == 0);
-  assert(comment.offset == 6);
-  assert(comment.lexer.lookahead == ' ');
-
-  const int32_t body_after_layout_input[] = {
-    ' ',
-    '\\',
-    '\n',
-    '\t',
-    '{',
-    ' ',
-  };
-  struct MockLexer body_after_layout;
-  init_mock_lexer(
-    &body_after_layout,
-    body_after_layout_input,
-    sizeof(body_after_layout_input) / sizeof(body_after_layout_input[0])
-  );
-  assert(tree_sitter_sh_external_scanner_scan(
-    scanner,
-    &body_after_layout.lexer,
-    valid_symbols
-  ));
-  assert(
-    body_after_layout.lexer.result_symbol == FUNCTION_BODY_CONTINUATION_BOUNDARY
-  );
-  assert(body_after_layout.mark == 0);
-  assert(body_after_layout.offset == 5);
-  assert(body_after_layout.lexer.lookahead == ' ');
-
-  const int32_t body_input[] = {'{', ' '};
-  struct MockLexer body;
-  init_mock_lexer(
-    &body,
-    body_input,
-    sizeof(body_input) / sizeof(body_input[0])
-  );
-  assert(
-    tree_sitter_sh_external_scanner_scan(scanner, &body.lexer, valid_symbols)
-  );
-  assert(body.lexer.result_symbol == FUNCTION_BODY_CONTINUATION_BOUNDARY);
-  assert(body.mark == 0);
-
-  const int32_t reserved_body_input[] = {'w', 'h', 'i', 'l', 'e', ' '};
-  struct MockLexer reserved_body;
-  init_mock_lexer(
-    &reserved_body,
-    reserved_body_input,
-    sizeof(reserved_body_input) / sizeof(reserved_body_input[0])
-  );
-  assert(tree_sitter_sh_external_scanner_scan(
-    scanner,
-    &reserved_body.lexer,
-    valid_symbols
-  ));
-  assert(
-    reserved_body.lexer.result_symbol == FUNCTION_BODY_CONTINUATION_BOUNDARY
-  );
-  assert(reserved_body.mark == 0);
-  assert(reserved_body.offset == 5);
-  assert(reserved_body.lexer.lookahead == ' ');
-
+  assert_scanner_matches_snapshot(scanner, before, before_length);
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
@@ -3789,9 +3800,9 @@ static void finish_tracked_delimiter_word(
   const char *word
 ) {
   for (const char *character = word; *character != '\0'; character += 1) {
-    track_delimiter_word_character(&groups->data[0].word, *character);
+    track_command_word_character(&groups->data[0].command.word, *character);
   }
-  assert(finish_delimiter_word(cases, groups, 1));
+  assert(finish_command_word(cases, 1, &groups->data[0].command, false));
 }
 
 static void assert_case_pattern_esac_terminates_only_at_first_token(void) {
@@ -3833,11 +3844,11 @@ static void assert_command_prefixes_keep_case_tracking(void) {
   ));
 
   finish_tracked_delimiter_word(&cases, &groups, "if");
-  assert(groups.data[0].command_start);
+  assert(groups.data[0].command.position == COMMAND_POSITION_START);
   finish_tracked_delimiter_word(&cases, &groups, "case");
   assert(cases.length == 1);
   assert(cases.data[0].state == CASE_TRACKER_EXPECT_WORD);
-  assert(!groups.data[0].command_start);
+  assert(groups.data[0].command.position == COMMAND_POSITION_WORD);
 
   ts_free(groups.data);
   ts_free(cases.data);
@@ -4138,6 +4149,107 @@ static void assert_delimiter_scan_resource_rollback(void) {
 }
 
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
+static void assert_delimiter_allocation_failures_preserve_state(void) {
+  const char delimiter[] = "$((1))"
+                           "abcdefghijklmnopqrstuvwxyz"
+                           "abcdefghijklmnopqrstuvwxyz"
+                           "abcdefghijklmnopqrstuvwxyz";
+  int32_t input[sizeof(delimiter)];
+  for (size_t index = 0; index + 1 < sizeof(delimiter); index += 1) {
+    input[index] = (unsigned char)delimiter[index];
+  }
+  input[sizeof(delimiter) - 1] = '\n';
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[HERE_END_BEGIN] = true;
+  size_t allocation_count = 0;
+  for (size_t failure = 0; failure <= allocation_count; failure += 1) {
+    assert(reuse_live_allocations == 0);
+    struct Scanner scanner = {
+      .expecting_delimiter = true,
+      .delimiter_strips_tabs = true,
+    };
+    char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned length = snapshot_scanner(&scanner, before);
+    struct MockLexer mock;
+    init_mock_lexer(&mock, input, sizeof(input) / sizeof(input[0]));
+    size_t calls = reuse_allocation_calls;
+    if (failure > 0) {
+      reuse_fail_allocation_call = calls + failure;
+    }
+    bool accepted = tree_sitter_sh_external_scanner_scan(
+      &scanner,
+      &mock.lexer,
+      valid_symbols
+    );
+    if (failure == 0) {
+      allocation_count = reuse_allocation_calls - calls;
+      assert(allocation_count > 0);
+      assert(accepted);
+      assert(mock.lexer.result_symbol == HERE_END_BEGIN);
+      assert(scanner.pending_count == 1);
+      assert_document(&scanner.pending_documents[0], delimiter, false, true);
+    } else {
+      assert(reuse_allocation_calls >= reuse_fail_allocation_call);
+      reuse_fail_allocation_call = 0;
+      assert(!accepted);
+      assert_scanner_matches_snapshot(&scanner, before, length);
+    }
+    clear_scanner(&scanner);
+    assert(reuse_live_allocations == 0);
+  }
+}
+
+static void assert_pending_activation_allocation_failures_preserve_state(void) {
+  size_t allocation_count = 0;
+  for (size_t failure = 0; failure <= allocation_count; failure += 1) {
+    assert(reuse_live_allocations == 0);
+    struct Scanner scanner = {0};
+    assert(
+      append_pending_document(&scanner, make_document("retained", false, false))
+    );
+    scanner.substitution_depth = 1;
+    assert(
+      append_pending_document(&scanner, make_document("suspended", true, false))
+    );
+    assert(activate_startable_pending_documents(&scanner));
+    scanner.substitution_depth = 2;
+    assert(
+      append_pending_document(&scanner, make_document("activated", false, true))
+    );
+    char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned length = snapshot_scanner(&scanner, before);
+    size_t calls = reuse_allocation_calls;
+    if (failure > 0) {
+      reuse_fail_allocation_call = calls + failure;
+    }
+    bool accepted = activate_startable_pending_documents(&scanner);
+    if (failure == 0) {
+      allocation_count = reuse_allocation_calls - calls;
+      assert(allocation_count > 0);
+      assert(accepted);
+      assert(scanner.pending_count == 1);
+      assert_document(&scanner.pending_documents[0], "retained", false, false);
+      assert(scanner.active_count == 1);
+      assert_document(&scanner.active_documents[0], "activated", false, true);
+      assert(scanner.suspended_frame_count == 1);
+      assert(scanner.suspended_frames[0].count == 1);
+      assert_document(
+        &scanner.suspended_frames[0].documents[0],
+        "suspended",
+        true,
+        false
+      );
+    } else {
+      assert(reuse_allocation_calls >= reuse_fail_allocation_call);
+      reuse_fail_allocation_call = 0;
+      assert(!accepted);
+      assert_scanner_matches_snapshot(&scanner, before, length);
+    }
+    clear_scanner(&scanner);
+    assert(reuse_live_allocations == 0);
+  }
+}
+
 static void assert_reuse_allocator_realloc_failure_rolls_back(void) {
   assert(reuse_live_allocations == 0);
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
@@ -4338,39 +4450,83 @@ static void assert_arithmetic_lookahead_resumes_embedded_constructs(void) {
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
 static void
 assert_ambiguous_lookahead_allocation_failure_preserves_state(void) {
-  assert(reuse_live_allocations == 0);
-  struct Scanner scanner = {0};
-  const int32_t input[] = {'[', '$', '(', '(', '1', ')', ')', ']'};
-  struct MockLexer mock;
-  init_mock_lexer(&mock, input, sizeof(input) / sizeof(input[0]));
-  bool valid_symbols[TOKEN_COUNT] = {false};
-  valid_symbols[WORD_BRACKET_LITERAL_START] = true;
-  valid_symbols[WORD_PATTERN_BRACKET_OPEN] = true;
-  reuse_fail_next_realloc = true;
-  assert(
-    !tree_sitter_sh_external_scanner_scan(&scanner, &mock.lexer, valid_symbols)
-  );
-  assert(!reuse_fail_next_realloc);
-  assert(scanner_state_fits(&scanner));
-  clear_scanner(&scanner);
-  assert(reuse_live_allocations == 0);
-  const int32_t arithmetic[] = {'(', '$', '(', '(', '1', ')', ')', ')', ')'};
-  init_mock_lexer(
-    &mock,
-    arithmetic,
-    sizeof(arithmetic) / sizeof(arithmetic[0])
-  );
-  memset(valid_symbols, 0, sizeof(valid_symbols));
-  valid_symbols[ARITHMETIC_LEFT_PARENTHESIS] = true;
-  reuse_fail_next_realloc = true;
-  assert(
-    !tree_sitter_sh_external_scanner_scan(&scanner, &mock.lexer, valid_symbols)
-  );
-  assert(!reuse_fail_next_realloc);
-  assert(scanner_state_fits(&scanner));
-  clear_scanner(&scanner);
-  assert(reuse_live_allocations == 0);
+  const struct {
+    const char *source;
+    enum TokenType symbol;
+  } fixtures[] = {
+    {"[$((1))]", WORD_PATTERN_BRACKET_OPEN},
+    {"(1))", ARITHMETIC_LEFT_PARENTHESIS},
+    {"((1)))", ARITHMETIC_LEFT_PARENTHESIS},
+    {"(($x)))", ARITHMETIC_LEFT_PARENTHESIS},
+    {"($((1))))", ARITHMETIC_LEFT_PARENTHESIS},
+    {"(echo x))", COMMAND_SUBSTITUTION_BODY_BEGIN},
+    {"($(case x in x) :;; esac)))", ARITHMETIC_LEFT_PARENTHESIS},
+    {"($(cat <<EOF\nbody\nEOF\n)))", ARITHMETIC_LEFT_PARENTHESIS},
+    {"($(cat <<$(case x in x) :;; esac)\nbody\n$(case x in x) :;; esac)\n)))",
+      ARITHMETIC_LEFT_PARENTHESIS},
+    {"($(cat <<$(cat <<END\ninner\nEND\n)\nouter\n$(cat "
+     "<<END\ninner\nEND\n)\n)))",
+      ARITHMETIC_LEFT_PARENTHESIS},
+    {"($(($(($(($(($(($(($(($(($(($(($(($((1))))))))))))))))))))))))))",
+      ARITHMETIC_LEFT_PARENTHESIS},
+    {"($(((((((((((((((((((((:)))))))))))))))))))))))",
+      ARITHMETIC_LEFT_PARENTHESIS},
+    {"($(cat <<A <<B <<C <<D <<E\na\nA\nb\nB\nc\nC\nd\nD\ne\nE\n)))",
+      ARITHMETIC_LEFT_PARENTHESIS},
+  };
+  for (
+    size_t fixture = 0; fixture < sizeof(fixtures) / sizeof(fixtures[0]);
+    fixture += 1
+  ) {
+    size_t length = strlen(fixtures[fixture].source);
+    int32_t *input = malloc(length * sizeof(int32_t));
+    assert(input != NULL);
+    for (size_t index = 0; index < length; index += 1) {
+      input[index] = (unsigned char)fixtures[fixture].source[index];
+    }
+    size_t allocation_count = 0;
+    for (size_t failure = 0; failure <= allocation_count; failure += 1) {
+      assert(reuse_live_allocations == 0);
+      struct Scanner scanner = {0};
+      char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+      unsigned before_length = snapshot_scanner(&scanner, before);
+      struct MockLexer mock;
+      init_mock_lexer(&mock, input, length);
+      bool valid_symbols[TOKEN_COUNT] = {false};
+      if (fixtures[fixture].symbol == WORD_PATTERN_BRACKET_OPEN) {
+        valid_symbols[WORD_BRACKET_LITERAL_START] = true;
+        valid_symbols[WORD_PATTERN_BRACKET_OPEN] = true;
+      } else {
+        valid_symbols[ARITHMETIC_LEFT_PARENTHESIS] = true;
+        valid_symbols[ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS] = true;
+        valid_symbols[COMMAND_SUBSTITUTION_BODY_BEGIN] = true;
+      }
+      size_t allocation_start = reuse_allocation_calls;
+      reuse_fail_allocation_call =
+        failure == 0 ? 0 : allocation_start + failure;
+      bool accepted = tree_sitter_sh_external_scanner_scan(
+        &scanner,
+        &mock.lexer,
+        valid_symbols
+      );
+      if (failure == 0) {
+        assert(accepted);
+        assert(mock.lexer.result_symbol == fixtures[fixture].symbol);
+        allocation_count = reuse_allocation_calls - allocation_start;
+        assert(allocation_count > 0);
+      } else {
+        assert(reuse_allocation_calls >= reuse_fail_allocation_call);
+        assert(!accepted);
+        assert_scanner_matches_snapshot(&scanner, before, before_length);
+      }
+      reuse_fail_allocation_call = 0;
+      clear_scanner(&scanner);
+      assert(reuse_live_allocations == 0);
+    }
+    free(input);
+  }
 }
+
 #endif
 
 int main(void) {
@@ -4380,7 +4536,8 @@ int main(void) {
   assert_exact_fit_state_round_trip();
   assert_pending_document_rejects_oversized_state();
   assert_pending_activation_fits_after_depth_growth();
-  assert_active_suspend_rejects_oversized_state();
+  assert_pending_activation_fits_after_suspension();
+  assert_pending_activation_rejects_oversized_state();
   assert_backquote_growth_rejects_oversized_state();
   assert_quoted_backquote_state_round_trip();
   assert_quoted_backquote_growth_preserves_bounded_state();
@@ -4400,6 +4557,7 @@ int main(void) {
   assert_here_document_line_backslash_parity();
   assert_enclosed_here_document_line_folds();
   assert_backquote_prefix_classification();
+  assert_double_quoted_parameter_delimiters();
   assert_substitution_hash_delimiter_words();
   assert_recursive_backquote_delimiters();
   assert_dollar_single_quote_delimiter_bytes();
@@ -4417,7 +4575,7 @@ int main(void) {
   assert_bracket_escapes_stay_members();
   assert_enclosed_bracket_escape_runs_fold();
   assert_enclosing_closer_ends_incomplete_bracket();
-  assert_function_body_boundary_classifies_after_horizontal_layout();
+  assert_function_body_boundary_preserves_input_and_state();
   assert_substitution_closers();
   assert_case_item_boundary_contract();
   assert_separator_operator_continuation();
@@ -4439,6 +4597,8 @@ int main(void) {
   assert_reserved_word_at_command_name_position_stays_reserved();
   assert_delimiter_scan_resource_rollback();
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
+  assert_delimiter_allocation_failures_preserve_state();
+  assert_pending_activation_allocation_failures_preserve_state();
   assert_reuse_allocator_realloc_failure_rolls_back();
   assert_reuse_allocator_contract();
 #endif

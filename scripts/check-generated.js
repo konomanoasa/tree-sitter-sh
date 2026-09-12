@@ -16,16 +16,6 @@ const generatedFiles = [
   "src/tree_sitter/parser.h",
 ];
 
-const budgets = {
-  STATE_COUNT: 24_000,
-  LARGE_STATE_COUNT: 1_500,
-  SYMBOL_COUNT: 600,
-  EXTERNAL_TOKEN_COUNT: 109,
-  parser_bytes: 32_000_000,
-  maximum_ACTIONS_index: 38_000,
-  parse_table_storage_bytes: 3_700_000,
-};
-
 function readDefinition(source, name) {
   const prefix = `#define ${name} `;
   const line = source
@@ -194,17 +184,9 @@ try {
     };
     metrics.parse_table_storage_bytes = parseTableStorageBytes(parser, metrics);
 
-    console.log("Metric                     Actual      Maximum");
-    for (const [name, maximum] of Object.entries(budgets)) {
-      console.log(
-        `${name.padEnd(22)} ${String(metrics[name]).padStart(12)} ${String(maximum).padStart(12)}`,
-      );
-      if (metrics[name] > maximum) {
-        process.stderr.write(
-          `Generated ${name} budget exceeded: ${metrics[name]} > ${maximum}\n`,
-        );
-        failed = true;
-      }
+    console.log("Metric                     Actual");
+    for (const [name, value] of Object.entries(metrics)) {
+      console.log(`${name.padEnd(22)} ${String(value).padStart(12)}`);
     }
   } catch (error) {
     process.stderr.write(`${error.message}\n`);

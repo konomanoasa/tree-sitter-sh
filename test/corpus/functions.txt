@@ -723,7 +723,8 @@ E
                         document: (here_document
                           body: (here_document_body
                             (here_document_text))
-                          end: (here_document_end)))))
+                          end: (here_document_end
+                            (here_document_end_text))))))
                   body: (function_body
                     body: (compound_command
                       (brace_group

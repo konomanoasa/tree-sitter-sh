@@ -319,7 +319,7 @@
         ]?)
       "]" @label)))
 
-(here_document_end) @label
+(here_document_end_text) @label
 
 (cmd_name
   (word

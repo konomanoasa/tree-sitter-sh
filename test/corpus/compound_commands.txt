@@ -175,6 +175,7 @@ esac
                     (esac_keyword))))))))))
   trailing: (linebreak
     (newline_list)))
+
 ==================
 Compound commands occupy command positions and nest
 ==================

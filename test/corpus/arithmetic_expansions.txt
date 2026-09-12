@@ -1062,6 +1062,7 @@ x=$((1 +
 ---
 
 
+
 ==================
 A case pattern esac after a pipe stays inside the validated substitution
 ==================
@@ -1363,5 +1364,123 @@ echo $(( $({ case a in b) echo 1;; esac; }) + 1 ))
                                                     (separator_op))))))))))))))
                           (arithmetic_operator)
                           (arithmetic_number)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Arithmetic parameter prefixes undergo surrounding backquote quote removal
+==================
+
+: `: $((\$x))`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (arithmetic_expansion
+                                                (parameter_expansion
+                                                  (variable_name)))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Arithmetic command substitutions retain surrounding backquote quote removal
+==================
+
+: "`: $(( $(printf 1; : \")\") ))`"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (backquote_substitution
+                          (backquote_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))
+                                            (cmd_suffix
+                                              (word
+                                                (arithmetic_expansion
+                                                  (command_substitution
+                                                    (command_substitution_body
+                                                      (complete_commands
+                                                        (complete_command
+                                                          (list
+                                                            (and_or
+                                                              (pipeline
+                                                                (pipe_sequence
+                                                                  (command
+                                                                    (simple_command
+                                                                      (cmd_name
+                                                                        (word
+                                                                          (literal)))
+                                                                      (cmd_suffix
+                                                                        (word
+                                                                          (literal))))))))
+                                                            (separator_op)
+                                                            (and_or
+                                                              (pipeline
+                                                                (pipe_sequence
+                                                                  (command
+                                                                    (simple_command
+                                                                      (cmd_name
+                                                                        (word
+                                                                          (literal)))
+                                                                      (cmd_suffix
+                                                                        (word
+                                                                          (double_quoted
+                                                                            (double_quote_text))))))))))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))

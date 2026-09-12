@@ -1762,7 +1762,8 @@ E`" after
                                   (here_document
                                     (here_document_body
                                       (here_document_text))
-                                    (here_document_end)))))))))))))))))
+                                    (here_document_end
+                                      (here_document_end_text))))))))))))))))))
     (newline_list)
     (complete_command
       (list
@@ -1805,7 +1806,8 @@ E`" after
                                   (here_document
                                     (quoted_here_document_body
                                       (quoted_here_document_text))
-                                    (here_document_end)))))))))
+                                    (here_document_end
+                                      (here_document_end_text))))))))))
                     (word
                       (literal)))))))))))
   (linebreak
@@ -2347,4 +2349,146 @@ echo `\`echo [a\``
                                                                       (literal)
                                                                       (literal)))))))))))))))))))))))))))))))))))
   (linebreak
+    (newline_list)))
+
+==================
+Nested command starts preserve bracket source around case patterns
+==================
+
+: [$(: $(case x in x) :;; esac))]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (command_substitution
+                            body: (command_substitution_body
+                              (complete_commands
+                                command: (complete_command
+                                  body: (list
+                                    and_or: (and_or
+                                      pipeline: (pipeline
+                                        sequence: (pipe_sequence
+                                          command: (command
+                                            body: (simple_command
+                                              name: (cmd_name
+                                                (word
+                                                  (literal)))
+                                              suffix: (cmd_suffix
+                                                word: (word
+                                                  (command_substitution
+                                                    body: (command_substitution_body
+                                                      (complete_commands
+                                                        command: (complete_command
+                                                          body: (list
+                                                            and_or: (and_or
+                                                              pipeline: (pipeline
+                                                                sequence: (pipe_sequence
+                                                                  command: (command
+                                                                    body: (compound_command
+                                                                      (case_clause
+                                                                        (case_keyword)
+                                                                        word: (word
+                                                                          (literal))
+                                                                        in: (in
+                                                                          (in_keyword))
+                                                                        items: (case_list
+                                                                          item: (case_item
+                                                                            patterns: (pattern_list
+                                                                              word: (word
+                                                                                (literal)))
+                                                                            body: (compound_list
+                                                                              body: (term
+                                                                                and_or: (and_or
+                                                                                  pipeline: (pipeline
+                                                                                    sequence: (pipe_sequence
+                                                                                      command: (command
+                                                                                        body: (simple_command
+                                                                                          name: (cmd_name
+                                                                                            (word
+                                                                                              (literal))))))))))
+                                                                            terminator: (dsemi)))
+                                                                        (esac_keyword))))))))))))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Function body starts preserve bracket source around case patterns
+==================
+
+: [$(f() case x in x) :;; esac)]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (command_substitution
+                            body: (command_substitution_body
+                              (complete_commands
+                                command: (complete_command
+                                  body: (list
+                                    and_or: (and_or
+                                      pipeline: (pipeline
+                                        sequence: (pipe_sequence
+                                          command: (command
+                                            body: (function_definition
+                                              name: (fname)
+                                              body: (function_body
+                                                body: (compound_command
+                                                  (case_clause
+                                                    (case_keyword)
+                                                    word: (word
+                                                      (literal))
+                                                    in: (in
+                                                      (in_keyword))
+                                                    items: (case_list
+                                                      item: (case_item
+                                                        patterns: (pattern_list
+                                                          word: (word
+                                                            (literal)))
+                                                        body: (compound_list
+                                                          body: (term
+                                                            and_or: (and_or
+                                                              pipeline: (pipeline
+                                                                sequence: (pipe_sequence
+                                                                  command: (command
+                                                                    body: (simple_command
+                                                                      name: (cmd_name
+                                                                        (word
+                                                                          (literal))))))))))
+                                                        terminator: (dsemi)))
+                                                    (esac_keyword))))))))))))))))))))))))))
+  trailing: (linebreak
     (newline_list)))

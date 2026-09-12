@@ -52,11 +52,13 @@ next
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))
+          end: (here_document_end
+            (here_document_end_text)))
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))))
+          end: (here_document_end
+            (here_document_end_text)))))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -129,7 +131,8 @@ next
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))))
+          end: (here_document_end
+            (here_document_end_text)))))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -182,7 +185,8 @@ tr a b
                     document: (here_document
                       body: (here_document_body
                         (here_document_text))
-                      end: (here_document_end)))))
+                      end: (here_document_end
+                        (here_document_end_text))))))
               command: (command
                 body: (simple_command
                   name: (cmd_name
@@ -247,11 +251,13 @@ SECOND
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))
+          end: (here_document_end
+            (here_document_end_text)))
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))))))
+          end: (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 A here-document sequence owns continuations before its line end
@@ -311,7 +317,8 @@ fourth
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -360,7 +367,8 @@ fourth
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))
+          (here_document_end
+            (here_document_end_text)))))
     (complete_command
       (list
         (and_or
@@ -412,7 +420,8 @@ second
         document: (here_document
           body: (here_document_body
             (here_document_text))
-          end: (here_document_end))))
+          end: (here_document_end
+            (here_document_end_text)))))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -483,7 +492,8 @@ E
                             (here_document
                               (here_document_body
                                 (here_document_text))
-                              (here_document_end)))))))))))))))
+                              (here_document_end
+                                (here_document_end_text))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -554,11 +564,13 @@ B
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))
+          (here_document_end
+            (here_document_end_text)))
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))))
+          (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 A conditional condition holds commands after a here-document separator
@@ -633,7 +645,8 @@ E
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))))
+          (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 A case item body continues after a here-document separator
@@ -703,7 +716,8 @@ E
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))))
+          (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 An escaped word begins a command after a here-document separator
@@ -763,7 +777,8 @@ E
         (here_document
           (here_document_body
             (here_document_text))
-          (here_document_end))))))
+          (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 A continuation ending a here-document redirect line keeps a following command
@@ -802,7 +817,8 @@ echo after
         (line_continuation)
         line_end: (here_document_line_end)
         document: (here_document
-          end: (here_document_end))))
+          end: (here_document_end
+            (here_document_end_text)))))
     command: (complete_command
       body: (list
         and_or: (and_or

@@ -319,6 +319,8 @@ echo hi | ! x
 
 ---
 
+
+
 ==================
 Pipelines permit linebreaks after pipe operators
 ==================

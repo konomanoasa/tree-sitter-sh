@@ -1035,7 +1035,8 @@ X
                                                             (here_document
                                                               (quoted_here_document_body
                                                                 (quoted_here_document_text))
-                                                              (here_document_end)))))))))))))))))))))))))))))))
+                                                              (here_document_end
+                                                                (here_document_end_text))))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 

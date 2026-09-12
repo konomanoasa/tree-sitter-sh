@@ -286,6 +286,7 @@ esac
                     (esac_keyword))))))))))
   trailing: (linebreak
     (newline_list)))
+
 ==================
 Case pattern words absorb interior number signs
 ==================
