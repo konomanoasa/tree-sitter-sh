@@ -2490,3 +2490,140 @@ a bare backtick cannot close an escaped nested substitution
 echo `\`a`b`
 
 ---
+
+==================
+keywords end immediately before a nested backquote closer
+==================
+
+: `: \`if :; then :; fi\``
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (backquote_substitution
+                                                (backquote_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (compound_command
+                                                                  (if_clause
+                                                                    (if_keyword)
+                                                                    (compound_list
+                                                                      (term
+                                                                        (and_or
+                                                                          (pipeline
+                                                                            (pipe_sequence
+                                                                              (command
+                                                                                (simple_command
+                                                                                  (cmd_name
+                                                                                    (word
+                                                                                      (literal)))))))))
+                                                                      (separator
+                                                                        (separator_op)))
+                                                                    (then_keyword)
+                                                                    (compound_list
+                                                                      (term
+                                                                        (and_or
+                                                                          (pipeline
+                                                                            (pipe_sequence
+                                                                              (command
+                                                                                (simple_command
+                                                                                  (cmd_name
+                                                                                    (word
+                                                                                      (literal)))))))))
+                                                                      (separator
+                                                                        (separator_op)))
+                                                                    (fi_keyword))))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a word continuation ends before a nested backquote closer
+==================
+
+: `: \`x\
+\``
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (backquote_substitution
+                                                (backquote_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))))))))))
+                                                  (line_continuation)))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))

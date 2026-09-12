@@ -881,6 +881,29 @@ is_token_delimiter(const struct Scanner *scanner, const TSLexer *lexer) {
   return is_token_delimiter_at_depth(lexer, scanner->backquote_depth);
 }
 
+static bool
+skip_token_continuations(const struct Scanner *scanner, TSLexer *lexer) {
+  while (lexer->lookahead == '\\') {
+    size_t run;
+    if (!count_escape_run(lexer, 0, &run)) {
+      return false;
+    }
+    if (lexer->lookahead == '`') {
+      return classify_backquote_tick_prefix(scanner->backquote_depth, run) ==
+        BACKQUOTE_TICK_PREFIX_END;
+    }
+    if (
+      lexer->lookahead !=
+      '\n' ||
+      fold_enclosed_plain_run(run, scanner->backquote_depth) != 1
+    ) {
+      return false;
+    }
+    lexer->advance(lexer, false);
+  }
+  return true;
+}
+
 static bool is_bracket_scan_boundary(
   const struct Scanner *scanner,
   const TSLexer *lexer,
@@ -3672,7 +3695,7 @@ static bool scan_delimited_character_token(
   lexer->advance(lexer, false);
   lexer->mark_end(lexer);
 
-  if (!skip_line_continuations(lexer)) {
+  if (!skip_token_continuations(scanner, lexer)) {
     return false;
   }
 
@@ -3723,7 +3746,7 @@ static bool read_reserved_word(
     }
   }
 
-  if (!skip_line_continuations(lexer)) {
+  if (!skip_token_continuations(scanner, lexer)) {
     return false;
   }
 
@@ -3814,7 +3837,7 @@ static bool scan_name_or_reserved_word(
   ) {
     symbol = (TSSymbol)reserved_word->symbol;
   }
-  if (!skip_line_continuations(lexer)) {
+  if (!skip_token_continuations(scanner, lexer)) {
     return emit_word_name(lexer, valid_symbols);
   }
 
@@ -3834,7 +3857,10 @@ static bool scan_name_or_reserved_word(
 
   if (valid_symbols[FNAME_TOKEN] && reserved_word == NULL) {
     while (true) {
-      if (!scan_horizontal_blanks(lexer) && !skip_line_continuations(lexer)) {
+      if (
+        !scan_horizontal_blanks(lexer) &&
+        !skip_token_continuations(scanner, lexer)
+      ) {
         return emit_word_name(lexer, valid_symbols);
       }
       if (
@@ -3885,7 +3911,7 @@ static bool classify_scanned_comment_boundary(
 static bool
 right_brace_is_delimited(const struct Scanner *scanner, TSLexer *lexer) {
   lexer->advance(lexer, false);
-  if (!skip_line_continuations(lexer)) {
+  if (!skip_token_continuations(scanner, lexer)) {
     return false;
   }
   return is_token_delimiter(scanner, lexer);
@@ -4144,13 +4170,32 @@ static bool scan_element_boundary_core(
           valid_symbols
         );
       }
-      if (crossed_layout && valid_symbols[WORD_SEPARATOR_BEGIN]) {
-        // Reused subtrees can change token validity; classify by source only.
-        if (!escape_run_begins_word(scanner, lexer)) {
+      if (crossed_layout) {
+        size_t run;
+        if (!count_escape_run(lexer, 1, &run)) {
           return false;
         }
-        lexer->result_symbol = WORD_SEPARATOR_BEGIN;
-        return true;
+        if (
+          lexer->lookahead ==
+          '\n' &&
+          fold_enclosed_plain_run(run, scanner->backquote_depth) == 1
+        ) {
+          lexer->advance(lexer, false);
+          crossed_pairs = true;
+          continue;
+        }
+        if (
+          lexer->lookahead ==
+          '`' &&
+          classify_backquote_tick_prefix(scanner->backquote_depth, run) ==
+          BACKQUOTE_TICK_PREFIX_END
+        ) {
+          break;
+        }
+        if (valid_symbols[WORD_SEPARATOR_BEGIN]) {
+          lexer->result_symbol = WORD_SEPARATOR_BEGIN;
+          return true;
+        }
       }
       return false;
     }

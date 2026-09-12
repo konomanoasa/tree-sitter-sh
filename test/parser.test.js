@@ -16,6 +16,7 @@ import {
   assertValid,
   cstFingerprint,
   hasRecovery,
+  lineContinuationManifest,
   lines,
   parseValidCst,
   parseValidTree,
@@ -23,6 +24,91 @@ import {
   runQuery,
   writeSource,
 } from "./support/parser.js";
+
+test("sh: backquote closers delimit keywords and trailing word continuations", () => {
+  const contexts = [
+    ["nested", ": `: \\`", "\\``\n", 2],
+    ["deeper", ": `: \\`: \\\\\\`", "\\\\\\`\\``\n", 3],
+    ["quoted", ': "`: \\`', '\\``"\n', 2],
+  ];
+  const bodies = [
+    ["conditional", "if :; then :; fi", "if_clause", "fi_keyword", 14, 2],
+    ["loop", "while :; do :; done", "while_clause", "done_keyword", 15, 4],
+    ["case", "case x in x) :;; esac", "case_clause", "esac_keyword", 17, 4],
+    ["brace", "{ :; }", "brace_group", '"}"', 5, 1],
+    ["word", "x", "simple_command", "literal `x`", 0, 1],
+  ];
+  const layouts = [
+    ["adjacent", "", []],
+    ["continued", "\\\n", [0]],
+    ["folded", "\\\\\n", [1]],
+    ["spaced-folded", " \\\\\n", [2]],
+  ];
+  for (const [context, prefix, suffix, depth] of contexts) {
+    for (const [bodyName, body, node, terminal, offset, length] of bodies) {
+      for (const [layoutName, layout, continuationOffsets] of layouts) {
+        const name = `${context}-${bodyName}-${layoutName}`;
+        const sourceText = prefix + body + layout + suffix;
+        const source = writeSource(name, sourceText);
+        const boundary = prefix.length + body.length;
+        const spacedText = `${sourceText.slice(0, boundary)} ${sourceText.slice(boundary)}`;
+        const spaced = writeSource(`${name}-spaced`, spacedText);
+        for (const output of assertIncrementalEqualsFresh(
+          spaced,
+          source,
+          name,
+          { byte: boundary, deleteBytes: 1, insert: "" },
+        )) {
+          assertContains(output, node);
+          assertOccurrenceCount(output, "backquote_substitution_body", depth);
+          assertCstRange(
+            output,
+            `0:${prefix.length + offset}-0:${prefix.length + offset + length}`,
+            terminal,
+          );
+        }
+        assert.deepEqual(
+          lineContinuationManifest(runQuery(source)),
+          continuationOffsets.map((column) => `0:${boundary + column}-1:0`),
+          name,
+        );
+      }
+    }
+  }
+});
+
+test("sh: folded continuations preserve keyword and function-name classification", () => {
+  for (const [name, sourceText, node, range] of [
+    [
+      "opening-keyword",
+      ": `if\\\\\n :; then :; fi`\n",
+      "if_keyword",
+      "0:3-0:5",
+    ],
+    ["function-name", ": `f\\\\\n() { :; }`\n", "fname", "0:3-0:4"],
+    ["spaced-function-name", ": `f \\\\\n() { :; }`\n", "fname", "0:3-0:4"],
+  ]) {
+    const source = writeSource(name, sourceText);
+    const output = parseValidCst(source);
+    assertCstRange(output, range, node);
+    assertOccurrenceCount(output, node, 1);
+    const newline = sourceText.indexOf("\n");
+    assert.deepEqual(lineContinuationManifest(runQuery(source)), [
+      `0:${newline - 1}-1:0`,
+    ]);
+  }
+  for (const [name, sourceText] of [
+    ["nested-start", ": `if\\`:\\``\n"],
+    ["literal-slash-three", ": `if\\\\\\\n`\n"],
+    ["literal-slash-four", ": `if\\\\\\\\\n`\n"],
+  ]) {
+    const source = writeSource(name, sourceText);
+    const output = parseValidCst(source);
+    assertOccurrenceCount(output, "if_keyword", 0);
+    assertContains(output, "cmd_name");
+    assert.deepEqual(lineContinuationManifest(runQuery(source)), []);
+  }
+});
 
 test("sh: enclosing backquote escapes leave an unquoted delimiter unquoted", () => {
   for (const [name, contents, endRange, parameterRange] of [
