@@ -1,4 +1,92 @@
 ==================
+tilde prefixes are structured only where expansion can occur
+==================
+
+printf ~ ~user ~/path x~user
+PATH=~bin:/usr/bin:~other/bin command
+printf "${value:-~fallback}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (tilde_expansion))
+                    word: (word
+                      (tilde_expansion
+                        user: (tilde_user
+                          (literal))))
+                    word: (word
+                      (tilde_expansion)
+                      (literal)
+                      (literal))
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (tilde_expansion
+                          user: (tilde_user
+                            (literal)))
+                        (literal)
+                        (literal)
+                        (literal)
+                        (literal)
+                        (literal)
+                        (literal)
+                        (tilde_expansion
+                          user: (tilde_user
+                            (literal)))
+                        (literal)
+                        (literal))))
+                  word: (cmd_word
+                    (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_value_operator)
+                          word: (parameter_word
+                            (double_quote_text))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 tilde users retain every structured candidate before the formal delimiter
 ==================
 
@@ -239,91 +327,53 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
     (newline_list)))
 
 ==================
-tilde prefixes are structured only where expansion can occur
+tilde prefixes stop at unquoted delimiters inside bracket source
 ==================
 
-printf ~ ~user ~/path x~user
-PATH=~bin:/usr/bin:~other/bin command
-printf "${value:-~fallback}"
+: ~[/]
+x=~[:]
 
 ---
 
 (program
-  leading: (linebreak
+  (linebreak
     (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
                     (word
                       (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (tilde_expansion))
-                    word: (word
+                  (cmd_suffix
+                    (word
                       (tilde_expansion
-                        user: (tilde_user
-                          (literal))))
-                    word: (word
-                      (tilde_expansion)
+                        (tilde_user
+                          (literal)))
                       (literal)
-                      (literal))
-                    word: (word
                       (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
                         (tilde_expansion
-                          user: (tilde_user
+                          (tilde_user
                             (literal)))
                         (literal)
-                        (literal)
-                        (literal)
-                        (literal)
-                        (literal)
-                        (literal)
-                        (tilde_expansion
-                          user: (tilde_user
-                            (literal)))
-                        (literal)
-                        (literal))))
-                  word: (cmd_word
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (double_quoted
-                        (parameter_expansion
-                          parameter: (variable_name)
-                          operator: (parameter_value_operator)
-                          word: (parameter_word
-                            (double_quote_text))))))))))))))
-  trailing: (linebreak
+                        (literal))))))))))))
+  (linebreak
     (newline_list)))
 
 ==================
@@ -378,55 +428,5 @@ a=~user\
                   (cmd_word
                     (word
                       (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-tilde prefixes stop at unquoted delimiters inside bracket source
-==================
-
-: ~[/]
-x=~[:]
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (tilde_expansion
-                        (tilde_user
-                          (literal)))
-                      (literal)
-                      (literal))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_prefix
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (tilde_expansion
-                          (tilde_user
-                            (literal)))
-                        (literal)
-                        (literal))))))))))))
   (linebreak
     (newline_list)))

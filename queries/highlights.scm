@@ -31,47 +31,105 @@
 
 (positional_parameter) @variable.parameter
 
-(special_parameter) @variable.builtin
+(special_parameter
+  [
+    "0"
+    "*"
+    "@"
+    "?"
+    "$"
+    "!"
+    "-"
+    "#"
+  ] @variable.builtin)
 
 (fname) @function
 
 [
-  (if_keyword)
-  (then_keyword)
-  (elif_keyword)
-  (else_keyword)
-  (fi_keyword)
-  (for_keyword)
-  (in_keyword)
-  (do_keyword)
-  (done_keyword)
-  (case_keyword)
-  (esac_keyword)
-  (while_keyword)
-  (until_keyword)
-] @keyword
+  (if_keyword
+    "if" @keyword)
+  (then_keyword
+    "then" @keyword)
+  (elif_keyword
+    "elif" @keyword)
+  (else_keyword
+    "else" @keyword)
+  (fi_keyword
+    "fi" @keyword)
+  (for_keyword
+    "for" @keyword)
+  (in_keyword
+    "in" @keyword)
+  (do_keyword
+    "do" @keyword)
+  (done_keyword
+    "done" @keyword)
+  (case_keyword
+    "case" @keyword)
+  (esac_keyword
+    "esac" @keyword)
+  (while_keyword
+    "while" @keyword)
+  (until_keyword
+    "until" @keyword)
+]
 
 [
-  (arithmetic_operator)
-  (parameter_length_operator)
-  (parameter_value_operator)
-  (parameter_pattern_operator)
-  (and_if)
-  (or_if)
   (bang)
-  (dsemi)
-  (semi_and)
-] @operator
-
-[
   (lessand)
   (greatand)
-  (dgreat)
   (lessgreat)
   (clobber)
-  (dless)
-  (dlessdash)
 ] @operator
+
+(arithmetic_operator
+  _ @operator)
+
+(arithmetic_unary_expression
+  operator: (arithmetic_operator) @operator)
+
+(arithmetic_conditional_expression
+  operator: (arithmetic_operator) @operator)
+
+(parameter_length_operator
+  "#" @operator)
+
+(parameter_value_operator
+  [
+    ":-"
+    ":="
+    ":?"
+    ":+"
+    "-"
+    "="
+    "?"
+    "+"
+  ] @operator)
+
+(parameter_pattern_operator
+  [
+    "%%"
+    "##"
+    "%"
+    "#"
+  ] @operator)
+
+[
+  (and_if
+    "&&" @operator)
+  (or_if
+    "||" @operator)
+  (dsemi
+    ";;" @operator)
+  (semi_and
+    ";&" @operator)
+  (dgreat
+    ">>" @operator)
+  (dless
+    "<<" @operator)
+  (dlessdash
+    "<<-" @operator)
+]
 
 (io_file
   operator: [
@@ -139,10 +197,11 @@
 (tilde_user
   (pattern_bracket_source
     [
-      "["
-      "]"
-      (pattern_bracket_negation_source)
-    ] @string.special.path))
+      "[" @string.special.path
+      "]" @string.special.path
+      (pattern_bracket_negation_source
+        "!" @string.special.path)
+    ]))
 
 (tilde_user
   (pattern_bracket_source
@@ -212,112 +271,87 @@
 (here_end
   word: (word
     (pattern_bracket_source
-      "[" @label
-      (pattern_bracket_negation_source)? @label
-      (pattern_bracket_members_source
-        [
-          (pattern_bracket_character_source) @label
-          (pattern_bracket_hyphen_source) @label
-          (single_quoted
-            (single_quote_content) @label)
-          (double_quoted
-            (double_quote_text) @label)
-          (dollar_single_quoted
-            (dollar_single_quote_text) @label)
-          (pattern_bracket_range_source
-            start: [
-              (pattern_bracket_character_source) @label
-              (pattern_bracket_hyphen_source) @label
-              (single_quoted
-                (single_quote_content) @label)
-              (double_quoted
-                (double_quote_text) @label)
-              (dollar_single_quoted
-                (dollar_single_quote_text) @label)
-              (pattern_collating_symbol_source
+      [
+        "[" @label
+        "]" @label
+        (pattern_bracket_negation_source
+          "!" @label)
+        (pattern_bracket_members_source
+          [
+            (pattern_bracket_character_source) @label
+            (pattern_bracket_hyphen_source) @label
+            (single_quoted
+              (single_quote_content) @label)
+            (double_quoted
+              (double_quote_text) @label)
+            (dollar_single_quoted
+              (dollar_single_quote_text) @label)
+            (pattern_bracket_range_source
+              [
+                (pattern_bracket_character_source) @label
+                (pattern_bracket_hyphen_source) @label
+                (single_quoted
+                  (single_quote_content) @label)
+                (double_quoted
+                  (double_quote_text) @label)
+                (dollar_single_quoted
+                  (dollar_single_quote_text) @label)
+                (pattern_bracket_range_operator_source) @label
+                (pattern_collating_symbol_source
+                  [
+                    "[" @label
+                    "." @label
+                    "]" @label
+                    (pattern_collating_symbol_character_source) @label
+                    (single_quoted
+                      (single_quote_content) @label)
+                    (double_quoted
+                      (double_quote_text) @label)
+                    (dollar_single_quoted
+                      (dollar_single_quote_text) @label)
+                  ])
+              ])
+            (pattern_character_class_source
+              [
+                "[" @label
+                ":" @label
+                "]" @label
+                (pattern_character_class_content_source) @label
+                (single_quoted
+                  (single_quote_content) @label)
+                (double_quoted
+                  (double_quote_text) @label)
+                (dollar_single_quoted
+                  (dollar_single_quote_text) @label)
+              ])
+            (pattern_collating_symbol_source
+              [
                 "[" @label
                 "." @label
-                value: [
-                  (pattern_collating_symbol_character_source) @label
-                  (single_quoted
-                    (single_quote_content) @label)
-                  (double_quoted
-                    (double_quote_text) @label)
-                  (dollar_single_quoted
-                    (dollar_single_quote_text) @label)
-                ]?
-                "." @label
-                "]" @label)
-            ]?
-            operator: (pattern_bracket_range_operator_source) @label
-            end: [
-              (pattern_bracket_character_source) @label
-              (pattern_bracket_hyphen_source) @label
-              (single_quoted
-                (single_quote_content) @label)
-              (double_quoted
-                (double_quote_text) @label)
-              (dollar_single_quoted
-                (dollar_single_quote_text) @label)
-              (pattern_collating_symbol_source
+                "]" @label
+                (pattern_collating_symbol_character_source) @label
+                (single_quoted
+                  (single_quote_content) @label)
+                (double_quoted
+                  (double_quote_text) @label)
+                (dollar_single_quoted
+                  (dollar_single_quote_text) @label)
+              ])
+            (pattern_equivalence_class_source
+              [
                 "[" @label
-                "." @label
-                value: [
-                  (pattern_collating_symbol_character_source) @label
-                  (single_quoted
-                    (single_quote_content) @label)
-                  (double_quoted
-                    (double_quote_text) @label)
-                  (dollar_single_quoted
-                    (dollar_single_quote_text) @label)
-                ]?
-                "." @label
-                "]" @label)
-            ]?)
-          (pattern_character_class_source
-            "[" @label
-            ":" @label
-            content: [
-              (pattern_character_class_content_source) @label
-              (single_quoted
-                (single_quote_content) @label)
-              (double_quoted
-                (double_quote_text) @label)
-              (dollar_single_quoted
-                (dollar_single_quote_text) @label)
-            ]?
-            ":" @label
-            "]" @label)
-          (pattern_collating_symbol_source
-            "[" @label
-            "." @label
-            value: [
-              (pattern_collating_symbol_character_source) @label
-              (single_quoted
-                (single_quote_content) @label)
-              (double_quoted
-                (double_quote_text) @label)
-              (dollar_single_quoted
-                (dollar_single_quote_text) @label)
-            ]?
-            "." @label
-            "]" @label)
-          (pattern_equivalence_class_source
-            "[" @label
-            "=" @label
-            value: [
-              (pattern_equivalence_class_character_source) @label
-              (single_quoted
-                (single_quote_content) @label)
-              (double_quoted
-                (double_quote_text) @label)
-              (dollar_single_quoted
-                (dollar_single_quote_text) @label)
-            ]?
-            "=" @label
-            "]" @label)
-        ]?)
-      "]" @label)))
+                "=" @label
+                "]" @label
+                (pattern_equivalence_class_character_source) @label
+                (single_quoted
+                  (single_quote_content) @label)
+                (double_quoted
+                  (double_quote_text) @label)
+                (dollar_single_quoted
+                  (dollar_single_quote_text) @label)
+              ])
+          ])
+      ])))
 
 (here_document_end_text) @label
 
@@ -465,362 +499,341 @@
 (pattern_list
   (word
     (pattern_bracket_source
+      [
+        "[" @punctuation.bracket
+        "]" @punctuation.bracket
+        (pattern_bracket_negation_source
+          "!" @operator)
+        (pattern_bracket_members_source
+          [
+            (pattern_bracket_character_source) @character
+            (pattern_bracket_hyphen_source) @character
+            (pattern_bracket_range_source
+              [
+                (pattern_bracket_character_source) @character
+                (pattern_bracket_hyphen_source) @character
+                (pattern_bracket_range_operator_source) @operator
+                (pattern_collating_symbol_source
+                  [
+                    "[" @punctuation.bracket
+                    "." @punctuation.delimiter
+                    "]" @punctuation.bracket
+                    (pattern_collating_symbol_character_source) @character.special
+                  ])
+              ])
+            (pattern_character_class_source
+              [
+                "[" @punctuation.bracket
+                ":" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_character_class_content_source) @character.special
+              ])
+            (pattern_collating_symbol_source
+              [
+                "[" @punctuation.bracket
+                "." @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_collating_symbol_character_source) @character.special
+              ])
+            (pattern_equivalence_class_source
+              [
+                "[" @punctuation.bracket
+                "=" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_equivalence_class_character_source) @character.special
+              ])
+          ])
+      ])))
+
+(parameter_pattern
+  (pattern_bracket_source
+    [
       "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @operator
+      "]" @punctuation.bracket
+      (pattern_bracket_negation_source
+        "!" @operator)
       (pattern_bracket_members_source
         [
           (pattern_bracket_character_source) @character
           (pattern_bracket_hyphen_source) @character
           (pattern_bracket_range_source
-            start: [
+            [
               (pattern_bracket_character_source) @character
               (pattern_bracket_hyphen_source) @character
+              (pattern_bracket_range_operator_source) @operator
               (pattern_collating_symbol_source
-                "[" @punctuation.bracket
-                "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?
-            operator: (pattern_bracket_range_operator_source) @operator
-            end: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
-                "[" @punctuation.bracket
-                "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?)
+                [
+                  "[" @punctuation.bracket
+                  "." @punctuation.delimiter
+                  "]" @punctuation.bracket
+                  (pattern_collating_symbol_character_source) @character.special
+                ])
+            ])
           (pattern_character_class_source
-            "[" @punctuation.bracket
-            ":" @punctuation.delimiter
-            content: (pattern_character_class_content_source)? @character.special
-            ":" @punctuation.delimiter
-            "]" @punctuation.bracket)
+            [
+              "[" @punctuation.bracket
+              ":" @punctuation.delimiter
+              "]" @punctuation.bracket
+              (pattern_character_class_content_source) @character.special
+            ])
           (pattern_collating_symbol_source
-            "[" @punctuation.bracket
-            "." @punctuation.delimiter
-            value: (pattern_collating_symbol_character_source)? @character.special
-            "." @punctuation.delimiter
-            "]" @punctuation.bracket)
+            [
+              "[" @punctuation.bracket
+              "." @punctuation.delimiter
+              "]" @punctuation.bracket
+              (pattern_collating_symbol_character_source) @character.special
+            ])
           (pattern_equivalence_class_source
-            "[" @punctuation.bracket
-            "=" @punctuation.delimiter
-            value: (pattern_equivalence_class_character_source)? @character.special
-            "=" @punctuation.delimiter
-            "]" @punctuation.bracket)
-        ]?)
-      "]" @punctuation.bracket)))
-
-(parameter_pattern
-  (pattern_bracket_source
-    "[" @punctuation.bracket
-    (pattern_bracket_negation_source)? @operator
-    (pattern_bracket_members_source
-      [
-        (pattern_bracket_character_source) @character
-        (pattern_bracket_hyphen_source) @character
-        (pattern_bracket_range_source
-          start: [
-            (pattern_bracket_character_source) @character
-            (pattern_bracket_hyphen_source) @character
-            (pattern_collating_symbol_source
+            [
               "[" @punctuation.bracket
-              "." @punctuation.delimiter
-              value: (pattern_collating_symbol_character_source)? @character.special
-              "." @punctuation.delimiter
-              "]" @punctuation.bracket)
-          ]?
-          operator: (pattern_bracket_range_operator_source) @operator
-          end: [
-            (pattern_bracket_character_source) @character
-            (pattern_bracket_hyphen_source) @character
-            (pattern_collating_symbol_source
-              "[" @punctuation.bracket
-              "." @punctuation.delimiter
-              value: (pattern_collating_symbol_character_source)? @character.special
-              "." @punctuation.delimiter
-              "]" @punctuation.bracket)
-          ]?)
-        (pattern_character_class_source
-          "[" @punctuation.bracket
-          ":" @punctuation.delimiter
-          content: (pattern_character_class_content_source)? @character.special
-          ":" @punctuation.delimiter
-          "]" @punctuation.bracket)
-        (pattern_collating_symbol_source
-          "[" @punctuation.bracket
-          "." @punctuation.delimiter
-          value: (pattern_collating_symbol_character_source)? @character.special
-          "." @punctuation.delimiter
-          "]" @punctuation.bracket)
-        (pattern_equivalence_class_source
-          "[" @punctuation.bracket
-          "=" @punctuation.delimiter
-          value: (pattern_equivalence_class_character_source)? @character.special
-          "=" @punctuation.delimiter
-          "]" @punctuation.bracket)
-      ]?)
-    "]" @punctuation.bracket))
+              "=" @punctuation.delimiter
+              "]" @punctuation.bracket
+              (pattern_equivalence_class_character_source) @character.special
+            ])
+        ])
+    ]))
 
 (cmd_name
   (word
     (pattern_bracket_source
-      "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @operator
-      (pattern_bracket_members_source
-        [
-          (pattern_bracket_character_source) @character
-          (pattern_bracket_hyphen_source) @character
-          (pattern_bracket_range_source
-            start: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
+      [
+        "[" @punctuation.bracket
+        "]" @punctuation.bracket
+        (pattern_bracket_negation_source
+          "!" @operator)
+        (pattern_bracket_members_source
+          [
+            (pattern_bracket_character_source) @character
+            (pattern_bracket_hyphen_source) @character
+            (pattern_bracket_range_source
+              [
+                (pattern_bracket_character_source) @character
+                (pattern_bracket_hyphen_source) @character
+                (pattern_bracket_range_operator_source) @operator
+                (pattern_collating_symbol_source
+                  [
+                    "[" @punctuation.bracket
+                    "." @punctuation.delimiter
+                    "]" @punctuation.bracket
+                    (pattern_collating_symbol_character_source) @character.special
+                  ])
+              ])
+            (pattern_character_class_source
+              [
+                "[" @punctuation.bracket
+                ":" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_character_class_content_source) @character.special
+              ])
+            (pattern_collating_symbol_source
+              [
                 "[" @punctuation.bracket
                 "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?
-            operator: (pattern_bracket_range_operator_source) @operator
-            end: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
+                "]" @punctuation.bracket
+                (pattern_collating_symbol_character_source) @character.special
+              ])
+            (pattern_equivalence_class_source
+              [
                 "[" @punctuation.bracket
-                "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?)
-          (pattern_character_class_source
-            "[" @punctuation.bracket
-            ":" @punctuation.delimiter
-            content: (pattern_character_class_content_source)? @character.special
-            ":" @punctuation.delimiter
-            "]" @punctuation.bracket)
-          (pattern_collating_symbol_source
-            "[" @punctuation.bracket
-            "." @punctuation.delimiter
-            value: (pattern_collating_symbol_character_source)? @character.special
-            "." @punctuation.delimiter
-            "]" @punctuation.bracket)
-          (pattern_equivalence_class_source
-            "[" @punctuation.bracket
-            "=" @punctuation.delimiter
-            value: (pattern_equivalence_class_character_source)? @character.special
-            "=" @punctuation.delimiter
-            "]" @punctuation.bracket)
-        ]?)
-      "]" @punctuation.bracket)))
+                "=" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_equivalence_class_character_source) @character.special
+              ])
+          ])
+      ])))
 
 (cmd_word
   (word
     (pattern_bracket_source
-      "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @operator
-      (pattern_bracket_members_source
-        [
-          (pattern_bracket_character_source) @character
-          (pattern_bracket_hyphen_source) @character
-          (pattern_bracket_range_source
-            start: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
+      [
+        "[" @punctuation.bracket
+        "]" @punctuation.bracket
+        (pattern_bracket_negation_source
+          "!" @operator)
+        (pattern_bracket_members_source
+          [
+            (pattern_bracket_character_source) @character
+            (pattern_bracket_hyphen_source) @character
+            (pattern_bracket_range_source
+              [
+                (pattern_bracket_character_source) @character
+                (pattern_bracket_hyphen_source) @character
+                (pattern_bracket_range_operator_source) @operator
+                (pattern_collating_symbol_source
+                  [
+                    "[" @punctuation.bracket
+                    "." @punctuation.delimiter
+                    "]" @punctuation.bracket
+                    (pattern_collating_symbol_character_source) @character.special
+                  ])
+              ])
+            (pattern_character_class_source
+              [
+                "[" @punctuation.bracket
+                ":" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_character_class_content_source) @character.special
+              ])
+            (pattern_collating_symbol_source
+              [
                 "[" @punctuation.bracket
                 "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?
-            operator: (pattern_bracket_range_operator_source) @operator
-            end: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
+                "]" @punctuation.bracket
+                (pattern_collating_symbol_character_source) @character.special
+              ])
+            (pattern_equivalence_class_source
+              [
                 "[" @punctuation.bracket
-                "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?)
-          (pattern_character_class_source
-            "[" @punctuation.bracket
-            ":" @punctuation.delimiter
-            content: (pattern_character_class_content_source)? @character.special
-            ":" @punctuation.delimiter
-            "]" @punctuation.bracket)
-          (pattern_collating_symbol_source
-            "[" @punctuation.bracket
-            "." @punctuation.delimiter
-            value: (pattern_collating_symbol_character_source)? @character.special
-            "." @punctuation.delimiter
-            "]" @punctuation.bracket)
-          (pattern_equivalence_class_source
-            "[" @punctuation.bracket
-            "=" @punctuation.delimiter
-            value: (pattern_equivalence_class_character_source)? @character.special
-            "=" @punctuation.delimiter
-            "]" @punctuation.bracket)
-        ]?)
-      "]" @punctuation.bracket)))
+                "=" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_equivalence_class_character_source) @character.special
+              ])
+          ])
+      ])))
 
 (cmd_suffix
   word: (word
     (pattern_bracket_source
-      "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @operator
-      (pattern_bracket_members_source
-        [
-          (pattern_bracket_character_source) @character
-          (pattern_bracket_hyphen_source) @character
-          (pattern_bracket_range_source
-            start: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
+      [
+        "[" @punctuation.bracket
+        "]" @punctuation.bracket
+        (pattern_bracket_negation_source
+          "!" @operator)
+        (pattern_bracket_members_source
+          [
+            (pattern_bracket_character_source) @character
+            (pattern_bracket_hyphen_source) @character
+            (pattern_bracket_range_source
+              [
+                (pattern_bracket_character_source) @character
+                (pattern_bracket_hyphen_source) @character
+                (pattern_bracket_range_operator_source) @operator
+                (pattern_collating_symbol_source
+                  [
+                    "[" @punctuation.bracket
+                    "." @punctuation.delimiter
+                    "]" @punctuation.bracket
+                    (pattern_collating_symbol_character_source) @character.special
+                  ])
+              ])
+            (pattern_character_class_source
+              [
+                "[" @punctuation.bracket
+                ":" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_character_class_content_source) @character.special
+              ])
+            (pattern_collating_symbol_source
+              [
                 "[" @punctuation.bracket
                 "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?
-            operator: (pattern_bracket_range_operator_source) @operator
-            end: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
+                "]" @punctuation.bracket
+                (pattern_collating_symbol_character_source) @character.special
+              ])
+            (pattern_equivalence_class_source
+              [
                 "[" @punctuation.bracket
-                "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?)
-          (pattern_character_class_source
-            "[" @punctuation.bracket
-            ":" @punctuation.delimiter
-            content: (pattern_character_class_content_source)? @character.special
-            ":" @punctuation.delimiter
-            "]" @punctuation.bracket)
-          (pattern_collating_symbol_source
-            "[" @punctuation.bracket
-            "." @punctuation.delimiter
-            value: (pattern_collating_symbol_character_source)? @character.special
-            "." @punctuation.delimiter
-            "]" @punctuation.bracket)
-          (pattern_equivalence_class_source
-            "[" @punctuation.bracket
-            "=" @punctuation.delimiter
-            value: (pattern_equivalence_class_character_source)? @character.special
-            "=" @punctuation.delimiter
-            "]" @punctuation.bracket)
-        ]?)
-      "]" @punctuation.bracket)))
+                "=" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_equivalence_class_character_source) @character.special
+              ])
+          ])
+      ])))
 
 (wordlist
   word: (word
     (pattern_bracket_source
-      "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @operator
-      (pattern_bracket_members_source
-        [
-          (pattern_bracket_character_source) @character
-          (pattern_bracket_hyphen_source) @character
-          (pattern_bracket_range_source
-            start: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
+      [
+        "[" @punctuation.bracket
+        "]" @punctuation.bracket
+        (pattern_bracket_negation_source
+          "!" @operator)
+        (pattern_bracket_members_source
+          [
+            (pattern_bracket_character_source) @character
+            (pattern_bracket_hyphen_source) @character
+            (pattern_bracket_range_source
+              [
+                (pattern_bracket_character_source) @character
+                (pattern_bracket_hyphen_source) @character
+                (pattern_bracket_range_operator_source) @operator
+                (pattern_collating_symbol_source
+                  [
+                    "[" @punctuation.bracket
+                    "." @punctuation.delimiter
+                    "]" @punctuation.bracket
+                    (pattern_collating_symbol_character_source) @character.special
+                  ])
+              ])
+            (pattern_character_class_source
+              [
+                "[" @punctuation.bracket
+                ":" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_character_class_content_source) @character.special
+              ])
+            (pattern_collating_symbol_source
+              [
                 "[" @punctuation.bracket
                 "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?
-            operator: (pattern_bracket_range_operator_source) @operator
-            end: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
+                "]" @punctuation.bracket
+                (pattern_collating_symbol_character_source) @character.special
+              ])
+            (pattern_equivalence_class_source
+              [
                 "[" @punctuation.bracket
-                "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?)
-          (pattern_character_class_source
-            "[" @punctuation.bracket
-            ":" @punctuation.delimiter
-            content: (pattern_character_class_content_source)? @character.special
-            ":" @punctuation.delimiter
-            "]" @punctuation.bracket)
-          (pattern_collating_symbol_source
-            "[" @punctuation.bracket
-            "." @punctuation.delimiter
-            value: (pattern_collating_symbol_character_source)? @character.special
-            "." @punctuation.delimiter
-            "]" @punctuation.bracket)
-          (pattern_equivalence_class_source
-            "[" @punctuation.bracket
-            "=" @punctuation.delimiter
-            value: (pattern_equivalence_class_character_source)? @character.special
-            "=" @punctuation.delimiter
-            "]" @punctuation.bracket)
-        ]?)
-      "]" @punctuation.bracket)))
+                "=" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_equivalence_class_character_source) @character.special
+              ])
+          ])
+      ])))
 
 (filename
   word: (word
     (pattern_bracket_source
-      "[" @punctuation.bracket
-      (pattern_bracket_negation_source)? @operator
-      (pattern_bracket_members_source
-        [
-          (pattern_bracket_character_source) @character
-          (pattern_bracket_hyphen_source) @character
-          (pattern_bracket_range_source
-            start: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
+      [
+        "[" @punctuation.bracket
+        "]" @punctuation.bracket
+        (pattern_bracket_negation_source
+          "!" @operator)
+        (pattern_bracket_members_source
+          [
+            (pattern_bracket_character_source) @character
+            (pattern_bracket_hyphen_source) @character
+            (pattern_bracket_range_source
+              [
+                (pattern_bracket_character_source) @character
+                (pattern_bracket_hyphen_source) @character
+                (pattern_bracket_range_operator_source) @operator
+                (pattern_collating_symbol_source
+                  [
+                    "[" @punctuation.bracket
+                    "." @punctuation.delimiter
+                    "]" @punctuation.bracket
+                    (pattern_collating_symbol_character_source) @character.special
+                  ])
+              ])
+            (pattern_character_class_source
+              [
+                "[" @punctuation.bracket
+                ":" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_character_class_content_source) @character.special
+              ])
+            (pattern_collating_symbol_source
+              [
                 "[" @punctuation.bracket
                 "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?
-            operator: (pattern_bracket_range_operator_source) @operator
-            end: [
-              (pattern_bracket_character_source) @character
-              (pattern_bracket_hyphen_source) @character
-              (pattern_collating_symbol_source
+                "]" @punctuation.bracket
+                (pattern_collating_symbol_character_source) @character.special
+              ])
+            (pattern_equivalence_class_source
+              [
                 "[" @punctuation.bracket
-                "." @punctuation.delimiter
-                value: (pattern_collating_symbol_character_source)? @character.special
-                "." @punctuation.delimiter
-                "]" @punctuation.bracket)
-            ]?)
-          (pattern_character_class_source
-            "[" @punctuation.bracket
-            ":" @punctuation.delimiter
-            content: (pattern_character_class_content_source)? @character.special
-            ":" @punctuation.delimiter
-            "]" @punctuation.bracket)
-          (pattern_collating_symbol_source
-            "[" @punctuation.bracket
-            "." @punctuation.delimiter
-            value: (pattern_collating_symbol_character_source)? @character.special
-            "." @punctuation.delimiter
-            "]" @punctuation.bracket)
-          (pattern_equivalence_class_source
-            "[" @punctuation.bracket
-            "=" @punctuation.delimiter
-            value: (pattern_equivalence_class_character_source)? @character.special
-            "=" @punctuation.delimiter
-            "]" @punctuation.bracket)
-        ]?)
-      "]" @punctuation.bracket)))
+                "=" @punctuation.delimiter
+                "]" @punctuation.bracket
+                (pattern_equivalence_class_character_source) @character.special
+              ])
+          ])
+      ])))

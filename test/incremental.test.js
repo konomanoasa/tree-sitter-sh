@@ -26,7 +26,6 @@ import {
   runQuery,
   writeSource,
 } from "./support/parser.js";
-import { createEditHistoryGenerator } from "./support/source.js";
 
 test("sh: repairing missing operands and compound bodies matches a fresh parse", () => {
   const prefix = "before alpha\n";
@@ -5161,6 +5160,49 @@ test("sh: substitution newlines and continuations remain stable", () => {
   assertContains(embeddedDocumentOutput, "arithmetic_expansion");
   assertContains(embeddedDocumentOutput, "here_document_body");
 });
+
+function createEditHistoryGenerator() {
+  let seed = 1n;
+  function next(maximum) {
+    seed = BigInt.asUintN(64, seed * 6364136223846793005n + 1n);
+    return Number(seed >> 32n) % maximum;
+  }
+  return function* (fragments, insertions, joinSource) {
+    for (let iteration = 0; iteration < 100; iteration++) {
+      const parts = [];
+      const count = 1 + next(3);
+      for (let part = 0; part < count; part++) {
+        parts.push(fragments[next(fragments.length)]);
+      }
+      const initial = joinSource(parts);
+      let source = Buffer.from(initial);
+      const edits = [];
+      for (let step = 0; step < 5; step++) {
+        const position = next(source.length + 1);
+        const insert = next(2) === 0 || position === source.length;
+        const edit = insert
+          ? {
+              byte: position,
+              deleteBytes: 0,
+              insert: insertions[next(insertions.length)],
+            }
+          : {
+              byte: position,
+              deleteBytes: Math.min(next(2) + 1, source.length - position),
+              insert: "",
+            };
+        edits.push(edit);
+        source = applyEdits(source, [edit]);
+        yield {
+          initial,
+          source,
+          edits: [...edits],
+          context: `seed 1, iteration ${iteration}, source ${JSON.stringify(initial)}, edits ${JSON.stringify(edits)}`,
+        };
+      }
+    }
+  };
+}
 
 const fuzzFragments = [
   ":",

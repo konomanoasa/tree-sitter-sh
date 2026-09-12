@@ -1,4 +1,36 @@
 ==================
+blank-delimited words remain one command
+==================
+
+read -d : value
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))
+                    word: (word
+                      (literal))
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 a dot utility name remains a command name
 ==================
 
@@ -54,10 +86,10 @@ a bracket utility name remains a command name
     (newline_list)))
 
 ==================
-blank-delimited words remain one command
+quoted command names retain their word structure
 ==================
 
-read -d : value
+"printf" value
 
 ---
 
@@ -74,12 +106,38 @@ read -d : value
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)))
+                      (double_quoted
+                        (double_quote_text))))
                   suffix: (cmd_suffix
                     word: (word
-                      (literal))
-                    word: (word
-                      (literal))
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+expanded command names retain their word structure
+==================
+
+${runner} value
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (parameter_expansion
+                        parameter: (variable_name))))
+                  suffix: (cmd_suffix
                     word: (word
                       (literal)))))))))))
   trailing: (linebreak
@@ -123,15 +181,45 @@ tool '-x' \-x "--long" --long
     (newline_list)))
 
 ==================
-reserved word spellings remain words outside reserved positions
+hyphen-prefixed words retain concatenated source parts
+==================
+
+tool --long'' -x${suffix} --long
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (single_quoted))
+                    word: (word
+                      (literal)
+                      (parameter_expansion
+                        parameter: (variable_name)))
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+reserved words remain literal command arguments
 ==================
 
 printf if then elif else fi for in do done case esac while until
-ifconfig then_value for-ever while2
-{suffix }suffix
-"if" 'then' \for
-for in in if then do; do printf "$in"; done
-case case in in) :;; esac
 
 ---
 
@@ -175,8 +263,22 @@ case case in in) :;; esac
                     word: (word
                       (literal))
                     word: (word
-                      (literal))))))))))
-    separator: (newline_list)
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+reserved word prefixes remain ordinary command names
+==================
+
+ifconfig then_value for-ever while2
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -193,8 +295,22 @@ case case in in) :;; esac
                     word: (word
                       (literal))
                     word: (word
-                      (literal))))))))))
-    separator: (newline_list)
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+brace prefixes remain ordinary command words
+==================
+
+{suffix }suffix
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -207,8 +323,22 @@ case case in in) :;; esac
                       (literal)))
                   suffix: (cmd_suffix
                     word: (word
-                      (literal))))))))))
-    separator: (newline_list)
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+quoted and escaped reserved spellings remain ordinary command words
+==================
+
+"if" 'then' \for
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -226,79 +356,7 @@ case case in in) :;; esac
                         (single_quote_content)))
                     word: (word
                       (escaped_character)
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (for_clause
-                    (for_keyword)
-                    name: (name)
-                    in: (in
-                      (in_keyword))
-                    words: (wordlist
-                      word: (word
-                        (literal))
-                      word: (word
-                        (literal))
-                      word: (word
-                        (literal)))
-                    separator: (sequential_sep)
-                    body: (do_group
-                      (do_keyword)
-                      body: (compound_list
-                        body: (term
-                          and_or: (and_or
-                            pipeline: (pipeline
-                              sequence: (pipe_sequence
-                                command: (command
-                                  body: (simple_command
-                                    name: (cmd_name
-                                      (word
-                                        (literal)))
-                                    suffix: (cmd_suffix
-                                      word: (word
-                                        (double_quoted
-                                          (parameter_expansion
-                                            parameter: (variable_name)))))))))))
-                        terminator: (separator
-                          operator: (separator_op)))
-                      (done_keyword))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (case_clause
-                    (case_keyword)
-                    word: (word
-                      (literal))
-                    in: (in
-                      (in_keyword))
-                    items: (case_list
-                      item: (case_item
-                        patterns: (pattern_list
-                          word: (word
-                            (literal)))
-                        body: (compound_list
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        terminator: (dsemi)))
-                    (esac_keyword))))))))))
+                      (literal)))))))))))
   trailing: (linebreak
     (newline_list)))
 
@@ -357,86 +415,6 @@ holder() { echo value; }
                                           (literal)))))))))
                           terminator: (separator
                             operator: (separator_op))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-quoted and expanded command names retain word structure
-==================
-
-"printf" value
-${runner} value
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (double_quoted
-                        (double_quote_text))))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (parameter_expansion
-                        parameter: (variable_name))))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-hyphen-prefixed words retain concatenated source parts
-==================
-
-tool --long'' -x${suffix} --long
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal)
-                      (single_quoted))
-                    word: (word
-                      (literal)
-                      (parameter_expansion
-                        parameter: (variable_name)))
-                    word: (word
-                      (literal)))))))))))
   trailing: (linebreak
     (newline_list)))
 
@@ -778,14 +756,19 @@ next
     (newline_list)))
 
 ==================
-a reserved word at a command-name position is never a command name
+an unmatched fi cannot begin a simple command
 :error
 ==================
 
 fi
-{ x; } ; }
+
+---
+
+==================
+an in keyword cannot begin a simple command
+:error
+==================
+
 in
-if a; then b; fi;fi
-echo $(done)
 
 ---

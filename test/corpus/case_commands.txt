@@ -1,54 +1,79 @@
 ==================
-a case clause owns every removed newline before in
+empty case clauses have no items
 ==================
 
-case x\
-\
- in x) :;; esac
+case value in esac
 
 ---
 
 (program
-  (linebreak
+  leading: (linebreak
     (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
                   (case_clause
                     (case_keyword)
-                    (word
+                    word: (word
                       (literal))
-                    (line_continuation)
-                    (line_continuation)
-                    (in
+                    in: (in
                       (in_keyword))
-                    (case_list
-                      (case_item
-                        (pattern_list
-                          (word
-                            (literal)))
-                        (compound_list
-                          (term
-                            (and_or
-                              (pipeline
-                                (pipe_sequence
-                                  (command
-                                    (simple_command
-                                      (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        (dsemi)))
                     (esac_keyword))))))))))
-  (linebreak
+  trailing: (linebreak
     (newline_list)))
 
 ==================
-case clauses support patterns empty bodies and both terminators
+a single case item retains its explicit terminator
+==================
+
+case value in option) :;; esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (literal)))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        terminator: (dsemi)))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+case clauses retain alternative patterns and both item terminators
 ==================
 
 case "$value" in
@@ -56,8 +81,6 @@ case "$value" in
   three) ;&
   *) fallback
 esac
-case value in esac
-case value in option) :;; esac
 
 ---
 
@@ -137,54 +160,196 @@ case value in option) :;; esac
                                           (literal)))))))))
                           terminator: (separator
                             newlines: (newline_list)))))
-                    (esac_keyword)))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (case_clause
-                    (case_keyword)
-                    word: (word
-                      (literal))
-                    in: (in
-                      (in_keyword))
-                    (esac_keyword)))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (case_clause
-                    (case_keyword)
-                    word: (word
-                      (literal))
-                    in: (in
-                      (in_keyword))
-                    items: (case_list
-                      item: (case_item
-                        patterns: (pattern_list
-                          word: (word
-                            (literal)))
-                        body: (compound_list
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        terminator: (dsemi)))
                     (esac_keyword))))))))))
   trailing: (linebreak
+    (newline_list)))
+
+==================
+empty case item bodies allow immediate terminators
+==================
+
+case x in x);;esac
+case x in x);&y) :;;esac
+case x in
+x)
+;;
+esac
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list
+                      (case_item
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (dsemi)))
+                    (esac_keyword)))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list
+                      (case_item
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (semi_and))
+                      (case_item
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        (dsemi)))
+                    (esac_keyword)))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list))
+                    (case_list
+                      (case_item
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (linebreak
+                          (newline_list))
+                        (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+an esac after a closed pattern ends the case without a body
+==================
+
+case x in x) esac
+case y in y) ;; z) esac
+case w in w)
+esac
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list_ns
+                      (case_item_ns
+                        (pattern_list
+                          (word
+                            (literal)))))
+                    (esac_keyword)))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list_ns
+                      (case_list
+                        (case_item
+                          (pattern_list
+                            (word
+                              (literal)))
+                          (dsemi)))
+                      (case_item_ns
+                        (pattern_list
+                          (word
+                            (literal)))))
+                    (esac_keyword)))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list_ns
+                      (case_item_ns
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  (linebreak
     (newline_list)))
 
 ==================
@@ -257,148 +422,6 @@ esac
                         (linebreak
                           (newline_list))))
                     (esac_keyword))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-the final case item keeps its terminator after a preceding branch
-==================
-
-{
-  if :; then
-    :
-  else
-    :
-  fi
-  :
-  case x in
-    a) ;;
-    b) a= ;;
-  esac
-}
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (brace_group
-                    body: (compound_list
-                      leading: (linebreak
-                        (newline_list))
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (compound_command
-                                  (if_clause
-                                    (if_keyword)
-                                    condition: (compound_list
-                                      body: (term
-                                        and_or: (and_or
-                                          pipeline: (pipeline
-                                            sequence: (pipe_sequence
-                                              command: (command
-                                                body: (simple_command
-                                                  name: (cmd_name
-                                                    (word
-                                                      (literal)))))))))
-                                      terminator: (separator
-                                        operator: (separator_op)))
-                                    (then_keyword)
-                                    consequence: (compound_list
-                                      leading: (linebreak
-                                        (newline_list))
-                                      body: (term
-                                        and_or: (and_or
-                                          pipeline: (pipeline
-                                            sequence: (pipe_sequence
-                                              command: (command
-                                                body: (simple_command
-                                                  name: (cmd_name
-                                                    (word
-                                                      (literal)))))))))
-                                      terminator: (separator
-                                        newlines: (newline_list)))
-                                    alternative: (else_part
-                                      (else_keyword)
-                                      body: (compound_list
-                                        leading: (linebreak
-                                          (newline_list))
-                                        body: (term
-                                          and_or: (and_or
-                                            pipeline: (pipeline
-                                              sequence: (pipe_sequence
-                                                command: (command
-                                                  body: (simple_command
-                                                    name: (cmd_name
-                                                      (word
-                                                        (literal)))))))))
-                                        terminator: (separator
-                                          newlines: (newline_list))))
-                                    (fi_keyword)))))))
-                        separator: (separator
-                          newlines: (newline_list))
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal))))))))
-                        separator: (separator
-                          newlines: (newline_list))
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (compound_command
-                                  (case_clause
-                                    (case_keyword)
-                                    word: (word
-                                      (literal))
-                                    in: (in
-                                      (in_keyword))
-                                    (linebreak
-                                      (newline_list))
-                                    items: (case_list
-                                      item: (case_item
-                                        patterns: (pattern_list
-                                          word: (word
-                                            (literal)))
-                                        terminator: (dsemi)
-                                        (linebreak
-                                          (newline_list)))
-                                      item: (case_item
-                                        patterns: (pattern_list
-                                          word: (word
-                                            (literal)))
-                                        body: (compound_list
-                                          body: (term
-                                            and_or: (and_or
-                                              pipeline: (pipeline
-                                                sequence: (pipe_sequence
-                                                  command: (command
-                                                    body: (simple_command
-                                                      prefix: (cmd_prefix
-                                                        assignment: (assignment_word
-                                                          name: (variable_name))))))))))
-                                        terminator: (dsemi)
-                                        (linebreak
-                                          (newline_list))))
-                                    (esac_keyword))))))))
-                      terminator: (separator
-                        newlines: (newline_list))))))))))))
   trailing: (linebreak
     (newline_list)))
 
@@ -643,191 +666,145 @@ summarize() {
     (newline_list)))
 
 ==================
-empty case item bodies allow immediate terminators
+the final case item keeps its terminator after a preceding branch
 ==================
 
-case x in x);;esac
-case x in x);&y) :;;esac
-case x in
-x)
-;;
-esac
+{
+  if :; then
+    :
+  else
+    :
+  fi
+  :
+  case x in
+    a) ;;
+    b) a= ;;
+  esac
+}
 
 ---
 
 (program
-  (linebreak
+  leading: (linebreak
     (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (case_clause
-                    (case_keyword)
-                    (word
-                      (literal))
-                    (in
-                      (in_keyword))
-                    (case_list
-                      (case_item
-                        (pattern_list
-                          (word
-                            (literal)))
-                        (dsemi)))
-                    (esac_keyword)))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (case_clause
-                    (case_keyword)
-                    (word
-                      (literal))
-                    (in
-                      (in_keyword))
-                    (case_list
-                      (case_item
-                        (pattern_list
-                          (word
-                            (literal)))
-                        (semi_and))
-                      (case_item
-                        (pattern_list
-                          (word
-                            (literal)))
-                        (compound_list
-                          (term
-                            (and_or
-                              (pipeline
-                                (pipe_sequence
-                                  (command
-                                    (simple_command
-                                      (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        (dsemi)))
-                    (esac_keyword)))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (case_clause
-                    (case_keyword)
-                    (word
-                      (literal))
-                    (in
-                      (in_keyword))
-                    (linebreak
-                      (newline_list))
-                    (case_list
-                      (case_item
-                        (pattern_list
-                          (word
-                            (literal)))
-                        (linebreak
-                          (newline_list))
-                        (dsemi)
-                        (linebreak
-                          (newline_list))))
-                    (esac_keyword))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-an esac after a closed pattern ends the case without a body
-==================
-
-case x in x) esac
-case y in y) ;; z) esac
-case w in w)
-esac
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (case_clause
-                    (case_keyword)
-                    (word
-                      (literal))
-                    (in
-                      (in_keyword))
-                    (case_list_ns
-                      (case_item_ns
-                        (pattern_list
-                          (word
-                            (literal)))))
-                    (esac_keyword)))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (case_clause
-                    (case_keyword)
-                    (word
-                      (literal))
-                    (in
-                      (in_keyword))
-                    (case_list_ns
-                      (case_list
-                        (case_item
-                          (pattern_list
-                            (word
-                              (literal)))
-                          (dsemi)))
-                      (case_item_ns
-                        (pattern_list
-                          (word
-                            (literal)))))
-                    (esac_keyword)))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (case_clause
-                    (case_keyword)
-                    (word
-                      (literal))
-                    (in
-                      (in_keyword))
-                    (case_list_ns
-                      (case_item_ns
-                        (pattern_list
-                          (word
-                            (literal)))
-                        (linebreak
-                          (newline_list))))
-                    (esac_keyword))))))))))
-  (linebreak
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (brace_group
+                    body: (compound_list
+                      leading: (linebreak
+                        (newline_list))
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (compound_command
+                                  (if_clause
+                                    (if_keyword)
+                                    condition: (compound_list
+                                      body: (term
+                                        and_or: (and_or
+                                          pipeline: (pipeline
+                                            sequence: (pipe_sequence
+                                              command: (command
+                                                body: (simple_command
+                                                  name: (cmd_name
+                                                    (word
+                                                      (literal)))))))))
+                                      terminator: (separator
+                                        operator: (separator_op)))
+                                    (then_keyword)
+                                    consequence: (compound_list
+                                      leading: (linebreak
+                                        (newline_list))
+                                      body: (term
+                                        and_or: (and_or
+                                          pipeline: (pipeline
+                                            sequence: (pipe_sequence
+                                              command: (command
+                                                body: (simple_command
+                                                  name: (cmd_name
+                                                    (word
+                                                      (literal)))))))))
+                                      terminator: (separator
+                                        newlines: (newline_list)))
+                                    alternative: (else_part
+                                      (else_keyword)
+                                      body: (compound_list
+                                        leading: (linebreak
+                                          (newline_list))
+                                        body: (term
+                                          and_or: (and_or
+                                            pipeline: (pipeline
+                                              sequence: (pipe_sequence
+                                                command: (command
+                                                  body: (simple_command
+                                                    name: (cmd_name
+                                                      (word
+                                                        (literal)))))))))
+                                        terminator: (separator
+                                          newlines: (newline_list))))
+                                    (fi_keyword)))))))
+                        separator: (separator
+                          newlines: (newline_list))
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal))))))))
+                        separator: (separator
+                          newlines: (newline_list))
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (compound_command
+                                  (case_clause
+                                    (case_keyword)
+                                    word: (word
+                                      (literal))
+                                    in: (in
+                                      (in_keyword))
+                                    (linebreak
+                                      (newline_list))
+                                    items: (case_list
+                                      item: (case_item
+                                        patterns: (pattern_list
+                                          word: (word
+                                            (literal)))
+                                        terminator: (dsemi)
+                                        (linebreak
+                                          (newline_list)))
+                                      item: (case_item
+                                        patterns: (pattern_list
+                                          word: (word
+                                            (literal)))
+                                        body: (compound_list
+                                          body: (term
+                                            and_or: (and_or
+                                              pipeline: (pipeline
+                                                sequence: (pipe_sequence
+                                                  command: (command
+                                                    body: (simple_command
+                                                      prefix: (cmd_prefix
+                                                        assignment: (assignment_word
+                                                          name: (variable_name))))))))))
+                                        terminator: (dsemi)
+                                        (linebreak
+                                          (newline_list))))
+                                    (esac_keyword))))))))
+                      terminator: (separator
+                        newlines: (newline_list))))))))))))
+  trailing: (linebreak
     (newline_list)))
 
 ==================
@@ -872,6 +849,55 @@ case x in p) y=esac ;; esac
                                           (variable_name)
                                           (assignment_value
                                             (literal)))))))))))
+                        (dsemi)))
+                    (esac_keyword))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a case clause owns every removed newline before in
+==================
+
+case x\
+\
+ in x) :;; esac
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (line_continuation)
+                    (line_continuation)
+                    (in
+                      (in_keyword))
+                    (case_list
+                      (case_item
+                        (pattern_list
+                          (word
+                            (literal)))
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal))))))))))
                         (dsemi)))
                     (esac_keyword))))))))))
   (linebreak

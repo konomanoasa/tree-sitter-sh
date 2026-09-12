@@ -2,13 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { after, before } from "node:test";
-import {
-  createEnvironmentDirectory,
-  grammarDirectory,
-  grammarName,
-  runTreeSitter,
-} from "../../scripts/tree-sitter.js";
-import { applyEdits, formatEdit, sourceEndPoint } from "./source.js";
+import { createTreeSitter, grammars, root } from "../../scripts/tree-sitter.js";
+
+const grammarName = grammars[0].name;
 
 const contractsQuerySource = `(line_continuation) @line.continuation
 
@@ -24,34 +20,81 @@ let contractsQuery;
 
 let runtimeDirectory;
 
+let treeSitter;
+
 let parserLibrary;
 
 let sourceSequence = 0;
 
 before(() => {
-  runtimeDirectory = createEnvironmentDirectory("tree-sitter-sh-parser");
+  treeSitter = createTreeSitter();
+  runtimeDirectory = treeSitter.directory;
   contractsQuery = path.join(runtimeDirectory, "contracts.scm");
   fs.writeFileSync(contractsQuery, contractsQuerySource);
   parserLibrary = path.join(
     runtimeDirectory,
     process.platform === "win32" ? "parser.dll" : "parser",
   );
-  runTreeSitter(["build", "--output", parserLibrary, grammarDirectory], {
-    environmentDirectory: runtimeDirectory,
-    timeout: parserProcessTimeout,
-  });
+  runParserCommand([
+    "build",
+    "--output",
+    parserLibrary,
+    path.join(root, grammars[0].path),
+  ]);
 });
 
 after(() => {
-  fs.rmSync(runtimeDirectory, { force: true, recursive: true });
+  treeSitter?.close();
 });
 
+function applyEdits(source, edits) {
+  let bytes = Buffer.from(source);
+  for (const edit of edits) {
+    const { byte, deleteBytes, insert } = edit;
+    const description = JSON.stringify(edit);
+    assert.ok(
+      Number.isSafeInteger(byte) && byte >= 0,
+      `invalid byte offset: ${description}`,
+    );
+    assert.ok(
+      Number.isSafeInteger(deleteBytes) && deleteBytes >= 0,
+      `invalid deletion length: ${description}`,
+    );
+    assert.equal(typeof insert, "string", `invalid insertion: ${description}`);
+    assert.ok(
+      byte <= bytes.length && deleteBytes <= bytes.length - byte,
+      `edit exceeds ${bytes.length} source bytes: ${description}`,
+    );
+    bytes = Buffer.concat([
+      bytes.subarray(0, byte),
+      Buffer.from(insert),
+      bytes.subarray(byte + deleteBytes),
+    ]);
+  }
+  return bytes;
+}
+
+function formatEdit({ byte, deleteBytes, insert }) {
+  return `${byte} ${deleteBytes} ${insert}`;
+}
+
+function sourceEndPoint(source) {
+  const bytes = Buffer.from(source);
+  let row = 0;
+  for (const byte of bytes) if (byte === 10) row += 1;
+  return `${row}:${bytes.length - bytes.lastIndexOf(10) - 1}`;
+}
+
 function runParserCommand(arguments_, allowedStatuses = [0]) {
-  return runTreeSitter(arguments_, {
-    allowedStatuses,
-    environmentDirectory: runtimeDirectory,
+  const result = treeSitter.run(arguments_, {
     timeout: parserProcessTimeout,
   });
+  assert.ifError(result.error);
+  assert.ok(
+    allowedStatuses.includes(result.status),
+    result.stdout + result.stderr,
+  );
+  return result;
 }
 
 function lines(...sourceLines) {

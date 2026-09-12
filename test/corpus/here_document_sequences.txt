@@ -260,57 +260,138 @@ SECOND
             (here_document_end_text)))))))
 
 ==================
-a trailing blank stays with its here-document sequence
+a substitution newline does not start an enclosing here-document body
 ==================
 
-cat <<END 
+cmd <<E $(x
+y)
 body
-END
-second
+E
 
 ---
 
 (program
-  leading: (linebreak
+  (linebreak
     (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
                     (word
                       (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal)))))))))))))
-    separator: (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (here_document_body
-            (here_document_text))
-          end: (here_document_end
-            (here_document_end_text)))))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)))))
                     (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
+                      (command_substitution
+                        (command_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal))))))))))
+                            (newline_list)
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))))))))))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end
+            (here_document_end_text)))))))
+
+==================
+a backquote newline does not start an enclosing here-document body
+==================
+
+cmd <<E `x
+y`
+body
+E
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)))))
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal))))))))))
+                            (newline_list)
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))))))))))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 a term separator continues on the declaring line of a here-document
@@ -656,6 +737,59 @@ E
             (here_document_text))
           (here_document_end
             (here_document_end_text)))))))
+
+==================
+a trailing blank stays with its here-document sequence
+==================
+
+cat <<END 
+body
+END
+second
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (here_document_text))
+          end: (here_document_end
+            (here_document_end_text)))))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
 
 ==================
 a here-document sequence owns continuations before its line end

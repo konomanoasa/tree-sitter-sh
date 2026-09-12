@@ -116,12 +116,10 @@ esac
     (newline_list)))
 
 ==================
-case patterns allow layout before their closing parenthesis
+reserved spellings remain case values and pattern words
 ==================
 
-case value in
-  one | two   ) printf match ;;
-esac
+case case in in) :;; esac
 
 ---
 
@@ -142,13 +140,9 @@ esac
                       (literal))
                     in: (in
                       (in_keyword))
-                    (linebreak
-                      (newline_list))
                     items: (case_list
                       item: (case_item
                         patterns: (pattern_list
-                          word: (word
-                            (literal))
                           word: (word
                             (literal)))
                         body: (compound_list
@@ -160,13 +154,8 @@ esac
                                     body: (simple_command
                                       name: (cmd_name
                                         (word
-                                          (literal)))
-                                      suffix: (cmd_suffix
-                                        word: (word
                                           (literal))))))))))
-                        terminator: (dsemi)
-                        (linebreak
-                          (newline_list))))
+                        terminator: (dsemi)))
                     (esac_keyword))))))))))
   trailing: (linebreak
     (newline_list)))
@@ -221,6 +210,62 @@ esac
                                     body: (simple_command
                                       name: (cmd_name
                                         (word
+                                          (literal))))))))))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+case patterns allow layout before their closing parenthesis
+==================
+
+case value in
+  one | two   ) printf match ;;
+esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (literal))
+                          word: (word
+                            (literal)))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))
+                                      suffix: (cmd_suffix
+                                        word: (word
                                           (literal))))))))))
                         terminator: (dsemi)
                         (linebreak

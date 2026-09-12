@@ -1,4 +1,42 @@
 ==================
+adjacent source parts form one word
+==================
+
+printf pre\ value'suffix'"tail"$name${other}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (escaped_character)
+                      (literal)
+                      (single_quoted
+                        (single_quote_content))
+                      (double_quoted
+                        (double_quote_text))
+                      (parameter_expansion
+                        parameter: (variable_name))
+                      (parameter_expansion
+                        parameter: (variable_name))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 expansion and substitution contents stay inside one source word
 ==================
 
@@ -104,44 +142,6 @@ next
                   name: (cmd_name
                     (word
                       (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-adjacent source parts form one word
-==================
-
-printf pre\ value'suffix'"tail"$name${other}
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal)
-                      (escaped_character)
-                      (literal)
-                      (single_quoted
-                        (single_quote_content))
-                      (double_quoted
-                        (double_quote_text))
-                      (parameter_expansion
-                        parameter: (variable_name))
-                      (parameter_expansion
-                        parameter: (variable_name))))))))))))
   trailing: (linebreak
     (newline_list)))
 

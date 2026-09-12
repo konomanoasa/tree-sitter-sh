@@ -1,4 +1,78 @@
 ==================
+hash starts a comment only at a token boundary
+==================
+
+echo value#suffix # ignored
+next
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (literal)
+                      (literal))))))))))
+    separator: (newline_list
+      (comment))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+leading and trailing layout is not part of a comment node
+==================
+
+  # leading
+echo value  # trailing
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list
+      (comment)))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list
+      (comment))))
+
+==================
 list separators make an adjacent hash a comment
 ==================
 
@@ -52,18 +126,32 @@ third
     (newline_list)))
 
 ==================
-leading and trailing layout is not part of a comment node
+comments and linebreaks separate compound command parts
 ==================
 
-  # leading
-echo value  # trailing
+if # before the condition
+  check # before then
+then # before the consequence
+  act
+else # before the alternative
+  fallback
+fi
+for item in one two # before do
+do # before the body
+  use "$item"
+done
+case value # before in
+in # before the first pattern
+  one) # before the action
+    act
+    ;;
+esac
 
 ---
 
 (program
   leading: (linebreak
-    (newline_list
-      (comment)))
+    (newline_list))
   commands: (complete_commands
     command: (complete_command
       body: (list
@@ -71,16 +159,149 @@ echo value  # trailing
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
+                body: (compound_command
+                  (if_clause
+                    (if_keyword)
+                    condition: (compound_list
+                      leading: (linebreak
+                        (newline_list
+                          (comment)))
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        newlines: (newline_list
+                          (comment))))
+                    (then_keyword)
+                    consequence: (compound_list
+                      leading: (linebreak
+                        (newline_list
+                          (comment)))
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        newlines: (newline_list)))
+                    alternative: (else_part
+                      (else_keyword)
+                      body: (compound_list
+                        leading: (linebreak
+                          (newline_list
+                            (comment)))
+                        body: (term
+                          and_or: (and_or
+                            pipeline: (pipeline
+                              sequence: (pipe_sequence
+                                command: (command
+                                  body: (simple_command
+                                    name: (cmd_name
+                                      (word
+                                        (literal)))))))))
+                        terminator: (separator
+                          newlines: (newline_list))))
+                    (fi_keyword)))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (for_clause
+                    (for_keyword)
+                    name: (name)
+                    in: (in
+                      (in_keyword))
+                    words: (wordlist
+                      word: (word
+                        (literal))
+                      word: (word
+                        (literal)))
+                    separator: (sequential_sep
+                      newlines: (newline_list
+                        (comment)))
+                    body: (do_group
+                      (do_keyword)
+                      body: (compound_list
+                        leading: (linebreak
+                          (newline_list
+                            (comment)))
+                        body: (term
+                          and_or: (and_or
+                            pipeline: (pipeline
+                              sequence: (pipe_sequence
+                                command: (command
+                                  body: (simple_command
+                                    name: (cmd_name
+                                      (word
+                                        (literal)))
+                                    suffix: (cmd_suffix
+                                      word: (word
+                                        (double_quoted
+                                          (parameter_expansion
+                                            parameter: (variable_name)))))))))))
+                        terminator: (separator
+                          newlines: (newline_list)))
+                      (done_keyword))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
                     word: (word
-                      (literal)))))))))))
+                      (literal))
+                    (linebreak
+                      (newline_list
+                        (comment)))
+                    in: (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list
+                        (comment)))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (literal)))
+                        body: (compound_list
+                          leading: (linebreak
+                            (newline_list
+                              (comment)))
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))))))))
+                          terminator: (separator
+                            newlines: (newline_list)))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
   trailing: (linebreak
-    (newline_list
-      (comment))))
+    (newline_list)))
 
 ==================
 comments can follow a continued connecting operator
@@ -119,107 +340,6 @@ second
                     (word
                       (literal)))))))))))
   (linebreak
-    (newline_list)))
-
-==================
-a trailing comment after a completed line may end the input
-==================
-
-printf value
-# comment at EOF
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list))
-  (comment))
-
-==================
-a blank-led trailing comment may end the input
-==================
-
-printf value
-  # comment at EOF
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list))
-  (comment))
-
-==================
-hash starts a comment only at a token boundary
-==================
-
-echo value#suffix # ignored
-next
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal)
-                      (literal)
-                      (literal))))))))))
-    separator: (newline_list
-      (comment))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
     (newline_list)))
 
 ==================
@@ -264,34 +384,6 @@ after
                       (literal)))))))))))
   (linebreak
     (newline_list)))
-
-==================
-an EOF comment can follow a removed newline
-==================
-
-printf value \
-# comment at EOF
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)))))))))))
-  (line_continuation)
-  (comment))
 
 ==================
 line continuation exposes a comment at each command-start boundary
@@ -442,3 +534,89 @@ echo
       (line_continuation)
       (line_continuation)
       (comment))))
+
+==================
+a trailing comment after a completed line may end the input
+==================
+
+printf value
+# comment at EOF
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list))
+  (comment))
+
+==================
+a blank-led trailing comment may end the input
+==================
+
+printf value
+  # comment at EOF
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list))
+  (comment))
+
+==================
+an EOF comment can follow a removed newline
+==================
+
+printf value \
+# comment at EOF
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (line_continuation)
+  (comment))

@@ -1,303 +1,315 @@
-import childProcess from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
-
+import { spawnSync } from "node:child_process";
 import {
-  createEnvironmentDirectory,
-  grammarDirectory,
-  repositoryDirectory,
-} from "./tree-sitter.js";
+  accessSync,
+  constants,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
+import { grammars, packageName, root } from "./tree-sitter.js";
 
-const scannerSource = path.join(grammarDirectory, "src/scanner.c");
-const scannerContractSource = path.join(
-  repositoryDirectory,
-  "test/scanner.test.c",
-);
-const cSources = [scannerSource, scannerContractSource];
+const scannerConfigurations = {
+  sh: {
+    externalCount: "TOKEN_COUNT",
+    enumerators: {
+      _io_number_token: "FILE_DESCRIPTOR",
+      _bang_token: "PIPELINE_NEGATION",
+      _dless_commit: "DLESS",
+      _dlessdash_commit: "DLESSDASH",
+      _pattern_bracket_character_token: "PATTERN_BRACKET_CHARACTER",
+      _parameter_pattern_bracket_character_token:
+        "PARAMETER_PATTERN_BRACKET_CHARACTER",
+      _pattern_bracket_hyphen_token: "PATTERN_BRACKET_HYPHEN",
+    },
+    reuseAllocator: true,
+  },
+};
 
-function run(command, arguments_, options = {}) {
-  const result = childProcess.spawnSync(command, arguments_, {
-    cwd: repositoryDirectory,
+const warningArguments = ["-Wall", "-Wextra", "-Werror", "-pedantic"];
+const scannerContract = join(root, "test", "scanner.test.c");
+
+function run(command, arguments_, { stdio = "inherit" } = {}) {
+  const result = spawnSync(command, arguments_, {
+    cwd: root,
     encoding: "utf8",
     timeout: 60_000,
     killSignal: "SIGKILL",
-    env: process.env,
     maxBuffer: 64 * 1024 * 1024,
-    stdio: options.stdio,
+    stdio,
   });
-  if (result.error !== undefined) {
+  if (result.error) {
     throw result.error;
   }
   if (result.status !== 0) {
-    const diagnostics = result.stderr || result.stdout || "";
+    const diagnostics = (result.stderr || result.stdout || "").trim();
     throw new Error(
-      `${command} ${arguments_.join(" ")} failed with status ${result.status}\n${diagnostics}`,
+      `${command} ${arguments_.join(" ")} failed with status ${result.status ?? 1}${diagnostics ? `\n${diagnostics}` : ""}`,
     );
   }
   return result;
 }
 
-function resolveTools() {
-  if (process.platform !== "darwin") {
+function executableCandidates(name) {
+  if (process.platform !== "win32") return [name];
+  const extensions = (process.env.PATHEXT ?? ".EXE;.CMD;.BAT")
+    .split(";")
+    .filter(Boolean)
+    .map((extension) => extension.toLowerCase());
+  if (extensions.some((extension) => name.toLowerCase().endsWith(extension)))
+    return [name];
+  return [name, ...extensions.map((extension) => name + extension)];
+}
+
+function isExecutable(path) {
+  try {
+    accessSync(path, constants.X_OK);
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function findExecutable(name, directories) {
+  if (isAbsolute(name) || name.includes("/") || name.includes("\\")) {
+    if (isExecutable(name)) return name;
+    throw new Error(`Cannot execute ${name}.`);
+  }
+  for (const directory of directories) {
+    for (const candidate of executableCandidates(name)) {
+      const path = join(directory, candidate);
+      if (isExecutable(path)) return path;
+    }
+  }
+  throw new Error(`Cannot find ${name} on PATH.`);
+}
+
+function versionMajor(command) {
+  const version = run(command, ["--version"], { stdio: "pipe" }).stdout;
+  const match = version.match(/version ([0-9]+)/);
+  if (match === null)
+    throw new Error(`Cannot determine the version of ${command}.`);
+  return Number(match[1]);
+}
+
+function llvmCommands() {
+  if (process.platform === "darwin") {
+    const prefix = run("brew", ["--prefix", "llvm"], {
+      stdio: "pipe",
+    }).stdout.trim();
+    const directory = join(prefix, "bin");
     return {
-      clang: process.env.CLANG ?? "clang",
-      clangd: process.env.CLANGD ?? "clangd",
-      clangFormat: process.env.CLANG_FORMAT ?? "clang-format",
+      clang: findExecutable(join(directory, "clang"), []),
+      clangd: findExecutable(join(directory, "clangd"), []),
+      clangFormat: findExecutable(join(directory, "clang-format"), []),
     };
   }
-
-  const llvmDirectory = path.join(
-    run("brew", ["--prefix", "llvm"]).stdout.trim(),
-    "bin",
+  const directories = (process.env.PATH ?? "").split(delimiter);
+  const clangFormat = findExecutable(
+    process.env.CLANG_FORMAT ?? "clang-format",
+    directories,
   );
+  const directory = dirname(realpathSync(clangFormat));
   return {
-    clang: path.join(llvmDirectory, "clang"),
-    clangd: path.join(llvmDirectory, "clangd"),
-    clangFormat: path.join(llvmDirectory, "clang-format"),
+    clang: findExecutable(
+      process.env.CLANG ?? "clang",
+      process.env.CLANG === undefined ? [directory] : directories,
+    ),
+    clangd: findExecutable(
+      process.env.CLANGD ?? "clangd",
+      process.env.CLANGD === undefined ? [directory] : directories,
+    ),
+    clangFormat,
   };
 }
 
-function undefinedSymbols(output) {
-  const symbols = new Set();
-  for (const line of output.split("\n")) {
-    const fields = line.trim().split(" ").filter(Boolean);
-    if (fields.length === 0) {
-      continue;
-    }
-    const symbol = fields.at(-1);
-    symbols.add(symbol.startsWith("_") ? symbol.slice(1) : symbol);
-  }
-  return symbols;
+function scannerVariants() {
+  return grammars.map((grammar) => {
+    const configuration = scannerConfigurations[grammar.name];
+    if (configuration === undefined)
+      throw new Error(`Unsupported scanner grammar ${grammar.name}.`);
+    const includeDirectory = join(root, grammar.path, "src");
+    return {
+      ...configuration,
+      name: grammar.name,
+      includeDirectory,
+      source: join(includeDirectory, "scanner.c"),
+      headers: grammar.externalFiles
+        .filter((file) => file.endsWith(".h"))
+        .map((file) => join(root, file)),
+    };
+  });
 }
 
-const externalEnumeratorExceptions = new Map([
-  ["_io_number_token", "FILE_DESCRIPTOR"],
-  ["_bang_token", "PIPELINE_NEGATION"],
-  ["_dless_commit", "DLESS"],
-  ["_dlessdash_commit", "DLESSDASH"],
-  ["_pattern_bracket_character_token", "PATTERN_BRACKET_CHARACTER"],
-  [
-    "_parameter_pattern_bracket_character_token",
-    "PARAMETER_PATTERN_BRACKET_CHARACTER",
-  ],
-  ["_pattern_bracket_hyphen_token", "PATTERN_BRACKET_HYPHEN"],
-]);
-
-// External tokens are indexed by enum position, not by name.
-function checkExternalTokenOrder(scannerSource) {
+function checkExternalTokenOrder(clang, compilerArguments, variant, directory) {
   const grammar = JSON.parse(
-    fs.readFileSync(path.join(grammarDirectory, "src/grammar.json"), "utf8"),
+    readFileSync(join(variant.includeDirectory, "grammar.json"), "utf8"),
   );
-  const externals = grammar.externals.map((external) => external.name);
+  const assertions = grammar.externals.map(({ name }, index) => {
+    const enumerator =
+      variant.enumerators?.[name] ?? name.replace(/^_/, "").toUpperCase();
+    return `typedef char external_${index}[${enumerator} == ${index} ? 1 : -1];`;
+  });
+  assertions.push(
+    `typedef char external_count[(${variant.externalCount}) == ${grammar.externals.length} ? 1 : -1];`,
+  );
+  const source = join(directory, `scanner-indices-${variant.name}.c`);
+  writeFileSync(
+    source,
+    `#include ${JSON.stringify(variant.source.replaceAll("\\", "/"))}\n${assertions.join("\n")}\n`,
+  );
+  run(clang, [...compilerArguments, "-fsyntax-only", source]);
+}
 
-  const enumMatch = fs
-    .readFileSync(scannerSource, "utf8")
-    .match(/enum TokenType \{([^}]*)\}/);
-  if (enumMatch === null) {
-    throw new Error("Scanner does not declare enum TokenType");
-  }
-  const enumerators = enumMatch[1]
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "" && !line.startsWith("//"))
-    .map((line) => line.replace(/,.*$/, ""));
-
-  if (enumerators.at(-1) !== "TOKEN_COUNT") {
-    throw new Error("enum TokenType must end with the TOKEN_COUNT sentinel");
-  }
-  if (enumerators.length - 1 !== externals.length) {
-    throw new Error(
-      `enum TokenType has ${enumerators.length - 1} tokens for ${externals.length} grammar externals`,
+function checkDiagnostics(clang, clangd, variants, directory) {
+  for (const variant of variants) {
+    const databaseDirectory = join(directory, variant.name);
+    mkdirSync(databaseDirectory);
+    const sources = [
+      ...new Set([variant.source, ...variant.headers, scannerContract]),
+    ];
+    const commands = sources.map((source) => ({
+      arguments: [
+        clang,
+        "-std=c17",
+        "-xc",
+        "-I",
+        variant.includeDirectory,
+        ...warningArguments,
+        // Clangd reports included helpers as unused, and standalone headers
+        // lack their callers. Real compilation keeps all warnings enabled.
+        "-Wno-unused-function",
+        ...(source === variant.source ? [] : (variant.contractArguments ?? [])),
+        "-fsyntax-only",
+        source,
+      ],
+      directory: root,
+      file: source,
+    }));
+    writeFileSync(
+      join(databaseDirectory, "compile_commands.json"),
+      `${JSON.stringify(commands)}\n`,
     );
-  }
-  for (const [index, external] of externals.entries()) {
-    const expected =
-      externalEnumeratorExceptions.get(external) ??
-      external.replace(/^_/, "").toUpperCase();
-    if (enumerators[index] !== expected) {
-      throw new Error(
-        `enum TokenType position ${index} is ${enumerators[index]}, but the grammar external there is ${external} (expected ${expected})`,
-      );
+    for (const source of sources) {
+      run(clangd, [
+        "--enable-config=false",
+        "--log=error",
+        "--tweaks=",
+        `--compile-commands-dir=${databaseDirectory}`,
+        `--check=${source}`,
+      ]);
     }
   }
 }
 
-const temporaryDirectory = createEnvironmentDirectory("tree-sitter-sh-c");
+function checkAllocatorSymbols(clang, variant, directory) {
+  const object = join(directory, `scanner-reuse-${variant.name}.o`);
+  run(clang, [
+    "-std=c17",
+    ...warningArguments,
+    "-I",
+    variant.includeDirectory,
+    "-DTREE_SITTER_REUSE_ALLOCATOR",
+    "-c",
+    variant.source,
+    "-o",
+    object,
+  ]);
+  const symbols = new Set(
+    run("nm", ["-u", object], { stdio: "pipe" })
+      .stdout.split("\n")
+      .map((line) => line.trim().split(/ +/).at(-1)?.replace(/^_/, "")),
+  );
+  const allocators = ["malloc", "calloc", "realloc", "free"];
+  if (allocators.some((allocator) => symbols.has(allocator)))
+    throw new Error("Scanner bypasses the Tree-sitter allocator.");
+  if (!allocators.some((allocator) => symbols.has(`ts_current_${allocator}`)))
+    throw new Error("Scanner does not reference the Tree-sitter allocator.");
+}
 
-try {
-  const requestedArguments = process.argv.slice(2);
+function main(arguments_) {
   if (
-    requestedArguments.length > 1 ||
-    (requestedArguments.length === 1 &&
-      !["--write", "--sanitize"].includes(requestedArguments[0]))
+    arguments_.length > 1 ||
+    (arguments_.length === 1 &&
+      !["--write", "--sanitize"].includes(arguments_[0]))
   ) {
     throw new Error("Usage: node scripts/check-c.js [--write | --sanitize]");
   }
-
-  const { clang, clangd, clangFormat } = resolveTools();
-
-  const versions = [clang, clangd, clangFormat].map((command) => {
-    const match = run(command, ["--version"]).stdout.match(/version ([0-9]+)/);
-    if (match === null)
-      throw new Error(`Cannot determine the version of ${command}.`);
-    return Number(match[1]);
-  });
-  if (new Set(versions).size !== 1) {
+  const variants = scannerVariants();
+  const sources = [
+    ...new Set([
+      ...variants.flatMap((variant) => variant.headers),
+      ...variants.map((variant) => variant.source),
+      scannerContract,
+    ]),
+  ];
+  const { clang, clangd, clangFormat } = llvmCommands();
+  if (new Set([clang, clangd, clangFormat].map(versionMajor)).size !== 1)
     throw new Error(
-      "clang, clangd, and clang-format must use the same LLVM release.",
+      "clang, clangd, and clang-format must use the same LLVM major version.",
     );
+
+  if (arguments_[0] === "--write") {
+    run(clangFormat, ["-i", ...sources]);
+    return;
   }
-
-  if (requestedArguments[0] === "--write") {
-    run(clangFormat, ["-i", ...cSources], {
-      stdio: "inherit",
-    });
-  } else {
-    run(clangFormat, ["--dry-run", "--Werror", ...cSources], {
-      stdio: "inherit",
-    });
-
-    checkExternalTokenOrder(scannerSource);
-
-    const sanitizerArguments =
-      requestedArguments[0] === "--sanitize"
-        ? [
-            "-fsanitize=address,undefined",
-            "-fno-sanitize-recover=undefined",
-            "-fno-omit-frame-pointer",
-            "-g",
-          ]
-        : [];
-    const scannerReuseObject = path.join(temporaryDirectory, "scanner-reuse.o");
-    const warningArguments = ["-Wall", "-Wextra", "-Werror", "-pedantic"];
-    const scannerArguments = [
-      ...warningArguments,
-      `-I${path.join(grammarDirectory, "src")}`,
-    ];
-
-    const compileCommands = [
-      {
-        arguments: [
-          clang,
-          "-std=c17",
-          ...scannerArguments,
-          "-fsyntax-only",
-          scannerSource,
-        ],
-        directory: repositoryDirectory,
-        file: scannerSource,
-      },
-      {
-        // The contract includes scanner.c to exercise private helpers. Clangd
-        // otherwise reports unused helpers from that non-main file; the real
-        // contract compilation below still treats every warning as an error.
-        arguments: [
-          clang,
-          "-std=c17",
-          ...scannerArguments,
-          "-Wno-unused-function",
-          "-fsyntax-only",
-          scannerContractSource,
-        ],
-        directory: repositoryDirectory,
-        file: scannerContractSource,
-      },
-    ];
-    fs.writeFileSync(
-      path.join(temporaryDirectory, "compile_commands.json"),
-      `${JSON.stringify(compileCommands)}\n`,
-    );
-
-    for (const source of cSources) {
-      run(
-        clangd,
-        [
-          "--log=error",
-          "--tweaks=",
-          `--compile-commands-dir=${temporaryDirectory}`,
-          `--check=${source}`,
-        ],
-        { stdio: "inherit" },
-      );
-    }
-
+  const sanitizerArguments =
+    arguments_[0] === "--sanitize"
+      ? [
+          "-fsanitize=address,undefined",
+          "-fno-sanitize-recover=undefined",
+          "-fno-omit-frame-pointer",
+          "-g",
+        ]
+      : [];
+  const directory = mkdtempSync(join(tmpdir(), `${packageName}-scanner-`));
+  try {
+    checkDiagnostics(clang, clangd, variants, directory);
+    run(clangFormat, ["--dry-run", "--Werror", ...sources]);
     for (const standard of ["c99", "c17"]) {
-      const scannerStandardArguments = [
-        ...sanitizerArguments,
-        `-std=${standard}`,
-        ...scannerArguments,
-      ];
-      const scannerContract = path.join(
-        temporaryDirectory,
-        `scanner-contract-${standard}`,
-      );
-      const scannerReuseContract = path.join(
-        temporaryDirectory,
-        `scanner-reuse-contract-${standard}`,
-      );
-
-      run(
-        clang,
-        [...scannerStandardArguments, "-fsyntax-only", scannerSource],
-        {
-          stdio: "inherit",
-        },
-      );
-      run(
-        clang,
-        [
-          ...scannerStandardArguments,
-          scannerContractSource,
-          "-o",
-          scannerContract,
-        ],
-        { stdio: "inherit" },
-      );
-      run(scannerContract, [], { stdio: "inherit" });
-      run(
-        clang,
-        [
-          ...scannerStandardArguments,
-          "-DTREE_SITTER_REUSE_ALLOCATOR",
-          scannerContractSource,
-          "-o",
-          scannerReuseContract,
-        ],
-        { stdio: "inherit" },
-      );
-      run(scannerReuseContract, [], { stdio: "inherit" });
+      for (const variant of variants) {
+        const compilerArguments = [
+          ...sanitizerArguments,
+          `-std=${standard}`,
+          ...warningArguments,
+          "-I",
+          variant.includeDirectory,
+        ];
+        checkExternalTokenOrder(clang, compilerArguments, variant, directory);
+        for (const reuse of variant.reuseAllocator ? [false, true] : [false]) {
+          const suffix = process.platform === "win32" ? ".exe" : "";
+          const name = `${variant.name}-${standard}${reuse ? "-reuse" : ""}`;
+          const binary = join(directory, `scanner-${name}${suffix}`);
+          run(clang, [
+            ...compilerArguments,
+            ...(variant.contractArguments ?? []),
+            ...(reuse ? ["-DTREE_SITTER_REUSE_ALLOCATOR"] : []),
+            scannerContract,
+            "-o",
+            binary,
+          ]);
+          run(binary, []);
+          process.stdout.write(
+            `${variant.name}: scanner tests passed (${standard.toUpperCase()}${reuse ? ", reused allocator" : ""})\n`,
+          );
+        }
+        if (standard === "c17" && variant.reuseAllocator)
+          checkAllocatorSymbols(clang, variant, directory);
+      }
     }
-
-    run(
-      clang,
-      [
-        "-std=c17",
-        ...scannerArguments,
-        "-DTREE_SITTER_REUSE_ALLOCATOR",
-        "-c",
-        scannerSource,
-        "-o",
-        scannerReuseObject,
-      ],
-      { stdio: "inherit" },
-    );
-
-    const symbols = undefinedSymbols(
-      run("nm", ["-u", scannerReuseObject]).stdout,
-    );
-    const allocators = ["malloc", "calloc", "realloc", "free"];
-    if (allocators.some((allocator) => symbols.has(allocator))) {
-      throw new Error("Scanner bypasses the Tree-sitter allocator");
-    }
-    if (
-      !allocators.some((allocator) => symbols.has(`ts_current_${allocator}`))
-    ) {
-      throw new Error("Scanner does not reference the Tree-sitter allocator");
-    }
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
   }
+}
+
+try {
+  main(process.argv.slice(2));
 } catch (error) {
-  process.stderr.write(`${error.message}\n`);
+  console.error(error.message);
   process.exitCode = 1;
-} finally {
-  fs.rmSync(temporaryDirectory, { force: true, recursive: true });
 }

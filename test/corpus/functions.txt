@@ -1,68 +1,8 @@
 ==================
-a function definition and its following call remain separate commands
-==================
-
-greet() {
-  :
-}
-greet
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (function_definition
-                  name: (fname)
-                  body: (function_body
-                    body: (compound_command
-                      (brace_group
-                        body: (compound_list
-                          leading: (linebreak
-                            (newline_list))
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal)))))))))
-                          terminator: (separator
-                            newlines: (newline_list)))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-every compound command form can be a function body
+a brace group can be a function body
 ==================
 
 brace_body() { :; }
-subshell_body() (:)
-for_body() for item; do :; done
-case_body() case item in item) :;; esac
-if_body() if :; then :; fi
-while_body() while :; do :; done
-until_body() until :; do :; done
 
 ---
 
@@ -92,8 +32,22 @@ until_body() until :; do :; done
                                         (word
                                           (literal)))))))))
                           (separator
-                            (separator_op)))))))))))))
-    (newline_list)
+                            (separator_op))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a subshell can be a function body
+==================
+
+subshell_body() (:)
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
     (complete_command
       (list
         (and_or
@@ -114,8 +68,22 @@ until_body() until :; do :; done
                                     (simple_command
                                       (cmd_name
                                         (word
-                                          (literal))))))))))))))))))))
-    (newline_list)
+                                          (literal)))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a for clause can be a function body
+==================
+
+for_body() for item; do :; done
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
     (complete_command
       (list
         (and_or
@@ -144,8 +112,22 @@ until_body() until :; do :; done
                                             (literal)))))))))
                             (separator
                               (separator_op)))
-                          (done_keyword))))))))))))
-    (newline_list)
+                          (done_keyword)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a case clause can be a function body
+==================
+
+case_body() case item in item) :;; esac
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
     (complete_command
       (list
         (and_or
@@ -178,8 +160,22 @@ until_body() until :; do :; done
                                             (word
                                               (literal))))))))))
                             (dsemi)))
-                        (esac_keyword)))))))))))
-    (newline_list)
+                        (esac_keyword))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+an if clause can be a function body
+==================
+
+if_body() if :; then :; fi
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
     (complete_command
       (list
         (and_or
@@ -217,8 +213,22 @@ until_body() until :; do :; done
                                           (literal)))))))))
                           (separator
                             (separator_op)))
-                        (fi_keyword)))))))))))
-    (newline_list)
+                        (fi_keyword))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a while clause can be a function body
+==================
+
+while_body() while :; do :; done
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
     (complete_command
       (list
         (and_or
@@ -257,8 +267,22 @@ until_body() until :; do :; done
                                             (literal)))))))))
                             (separator
                               (separator_op)))
-                          (done_keyword))))))))))))
-    (newline_list)
+                          (done_keyword)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+an until clause can be a function body
+==================
+
+until_body() until :; do :; done
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
     (complete_command
       (list
         (and_or
@@ -546,6 +570,60 @@ for_worker() {
     (newline_list)))
 
 ==================
+a function definition and its following call remain separate commands
+==================
+
+greet() {
+  :
+}
+greet
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (function_definition
+                  name: (fname)
+                  body: (function_body
+                    body: (compound_command
+                      (brace_group
+                        body: (compound_list
+                          leading: (linebreak
+                            (newline_list))
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))))))))
+                          terminator: (separator
+                            newlines: (newline_list)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 a redirected function retains list boundaries
 ==================
 
@@ -730,11 +808,19 @@ then() { :; }
 ---
 
 ==================
-function names must be POSIX names
+function names cannot contain hyphens
 :error
 ==================
 
-bad-name()
-9bad()
+bad-name() { :; }
+
+---
+
+==================
+function names cannot start with digits
+:error
+==================
+
+9bad() { :; }
 
 ---

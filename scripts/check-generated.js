@@ -1,55 +1,81 @@
-import fs from "node:fs";
-import path from "node:path";
-
+import { spawnSync } from "node:child_process";
 import {
-  createEnvironmentDirectory,
-  grammarDirectory,
-  runTreeSitter,
-} from "./tree-sitter.js";
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join, relative } from "node:path";
+import { generateParsers, grammars, packageName, root } from "./tree-sitter.js";
 
-const generatedFiles = [
-  "src/grammar.json",
-  "src/node-types.json",
-  "src/parser.c",
-  "src/tree_sitter/alloc.h",
-  "src/tree_sitter/array.h",
-  "src/tree_sitter/parser.h",
-];
+const parserBudgets = {};
+const prerequisiteScripts = [];
 
-function readDefinition(source, name) {
-  const prefix = `#define ${name} `;
-  const line = source
-    .split("\n")
-    .find((candidate) => candidate.startsWith(prefix));
-  const value = line?.slice(prefix.length).trim() ?? "";
-  if (!/^[0-9]+$/.test(value)) {
-    throw new Error(`Could not read ${name} from generated parser.c`);
+const generatedPaths = [
+  "grammar.json",
+  "node-types.json",
+  "parser.c",
+  join("tree_sitter", "alloc.h"),
+  join("tree_sitter", "array.h"),
+  join("tree_sitter", "parser.h"),
+].sort();
+
+function listFiles(directory, prefix = "") {
+  const paths = [];
+  for (const entry of readdirSync(join(directory, prefix), {
+    withFileTypes: true,
+  })) {
+    const path = join(prefix, entry.name);
+    if (entry.isDirectory()) {
+      paths.push(...listFiles(directory, path));
+    } else {
+      paths.push(path);
+    }
   }
-  return Number(value);
+  return paths.sort();
 }
 
-function maximumActionIndex(parser) {
+function different(left, right) {
+  try {
+    return !readFileSync(left).equals(readFileSync(right));
+  } catch (error) {
+    if (error.code === "ENOENT") return true;
+    throw error;
+  }
+}
+
+function readDefinition(parser, name, path) {
+  const match = parser.match(new RegExp(`^#define ${name} ([0-9]+)$`, "m"));
+  if (match === null) {
+    throw new Error(`${path} does not define ${name} as an integer`);
+  }
+  return Number(match[1]);
+}
+
+function maximumActionIndex(parser, path) {
   let maximum;
   for (const match of parser.matchAll(/ACTIONS\(([0-9]+)\)/g)) {
     const value = Number(match[1]);
     maximum = maximum === undefined ? value : Math.max(maximum, value);
   }
   if (maximum === undefined) {
-    throw new Error("Generated parser.c contains no ACTIONS index");
+    throw new Error(`${path} contains no ACTIONS index`);
   }
   return maximum;
 }
 
-function smallParseTableWordCount(parser) {
+function smallParseTableWordCount(parser, path) {
   const declaration = "static const uint16_t ts_small_parse_table[] = {\n";
   const start = parser.indexOf(declaration);
   if (start === -1) {
-    throw new Error("Generated parser.c contains no small parse table");
+    throw new Error(`${path} contains no small parse table`);
   }
   const initializerStart = start + declaration.length;
   const initializerEnd = parser.indexOf("\n};", initializerStart);
   if (initializerEnd === -1) {
-    throw new Error("Generated parser.c has an unterminated small parse table");
+    throw new Error(`${path} contains an unterminated small parse table`);
   }
   const initializer = parser.slice(initializerStart, initializerEnd);
 
@@ -60,126 +86,150 @@ function smallParseTableWordCount(parser) {
     finalOffset = match.index;
   }
   if (finalIndex === undefined || finalOffset === undefined) {
-    throw new Error("Generated parser.c has no indexed small parse table row");
+    throw new Error(`${path} small parse table has no indexed row`);
   }
 
   const finalRowWordCount =
     initializer.slice(finalOffset).match(/,/g)?.length ?? 0;
   if (finalRowWordCount === 0) {
-    throw new Error(
-      "Generated parser.c has an empty final small parse table row",
-    );
+    throw new Error(`${path} small parse table has an empty final row`);
   }
   return finalIndex + finalRowWordCount;
 }
 
-function parseTableStorageBytes(parser, metrics) {
+function parseTableStorageBytes(parser, metrics, path) {
   const smallStateCount = metrics.STATE_COUNT - metrics.LARGE_STATE_COUNT;
   if (smallStateCount < 0) {
-    throw new Error(
-      "Generated parser.c has more large states than total states",
-    );
+    throw new Error(`${path} has more large states than total states`);
   }
   return (
     metrics.LARGE_STATE_COUNT * metrics.SYMBOL_COUNT * 2 +
-    smallParseTableWordCount(parser) * 2 +
+    smallParseTableWordCount(parser, path) * 2 +
     smallStateCount * 4
   );
 }
 
-const temporaryDirectory = createEnvironmentDirectory(
-  "tree-sitter-sh-generated",
-);
-const generatedDirectory = path.join(temporaryDirectory, "output");
-const environmentDirectory = path.join(temporaryDirectory, "environment");
-let failed = false;
+function checkParser(grammar, generatedRoot) {
+  const budget = parserBudgets[grammar.name];
+  if (Object.keys(parserBudgets).length > 0 && budget === undefined) {
+    throw new Error(`Missing parser budget for ${grammar.name}`);
+  }
 
-try {
-  fs.mkdirSync(generatedDirectory);
-  fs.mkdirSync(environmentDirectory);
-  runTreeSitter(
-    [
-      "generate",
-      "--output",
-      generatedDirectory,
-      path.join(grammarDirectory, "grammar.js"),
-    ],
-    { environmentDirectory },
+  const parserPath = join(generatedRoot, grammar.path, "src", "parser.c");
+  const displayPath = relative(generatedRoot, parserPath);
+  const parser = readFileSync(parserPath, "utf8");
+  const metrics = {
+    LANGUAGE_VERSION: readDefinition(parser, "LANGUAGE_VERSION", displayPath),
+    STATE_COUNT: readDefinition(parser, "STATE_COUNT", displayPath),
+    LARGE_STATE_COUNT: readDefinition(parser, "LARGE_STATE_COUNT", displayPath),
+    SYMBOL_COUNT: readDefinition(parser, "SYMBOL_COUNT", displayPath),
+    EXTERNAL_TOKEN_COUNT: readDefinition(
+      parser,
+      "EXTERNAL_TOKEN_COUNT",
+      displayPath,
+    ),
+    parser_bytes: statSync(parserPath).size,
+    maximum_ACTIONS_index: maximumActionIndex(parser, displayPath),
+  };
+  metrics.parse_table_storage_bytes = parseTableStorageBytes(
+    parser,
+    metrics,
+    displayPath,
   );
 
-  const pendingDirectories = [generatedDirectory];
-  const manifest = [];
-  while (pendingDirectories.length > 0) {
-    const directory = pendingDirectories.pop();
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        pendingDirectories.push(entryPath);
-      } else {
-        manifest.push(
-          path
-            .relative(generatedDirectory, entryPath)
-            .split(path.sep)
-            .join("/"),
-        );
-      }
-    }
-  }
-  manifest.sort();
-  const expectedManifest = generatedFiles
-    .map((generatedFile) => generatedFile.slice("src/".length))
-    .sort();
-  if (JSON.stringify(manifest) !== JSON.stringify(expectedManifest)) {
-    process.stderr.write(
-      `Generated file manifest differs:\nexpected ${expectedManifest.join(", ")}\nactual   ${manifest.join(", ")}\n`,
+  console.log(`${grammar.name}:`);
+  console.log("Metric                           Actual      Maximum");
+  let failed = false;
+  for (const [name, value] of Object.entries(metrics)) {
+    const maximum = budget?.[name];
+    console.log(
+      `${name.padEnd(28)} ${String(value).padStart(12)} ${String(maximum ?? "-").padStart(12)}`,
     );
-    failed = true;
-  }
-
-  for (const generatedFile of generatedFiles) {
-    const generatedOutput = path.join(
-      generatedDirectory,
-      generatedFile.slice("src/".length),
-    );
-    const trackedOutput = path.join(grammarDirectory, generatedFile);
-    if (
-      !fs.existsSync(generatedOutput) ||
-      !fs.existsSync(trackedOutput) ||
-      !fs.readFileSync(generatedOutput).equals(fs.readFileSync(trackedOutput))
-    ) {
-      process.stderr.write(`Generated file is stale: ${generatedFile}\n`);
+    if (maximum !== undefined && value > maximum) {
+      console.error(
+        `${displayPath}: ${name} exceeds its parser budget: ${value} > ${maximum}`,
+      );
       failed = true;
     }
   }
-
-  const parser = fs.readFileSync(
-    path.join(generatedDirectory, "parser.c"),
-    "utf8",
-  );
-  try {
-    const parserPath = path.join(generatedDirectory, "parser.c");
-    const metrics = {
-      STATE_COUNT: readDefinition(parser, "STATE_COUNT"),
-      LARGE_STATE_COUNT: readDefinition(parser, "LARGE_STATE_COUNT"),
-      SYMBOL_COUNT: readDefinition(parser, "SYMBOL_COUNT"),
-      EXTERNAL_TOKEN_COUNT: readDefinition(parser, "EXTERNAL_TOKEN_COUNT"),
-      parser_bytes: fs.statSync(parserPath).size,
-      maximum_ACTIONS_index: maximumActionIndex(parser),
-    };
-    metrics.parse_table_storage_bytes = parseTableStorageBytes(parser, metrics);
-
-    console.log("Metric                     Actual");
-    for (const [name, value] of Object.entries(metrics)) {
-      console.log(`${name.padEnd(22)} ${String(value).padStart(12)}`);
-    }
-  } catch (error) {
-    process.stderr.write(`${error.message}\n`);
-    failed = true;
-  }
-} finally {
-  fs.rmSync(temporaryDirectory, { force: true, recursive: true });
+  return { failed, languageVersion: metrics.LANGUAGE_VERSION };
 }
 
-if (failed) {
+function main(arguments_) {
+  if (arguments_.length !== 0) {
+    throw new Error("Usage: node scripts/check-generated.js");
+  }
+  for (const script of prerequisiteScripts) {
+    const result = spawnSync(
+      process.execPath,
+      [join(root, "scripts", script), "--check"],
+      {
+        cwd: root,
+        stdio: "inherit",
+        timeout: 60_000,
+        killSignal: "SIGKILL",
+      },
+    );
+    if (result.error) throw result.error;
+    if (result.status !== 0) return 1;
+  }
+
+  const generatedRoot = mkdtempSync(
+    join(tmpdir(), `${packageName}-generated-`),
+  );
+  try {
+    if (generateParsers(generatedRoot) !== 0) return 1;
+
+    let failed = false;
+    const stale = [];
+    for (const grammar of grammars) {
+      const generatedDirectory = join(generatedRoot, grammar.path, "src");
+      const actualPaths = listFiles(generatedDirectory);
+      if (JSON.stringify(actualPaths) !== JSON.stringify(generatedPaths)) {
+        console.error(`${grammar.name}: generated file manifest differs.`);
+        console.error(`Expected:\n${generatedPaths.join("\n")}`);
+        console.error(`Actual:\n${actualPaths.join("\n")}`);
+        failed = true;
+      }
+      for (const path of generatedPaths) {
+        const generatedPath = join(generatedDirectory, path);
+        const repositoryPath = join(root, grammar.path, "src", path);
+        if (different(generatedPath, repositoryPath)) {
+          stale.push(relative(root, repositoryPath));
+        }
+      }
+    }
+    if (stale.length > 0) {
+      console.error("Generated parser files are stale or missing:");
+      for (const path of stale) console.error(`  ${path}`);
+      console.error("Run npm run generate and review the results.");
+      failed = true;
+    }
+
+    const languageVersions = new Map();
+    for (const grammar of grammars) {
+      const result = checkParser(grammar, generatedRoot);
+      failed = result.failed || failed;
+      languageVersions.set(grammar.name, result.languageVersion);
+    }
+    if (new Set(languageVersions.values()).size !== 1) {
+      console.error(
+        "Generated parsers use different Tree-sitter ABI versions:",
+      );
+      for (const [name, version] of languageVersions) {
+        console.error(`  ${name}: ${version}`);
+      }
+      failed = true;
+    }
+    return failed ? 1 : 0;
+  } finally {
+    rmSync(generatedRoot, { recursive: true, force: true });
+  }
+}
+
+try {
+  process.exitCode = main(process.argv.slice(2));
+} catch (error) {
+  console.error(error.message);
   process.exitCode = 1;
 }

@@ -1,657 +1,4 @@
 ==================
-every compound command can own a trailing redirect list
-==================
-
-(:)>subshell 2>>subshell_log
-{ :; }<brace_input >brace_output
-for item; do :; done<&0
-case item in item) :;; esac>&1
-if :; then :; fi<>state
-while :; do :; done>|while_output
-until :; do :; done 3>until_output
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (subshell
-                    body: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal))))))))))))
-                redirects: (redirect_list
-                  redirect: (io_redirect
-                    body: (io_file
-                      filename: (filename
-                        word: (word
-                          (literal)))))
-                  redirect: (io_redirect
-                    number: (io_number)
-                    body: (io_file
-                      operator: (dgreat)
-                      filename: (filename
-                        word: (word
-                          (literal))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (brace_group
-                    body: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        operator: (separator_op)))))
-                redirects: (redirect_list
-                  redirect: (io_redirect
-                    body: (io_file
-                      filename: (filename
-                        word: (word
-                          (literal)))))
-                  redirect: (io_redirect
-                    body: (io_file
-                      filename: (filename
-                        word: (word
-                          (literal))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (for_clause
-                    (for_keyword)
-                    name: (name)
-                    separator: (sequential_sep)
-                    body: (do_group
-                      (do_keyword)
-                      body: (compound_list
-                        body: (term
-                          and_or: (and_or
-                            pipeline: (pipeline
-                              sequence: (pipe_sequence
-                                command: (command
-                                  body: (simple_command
-                                    name: (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        terminator: (separator
-                          operator: (separator_op)))
-                      (done_keyword))))
-                redirects: (redirect_list
-                  redirect: (io_redirect
-                    body: (io_file
-                      operator: (lessand)
-                      filename: (filename
-                        word: (word
-                          (literal))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (case_clause
-                    (case_keyword)
-                    word: (word
-                      (literal))
-                    in: (in
-                      (in_keyword))
-                    items: (case_list
-                      item: (case_item
-                        patterns: (pattern_list
-                          word: (word
-                            (literal)))
-                        body: (compound_list
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        terminator: (dsemi)))
-                    (esac_keyword)))
-                redirects: (redirect_list
-                  redirect: (io_redirect
-                    body: (io_file
-                      operator: (greatand)
-                      filename: (filename
-                        word: (word
-                          (literal))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (if_clause
-                    (if_keyword)
-                    condition: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        operator: (separator_op)))
-                    (then_keyword)
-                    consequence: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        operator: (separator_op)))
-                    (fi_keyword)))
-                redirects: (redirect_list
-                  redirect: (io_redirect
-                    body: (io_file
-                      operator: (lessgreat)
-                      filename: (filename
-                        word: (word
-                          (literal))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (while_clause
-                    (while_keyword)
-                    condition: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        operator: (separator_op)))
-                    body: (do_group
-                      (do_keyword)
-                      body: (compound_list
-                        body: (term
-                          and_or: (and_or
-                            pipeline: (pipeline
-                              sequence: (pipe_sequence
-                                command: (command
-                                  body: (simple_command
-                                    name: (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        terminator: (separator
-                          operator: (separator_op)))
-                      (done_keyword))))
-                redirects: (redirect_list
-                  redirect: (io_redirect
-                    body: (io_file
-                      operator: (clobber)
-                      filename: (filename
-                        word: (word
-                          (literal))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (until_clause
-                    (until_keyword)
-                    condition: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        operator: (separator_op)))
-                    body: (do_group
-                      (do_keyword)
-                      body: (compound_list
-                        body: (term
-                          and_or: (and_or
-                            pipeline: (pipeline
-                              sequence: (pipe_sequence
-                                command: (command
-                                  body: (simple_command
-                                    name: (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        terminator: (separator
-                          operator: (separator_op)))
-                      (done_keyword))))
-                redirects: (redirect_list
-                  redirect: (io_redirect
-                    number: (io_number)
-                    body: (io_file
-                      filename: (filename
-                        word: (word
-                          (literal)))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-raw newlines end redirect attachment while escaped newlines preserve it
-==================
-
-(:)\
-2>first\
->second
-(:)
->separate
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (subshell
-                    body: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal))))))))))))
-                (line_continuation)
-                redirects: (redirect_list
-                  redirect: (io_redirect
-                    number: (io_number)
-                    body: (io_file
-                      filename: (filename
-                        word: (word
-                          (literal)))))
-                  (line_continuation)
-                  redirect: (io_redirect
-                    body: (io_file
-                      filename: (filename
-                        word: (word
-                          (literal))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (subshell
-                    body: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal))))))))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-redirected compound commands retain pipeline and list boundaries
-==================
-
-(:)>subshell_output | next
-{ :; }>brace_output && next
-if :; then :; fi>if_output; next
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (subshell
-                    (compound_list
-                      (term
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (simple_command
-                                  (cmd_name
-                                    (word
-                                      (literal))))))))))))
-                (redirect_list
-                  (io_redirect
-                    (io_file
-                      (filename
-                        (word
-                          (literal)))))))
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (brace_group
-                    (compound_list
-                      (term
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (simple_command
-                                  (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      (separator
-                        (separator_op)))))
-                (redirect_list
-                  (io_redirect
-                    (io_file
-                      (filename
-                        (word
-                          (literal)))))))))
-          (and_if)
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (if_clause
-                    (if_keyword)
-                    (compound_list
-                      (term
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (simple_command
-                                  (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      (separator
-                        (separator_op)))
-                    (then_keyword)
-                    (compound_list
-                      (term
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (simple_command
-                                  (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      (separator
-                        (separator_op)))
-                    (fi_keyword)))
-                (redirect_list
-                  (io_redirect
-                    (io_file
-                      (filename
-                        (word
-                          (literal))))))))))
-        (separator_op)
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-brace-shaped words remain ordinary words before redirects
-==================
-
-cat {fd}>output
-{input}<source
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-a brace-shaped word can precede a here-document
-==================
-
-cat {input}<<EOF
-body
-EOF
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal))
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (here_document_body
-            (here_document_text))
-          end: (here_document_end
-            (here_document_end_text)))))))
-
-==================
-a redirect target suffix cannot become a following descriptor
-==================
-
-<""2>x
-<${x}2>y
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (double_quoted)
-                            (literal)))))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (parameter_expansion
-                              parameter: (variable_name))
-                            (literal)))))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 every ordinary redirection operator has a structured target
 ==================
 
@@ -791,10 +138,10 @@ command 0<input 1>output 2>>errors 3<&0 4>&1 5<>state 123>|forced
     (newline_list)))
 
 ==================
-separated quoted and escaped digits remain ordinary words
+adjacent redirections remain distinct
 ==================
 
-echo 2 >out \2>escaped "3">quoted 4\>literal x2>next
+command<input>output 2>&1 3<&0
 
 ---
 
@@ -813,34 +160,78 @@ echo 2 >out \2>escaped "3">quoted 4\>literal x2>next
                     (word
                       (literal)))
                   suffix: (cmd_suffix
-                    word: (word
-                      (literal))
                     redirect: (io_redirect
                       body: (io_file
                         filename: (filename
                           word: (word
                             (literal)))))
-                    word: (word
-                      (escaped_character))
                     redirect: (io_redirect
                       body: (io_file
                         filename: (filename
                           word: (word
                             (literal)))))
-                    word: (word
-                      (double_quoted
-                        (double_quote_text)))
+                    redirect: (io_redirect
+                      number: (io_number)
+                      body: (io_file
+                        operator: (greatand)
+                        filename: (filename
+                          word: (word
+                            (literal)))))
+                    redirect: (io_redirect
+                      number: (io_number)
+                      body: (io_file
+                        operator: (lessand)
+                        filename: (filename
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+redirection-only simple commands have no command name
+==================
+
+<input 2>output
+A=one >assigned
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
                     redirect: (io_redirect
                       body: (io_file
                         filename: (filename
                           word: (word
                             (literal)))))
-                    word: (word
-                      (literal)
-                      (escaped_character)
-                      (literal))
-                    word: (word
-                      (literal))
+                    redirect: (io_redirect
+                      number: (io_number)
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)))
                     redirect: (io_redirect
                       body: (io_file
                         filename: (filename
@@ -911,109 +302,6 @@ A=one >first B=two <second command before>third middle 2>>errors after<last
                       (literal))
                     redirect: (io_redirect
                       body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-redirection-only simple commands have no command name
-==================
-
-<input 2>output
-A=one >assigned
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))
-                    redirect: (io_redirect
-                      number: (io_number)
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-adjacent redirections remain distinct
-==================
-
-command<input>output 2>&1 3<&0
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))
-                    redirect: (io_redirect
-                      number: (io_number)
-                      body: (io_file
-                        operator: (greatand)
-                        filename: (filename
-                          word: (word
-                            (literal)))))
-                    redirect: (io_redirect
-                      number: (io_number)
-                      body: (io_file
-                        operator: (lessand)
                         filename: (filename
                           word: (word
                             (literal))))))))))))))
@@ -1099,10 +387,10 @@ command >pre"quoted"${name} 2>$(printf file) <'input file' >-x >A=value >$name
     (newline_list)))
 
 ==================
-quoted escaped and noninitial hashes remain target text
+subshells retain trailing output redirections
 ==================
 
-command >file#suffix >\#escaped >'#quoted'
+(:)>subshell 2>>subshell_log
 
 ---
 
@@ -1116,41 +404,39 @@ command >file#suffix >\#escaped >'#quoted'
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)
-                            (literal)
-                            (literal)))))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (escaped_character)
-                            (literal)))))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (single_quoted
-                              (single_quote_content)))))))))))))))
+                body: (compound_command
+                  (subshell
+                    body: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal))))))))))))
+                redirects: (redirect_list
+                  redirect: (io_redirect
+                    body: (io_file
+                      filename: (filename
+                        word: (word
+                          (literal)))))
+                  redirect: (io_redirect
+                    number: (io_number)
+                    body: (io_file
+                      operator: (dgreat)
+                      filename: (filename
+                        word: (word
+                          (literal)))))))))))))
   trailing: (linebreak
     (newline_list)))
 
 ==================
-digits inside preceding words are not file descriptors
+brace groups retain trailing input and output redirections
 ==================
 
-A=2>out
-echo2>file
-echo x2>next
-A=2 3>errors
+{ :; }<brace_input >brace_output
 
 ---
 
@@ -1164,81 +450,139 @@ A=2 3>errors
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))))))))))
-    separator: (newline_list)
+                body: (compound_command
+                  (brace_group
+                    body: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        operator: (separator_op)))))
+                redirects: (redirect_list
+                  redirect: (io_redirect
+                    body: (io_file
+                      filename: (filename
+                        word: (word
+                          (literal)))))
+                  redirect: (io_redirect
+                    body: (io_file
+                      filename: (filename
+                        word: (word
+                          (literal)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+for clauses retain trailing input duplication
+==================
+
+for item; do :; done<&0
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
     command: (complete_command
       body: (list
         and_or: (and_or
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))))))))))
-    separator: (newline_list)
+                body: (compound_command
+                  (for_clause
+                    (for_keyword)
+                    name: (name)
+                    separator: (sequential_sep)
+                    body: (do_group
+                      (do_keyword)
+                      body: (compound_list
+                        body: (term
+                          and_or: (and_or
+                            pipeline: (pipeline
+                              sequence: (pipe_sequence
+                                command: (command
+                                  body: (simple_command
+                                    name: (cmd_name
+                                      (word
+                                        (literal)))))))))
+                        terminator: (separator
+                          operator: (separator_op)))
+                      (done_keyword))))
+                redirects: (redirect_list
+                  redirect: (io_redirect
+                    body: (io_file
+                      operator: (lessand)
+                      filename: (filename
+                        word: (word
+                          (literal)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+case clauses retain trailing output duplication
+==================
+
+case item in item) :;; esac>&1
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
     command: (complete_command
       body: (list
         and_or: (and_or
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
                     word: (word
                       (literal))
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
+                    in: (in
+                      (in_keyword))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
                           word: (word
-                            (literal)))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)))
-                    redirect: (io_redirect
-                      number: (io_number)
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
+                            (literal)))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        terminator: (dsemi)))
+                    (esac_keyword)))
+                redirects: (redirect_list
+                  redirect: (io_redirect
+                    body: (io_file
+                      operator: (greatand)
+                      filename: (filename
+                        word: (word
+                          (literal)))))))))))))
   trailing: (linebreak
     (newline_list)))
 
 ==================
-redirections preserve command boundaries
+if clauses retain trailing read-write redirections
 ==================
 
->out; <in
-command>file && 2>errors other
+if :; then :; fi<>state
 
 ---
 
@@ -1252,58 +596,291 @@ command>file && 2>errors other
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))))))))
-        separator: (separator_op)
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))))))))))
-    separator: (newline_list)
+                body: (compound_command
+                  (if_clause
+                    (if_keyword)
+                    condition: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        operator: (separator_op)))
+                    (then_keyword)
+                    consequence: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        operator: (separator_op)))
+                    (fi_keyword)))
+                redirects: (redirect_list
+                  redirect: (io_redirect
+                    body: (io_file
+                      operator: (lessgreat)
+                      filename: (filename
+                        word: (word
+                          (literal)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+while clauses retain trailing clobber redirections
+==================
+
+while :; do :; done>|while_output
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
     command: (complete_command
       body: (list
         and_or: (and_or
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))
-          operator: (and_if)
+                body: (compound_command
+                  (while_clause
+                    (while_keyword)
+                    condition: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        operator: (separator_op)))
+                    body: (do_group
+                      (do_keyword)
+                      body: (compound_list
+                        body: (term
+                          and_or: (and_or
+                            pipeline: (pipeline
+                              sequence: (pipe_sequence
+                                command: (command
+                                  body: (simple_command
+                                    name: (cmd_name
+                                      (word
+                                        (literal)))))))))
+                        terminator: (separator
+                          operator: (separator_op)))
+                      (done_keyword))))
+                redirects: (redirect_list
+                  redirect: (io_redirect
+                    body: (io_file
+                      operator: (clobber)
+                      filename: (filename
+                        word: (word
+                          (literal)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+until clauses retain trailing numbered output redirections
+==================
+
+until :; do :; done 3>until_output
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      number: (io_number)
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))
-                  word: (cmd_word
+                body: (compound_command
+                  (until_clause
+                    (until_keyword)
+                    condition: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        operator: (separator_op)))
+                    body: (do_group
+                      (do_keyword)
+                      body: (compound_list
+                        body: (term
+                          and_or: (and_or
+                            pipeline: (pipeline
+                              sequence: (pipe_sequence
+                                command: (command
+                                  body: (simple_command
+                                    name: (cmd_name
+                                      (word
+                                        (literal)))))))))
+                        terminator: (separator
+                          operator: (separator_op)))
+                      (done_keyword))))
+                redirects: (redirect_list
+                  redirect: (io_redirect
+                    number: (io_number)
+                    body: (io_file
+                      filename: (filename
+                        word: (word
+                          (literal)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+redirected compound commands retain pipeline and list boundaries
+==================
+
+(:)>subshell_output | next
+{ :; }>brace_output && next
+if :; then :; fi>if_output; next
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (subshell
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal))))))))))))
+                (redirect_list
+                  (io_redirect
+                    (io_file
+                      (filename
+                        (word
+                          (literal)))))))
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (brace_group
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))))
+                (redirect_list
+                  (io_redirect
+                    (io_file
+                      (filename
+                        (word
+                          (literal)))))))))
+          (and_if)
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (then_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (fi_keyword)))
+                (redirect_list
+                  (io_redirect
+                    (io_file
+                      (filename
+                        (word
+                          (literal))))))))))
+        (separator_op)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
                     (word
                       (literal)))))))))))
-  trailing: (linebreak
+  (linebreak
     (newline_list)))
 
 ==================
@@ -1497,6 +1074,507 @@ if (:) >out then :; fi
     (newline_list)))
 
 ==================
+brace-shaped words remain ordinary words before redirects
+==================
+
+cat {fd}>output
+{input}<source
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+a brace-shaped word can precede a here-document
+==================
+
+cat {input}<<EOF
+body
+EOF
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (here_document_text))
+          end: (here_document_end
+            (here_document_end_text)))))))
+
+==================
+separated quoted and escaped digits remain ordinary words
+==================
+
+echo 2 >out \2>escaped "3">quoted 4\>literal x2>next
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))
+                    word: (word
+                      (escaped_character))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))
+                    word: (word
+                      (double_quoted
+                        (double_quote_text)))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))
+                    word: (word
+                      (literal)
+                      (escaped_character)
+                      (literal))
+                    word: (word
+                      (literal))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+quoted escaped and noninitial hashes remain target text
+==================
+
+command >file#suffix >\#escaped >'#quoted'
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)
+                            (literal)
+                            (literal)))))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (escaped_character)
+                            (literal)))))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (single_quoted
+                              (single_quote_content)))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+digits inside preceding words are not file descriptors
+==================
+
+A=2>out
+echo2>file
+echo x2>next
+A=2 3>errors
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)))
+                    redirect: (io_redirect
+                      number: (io_number)
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+a redirect target suffix cannot become a following descriptor
+==================
+
+<""2>x
+<${x}2>y
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (double_quoted)
+                            (literal)))))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (parameter_expansion
+                              parameter: (variable_name))
+                            (literal)))))
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+redirections preserve command boundaries
+==================
+
+>out; <in
+command>file && 2>errors other
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))))))))
+        separator: (separator_op)
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))))))
+          operator: (and_if)
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      number: (io_number)
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))
+                  word: (cmd_word
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+raw newlines end redirect attachment while escaped newlines preserve it
+==================
+
+(:)\
+2>first\
+>second
+(:)
+>separate
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (subshell
+                    body: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal))))))))))))
+                (line_continuation)
+                redirects: (redirect_list
+                  redirect: (io_redirect
+                    number: (io_number)
+                    body: (io_file
+                      filename: (filename
+                        word: (word
+                          (literal)))))
+                  (line_continuation)
+                  redirect: (io_redirect
+                    body: (io_file
+                      filename: (filename
+                        word: (word
+                          (literal))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (subshell
+                    body: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal))))))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 redirection token boundaries preserve intervening continuations
 ==================
 
@@ -1539,11 +1617,19 @@ target
     (newline_list)))
 
 ==================
-digits before a redirection operator never form a target word
+a descriptor before a second redirection leaves the first target missing
 :error
 ==================
 
 echo 1>2>3
+
+---
+
+==================
+a descriptor before an output redirection cannot satisfy an input target
+:error
+==================
+
 echo <2>x
 
 ---

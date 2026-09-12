@@ -108,387 +108,6 @@ printf [a] [abc] [!a-z] []-] [a-zA-Z] [^a] [*?] [a-*] [*-z] [[:alpha:]] [[.ch.]]
     (newline_list)))
 
 ==================
-quoted and escaped bracket members retain quote source
-==================
-
-printf [a\]b] [a"-"z]
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (pattern_bracket_character_source)
-                          member: (escaped_character)
-                          member: (pattern_bracket_character_source))))
-                    word: (word
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (pattern_bracket_character_source)
-                          member: (double_quoted
-                            (double_quote_text))
-                          member: (pattern_bracket_character_source)))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-bracket expressions retain nested expansion source
-==================
-
-printf [${chars}] [$(printf x)] [$((1 + 1))] [a"$value"b] [a"$(printf ']')"b]
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (parameter_expansion
-                            parameter: (variable_name)))))
-                    word: (word
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (command_substitution
-                            body: (command_substitution_body
-                              (complete_commands
-                                command: (complete_command
-                                  body: (list
-                                    and_or: (and_or
-                                      pipeline: (pipeline
-                                        sequence: (pipe_sequence
-                                          command: (command
-                                            body: (simple_command
-                                              name: (cmd_name
-                                                (word
-                                                  (literal)))
-                                              suffix: (cmd_suffix
-                                                word: (word
-                                                  (literal))))))))))))))))
-                    word: (word
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (arithmetic_expansion
-                            expression: (arithmetic_binary_expression
-                              left: (arithmetic_number)
-                              operator: (arithmetic_operator)
-                              right: (arithmetic_number))))))
-                    word: (word
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (pattern_bracket_character_source)
-                          member: (double_quoted
-                            (parameter_expansion
-                              parameter: (variable_name)))
-                          member: (pattern_bracket_character_source))))
-                    word: (word
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (pattern_bracket_character_source)
-                          member: (double_quoted
-                            (command_substitution
-                              body: (command_substitution_body
-                                (complete_commands
-                                  command: (complete_command
-                                    body: (list
-                                      and_or: (and_or
-                                        pipeline: (pipeline
-                                          sequence: (pipe_sequence
-                                            command: (command
-                                              body: (simple_command
-                                                name: (cmd_name
-                                                  (word
-                                                    (literal)))
-                                                suffix: (cmd_suffix
-                                                  word: (word
-                                                    (single_quoted
-                                                      (single_quote_content)))))))))))))))
-                          member: (pattern_bracket_character_source)))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-only collating symbols retain a closing bracket as content
-==================
-
-printf [[.].]] [[=]=]] ${x#[[.].]]}
-case x in [[.].]]) :;; esac
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (pattern_collating_symbol_source
-                            value: (pattern_collating_symbol_character_source)))))
-                    word: (word
-                      (literal)
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (pattern_bracket_character_source)))
-                      (literal)
-                      (literal)
-                      (literal))
-                    word: (word
-                      (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_pattern_operator)
-                        pattern: (parameter_pattern
-                          (pattern_bracket_source
-                            members: (pattern_bracket_members_source
-                              member: (pattern_collating_symbol_source
-                                value: (pattern_collating_symbol_character_source)))))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (case_clause
-                    (case_keyword)
-                    word: (word
-                      (literal))
-                    in: (in
-                      (in_keyword))
-                    items: (case_list
-                      item: (case_item
-                        patterns: (pattern_list
-                          word: (word
-                            (pattern_bracket_source
-                              members: (pattern_bracket_members_source
-                                member: (pattern_collating_symbol_source
-                                  value: (pattern_collating_symbol_character_source))))))
-                        body: (compound_list
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        terminator: (dsemi)))
-                    (esac_keyword))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-escapes after a nested bracket or class marker stay members
-==================
-
-printf [[\a] [[\a [[:alpha:\]] ${x%[[:alpha:\]]}
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (pattern_bracket_character_source)
-                          member: (escaped_character))))
-                    word: (word
-                      (literal)
-                      (literal)
-                      (escaped_character))
-                    word: (word
-                      (literal)
-                      (pattern_bracket_source
-                        members: (pattern_bracket_members_source
-                          member: (pattern_bracket_character_source)
-                          member: (pattern_bracket_character_source)
-                          member: (pattern_bracket_character_source)
-                          member: (pattern_bracket_character_source)
-                          member: (pattern_bracket_character_source)
-                          member: (pattern_bracket_character_source)
-                          member: (pattern_bracket_character_source)
-                          member: (escaped_character))))
-                    word: (word
-                      (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_pattern_operator)
-                        pattern: (parameter_pattern
-                          (literal)
-                          (pattern_bracket_source
-                            members: (pattern_bracket_members_source
-                              member: (pattern_bracket_character_source)
-                              member: (pattern_bracket_character_source)
-                              member: (pattern_bracket_character_source)
-                              member: (pattern_bracket_character_source)
-                              member: (pattern_bracket_character_source)
-                              member: (pattern_bracket_character_source)
-                              member: (pattern_bracket_character_source)
-                              member: (escaped_character)))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-bracket source is stable across WORD grammar positions
-==================
-
-[abc]
-value=[abc] [abc] [abc] >[abc]
-for item in [abc]; do :; done
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (pattern_bracket_source
-                        (pattern_bracket_members_source
-                          (pattern_bracket_character_source)
-                          (pattern_bracket_character_source)
-                          (pattern_bracket_character_source))))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_prefix
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (pattern_bracket_source
-                          (pattern_bracket_members_source
-                            (pattern_bracket_character_source)
-                            (pattern_bracket_character_source)
-                            (pattern_bracket_character_source))))))
-                  (cmd_word
-                    (word
-                      (pattern_bracket_source
-                        (pattern_bracket_members_source
-                          (pattern_bracket_character_source)
-                          (pattern_bracket_character_source)
-                          (pattern_bracket_character_source)))))
-                  (cmd_suffix
-                    (word
-                      (pattern_bracket_source
-                        (pattern_bracket_members_source
-                          (pattern_bracket_character_source)
-                          (pattern_bracket_character_source)
-                          (pattern_bracket_character_source))))
-                    (io_redirect
-                      (io_file
-                        (filename
-                          (word
-                            (pattern_bracket_source
-                              (pattern_bracket_members_source
-                                (pattern_bracket_character_source)
-                                (pattern_bracket_character_source)
-                                (pattern_bracket_character_source)))))))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (for_clause
-                    (for_keyword)
-                    (name)
-                    (in
-                      (in_keyword))
-                    (wordlist
-                      (word
-                        (pattern_bracket_source
-                          (pattern_bracket_members_source
-                            (pattern_bracket_character_source)
-                            (pattern_bracket_character_source)
-                            (pattern_bracket_character_source)))))
-                    (sequential_sep)
-                    (do_group
-                      (do_keyword)
-                      (compound_list
-                        (term
-                          (and_or
-                            (pipeline
-                              (pipe_sequence
-                                (command
-                                  (simple_command
-                                    (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        (separator
-                          (separator_op)))
-                      (done_keyword)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
 hyphen can be either endpoint of a bracket range
 ==================
 
@@ -526,84 +145,6 @@ printf [%--] [--@]
                             operator: (pattern_bracket_range_operator_source)
                             end: (pattern_bracket_character_source))))))))))))))
   trailing: (linebreak
-    (newline_list)))
-
-==================
-bracket expressions delegate nested command syntax to the grammar
-==================
-
-printf [$(case x in x) printf ok ;; esac)] "${value#[${other#(}]}"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (pattern_bracket_source
-                        (pattern_bracket_members_source
-                          (command_substitution
-                            (command_substitution_body
-                              (complete_commands
-                                (complete_command
-                                  (list
-                                    (and_or
-                                      (pipeline
-                                        (pipe_sequence
-                                          (command
-                                            (compound_command
-                                              (case_clause
-                                                (case_keyword)
-                                                (word
-                                                  (literal))
-                                                (in
-                                                  (in_keyword))
-                                                (case_list
-                                                  (case_item
-                                                    (pattern_list
-                                                      (word
-                                                        (literal)))
-                                                    (compound_list
-                                                      (term
-                                                        (and_or
-                                                          (pipeline
-                                                            (pipe_sequence
-                                                              (command
-                                                                (simple_command
-                                                                  (cmd_name
-                                                                    (word
-                                                                      (literal)))
-                                                                  (cmd_suffix
-                                                                    (word
-                                                                      (literal))))))))))
-                                                    (dsemi)))
-                                                (esac_keyword)))))))))))))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_pattern_operator)
-                          (parameter_pattern
-                            (pattern_bracket_source
-                              (pattern_bracket_members_source
-                                (parameter_expansion
-                                  (variable_name)
-                                  (parameter_pattern_operator)
-                                  (parameter_pattern
-                                    (literal))))))))))))))))))
-  (linebreak
     (newline_list)))
 
 ==================
@@ -754,6 +295,466 @@ case x in [a$]) ;; esac
     (newline_list)))
 
 ==================
+only collating symbols retain a closing bracket as content
+==================
+
+printf [[.].]] [[=]=]] ${x#[[.].]]}
+case x in [[.].]]) :;; esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_collating_symbol_source
+                            value: (pattern_collating_symbol_character_source)))))
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)))
+                      (literal)
+                      (literal)
+                      (literal))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (pattern_bracket_source
+                            members: (pattern_bracket_members_source
+                              member: (pattern_collating_symbol_source
+                                value: (pattern_collating_symbol_character_source)))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (pattern_bracket_source
+                              members: (pattern_bracket_members_source
+                                member: (pattern_collating_symbol_source
+                                  value: (pattern_collating_symbol_character_source))))))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        terminator: (dsemi)))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+quoted and escaped bracket members retain quote source
+==================
+
+printf [a\]b] [a"-"z]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (escaped_character)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (double_quoted
+                            (double_quote_text))
+                          member: (pattern_bracket_character_source)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+bracket expressions retain nested expansion source
+==================
+
+printf [${chars}] [$(printf x)] [$((1 + 1))] [a"$value"b] [a"$(printf ']')"b]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (parameter_expansion
+                            parameter: (variable_name)))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (command_substitution
+                            body: (command_substitution_body
+                              (complete_commands
+                                command: (complete_command
+                                  body: (list
+                                    and_or: (and_or
+                                      pipeline: (pipeline
+                                        sequence: (pipe_sequence
+                                          command: (command
+                                            body: (simple_command
+                                              name: (cmd_name
+                                                (word
+                                                  (literal)))
+                                              suffix: (cmd_suffix
+                                                word: (word
+                                                  (literal))))))))))))))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (arithmetic_expansion
+                            expression: (arithmetic_binary_expression
+                              left: (arithmetic_number)
+                              operator: (arithmetic_operator)
+                              right: (arithmetic_number))))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (double_quoted
+                            (parameter_expansion
+                              parameter: (variable_name)))
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (double_quoted
+                            (command_substitution
+                              body: (command_substitution_body
+                                (complete_commands
+                                  command: (complete_command
+                                    body: (list
+                                      and_or: (and_or
+                                        pipeline: (pipeline
+                                          sequence: (pipe_sequence
+                                            command: (command
+                                              body: (simple_command
+                                                name: (cmd_name
+                                                  (word
+                                                    (literal)))
+                                                suffix: (cmd_suffix
+                                                  word: (word
+                                                    (single_quoted
+                                                      (single_quote_content)))))))))))))))
+                          member: (pattern_bracket_character_source)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+bracket specials and range endpoints retain nested source
+==================
+
+printf [[:${class}:]] [[.$(symbol).]] [[=${value}=]] [${start}-${end}]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_character_class_source
+                            (parameter_expansion
+                              (variable_name))))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_collating_symbol_source
+                            (command_substitution
+                              (command_substitution_body
+                                (complete_commands
+                                  (complete_command
+                                    (list
+                                      (and_or
+                                        (pipeline
+                                          (pipe_sequence
+                                            (command
+                                              (simple_command
+                                                (cmd_name
+                                                  (word
+                                                    (literal)))))))))))))))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_equivalence_class_source
+                            (parameter_expansion
+                              (variable_name))))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_range_source
+                            (parameter_expansion
+                              (variable_name))
+                            (pattern_bracket_range_operator_source)
+                            (parameter_expansion
+                              (variable_name)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+bracket source is stable across WORD grammar positions
+==================
+
+[abc]
+value=[abc] [abc] [abc] >[abc]
+for item in [abc]; do :; done
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (pattern_bracket_source
+                          (pattern_bracket_members_source
+                            (pattern_bracket_character_source)
+                            (pattern_bracket_character_source)
+                            (pattern_bracket_character_source))))))
+                  (cmd_word
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)))))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source))))
+                    (io_redirect
+                      (io_file
+                        (filename
+                          (word
+                            (pattern_bracket_source
+                              (pattern_bracket_members_source
+                                (pattern_bracket_character_source)
+                                (pattern_bracket_character_source)
+                                (pattern_bracket_character_source)))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (for_clause
+                    (for_keyword)
+                    (name)
+                    (in
+                      (in_keyword))
+                    (wordlist
+                      (word
+                        (pattern_bracket_source
+                          (pattern_bracket_members_source
+                            (pattern_bracket_character_source)
+                            (pattern_bracket_character_source)
+                            (pattern_bracket_character_source)))))
+                    (sequential_sep)
+                    (do_group
+                      (do_keyword)
+                      (compound_list
+                        (term
+                          (and_or
+                            (pipeline
+                              (pipe_sequence
+                                (command
+                                  (simple_command
+                                    (cmd_name
+                                      (word
+                                        (literal)))))))))
+                        (separator
+                          (separator_op)))
+                      (done_keyword)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+bracket expressions delegate nested command syntax to the grammar
+==================
+
+printf [$(case x in x) printf ok ;; esac)] "${value#[${other#(}]}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (compound_command
+                                              (case_clause
+                                                (case_keyword)
+                                                (word
+                                                  (literal))
+                                                (in
+                                                  (in_keyword))
+                                                (case_list
+                                                  (case_item
+                                                    (pattern_list
+                                                      (word
+                                                        (literal)))
+                                                    (compound_list
+                                                      (term
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (literal))))))))))
+                                                    (dsemi)))
+                                                (esac_keyword)))))))))))))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (pattern_bracket_source
+                              (pattern_bracket_members_source
+                                (parameter_expansion
+                                  (variable_name)
+                                  (parameter_pattern_operator)
+                                  (parameter_pattern
+                                    (literal))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
 here-document parameter brackets include raw newline members
 ==================
 
@@ -869,6 +870,914 @@ backquote bracket escape members retain range endpoints
     (newline_list)))
 
 ==================
+nested bracket members in quoted backquotes keep their own closers
+==================
+
+: "`: [\"\$(printf \"]\")\"] [\${x:-\"]\"}] [\`printf \"]\"\`]`"
+: "`: \"\`: [\\\"]\\\" [\\\`printf \\\"]\\\"\\\`]\`\"`"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (backquote_substitution
+                          body: (backquote_substitution_body
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (simple_command
+                                            name: (cmd_name
+                                              (word
+                                                (literal)))
+                                            suffix: (cmd_suffix
+                                              word: (word
+                                                (pattern_bracket_source
+                                                  members: (pattern_bracket_members_source
+                                                    member: (double_quoted
+                                                      (command_substitution
+                                                        body: (command_substitution_body
+                                                          (complete_commands
+                                                            command: (complete_command
+                                                              body: (list
+                                                                and_or: (and_or
+                                                                  pipeline: (pipeline
+                                                                    sequence: (pipe_sequence
+                                                                      command: (command
+                                                                        body: (simple_command
+                                                                          name: (cmd_name
+                                                                            (word
+                                                                              (literal)))
+                                                                          suffix: (cmd_suffix
+                                                                            word: (word
+                                                                              (double_quoted
+                                                                                (double_quote_text))))))))))))))))))
+                                              word: (word
+                                                (pattern_bracket_source
+                                                  members: (pattern_bracket_members_source
+                                                    member: (parameter_expansion
+                                                      parameter: (variable_name)
+                                                      operator: (parameter_value_operator)
+                                                      word: (parameter_word
+                                                        (double_quoted
+                                                          (double_quote_text)))))))
+                                              word: (word
+                                                (pattern_bracket_source
+                                                  members: (pattern_bracket_members_source
+                                                    member: (backquote_substitution
+                                                      body: (backquote_substitution_body
+                                                        (complete_commands
+                                                          command: (complete_command
+                                                            body: (list
+                                                              and_or: (and_or
+                                                                pipeline: (pipeline
+                                                                  sequence: (pipe_sequence
+                                                                    command: (command
+                                                                      body: (simple_command
+                                                                        name: (cmd_name
+                                                                          (word
+                                                                            (literal)))
+                                                                        suffix: (cmd_suffix
+                                                                          word: (word
+                                                                            (double_quoted
+                                                                              (double_quote_text))))))))))))))))))))))))))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (backquote_substitution
+                          body: (backquote_substitution_body
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (simple_command
+                                            name: (cmd_name
+                                              (word
+                                                (literal)))
+                                            suffix: (cmd_suffix
+                                              word: (word
+                                                (double_quoted
+                                                  (backquote_substitution
+                                                    body: (backquote_substitution_body
+                                                      (complete_commands
+                                                        command: (complete_command
+                                                          body: (list
+                                                            and_or: (and_or
+                                                              pipeline: (pipeline
+                                                                sequence: (pipe_sequence
+                                                                  command: (command
+                                                                    body: (simple_command
+                                                                      name: (cmd_name
+                                                                        (word
+                                                                          (literal)))
+                                                                      suffix: (cmd_suffix
+                                                                        word: (word
+                                                                          (literal)
+                                                                          (double_quoted
+                                                                            (double_quote_text)))
+                                                                        word: (word
+                                                                          (pattern_bracket_source
+                                                                            members: (pattern_bracket_members_source
+                                                                              member: (backquote_substitution
+                                                                                body: (backquote_substitution_body
+                                                                                  (complete_commands
+                                                                                    command: (complete_command
+                                                                                      body: (list
+                                                                                        and_or: (and_or
+                                                                                          pipeline: (pipeline
+                                                                                            sequence: (pipe_sequence
+                                                                                              command: (command
+                                                                                                body: (simple_command
+                                                                                                  name: (cmd_name
+                                                                                                    (word
+                                                                                                      (literal)))
+                                                                                                  suffix: (cmd_suffix
+                                                                                                    word: (word
+                                                                                                      (double_quoted
+                                                                                                        (double_quote_text))))))))))))))))))))))))))))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+dollar-single-quoted apostrophes do not expose quoted bracket closers
+==================
+
+: [$'\']' [$'\']'] ${x#[$'\']'} ${x#[$'\']']}
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (dollar_single_quoted
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (dollar_single_quoted
+                            (dollar_single_quote_escape)
+                            (dollar_single_quote_text)))))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal)
+                          (dollar_single_quoted
+                            (dollar_single_quote_escape)
+                            (dollar_single_quote_text)))))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (pattern_bracket_source
+                            (pattern_bracket_members_source
+                              (dollar_single_quoted
+                                (dollar_single_quote_escape)
+                                (dollar_single_quote_text))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+quoted backquote bracket lookahead respects folded double quotes
+==================
+
+: "`: [\"]\" [\"]\"] \${x#[\"]\"}; case x in [\"]\") :;; esac`"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (backquote_substitution
+                          body: (backquote_substitution_body
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (simple_command
+                                            name: (cmd_name
+                                              (word
+                                                (literal)))
+                                            suffix: (cmd_suffix
+                                              word: (word
+                                                (literal)
+                                                (double_quoted
+                                                  (double_quote_text)))
+                                              word: (word
+                                                (pattern_bracket_source
+                                                  members: (pattern_bracket_members_source
+                                                    member: (double_quoted
+                                                      (double_quote_text)))))
+                                              word: (word
+                                                (parameter_expansion
+                                                  parameter: (variable_name)
+                                                  operator: (parameter_pattern_operator)
+                                                  pattern: (parameter_pattern
+                                                    (literal)
+                                                    (double_quoted
+                                                      (double_quote_text)))))))))))
+                                  separator: (separator_op)
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (compound_command
+                                            (case_clause
+                                              (case_keyword)
+                                              word: (word
+                                                (literal))
+                                              in: (in
+                                                (in_keyword))
+                                              items: (case_list
+                                                item: (case_item
+                                                  patterns: (pattern_list
+                                                    word: (word
+                                                      (literal)
+                                                      (double_quoted
+                                                        (double_quote_text))))
+                                                  body: (compound_list
+                                                    body: (term
+                                                      and_or: (and_or
+                                                        pipeline: (pipeline
+                                                          sequence: (pipe_sequence
+                                                            command: (command
+                                                              body: (simple_command
+                                                                name: (cmd_name
+                                                                  (word
+                                                                    (literal))))))))))
+                                                  terminator: (dsemi)))
+                                              (esac_keyword)))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+bracket lookahead folds an embedded here-document delimiter inside backquotes
+==================
+
+: `: [$(cat <<\\X
+]
+X
+)]`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (command_substitution
+                                                    (command_substitution_body
+                                                      (complete_commands
+                                                        (complete_command
+                                                          (list
+                                                            (and_or
+                                                              (pipeline
+                                                                (pipe_sequence
+                                                                  (command
+                                                                    (simple_command
+                                                                      (cmd_name
+                                                                        (word
+                                                                          (literal)))
+                                                                      (cmd_suffix
+                                                                        (io_redirect
+                                                                          (io_here
+                                                                            (dless)
+                                                                            (here_end
+                                                                              (word
+                                                                                (escaped_character)
+                                                                                (literal))))))))))))))
+                                                      (linebreak
+                                                        (newline_list
+                                                          (here_document_sequence
+                                                            (here_document_line_end)
+                                                            (here_document
+                                                              (quoted_here_document_body
+                                                                (quoted_here_document_text))
+                                                              (here_document_end
+                                                                (here_document_end_text))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+bracket lookahead distinguishes arithmetic from subshell command substitutions
+==================
+
+: [$((case x in x)esac))]
+: [$((1+$((case x in x)esac))))]
+: [$(echo $((1)) case)]
+: [$((case))] [$((case ? in : x))]
+: [$((a << b
+))]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (compound_command
+                                              (subshell
+                                                (compound_list
+                                                  (term
+                                                    (and_or
+                                                      (pipeline
+                                                        (pipe_sequence
+                                                          (command
+                                                            (compound_command
+                                                              (case_clause
+                                                                (case_keyword)
+                                                                (word
+                                                                  (literal))
+                                                                (in
+                                                                  (in_keyword))
+                                                                (case_list_ns
+                                                                  (case_item_ns
+                                                                    (pattern_list
+                                                                      (word
+                                                                        (literal)))))
+                                                                (esac_keyword)))))))))))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (arithmetic_expansion
+                            (arithmetic_binary_expression
+                              (arithmetic_number)
+                              (arithmetic_operator)
+                              (command_substitution
+                                (command_substitution_body
+                                  (complete_commands
+                                    (complete_command
+                                      (list
+                                        (and_or
+                                          (pipeline
+                                            (pipe_sequence
+                                              (command
+                                                (compound_command
+                                                  (subshell
+                                                    (compound_list
+                                                      (term
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (compound_command
+                                                                  (case_clause
+                                                                    (case_keyword)
+                                                                    (word
+                                                                      (literal))
+                                                                    (in
+                                                                      (in_keyword))
+                                                                    (case_list_ns
+                                                                      (case_item_ns
+                                                                        (pattern_list
+                                                                          (word
+                                                                            (literal)))))
+                                                                    (esac_keyword)))))))))))))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (word
+                                                  (arithmetic_expansion
+                                                    (arithmetic_number)))
+                                                (word
+                                                  (literal))))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (arithmetic_expansion
+                            (arithmetic_variable)))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (arithmetic_expansion
+                            (arithmetic_conditional_expression
+                              (arithmetic_variable)
+                              (arithmetic_operator)
+                              (arithmetic_variable)
+                              (arithmetic_operator)
+                              (arithmetic_variable))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (arithmetic_expansion
+                            (arithmetic_binary_expression
+                              (arithmetic_variable)
+                              (arithmetic_operator)
+                              (arithmetic_variable)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+folded backslashes expose a bracket range parameter endpoint
+==================
+
+echo `echo \`echo [a-\\$x]\``
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (backquote_substitution
+                                                (backquote_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (pattern_bracket_source
+                                                                        (pattern_bracket_members_source
+                                                                          (pattern_bracket_range_source
+                                                                            (pattern_bracket_character_source)
+                                                                            (pattern_bracket_range_operator_source)
+                                                                            (parameter_expansion
+                                                                              (variable_name)))))))))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+nested command starts preserve bracket source around case patterns
+==================
+
+: [$(: $(case x in x) :;; esac))]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (command_substitution
+                            body: (command_substitution_body
+                              (complete_commands
+                                command: (complete_command
+                                  body: (list
+                                    and_or: (and_or
+                                      pipeline: (pipeline
+                                        sequence: (pipe_sequence
+                                          command: (command
+                                            body: (simple_command
+                                              name: (cmd_name
+                                                (word
+                                                  (literal)))
+                                              suffix: (cmd_suffix
+                                                word: (word
+                                                  (command_substitution
+                                                    body: (command_substitution_body
+                                                      (complete_commands
+                                                        command: (complete_command
+                                                          body: (list
+                                                            and_or: (and_or
+                                                              pipeline: (pipeline
+                                                                sequence: (pipe_sequence
+                                                                  command: (command
+                                                                    body: (compound_command
+                                                                      (case_clause
+                                                                        (case_keyword)
+                                                                        word: (word
+                                                                          (literal))
+                                                                        in: (in
+                                                                          (in_keyword))
+                                                                        items: (case_list
+                                                                          item: (case_item
+                                                                            patterns: (pattern_list
+                                                                              word: (word
+                                                                                (literal)))
+                                                                            body: (compound_list
+                                                                              body: (term
+                                                                                and_or: (and_or
+                                                                                  pipeline: (pipeline
+                                                                                    sequence: (pipe_sequence
+                                                                                      command: (command
+                                                                                        body: (simple_command
+                                                                                          name: (cmd_name
+                                                                                            (word
+                                                                                              (literal))))))))))
+                                                                            terminator: (dsemi)))
+                                                                        (esac_keyword))))))))))))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+function body starts preserve bracket source around case patterns
+==================
+
+: [$(f() case x in x) :;; esac)]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (command_substitution
+                            body: (command_substitution_body
+                              (complete_commands
+                                command: (complete_command
+                                  body: (list
+                                    and_or: (and_or
+                                      pipeline: (pipeline
+                                        sequence: (pipe_sequence
+                                          command: (command
+                                            body: (function_definition
+                                              name: (fname)
+                                              body: (function_body
+                                                body: (compound_command
+                                                  (case_clause
+                                                    (case_keyword)
+                                                    word: (word
+                                                      (literal))
+                                                    in: (in
+                                                      (in_keyword))
+                                                    items: (case_list
+                                                      item: (case_item
+                                                        patterns: (pattern_list
+                                                          word: (word
+                                                            (literal)))
+                                                        body: (compound_list
+                                                          body: (term
+                                                            and_or: (and_or
+                                                              pipeline: (pipeline
+                                                                sequence: (pipe_sequence
+                                                                  command: (command
+                                                                    body: (simple_command
+                                                                      name: (cmd_name
+                                                                        (word
+                                                                          (literal))))))))))
+                                                        terminator: (dsemi)))
+                                                    (esac_keyword))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+enclosing backquote escape runs fold before a bracket close scan
+==================
+
+echo `echo [\\] [\\\] [\\\a] [\\\-a]`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (literal)
+                                              (escaped_character)
+                                              (literal))
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (escaped_character))))
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (escaped_character)
+                                                  (pattern_bracket_character_source))))
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (pattern_bracket_range_source
+                                                    (escaped_character)
+                                                    (pattern_bracket_range_operator_source)
+                                                    (pattern_bracket_character_source))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+escapes after a nested bracket or class marker stay members
+==================
+
+printf [[\a] [[\a [[:alpha:\]] ${x%[[:alpha:\]]}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (escaped_character))))
+                    word: (word
+                      (literal)
+                      (literal)
+                      (escaped_character))
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (escaped_character))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (literal)
+                          (pattern_bracket_source
+                            members: (pattern_bracket_members_source
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (pattern_bracket_character_source)
+                              member: (escaped_character)))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 an incomplete parameter bracket stops at the expansion boundary
 ==================
 
@@ -899,4 +1808,654 @@ printf ${value#[}suffix]
                           (literal)))
                       (literal)))))))))))
   trailing: (linebreak
+    (newline_list)))
+
+==================
+incomplete bracket expressions remain literal source
+==================
+
+printf [ [abc [] [!
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))
+                    word: (word
+                      (literal)
+                      (literal))
+                    word: (word
+                      (literal)
+                      (literal))
+                    word: (word
+                      (literal)
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+incomplete bracket openers remain distinct before structured source
+==================
+
+printf [abc'x' [abc"$x" [abc\q [abc$x
+printf "${value#[abc'x'}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (literal)
+                      (single_quoted
+                        (single_quote_content)))
+                    (word
+                      (literal)
+                      (literal)
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name))))
+                    (word
+                      (literal)
+                      (literal)
+                      (escaped_character))
+                    (word
+                      (literal)
+                      (literal)
+                      (parameter_expansion
+                        (variable_name)))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (literal)
+                            (single_quoted
+                              (single_quote_content)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+pattern operators remain source after an incomplete bracket opener
+==================
+
+echo [* [?
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (pattern_star_source))
+                    (word
+                      (literal)
+                      (pattern_question_source)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a shell operator delimits an incomplete bracket word
+==================
+
+echo [;]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal))))))))
+        (separator_op)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+incomplete bracket literals keep slashes
+==================
+
+printf [a/b ${v#[a/b}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (literal)
+                      (literal)
+                      (literal))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (literal)
+                          (literal)
+                          (literal)
+                          (literal)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+assignment bracket fallback preserves source ownership
+==================
+
+incomplete=[[.
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (literal)
+                        (literal)
+                        (literal))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+parameter pattern bracket fallback preserves source ownership
+==================
+
+printf "${value#[[.}" "${value#[x[: a]}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (literal)
+                            (literal)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (literal)
+                            (pattern_bracket_source
+                              (pattern_bracket_members_source
+                                (pattern_bracket_character_source)
+                                (pattern_bracket_character_source)
+                                (pattern_bracket_character_source))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+bracket fallback preserves completed suffixes in words
+==================
+
+printf []] [[. [[= [[: [][.] [[:alpha:] [a[.] [![.]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (literal)
+                      (literal))
+                    (word
+                      (literal)
+                      (literal)
+                      (literal))
+                    (word
+                      (literal)
+                      (literal)
+                      (literal))
+                    (word
+                      (literal)
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+structured unclosed brackets remain source words and preserve later commands
+==================
+
+printf [a${value}suffix
+after
+printf [[:${class}:]suffix
+after_again
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (literal)
+                      (parameter_expansion
+                        (variable_name))
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (parameter_expansion
+                            (variable_name))
+                          (pattern_bracket_character_source)))
+                      (literal))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+an incomplete bracket prefix preserves operators and a completed suffix
+==================
+
+printf [a"x"*[.]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (literal)
+                      (double_quoted
+                        (double_quote_text))
+                      (pattern_star_source)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+consecutive incomplete bracket openers remain literal source
+==================
+
+echo [[abc [*[abc "${value#[[abc}" "${value#[*[abc}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (literal))
+                    (word
+                      (literal)
+                      (pattern_star_source)
+                      (literal))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (literal)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (literal)
+                            (pattern_star_source)
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+an incomplete outer bracket preserves completed suffix brackets
+==================
+
+printf [[:alpha:] [[.ch.] [[=a=] "${value#[[:alpha:]}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal)
+                            (pattern_bracket_source
+                              members: (pattern_bracket_members_source
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+an incomplete bracket ends at a nested backquote closer
+==================
+
+echo `\`echo [a\``
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (backquote_substitution
+                                                (backquote_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (literal)
+                                                                      (literal)))))))))))))))))))))))))))))))))))
+  (linebreak
     (newline_list)))

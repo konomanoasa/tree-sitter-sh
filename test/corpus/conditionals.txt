@@ -188,6 +188,59 @@ if :; then :; elif :; then :; fi
     (newline_list)))
 
 ==================
+a closing spelling in an assignment value leaves the real closer
+==================
+
+if a; then y=fi
+fi
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (if_clause
+                    (if_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      (separator
+                        (separator_op)))
+                    (then_keyword)
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_prefix
+                                    (assignment_word
+                                      (variable_name)
+                                      (assignment_value
+                                        (literal))))))))))
+                      (separator
+                        (newline_list)))
+                    (fi_keyword))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
 trailing blanks separate and terminate an if body
 ==================
 
@@ -259,56 +312,65 @@ fi
     (newline_list)))
 
 ==================
-a closing spelling in an assignment value leaves the real closer
+compound-command closers preserve intervening continuations
 ==================
 
-if a; then y=fi
-fi
+if { :; }  \
+ \
+then :; fi
 
 ---
 
 (program
-  (linebreak
+  leading: (linebreak
     (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
                   (if_clause
                     (if_keyword)
-                    (compound_list
-                      (term
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (simple_command
-                                  (cmd_name
+                    condition: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (compound_command
+                                  (brace_group
+                                    body: (compound_list
+                                      body: (term
+                                        and_or: (and_or
+                                          pipeline: (pipeline
+                                            sequence: (pipe_sequence
+                                              command: (command
+                                                body: (simple_command
+                                                  name: (cmd_name
+                                                    (word
+                                                      (literal)))))))))
+                                      terminator: (separator
+                                        operator: (separator_op)))))))))))
+                    (line_continuation)
+                    (line_continuation)
+                    (then_keyword)
+                    consequence: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
                                     (word
                                       (literal)))))))))
-                      (separator
-                        (separator_op)))
-                    (then_keyword)
-                    (compound_list
-                      (term
-                        (and_or
-                          (pipeline
-                            (pipe_sequence
-                              (command
-                                (simple_command
-                                  (cmd_prefix
-                                    (assignment_word
-                                      (variable_name)
-                                      (assignment_value
-                                        (literal))))))))))
-                      (separator
-                        (newline_list)))
+                      terminator: (separator
+                        operator: (separator_op)))
                     (fi_keyword))))))))))
-  (linebreak
+  trailing: (linebreak
     (newline_list)))
 
 ==================
@@ -500,68 +562,6 @@ if a; then b; elif c; then d & \
     (newline_list)))
 
 ==================
-compound-command closers preserve intervening continuations
-==================
-
-if { :; }  \
- \
-then :; fi
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (if_clause
-                    (if_keyword)
-                    condition: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (compound_command
-                                  (brace_group
-                                    body: (compound_list
-                                      body: (term
-                                        and_or: (and_or
-                                          pipeline: (pipeline
-                                            sequence: (pipe_sequence
-                                              command: (command
-                                                body: (simple_command
-                                                  name: (cmd_name
-                                                    (word
-                                                      (literal)))))))))
-                                      terminator: (separator
-                                        operator: (separator_op)))))))))))
-                    (line_continuation)
-                    (line_continuation)
-                    (then_keyword)
-                    consequence: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        operator: (separator_op)))
-                    (fi_keyword))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 a continuation before a blank line keeps a consequence closer reachable
 ==================
 
@@ -619,3 +619,12 @@ fi
                     (fi_keyword))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+a second fi after a completed conditional requires recovery
+:error
+==================
+
+if a; then b; fi;fi
+
+---

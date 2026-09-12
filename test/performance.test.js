@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { grammarName } from "../scripts/tree-sitter.js";
+import { grammars } from "../scripts/tree-sitter.js";
 import {
   applyEdits,
   assertIncrementalEqualsFresh,
@@ -52,7 +52,7 @@ function medianFreshParseDuration(source, description, mode = "valid") {
       "--lib-path",
       parserLibrary,
       "--lang-name",
-      grammarName,
+      grammars[0].name,
       "--time",
       "--quiet",
       "--",
