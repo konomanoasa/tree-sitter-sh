@@ -1,6 +1,6 @@
 {
   "name": "tree-sitter-sh",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "module",
   "description": "Tree-sitter grammar for POSIX sh.",
   "license": "MIT",
