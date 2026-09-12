@@ -284,45 +284,6 @@ function normalizeRange(range) {
   return range.split(" ").join("");
 }
 
-function pointRelativeTo(point, origin) {
-  const [row, column] = point.split(":").map(Number);
-  const [originRow, originColumn] = origin.split(":").map(Number);
-  return `${row - originRow}:${
-    row === originRow ? column - originColumn : column
-  }`;
-}
-
-function rangeRelativeTo(range, origin) {
-  const [start, end] = range.split("-");
-  return `${pointRelativeTo(start, origin)}-${pointRelativeTo(end, origin)}`;
-}
-
-function normalizedCompleteCommand(output, expectedRange) {
-  const entries = parseCst(output);
-  const range = normalizeRange(expectedRange);
-  const rootIndex = entries.findIndex(
-    (entry) =>
-      entry.range === range &&
-      (entry.content === "complete_command" ||
-        entry.content.endsWith(": complete_command")),
-  );
-  assert.notEqual(
-    rootIndex,
-    -1,
-    `missing complete_command at ${expectedRange}\n${output}`,
-  );
-  const root = entries[rootIndex];
-  const origin = range.split("-", 1)[0];
-  const subtree = [root];
-  for (const entry of entries.slice(rootIndex + 1)) {
-    if (entry.depth <= root.depth) break;
-    subtree.push(entry);
-  }
-  return subtree.map(
-    (entry) => `${rangeRelativeTo(entry.range, origin)}:${entry.content}`,
-  );
-}
-
 function assertCstRange(output, expectedRange, expectedItem) {
   const range = normalizeRange(expectedRange);
   assert.ok(
@@ -755,11 +716,7 @@ test("line-continuation and comment contracts", () => {
     "nul-comment",
     Buffer.from("#a\0b\nnext\n", "utf8"),
   );
-  const nulCommentOutput = runParse({
-    description: "NUL inside comment",
-    mode: "recovery",
-    source: nulComment,
-  }).output;
+  const nulCommentOutput = parseValidCst(nulComment, "NUL inside comment");
   assertCstRange(nulCommentOutput, "0:0-0:4", "comment");
   assertCstRange(nulCommentOutput, "1:0-1:4", "command: complete_command");
   assertCstRange(nulCommentOutput, "0:0-2:0", "program");
@@ -887,24 +844,7 @@ test("line-continuation and comment contracts", () => {
   );
 });
 
-test("recovery preserves unaffected top-level commands", () => {
-  const prefixSource = writeSource(
-    "recovery-prefix-standalone",
-    lines("before alpha"),
-  );
-  const suffixSource = writeSource(
-    "recovery-suffix-standalone",
-    lines("after omega"),
-  );
-  const prefix = normalizedCompleteCommand(
-    parseValidCst(prefixSource),
-    "0:0-0:12",
-  );
-  const suffix = normalizedCompleteCommand(
-    parseValidCst(suffixSource),
-    "0:0-0:11",
-  );
-
+test("malformed commands parse through EOF with native errors", () => {
   for (const [name, invalidCommand] of [
     ["stray-right-parenthesis", ")"],
     ["missing-redirection-target", "broken >;"],
@@ -920,106 +860,148 @@ test("recovery preserves unaffected top-level commands", () => {
     ["case-break-after-top-level-command", "broken;;"],
     ["case-fallthrough-after-top-level-command", "broken ;&"],
     ["bang-past-pipeline-head", "! ! alpha"],
-    ["missing-pipe-command-before-semicolon", "broken | ;"],
-    ["missing-and-command-before-semicolon", "broken && ;"],
-    ["missing-or-command-before-background-terminator", "broken || &"],
-    ["missing-negated-command-before-semicolon", "! ;"],
     ["missing-pipe-command-after-comment", "broken | # pending\n;"],
     ["missing-and-command-after-linebreak", "broken &&\n;"],
     ["missing-command-after-operator-run", "broken && ! | ;"],
     ["missing-negated-command-before-newline", "! # pending"],
   ]) {
-    const combined = writeSource(
-      `recovery-boundary-${name}`,
+    const source = writeSource(
+      `malformed-${name}`,
       lines("before alpha", invalidCommand, "after omega"),
     );
-    const { output, status } = runParse({
-      description: `${name} recovery boundary`,
+    const { status } = runParse({
+      description: name,
       mode: "recovery",
-      source: combined,
+      source,
     });
     assert.equal(status, 1, `${name}: invalid command parsed as valid`);
-    assert.deepEqual(
-      normalizedCompleteCommand(output, "0:0-0:12"),
-      prefix,
-      `${name}: prefix complete_command changed`,
-    );
-    const suffixRow = invalidCommand.split("\n").length + 1;
-    assert.deepEqual(
-      normalizedCompleteCommand(output, `${suffixRow}:0-${suffixRow}:11`),
-      suffix,
-      `${name}: suffix complete_command changed`,
-    );
   }
 });
 
-test("closed malformed subshells preserve following nested commands", () => {
-  const suffixText = lines(
+test("restoring a subshell before nested here-documents matches a fresh parse", () => {
+  const suffix = lines(
+    "",
+    "# between",
     "case x in x) (cat <<EOF",
     "$(printf value)",
     "EOF",
     ");; esac",
   );
-  const suffixSource = writeSource("recovery-nested-standalone", suffixText);
-  const suffix = normalizedCompleteCommand(
-    parseValidCst(suffixSource),
-    "0:0-3:8",
-  );
-
   for (const [broken, restored] of [
     ["()", "(: )"],
     ["(;)", "(: ;)"],
   ]) {
-    const combined = writeSource(
-      "recovery-nested-subshell",
-      `${lines(broken, "", "# between")}${suffixText}`,
-    );
-    const { output, status } = runParse({
-      description: `${broken} before nested command`,
-      mode: "recovery",
-      source: combined,
-    });
-    assert.equal(status, 1, `${broken}: invalid command parsed as valid`);
-    assert.deepEqual(
-      normalizedCompleteCommand(output, "3:0-6:8"),
-      suffix,
-      `${broken}: suffix complete_command changed`,
-    );
-    const restoredSource = writeSource(
-      "recovery-restored-subshell",
-      `${lines(restored, "", "# between")}${suffixText}`,
+    const initial = writeSource("broken-subshell", `${lines(broken)}${suffix}`);
+    const final = writeSource(
+      "restored-subshell",
+      `${lines(restored)}${suffix}`,
     );
     assertIncrementalEqualsFresh(
-      combined,
-      restoredSource,
+      initial,
+      final,
       `${broken}: restore subshell body`,
       "1 0 : ",
     );
   }
 });
 
-test("commands regain their public structure after a missing pipeline operand", () => {
-  for (const [name, broken, restored] of [
-    ["pipe", "broken | ;", "broken | fixed;"],
-    ["and", "broken && ;", "broken && fixed;"],
-    ["or", "broken || &", "broken || fixed&"],
-    ["negation", "! ;", "! fixed;"],
+test("repairing missing operands and compound bodies matches a fresh parse", () => {
+  const prefix = "before alpha\n";
+  const suffix = "after omega\n";
+  for (const [name, broken, restored, wordOffset, removedLength = 0] of [
+    ["if-empty-body", "if :;then |;fi", "if :;then fixed;fi", 10, 1],
+    ["if-body-pipes", "if :;then | |;fi", "if :;then fixed;fi", 10, 3],
+    ["if-empty-condition", "if |;then :;fi", "if fixed;then :;fi", 3, 1],
+    ["if-body-and", "if :;then &&;fi", "if :;then fixed;fi", 10, 2],
+    ["if-body-semi-pipe", "if :;then ;|;fi", "if :;then fixed;fi", 10, 2],
+    ["while-empty-body", "while :;do |;done", "while :;do fixed;done", 11, 1],
+    [
+      "while-empty-condition",
+      "while |;do :;done",
+      "while fixed;do :;done",
+      6,
+      1,
+    ],
+    ["until-empty-body", "until :;do &&;done", "until :;do fixed;done", 11, 2],
+    ["for-empty-body", "for x;do |;done", "for x;do fixed;done", 9, 1],
+    ["brace-empty-body", "{ |; }", "{ fixed; }", 2, 1],
+    ["brace-body-pipes", "{ | |; }", "{ fixed; }", 2, 3],
+    ["brace-body-and", "{ &&; }", "{ fixed; }", 2, 2],
+    ["brace-body-semi-pipe", "{ ;|; }", "{ fixed; }", 2, 2],
+    ["subshell-empty-body", "(|;)", "(fixed;)", 1, 1],
+    ["subshell-body-semi-pipe", "(;|;)", "(fixed;)", 1, 2],
+    ["pipe", "broken | ;", "broken | fixed;", 9],
+    ["and", "broken && ;", "broken && fixed;", 10],
+    ["or", "broken || &", "broken || fixed&", 10],
+    ["negation", "! ;", "! fixed;", 2],
+    ["if-pipe", "if :;then :|;fi", "if :;then :|fixed;fi", 12],
+    [
+      "else-empty-command",
+      "if :;then :;else |;fi",
+      "if :;then :;else fixed;fi",
+      17,
+      1,
+    ],
+    [
+      "elif-empty-condition",
+      "if :;then :;elif |;then :;fi",
+      "if :;then :;elif fixed;then :;fi",
+      17,
+      1,
+    ],
+    [
+      "while-and",
+      "while :; do : && ; done",
+      "while :; do : && fixed; done",
+      17,
+    ],
+    ["for-or", "for x;do :||;done", "for x;do :||fixed;done", 12],
+    ["brace-pipe", "{ :|; }", "{ :|fixed; }", 4],
+    [
+      "case-first-pattern",
+      "case x in ) :;;esac",
+      "case x in fixed) :;;esac",
+      10,
+    ],
+    [
+      "case-next-pattern",
+      "case x in x|) :;;esac",
+      "case x in x|fixed) :;;esac",
+      12,
+    ],
+    [
+      "case-both-patterns",
+      "case x in |) :;;esac",
+      "case x in fixed) :;;esac",
+      10,
+      1,
+    ],
+    [
+      "case-pipe",
+      "case x in x) : | ;; esac",
+      "case x in x) : | fixed;; esac",
+      17,
+    ],
   ]) {
-    const prefix = "before alpha\n";
     const initial = writeSource(
       `missing-${name}-operand`,
-      `${prefix}${lines(broken, "after omega")}`,
+      `${prefix}${lines(broken)}${suffix}`,
     );
+    const { status } = runParse({
+      description: `${name}: malformed command`,
+      mode: "recovery",
+      source: initial,
+    });
+    assert.equal(status, 1, `${name}: invalid command parsed as valid`);
     const final = writeSource(
       `restored-${name}-operand`,
-      `${prefix}${lines(restored, "after omega")}`,
+      `${prefix}${lines(restored)}${suffix}`,
     );
-    const offset = prefix.length + broken.length - 1;
     assertIncrementalEqualsFresh(
       initial,
       final,
-      `restore-${name}-operand-before-separator`,
-      `${offset} 0 fixed`,
+      `restore-${name}`,
+      `${prefix.length + wordOffset} ${removedLength} fixed`,
     );
   }
 });
@@ -1043,6 +1025,65 @@ test("unterminated structures parse through EOF", () => {
   }
 });
 
+test("here-document expansions require their closers and recover after repair", () => {
+  for (const [name, broken, restored, closer, expectedNode] of [
+    ["parameter", "${value", `\${value}`, "}", "parameter_expansion"],
+    ["command", "$(printf x", "$(printf x)", ")", "command_substitution"],
+    ["arithmetic", "$((1 + 2", "$((1 + 2))", "))", "arithmetic_expansion"],
+    ["backquote", "`printf x", "`printf x`", "`", "backquote_substitution"],
+    [
+      "double-quote",
+      '${value:-"text',
+      `\${value:-"text"}`,
+      '"}',
+      "double_quoted",
+    ],
+    [
+      "single-quote",
+      "${value:-'text",
+      `\${value:-'text'}`,
+      "'}",
+      "single_quoted",
+    ],
+    [
+      "dollar-single-quote",
+      "${value:-$'text",
+      `\${value:-$'text'}`,
+      "'}",
+      "dollar_single_quoted",
+    ],
+  ]) {
+    const prefix = "cat <<EOF\n";
+    const initial = writeSource(
+      `here-document-unclosed-${name}`,
+      `${prefix}${lines(broken, "EOF", "after")}`,
+    );
+    const { status } = runParse({
+      description: `unclosed here-document ${name}`,
+      mode: "recovery",
+      source: initial,
+    });
+    assert.equal(
+      status,
+      1,
+      `${name}: here-document delimiter closed an expansion`,
+    );
+    const final = writeSource(
+      `here-document-closed-${name}`,
+      `${prefix}${lines(restored, "EOF", "after")}`,
+    );
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `close-here-document-${name}`,
+      `${prefix.length + broken.length} 0 ${closer}`,
+    )) {
+      assertContains(output, expectedNode);
+      assertCstRange(output, "2:0-3:0", "here_document_end");
+    }
+  }
+});
+
 test("I/O location extension is rejected after compound commands", () => {
   for (const [name, command] of [
     ["brace-group", "{ :; } {fd}>out"],
@@ -1060,6 +1101,23 @@ test("I/O location extension is rejected after compound commands", () => {
 });
 
 test("case closers and keyword headers survive edits", () => {
+  const esacWords = writeSource(
+    "case-esac-word-positions",
+    lines("case x in (esac) esac=x;; x|esac) : esac;; esac"),
+  );
+  const esacWordsOutput = parseValidCst(esacWords);
+  for (const range of ["0:11-0:15", "0:28-0:32", "0:36-0:40"]) {
+    assertCstRange(esacWordsOutput, range, "literal `esac`");
+  }
+  assertCstRange(esacWordsOutput, "0:17-0:21", "variable_name");
+  assertCstDirectChildRange(
+    esacWordsOutput,
+    "0:43-0:47",
+    "esac_keyword",
+    "0:43-0:47",
+    '"esac"',
+  );
+
   const emptyNsItem = writeSource(
     "case-esac-after-closed-pattern",
     lines("case x in x) esac"),
@@ -1824,7 +1882,7 @@ test("here-document state, delimiters, and bodies remain deterministic", () => {
     "body-substitution-closer-final",
     lines("cat <<E", "$(a", "b)", "E"),
   );
-  for (const output of parseRecoveryAfterEdits(
+  for (const output of assertIncrementalEqualsFresh(
     bodyCloserInitial,
     bodyCloserFinal,
     "close-body-substitution-after-separator",
@@ -1857,6 +1915,69 @@ test("here-document state, delimiters, and bodies remain deterministic", () => {
     "split-bracket-special-delimiter-declaration",
     "3 0 \n",
   );
+  const arithmeticDelimiter = writeSource(
+    "arithmetic-here-document-delimiter",
+    lines("cat <<$((case)) >out arg", "body", "$((case))", "after"),
+  );
+  const fallbackDelimiter = writeSource(
+    "command-fallback-here-document-delimiter",
+    lines(
+      "cat <<$((case x in x)esac)) >out arg",
+      "body",
+      "$((case x in x)esac))",
+      "after",
+    ),
+  );
+  for (const [initial, final, name, edits, member, end, redirect, argument] of [
+    [
+      arithmeticDelimiter,
+      fallbackDelimiter,
+      "arithmetic-delimiter-to-command-fallback",
+      ["37 0  x in x)esac", "13 0  x in x)esac"],
+      "command_substitution",
+      27,
+      "0:28-0:32",
+      "0:33-0:36",
+    ],
+    [
+      fallbackDelimiter,
+      arithmeticDelimiter,
+      "command-fallback-delimiter-to-arithmetic",
+      ["49 12", "13 12"],
+      "arithmetic_expansion",
+      15,
+      "0:16-0:20",
+      "0:21-0:24",
+    ],
+  ]) {
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      name,
+      ...edits,
+    )) {
+      assertCstRange(output, `0:4-0:${end}`, "redirect: io_redirect");
+      assertCstDirectChildRange(
+        output,
+        `0:6-0:${end}`,
+        "end: here_end",
+        `0:6-0:${end}`,
+        "word: word",
+      );
+      assertCstDirectChildRange(
+        output,
+        `0:6-0:${end}`,
+        "word: word",
+        `0:6-0:${end}`,
+        member,
+      );
+      assertCstRange(output, redirect, "redirect: io_redirect");
+      assertCstRange(output, argument, "word: word");
+      assertCstRange(output, "1:0-2:0", "body: here_document_body");
+      assertCstRange(output, "2:0-3:0", "end: here_document_end");
+      assertCstRange(output, "3:0-3:5", "command: complete_command");
+    }
+  }
 });
 
 test("word, parameter, and arithmetic categories survive edits", () => {
@@ -2112,7 +2233,7 @@ test("arithmetic grouping, lvalues, and unary operators remain stable", () => {
     "arithmetic-non-lvalue-final",
     lines(': "$(((name + 1) = 2))"'),
   );
-  const nonLvalueOutputs = parseRecoveryAfterEdits(
+  parseRecoveryAfterEdits(
     nonLvalueInitial,
     nonLvalueFinal,
     "make-parenthesized-arithmetic-non-lvalue",
@@ -2124,12 +2245,6 @@ test("arithmetic grouping, lvalues, and unary operators remain stable", () => {
     "restore-parenthesized-arithmetic-lvalue",
     "11 4",
   );
-  for (const output of nonLvalueOutputs) {
-    assertCstRange(output, "0:3-0:22", "command_substitution");
-    assertCstRange(output, "0:5-0:21", "subshell");
-    assertNotContains(output, "arithmetic_expansion");
-    assertNotContains(output, "arithmetic_assignment_expression");
-  }
 
   const openingLayoutInitial = writeSource(
     "arithmetic-opening-layout-initial",
@@ -3397,6 +3512,69 @@ test("enclosing backquote escape runs keep bracket classification across edits",
     "backquote-bracket-shrink",
     "14 1",
   );
+  for (const [name, plainSource, escapedSource, offset, openerRange] of [
+    [
+      "unquoted",
+      lines(": `: [$(cat <<X", "]", "X", ")]`"),
+      lines(": `: [$(cat <<\\\\X", "]", "X", ")]`"),
+      14,
+      "0:5-0:6",
+    ],
+    [
+      "double-quoted",
+      lines(': "`: [$(cat <<X', "]", "X", ')]`"'),
+      lines(': "`: [$(cat <<\\\\X', "]", "X", ')]`"'),
+      15,
+      "0:6-0:7",
+    ],
+  ]) {
+    const plain = writeSource(`bracket-heredoc-${name}-plain`, plainSource);
+    const escaped = writeSource(
+      `bracket-heredoc-${name}-escaped`,
+      escapedSource,
+    );
+    const escapedOutput = parseValidCst(escaped);
+    assertCstRange(
+      escapedOutput,
+      `${openerRange.split("-", 1)[0]}-3:2`,
+      "pattern_bracket_source",
+    );
+    assertCstRange(escapedOutput, "1:0-2:0", "quoted_here_document_body");
+    assertCstRange(escapedOutput, "2:0-3:0", "here_document_end");
+    assertIncrementalEqualsFresh(
+      plain,
+      escaped,
+      `fold-backquote-bracket-heredoc-delimiter-${name}`,
+      `${offset} 0 \\\\`,
+    );
+    assertIncrementalEqualsFresh(
+      escaped,
+      plain,
+      `unquote-backquote-bracket-heredoc-delimiter-${name}`,
+      `${offset} 2`,
+    );
+
+    const closer = escapedSource.lastIndexOf("]");
+    const unclosed = writeSource(
+      `bracket-heredoc-${name}-unclosed`,
+      escapedSource.slice(0, closer) + escapedSource.slice(closer + 1),
+    );
+    const unclosedOutput = parseValidCst(unclosed);
+    assertNotContains(unclosedOutput, "pattern_bracket_source");
+    assertCstRange(unclosedOutput, openerRange, "literal");
+    assertIncrementalEqualsFresh(
+      escaped,
+      unclosed,
+      `remove-bracket-after-backquote-heredoc-${name}`,
+      `${closer} 1`,
+    );
+    assertIncrementalEqualsFresh(
+      unclosed,
+      escaped,
+      `restore-bracket-after-backquote-heredoc-${name}`,
+      `${closer} 0 ]`,
+    );
+  }
 });
 
 test("here-document redirect lines keep a continuation before a following command", () => {
@@ -4021,6 +4199,137 @@ test("bracket fallback remains stable across complete and incomplete edits", () 
     "delete-newline-merging-bracket-command-suffix",
     "6 1",
   );
+  const quotedBracket = writeSource("bracket-dollar-quoted", lines(": [$']'"));
+  const escapedQuoteBracket = writeSource(
+    "bracket-dollar-escaped-quote",
+    lines(": [$'\\']'"),
+  );
+  const closedEscapedQuoteBracket = writeSource(
+    "bracket-dollar-escaped-quote-closed",
+    lines(": [$'\\']']"),
+  );
+  const escapedQuoteOutput = parseValidCst(escapedQuoteBracket);
+  assertNotContains(escapedQuoteOutput, "pattern_bracket_source");
+  assertCstRange(escapedQuoteOutput, "0:2-0:3", "literal");
+  assertCstRange(escapedQuoteOutput, "0:3-0:9", "dollar_single_quoted");
+  assertCstRange(escapedQuoteOutput, "0:5-0:7", "dollar_single_quote_escape");
+  assertCstRange(
+    parseValidCst(closedEscapedQuoteBracket),
+    "0:2-0:10",
+    "pattern_bracket_source",
+  );
+  assertIncrementalEqualsFresh(
+    quotedBracket,
+    escapedQuoteBracket,
+    "insert-escaped-apostrophe-before-quoted-bracket",
+    "5 0 \\'",
+  );
+  assertIncrementalEqualsFresh(
+    escapedQuoteBracket,
+    quotedBracket,
+    "remove-escaped-apostrophe-before-quoted-bracket",
+    "5 2",
+  );
+  assertIncrementalEqualsFresh(
+    escapedQuoteBracket,
+    closedEscapedQuoteBracket,
+    "close-bracket-after-dollar-quoted-apostrophe",
+    "9 0 ]",
+  );
+  assertIncrementalEqualsFresh(
+    closedEscapedQuoteBracket,
+    escapedQuoteBracket,
+    "remove-bracket-after-dollar-quoted-apostrophe",
+    "9 1",
+  );
+  const arithmeticBracket = writeSource(
+    "bracket-arithmetic-member",
+    lines(": [$((case))] arg >out"),
+  );
+  const fallbackBracket = writeSource(
+    "bracket-command-fallback-member",
+    lines(": [$((case x in x)esac))] arg >out"),
+  );
+  for (const [initial, final, name, edit, member, end, argument, redirect] of [
+    [
+      arithmeticBracket,
+      fallbackBracket,
+      "arithmetic-member-to-command-fallback",
+      "10 0  x in x)esac",
+      "command_substitution",
+      24,
+      "0:26-0:29",
+      "0:30-0:34",
+    ],
+    [
+      fallbackBracket,
+      arithmeticBracket,
+      "command-fallback-member-to-arithmetic",
+      "10 12",
+      "arithmetic_expansion",
+      12,
+      "0:14-0:17",
+      "0:18-0:22",
+    ],
+  ]) {
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      name,
+      edit,
+    )) {
+      assertCstRange(output, `0:2-0:${end + 1}`, "pattern_bracket_source");
+      assertCstDirectChildRange(
+        output,
+        `0:3-0:${end}`,
+        "members: pattern_bracket_members_source",
+        `0:3-0:${end}`,
+        `member: ${member}`,
+      );
+      assertCstDirectChildRange(
+        output,
+        `0:3-0:${end}`,
+        `member: ${member}`,
+        "0:3-0:4",
+        '"$"',
+      );
+      assertCstDirectChildRange(
+        output,
+        `0:3-0:${end}`,
+        `member: ${member}`,
+        "0:4-0:5",
+        '"("',
+      );
+      assertCstRange(output, argument, "word: word");
+      assertCstRange(output, redirect, "redirect: io_redirect");
+    }
+  }
+
+  const unclosedFallbackBracket = writeSource(
+    "bracket-command-fallback-unclosed",
+    lines(": [$((case x in x)esac)) arg >out"),
+  );
+  for (const output of assertIncrementalEqualsFresh(
+    fallbackBracket,
+    unclosedFallbackBracket,
+    "unclose-bracket-after-command-fallback",
+    "24 1",
+  )) {
+    assertNotContains(output, "pattern_bracket_source");
+    assertCstRange(output, "0:2-0:3", "literal");
+    assertCstRange(output, "0:3-0:24", "command_substitution");
+    assertCstRange(output, "0:25-0:28", "word: word");
+    assertCstRange(output, "0:29-0:33", "redirect: io_redirect");
+  }
+  for (const output of assertIncrementalEqualsFresh(
+    unclosedFallbackBracket,
+    fallbackBracket,
+    "restore-bracket-after-command-fallback",
+    "24 0 ]",
+  )) {
+    assertCstRange(output, "0:2-0:25", "pattern_bracket_source");
+    assertCstRange(output, "0:3-0:24", "member: command_substitution");
+  }
 });
 
 test("parser resource bounds preserve complete roots and deterministic recovery", () => {

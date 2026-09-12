@@ -264,12 +264,13 @@ static struct Scanner *make_exact_fit_scanner(void) {
   return scanner;
 }
 
-static void assert_all_valid_scan_preserves_state(void) {
+static void assert_all_valid_scan_declines_without_changing_state(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
 
   scanner->sequence_end_pending = true;
   scanner->backquote_depth = 3;
+  assert(append_pending_document(scanner, make_document("EOF", false, false)));
 
   char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
   unsigned before_length = snapshot_scanner(scanner, before);
@@ -279,8 +280,32 @@ static void assert_all_valid_scan_preserves_state(void) {
     valid_symbols[index] = true;
   }
 
-  assert(!tree_sitter_sh_external_scanner_scan(scanner, NULL, valid_symbols));
-  assert_scanner_matches_snapshot(scanner, before, before_length);
+  const struct {
+    int32_t source[8];
+    size_t length;
+  } inputs[] = {
+    {{'e', 's', 'a', 'c', ';'}, 5},
+    {{'f', 'i', '\\', '\n', ';'}, 5},
+    {{'d', 'o', 'n', 'e', '\n'}, 5},
+    {{'t', 'h', 'e', 'n', ' '}, 5},
+    {{'{', ' '}, 2},
+    {{'}', '\n'}, 2},
+    {{')'}, 1},
+    {{'`'}, 1},
+    {{'E', 'O', 'F', '\n'}, 4},
+    {{'w', 'o', 'r', 'd', ';'}, 5},
+    {{0}, 0},
+  };
+  for (
+    size_t index = 0; index < sizeof(inputs) / sizeof(inputs[0]); index += 1
+  ) {
+    struct MockLexer mock;
+    init_mock_lexer(&mock, inputs[index].source, inputs[index].length);
+    assert(
+      !tree_sitter_sh_external_scanner_scan(scanner, &mock.lexer, valid_symbols)
+    );
+    assert_scanner_matches_snapshot(scanner, before, before_length);
+  }
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
@@ -524,7 +549,8 @@ static bool line_matches_document(
   struct MockLexer mock;
   init_mock_lexer(&mock, line, line_length);
   bool result =
-    scan_here_document_end_line(&scanner, &mock.lexer, &document, 0);
+    read_here_document_line(&scanner, &mock.lexer, &document, 0, NULL, NULL) ==
+    HERE_DOCUMENT_LINE_DELIMITER;
   clear_document(&document);
   return result;
 }
@@ -647,18 +673,10 @@ static void assert_nested_here_document_logical_line_tabs(void) {
   struct MockLexer mock;
   init_mock_lexer(&mock, input, sizeof(input) / sizeof(input[0]));
   struct ByteBuffer source = {0};
-  bool is_end = false;
-  bool at_end_of_input = false;
-
-  assert(scan_nested_here_document_line(
-    &mock.lexer,
-    &source,
-    &document,
-    &is_end,
-    &at_end_of_input
-  ));
-  assert(!is_end);
-  assert(!at_end_of_input);
+  assert(
+    read_here_document_line(NULL, &mock.lexer, &document, 0, &source, NULL) ==
+    HERE_DOCUMENT_LINE_CONTENT
+  );
   assert(source.length == sizeof(expected_source));
   assert(memcmp(source.data, expected_source, sizeof(expected_source)) == 0);
 
@@ -698,10 +716,12 @@ static bool scan_delimiter_fixture(
   init_mock_lexer(&mock, input, length);
   bool valid_symbols[TOKEN_COUNT] = {false};
   valid_symbols[LINE_CONTINUATION] = true;
+  valid_symbols[HERE_END_BEGIN] = true;
   bool result =
-    scan_here_document_delimiter(scanner, &mock.lexer, valid_symbols);
+    tree_sitter_sh_external_scanner_scan(scanner, &mock.lexer, valid_symbols);
   if (result) {
     assert(mock.lexer.result_symbol == HERE_END_BEGIN);
+    assert(mock.mark == 0);
   }
   return result;
 }
@@ -1897,14 +1917,30 @@ static void assert_here_document_end_line_before_backquote(void) {
   const int32_t end_then_backquote[] = {'E', 'O', 'F', '`'};
   struct MockLexer enclosed;
   init_mock_lexer(&enclosed, end_then_backquote, 4);
-  assert(scan_here_document_end_line(&scanner, &enclosed.lexer, &document, 1));
+  assert(
+    read_here_document_line(
+      &scanner,
+      &enclosed.lexer,
+      &document,
+      1,
+      NULL,
+      NULL
+    ) == HERE_DOCUMENT_LINE_DELIMITER
+  );
   assert(enclosed.offset == 3);
   assert(enclosed.lexer.lookahead == '`');
 
   struct MockLexer top_level;
   init_mock_lexer(&top_level, end_then_backquote, 4);
   assert(
-    !scan_here_document_end_line(&scanner, &top_level.lexer, &document, 0)
+    read_here_document_line(
+      &scanner,
+      &top_level.lexer,
+      &document,
+      0,
+      NULL,
+      NULL
+    ) != HERE_DOCUMENT_LINE_DELIMITER
   );
 
   clear_document(&document);
@@ -3435,46 +3471,52 @@ static void assert_here_document_line_backslash_parity(void) {
   const int32_t paired[] = {'x', '\\', '\\', '\n', 'E', '\n'};
   init_mock_lexer(&mock, paired, sizeof(paired) / sizeof(paired[0]));
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &document, 0, &start) ==
+    read_here_document_line(scanner, &mock.lexer, &document, 0, NULL, &start) ==
     HERE_DOCUMENT_LINE_CONTENT
   );
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &document, 0, &start) ==
+    read_here_document_line(scanner, &mock.lexer, &document, 0, NULL, &start) ==
     HERE_DOCUMENT_LINE_DELIMITER
   );
 
   const int32_t continued[] = {'x', '\\', '\n', 'E', '\n'};
   init_mock_lexer(&mock, continued, sizeof(continued) / sizeof(continued[0]));
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &document, 0, &start) ==
+    read_here_document_line(scanner, &mock.lexer, &document, 0, NULL, &start) ==
     HERE_DOCUMENT_LINE_CONTENT
   );
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &document, 0, &start) ==
+    read_here_document_line(scanner, &mock.lexer, &document, 0, NULL, &start) ==
     HERE_DOCUMENT_LINE_END_OF_INPUT
   );
 
   const int32_t nested[] = {'x', '\\', '\\', '\n', 'E', '\n'};
   init_mock_lexer(&mock, nested, sizeof(nested) / sizeof(nested[0]));
-  bool is_end = false;
-  bool at_end_of_input = false;
-  assert(scan_nested_here_document_line(
-    &mock.lexer,
-    NULL,
-    &document,
-    &is_end,
-    &at_end_of_input
-  ));
-  assert(!is_end);
-  assert(!at_end_of_input);
-  assert(scan_nested_here_document_line(
-    &mock.lexer,
-    NULL,
-    &document,
-    &is_end,
-    &at_end_of_input
-  ));
-  assert(is_end);
+  struct ByteBuffer source = {0};
+  assert(
+    read_here_document_line(
+      scanner,
+      &mock.lexer,
+      &document,
+      0,
+      &source,
+      NULL
+    ) == HERE_DOCUMENT_LINE_CONTENT
+  );
+  assert(source.length == 4);
+  assert(
+    read_here_document_line(
+      scanner,
+      &mock.lexer,
+      &document,
+      0,
+      &source,
+      NULL
+    ) == HERE_DOCUMENT_LINE_DELIMITER
+  );
+  assert(source.length == 6);
+  assert(memcmp(source.data, "x\\\\\nE\n", source.length) == 0);
+  ts_free(source.data);
 
   clear_document(&document);
   tree_sitter_sh_external_scanner_destroy(scanner);
@@ -3494,15 +3536,24 @@ static void assert_enclosed_here_document_line_folds(void) {
     sizeof(escaped_ticks) / sizeof(escaped_ticks[0])
   );
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &backquoted, 1, &start) ==
-    HERE_DOCUMENT_LINE_DELIMITER
+    read_here_document_line(
+      scanner,
+      &mock.lexer,
+      &backquoted,
+      1,
+      NULL,
+      &start
+    ) == HERE_DOCUMENT_LINE_DELIMITER
   );
   init_mock_lexer(
     &mock,
     escaped_ticks,
     sizeof(escaped_ticks) / sizeof(escaped_ticks[0])
   );
-  assert(scan_here_document_end_line(scanner, &mock.lexer, &backquoted, 1));
+  assert(
+    read_here_document_line(scanner, &mock.lexer, &backquoted, 1, NULL, NULL) ==
+    HERE_DOCUMENT_LINE_DELIMITER
+  );
 
   const int32_t bare_ticks[] = {'`', 'x', '`', '\n'};
   init_mock_lexer(
@@ -3511,15 +3562,24 @@ static void assert_enclosed_here_document_line_folds(void) {
     sizeof(bare_ticks) / sizeof(bare_ticks[0])
   );
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &backquoted, 1, &start) ==
-    HERE_DOCUMENT_LINE_CONTENT
+    read_here_document_line(
+      scanner,
+      &mock.lexer,
+      &backquoted,
+      1,
+      NULL,
+      &start
+    ) == HERE_DOCUMENT_LINE_CONTENT
   );
   init_mock_lexer(
     &mock,
     bare_ticks,
     sizeof(bare_ticks) / sizeof(bare_ticks[0])
   );
-  assert(!scan_here_document_end_line(scanner, &mock.lexer, &backquoted, 1));
+  assert(
+    read_here_document_line(scanner, &mock.lexer, &backquoted, 1, NULL, NULL) !=
+    HERE_DOCUMENT_LINE_DELIMITER
+  );
   clear_document(&backquoted);
 
   struct HereDocument dollar = make_document("$v", false, false);
@@ -3530,7 +3590,7 @@ static void assert_enclosed_here_document_line_folds(void) {
     sizeof(escaped_dollar) / sizeof(escaped_dollar[0])
   );
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &dollar, 1, &start) ==
+    read_here_document_line(scanner, &mock.lexer, &dollar, 1, NULL, &start) ==
     HERE_DOCUMENT_LINE_DELIMITER
   );
   clear_document(&dollar);
@@ -3539,7 +3599,7 @@ static void assert_enclosed_here_document_line_folds(void) {
   const int32_t retained[] = {'\\', '\\', 'd', '\n'};
   init_mock_lexer(&mock, retained, sizeof(retained) / sizeof(retained[0]));
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &plain, 1, &start) ==
+    read_here_document_line(scanner, &mock.lexer, &plain, 1, NULL, &start) ==
     HERE_DOCUMENT_LINE_CONTENT
   );
   const int32_t folded_away[] = {'d', '\n'};
@@ -3549,7 +3609,7 @@ static void assert_enclosed_here_document_line_folds(void) {
     sizeof(folded_away) / sizeof(folded_away[0])
   );
   assert(
-    probe_here_document_line(scanner, &mock.lexer, &plain, 1, &start) ==
+    read_here_document_line(scanner, &mock.lexer, &plain, 1, NULL, &start) ==
     HERE_DOCUMENT_LINE_DELIMITER
   );
   clear_document(&plain);
@@ -3557,16 +3617,34 @@ static void assert_enclosed_here_document_line_folds(void) {
   struct HereDocument quote = make_document("\"", true, false);
   const int32_t escaped_quote[] = {'\\', '"', '\n'};
   init_mock_lexer(&mock, escaped_quote, 3);
-  assert(!scan_here_document_end_line(scanner, &mock.lexer, &quote, 1));
+  assert(
+    read_here_document_line(scanner, &mock.lexer, &quote, 1, NULL, NULL) !=
+    HERE_DOCUMENT_LINE_DELIMITER
+  );
   assert(increase_quoted_backquote_depth(scanner));
   for (size_t depth = 1; depth <= 2; depth += 1) {
     init_mock_lexer(&mock, escaped_quote, 3);
     assert(
-      probe_here_document_line(scanner, &mock.lexer, &quote, depth, &start) ==
-      HERE_DOCUMENT_LINE_DELIMITER
+      read_here_document_line(
+        scanner,
+        &mock.lexer,
+        &quote,
+        depth,
+        NULL,
+        &start
+      ) == HERE_DOCUMENT_LINE_DELIMITER
     );
     init_mock_lexer(&mock, escaped_quote, 3);
-    assert(scan_here_document_end_line(scanner, &mock.lexer, &quote, depth));
+    assert(
+      read_here_document_line(
+        scanner,
+        &mock.lexer,
+        &quote,
+        depth,
+        NULL,
+        NULL
+      ) == HERE_DOCUMENT_LINE_DELIMITER
+    );
     if (depth == 1) {
       assert(increase_backquote_depth(scanner));
     }
@@ -3800,7 +3878,7 @@ static void assert_name_equals_begin_contract(void) {
     sizeof(reserved_input) / sizeof(reserved_input[0]),
     true,
     CASE_KEYWORD,
-    0,
+    4,
     6,
     ' '
   );
@@ -3838,7 +3916,7 @@ static void assert_reserved_word_at_command_name_position_stays_reserved(void) {
     sizeof(fi_input) / sizeof(fi_input[0]),
     true,
     FI_KEYWORD,
-    0,
+    2,
     2,
     ' '
   );
@@ -3851,7 +3929,7 @@ static void assert_reserved_word_at_command_name_position_stays_reserved(void) {
     sizeof(in_input) / sizeof(in_input[0]),
     true,
     IN_KEYWORD,
-    0,
+    2,
     2,
     '\n'
   );
@@ -4093,8 +4171,107 @@ static void assert_backquote_continuation_prefix_keeps_physical_pair(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
+static void assert_ambiguous_lookahead_distinguishes_nul_from_eof(void) {
+  struct Scanner scanner = {0};
+  const int32_t input[] = {'[', '$', '(', '(', '1', ')', ')', 0, ']'};
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[WORD_BRACKET_LITERAL_START] = true;
+  valid_symbols[WORD_PATTERN_BRACKET_OPEN] = true;
+  assert_scan_result(
+    &scanner,
+    valid_symbols,
+    input,
+    9,
+    true,
+    WORD_PATTERN_BRACKET_OPEN,
+    1,
+    8,
+    ']'
+  );
+  assert_scan_result(
+    &scanner,
+    valid_symbols,
+    input,
+    8,
+    true,
+    WORD_BRACKET_LITERAL_START,
+    1,
+    8,
+    0
+  );
+}
+
+static void assert_arithmetic_lookahead_resumes_embedded_constructs(void) {
+  const char *const sources[] = {
+    "[$((1+$(: $((1)) $((2)) case)))]",
+    "[$((1+${x:-$((1))$((2))}))]",
+    "[$((echo $((1)); : $((2)) case))]",
+  };
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[WORD_BRACKET_LITERAL_START] = true;
+  valid_symbols[WORD_PATTERN_BRACKET_OPEN] = true;
+  for (
+    size_t index = 0; index < sizeof(sources) / sizeof(sources[0]); index += 1
+  ) {
+    size_t length = strlen(sources[index]);
+    int32_t *input = malloc(length * sizeof(int32_t));
+    assert(input != NULL);
+    for (size_t offset = 0; offset < length; offset += 1) {
+      input[offset] = (unsigned char)sources[index][offset];
+    }
+    struct Scanner scanner = {0};
+    struct MockLexer mock;
+    init_mock_lexer(&mock, input, length);
+    assert(
+      tree_sitter_sh_external_scanner_scan(&scanner, &mock.lexer, valid_symbols)
+    );
+    assert(mock.lexer.result_symbol == WORD_PATTERN_BRACKET_OPEN);
+    assert(mock.mark == 1);
+    clear_scanner(&scanner);
+    free(input);
+  }
+}
+
+#ifdef TREE_SITTER_REUSE_ALLOCATOR
+static void
+assert_ambiguous_lookahead_allocation_failure_preserves_state(void) {
+  assert(reuse_live_allocations == 0);
+  struct Scanner scanner = {0};
+  const int32_t input[] = {'[', '$', '(', '(', '1', ')', ')', ']'};
+  struct MockLexer mock;
+  init_mock_lexer(&mock, input, sizeof(input) / sizeof(input[0]));
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[WORD_BRACKET_LITERAL_START] = true;
+  valid_symbols[WORD_PATTERN_BRACKET_OPEN] = true;
+  reuse_fail_next_realloc = true;
+  assert(
+    !tree_sitter_sh_external_scanner_scan(&scanner, &mock.lexer, valid_symbols)
+  );
+  assert(!reuse_fail_next_realloc);
+  assert(scanner_state_fits(&scanner));
+  clear_scanner(&scanner);
+  assert(reuse_live_allocations == 0);
+  const int32_t arithmetic[] = {'(', '$', '(', '(', '1', ')', ')', ')', ')'};
+  init_mock_lexer(
+    &mock,
+    arithmetic,
+    sizeof(arithmetic) / sizeof(arithmetic[0])
+  );
+  memset(valid_symbols, 0, sizeof(valid_symbols));
+  valid_symbols[ARITHMETIC_LEFT_PARENTHESIS] = true;
+  reuse_fail_next_realloc = true;
+  assert(
+    !tree_sitter_sh_external_scanner_scan(&scanner, &mock.lexer, valid_symbols)
+  );
+  assert(!reuse_fail_next_realloc);
+  assert(scanner_state_fits(&scanner));
+  clear_scanner(&scanner);
+  assert(reuse_live_allocations == 0);
+}
+#endif
+
 int main(void) {
-  assert_all_valid_scan_preserves_state();
+  assert_all_valid_scan_declines_without_changing_state();
   assert_state_round_trip();
   assert_old_state_is_rejected();
   assert_exact_fit_state_round_trip();
@@ -4109,6 +4286,11 @@ int main(void) {
 #endif
   assert_backquote_continuation_prefix_keeps_physical_pair();
   assert_strict_scalar_encoding();
+  assert_ambiguous_lookahead_distinguishes_nul_from_eof();
+  assert_arithmetic_lookahead_resumes_embedded_constructs();
+#ifdef TREE_SITTER_REUSE_ALLOCATOR
+  assert_ambiguous_lookahead_allocation_failure_preserves_state();
+#endif
   assert_control_escape_table();
   assert_byte_delimiter_matching();
   assert_nested_here_document_logical_line_tabs();

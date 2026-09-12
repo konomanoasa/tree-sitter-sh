@@ -226,8 +226,6 @@ const wordSeparator = ($, marker) =>
 
 const lineContinuationRun = ($) => prec.right(1, repeat1($._line_continuation));
 
-const parameterBraceClose = ($) => choice("}", $._here_document_boundary);
-
 const arithmeticBinaryExpression = ($, left, right, operatorSegment) =>
   prec.left(
     seq(
@@ -325,9 +323,6 @@ const parenthesizedArithmetic = ($, expression) =>
     ")",
   );
 
-const arithmeticExpansionEnd = ($) =>
-  choice(seq(")", ")"), $._here_document_boundary);
-
 const arithmeticExpansionStart = ($, marker) =>
   seq($._command_or_arithmetic_substitution_start, marker, "(");
 
@@ -337,10 +332,10 @@ const closedArithmeticExpansion = ($, start, expression, closing) =>
   seq(
     start,
     optional($._arithmetic_layout),
-    choice(
-      seq(field("expression", expression), closing, arithmeticExpansionEnd($)),
-      $._here_document_boundary,
-    ),
+    field("expression", expression),
+    closing,
+    ")",
+    ")",
   );
 
 const linebreakLayout = ($) =>
@@ -434,10 +429,7 @@ const commandSubstitution = ($, start) =>
     start,
     $._command_substitution_body_begin,
     optional(field("body", $.command_substitution_body)),
-    choice(
-      alias($._command_substitution_close, ")"),
-      $._here_document_boundary,
-    ),
+    alias($._command_substitution_close, ")"),
   );
 
 const patternSpecialStart = ($, marker) =>
@@ -546,10 +538,7 @@ const parameterExpansion = ($, bracedExpansion) =>
     1,
     choice(
       seq(dollarExpansionPrefix($), field("parameter", $._unbraced_parameter)),
-      seq(
-        dollarExpansionStart($, "{"),
-        choice($._here_document_boundary, bracedExpansion),
-      ),
+      seq(dollarExpansionStart($, "{"), bracedExpansion),
     ),
   );
 
@@ -577,7 +566,7 @@ const bracedParameterExpansion = ($, tail) =>
       seq(
         field("operator", $.parameter_length_operator),
         bracedParameterSource($, $._length_parameter),
-        parameterBraceClose($),
+        "}",
       ),
     ),
   );
@@ -587,17 +576,14 @@ const parameterOperatorTail = ($, word) =>
     seq(
       field("operator", $.parameter_value_operator),
       optional(field("word", word)),
-      parameterBraceClose($),
+      "}",
     ),
     seq(
       field("operator", $.parameter_pattern_operator),
       optional(field("pattern", $.parameter_pattern)),
-      parameterBraceClose($),
+      "}",
     ),
   );
-
-const parameterExpansionTail = ($, operatorTail) =>
-  choice(parameterBraceClose($), operatorTail);
 
 const parameterPatternSource = ($) =>
   choice(
@@ -858,7 +844,6 @@ module.exports = grammar({
     $._trailing_comment_boundary,
     $.comment,
     $._comment_line_end,
-    $._here_document_boundary,
     $._dollar_expansion_start,
     $._braced_parameter_number_start,
     $._braced_positional_parameter_start,
@@ -1176,31 +1161,31 @@ module.exports = grammar({
 
     bang: ($) => $._bang_token,
 
-    if_keyword: ($) => seq($._if_keyword, "if"),
+    if_keyword: ($) => alias($._if_keyword, "if"),
 
-    then_keyword: ($) => seq($._then_keyword, "then"),
+    then_keyword: ($) => alias($._then_keyword, "then"),
 
-    elif_keyword: ($) => seq($._elif_keyword, "elif"),
+    elif_keyword: ($) => alias($._elif_keyword, "elif"),
 
-    else_keyword: ($) => seq($._else_keyword, "else"),
+    else_keyword: ($) => alias($._else_keyword, "else"),
 
-    fi_keyword: ($) => seq($._fi_keyword, "fi"),
+    fi_keyword: ($) => alias($._fi_keyword, "fi"),
 
-    for_keyword: ($) => seq($._for_keyword, "for"),
+    for_keyword: ($) => alias($._for_keyword, "for"),
 
-    in_keyword: ($) => seq($._in_keyword, "in"),
+    in_keyword: ($) => alias($._in_keyword, "in"),
 
-    do_keyword: ($) => seq($._do_keyword, "do"),
+    do_keyword: ($) => alias($._do_keyword, "do"),
 
-    done_keyword: ($) => seq($._done_keyword, "done"),
+    done_keyword: ($) => alias($._done_keyword, "done"),
 
-    case_keyword: ($) => seq($._case_keyword, "case"),
+    case_keyword: ($) => alias($._case_keyword, "case"),
 
-    esac_keyword: ($) => seq($._esac_keyword, "esac"),
+    esac_keyword: ($) => alias($._esac_keyword, "esac"),
 
-    while_keyword: ($) => seq($._while_keyword, "while"),
+    while_keyword: ($) => alias($._while_keyword, "while"),
 
-    until_keyword: ($) => seq($._until_keyword, "until"),
+    until_keyword: ($) => alias($._until_keyword, "until"),
 
     function_definition: ($) => functionDefinitionWithBody($, $.function_body),
 
@@ -2060,12 +2045,7 @@ module.exports = grammar({
 
     _backquote_escaped_ordinary: (_) => token.immediate(/[^\\\n$`]/),
 
-    single_quoted: ($) =>
-      seq(
-        "'",
-        optional($.single_quote_content),
-        choice("'", $._here_document_boundary),
-      ),
+    single_quoted: ($) => seq("'", optional($.single_quote_content), "'"),
 
     single_quote_content: ($) =>
       repeat1(choice(token.immediate(/[^'\n]+/), $._newline)),
@@ -2074,7 +2054,7 @@ module.exports = grammar({
       seq(
         $._double_quote_delimiter,
         repeat(doubleQuotedPart($)),
-        choice($._double_quote_delimiter, $._here_document_boundary),
+        $._double_quote_delimiter,
       ),
 
     _double_quote_delimiter: ($) =>
@@ -2103,7 +2083,7 @@ module.exports = grammar({
               alias($._newline, $.dollar_single_quote_text),
             ),
           ),
-          choice("'", $._here_document_boundary),
+          "'",
         ),
       ),
 
@@ -2136,16 +2116,13 @@ module.exports = grammar({
       bracedParameterExpansion($, $._double_quoted_parameter_expansion_tail),
 
     _parameter_expansion_tail: ($) =>
-      parameterExpansionTail($, $._parameter_operator_expansion_tail),
+      choice("}", $._parameter_operator_expansion_tail),
 
     _parameter_operator_expansion_tail: ($) =>
       parameterOperatorTail($, $.parameter_word),
 
     _double_quoted_parameter_expansion_tail: ($) =>
-      parameterExpansionTail(
-        $,
-        $._double_quoted_parameter_operator_expansion_tail,
-      ),
+      choice("}", $._double_quoted_parameter_operator_expansion_tail),
 
     _double_quoted_parameter_operator_expansion_tail: ($) =>
       parameterOperatorTail(

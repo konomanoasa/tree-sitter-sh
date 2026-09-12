@@ -906,3 +906,329 @@ Nested bracket members in quoted backquotes keep their own closers
                                                                                                         (double_quote_text))))))))))))))))))))))))))))))))))))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+Dollar-single-quoted apostrophes do not expose quoted bracket closers
+==================
+
+: [$'\']' [$'\']'] ${x#[$'\']'} ${x#[$'\']']}
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (dollar_single_quoted
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (dollar_single_quoted
+                            (dollar_single_quote_escape)
+                            (dollar_single_quote_text)))))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal)
+                          (dollar_single_quoted
+                            (dollar_single_quote_escape)
+                            (dollar_single_quote_text)))))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (pattern_bracket_source
+                            (pattern_bracket_members_source
+                              (dollar_single_quoted
+                                (dollar_single_quote_escape)
+                                (dollar_single_quote_text))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Bracket lookahead folds an embedded here-document delimiter inside backquotes
+==================
+
+: `: [$(cat <<\\X
+]
+X
+)]`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (command_substitution
+                                                    (command_substitution_body
+                                                      (complete_commands
+                                                        (complete_command
+                                                          (list
+                                                            (and_or
+                                                              (pipeline
+                                                                (pipe_sequence
+                                                                  (command
+                                                                    (simple_command
+                                                                      (cmd_name
+                                                                        (word
+                                                                          (literal)))
+                                                                      (cmd_suffix
+                                                                        (io_redirect
+                                                                          (io_here
+                                                                            (dless)
+                                                                            (here_end
+                                                                              (word
+                                                                                (escaped_character)
+                                                                                (literal))))))))))))))
+                                                      (linebreak
+                                                        (newline_list
+                                                          (here_document_sequence
+                                                            (here_document_line_end)
+                                                            (here_document
+                                                              (quoted_here_document_body
+                                                                (quoted_here_document_text))
+                                                              (here_document_end)))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+Bracket lookahead distinguishes arithmetic from subshell command substitutions
+==================
+
+: [$((case x in x)esac))]
+: [$((1+$((case x in x)esac))))]
+: [$(echo $((1)) case)]
+: [$((case))] [$((case ? in : x))]
+: [$((a << b
+))]
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (compound_command
+                                              (subshell
+                                                (compound_list
+                                                  (term
+                                                    (and_or
+                                                      (pipeline
+                                                        (pipe_sequence
+                                                          (command
+                                                            (compound_command
+                                                              (case_clause
+                                                                (case_keyword)
+                                                                (word
+                                                                  (literal))
+                                                                (in
+                                                                  (in_keyword))
+                                                                (case_list_ns
+                                                                  (case_item_ns
+                                                                    (pattern_list
+                                                                      (word
+                                                                        (literal)))))
+                                                                (esac_keyword)))))))))))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (arithmetic_expansion
+                            (arithmetic_binary_expression
+                              (arithmetic_number)
+                              (arithmetic_operator)
+                              (command_substitution
+                                (command_substitution_body
+                                  (complete_commands
+                                    (complete_command
+                                      (list
+                                        (and_or
+                                          (pipeline
+                                            (pipe_sequence
+                                              (command
+                                                (compound_command
+                                                  (subshell
+                                                    (compound_list
+                                                      (term
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (compound_command
+                                                                  (case_clause
+                                                                    (case_keyword)
+                                                                    (word
+                                                                      (literal))
+                                                                    (in
+                                                                      (in_keyword))
+                                                                    (case_list_ns
+                                                                      (case_item_ns
+                                                                        (pattern_list
+                                                                          (word
+                                                                            (literal)))))
+                                                                    (esac_keyword)))))))))))))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (word
+                                                  (arithmetic_expansion
+                                                    (arithmetic_number)))
+                                                (word
+                                                  (literal))))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (arithmetic_expansion
+                            (arithmetic_variable)))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (arithmetic_expansion
+                            (arithmetic_conditional_expression
+                              (arithmetic_variable)
+                              (arithmetic_operator)
+                              (arithmetic_variable)
+                              (arithmetic_operator)
+                              (arithmetic_variable))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (arithmetic_expansion
+                            (arithmetic_binary_expression
+                              (arithmetic_variable)
+                              (arithmetic_operator)
+                              (arithmetic_variable)))))))))))))))
+  (linebreak
+    (newline_list)))
