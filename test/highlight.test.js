@@ -1,11 +1,8 @@
-const assert = require("node:assert/strict");
-const { readFileSync } = require("node:fs");
-const path = require("node:path");
-const { test } = require("node:test");
-const {
-  repositoryDirectory,
-  runTreeSitter,
-} = require("../scripts/tree-sitter");
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { test } from "node:test";
+import { repositoryDirectory, runTreeSitter } from "../scripts/tree-sitter.js";
 
 const highlightFixture = path.join(
   repositoryDirectory,

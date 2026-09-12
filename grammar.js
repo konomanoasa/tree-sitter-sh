@@ -794,7 +794,7 @@ const patternInitialBracketRange = ($, endpoint) =>
     alias($._pattern_initial_right_bracket, $.pattern_bracket_character_source),
   );
 
-module.exports = grammar({
+export default grammar({
   name: "sh",
 
   extras: ($) => [$._here_document_content_line_start],
@@ -897,6 +897,9 @@ module.exports = grammar({
     $._backquote_quote_prefix,
     $._pipeline_negation_begin,
     $._backquote_continuation_begin,
+    $.dollar_single_quote_escape,
+    $._backquote_dollar_single_quote_text,
+    $._backquote_dollar_single_quote_prefix,
   ],
 
   conflicts: ($) => [
@@ -2075,11 +2078,21 @@ module.exports = grammar({
       prec(
         2,
         seq(
-          "$'",
+          choice(
+            "$'",
+            seq(
+              alias($._backquote_dollar_single_quote_prefix, "\\"),
+              token.immediate("$'"),
+            ),
+          ),
           repeat(
             choice(
               $.dollar_single_quote_text,
               $.dollar_single_quote_escape,
+              alias(
+                $._backquote_dollar_single_quote_text,
+                $.dollar_single_quote_text,
+              ),
               alias($._newline, $.dollar_single_quote_text),
             ),
           ),
@@ -2088,20 +2101,6 @@ module.exports = grammar({
       ),
 
     dollar_single_quote_text: (_) => token.immediate(prec(-1, /[^'\\\n]+/)),
-
-    dollar_single_quote_escape: (_) =>
-      token.immediate(
-        seq(
-          "\\",
-          choice(
-            seq("x", /[0-9A-Fa-f]+/),
-            /[0-7]{1,3}/,
-            seq("c", choice(seq("\\", "\\"), /[^\\\n]/)),
-            /[^\n]/,
-            "\n",
-          ),
-        ),
-      ),
 
     parameter_expansion: ($) =>
       parameterExpansion($, $._braced_parameter_expansion),

@@ -226,7 +226,7 @@ echo `if x; then y; fi `
     (newline_list)))
 
 ==================
-A folded pair remains one bracket range endpoint
+Folded backslashes expose a bracket range parameter endpoint
 ==================
 
 echo `echo \`echo [a-\\$x]\``
@@ -284,9 +284,8 @@ echo `echo \`echo [a-\\$x]\``
                                                                           (pattern_bracket_range_source
                                                                             (pattern_bracket_character_source)
                                                                             (pattern_bracket_range_operator_source)
-                                                                            (escaped_character))
-                                                                          (parameter_expansion
-                                                                            (variable_name))))))))))))))))))))))))))))))))))))))
+                                                                            (parameter_expansion
+                                                                              (variable_name)))))))))))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 

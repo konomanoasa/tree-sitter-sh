@@ -1,14 +1,14 @@
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const { after, before, test } = require("node:test");
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { after, before, test } from "node:test";
 
-const {
+import {
   createEnvironmentDirectory,
   grammarDirectory,
   grammarName,
   runTreeSitter,
-} = require("../scripts/tree-sitter");
+} from "../scripts/tree-sitter.js";
 
 const contractsQuerySource = `(line_continuation) @line.continuation
 
@@ -1659,6 +1659,96 @@ test("substitution, redirection, and token boundaries retain ownership", () => {
 });
 
 test("here-document state, delimiters, and bodies remain deterministic", () => {
+  for (const fixture of [
+    {
+      name: "dollar-apostrophe",
+      initial: lines(": `cat <<$'x'", "body", "x", "`", "after"),
+      final: lines(": `cat <<$'\\\\''", "body", "'", "`", "after"),
+      edits: ["19 1 '", "11 1 \\\\'"],
+      restore: ["21 1 x", "11 3 x"],
+      delimiterRange: "0:9-0:15",
+      quoteNode: "dollar_single_quoted",
+      afterRange: "4:0-4:5",
+    },
+    {
+      name: "escaped-backtick",
+      initial: lines(': `cat <<"x"', "body", "x", "`", "after"),
+      final: lines(': `cat <<"\\\\\\`"', "body", "\\`", "`", "after"),
+      edits: ["18 1 \\`", "10 1 \\\\\\`"],
+      restore: ["21 2 x", "10 4 x"],
+      delimiterRange: "0:9-0:15",
+      quoteNode: "double_quoted",
+      afterRange: "4:0-4:5",
+    },
+    {
+      name: "quoted-escaped-backtick",
+      initial: lines(': "`cat <<\\"x\\"', "body", "x", '`"', "after"),
+      final: lines(': "`cat <<\\"\\\\\\`\\"', "body", "\\`", '`"', "after"),
+      edits: ["21 1 \\`", "12 1 \\\\\\`"],
+      restore: ["24 2 x", "12 4 x"],
+      delimiterRange: "0:10-0:18",
+      quoteNode: "double_quoted",
+      afterRange: "4:0-4:5",
+    },
+    {
+      name: "nested-escaped-backtick",
+      initial: lines(': `echo \\`cat <<"x"', "body", "x", "\\`", "`", "after"),
+      final: lines(
+        ': `echo \\`cat <<"\\\\\\\\\\\\\\`"',
+        "body",
+        "\\\\\\`",
+        "\\`",
+        "`",
+        "after",
+      ),
+      edits: ["25 1 \\\\\\`", "17 1 \\\\\\\\\\\\\\`"],
+      restore: ["32 4 x", "17 8 x"],
+      delimiterRange: "0:16-0:26",
+      quoteNode: "double_quoted",
+      afterRange: "5:0-5:5",
+    },
+    {
+      name: "escaped-backslash-backtick",
+      initial: lines(': `cat <<"x"', "body", "x", "`", "after"),
+      final: lines(
+        ': `cat <<"\\\\\\\\\\\\\\`"',
+        "body",
+        "\\\\\\`",
+        "`",
+        "after",
+      ),
+      edits: ["18 1 \\\\\\`", "10 1 \\\\\\\\\\\\\\`"],
+      restore: ["25 4 x", "10 8 x"],
+      delimiterRange: "0:9-0:19",
+      quoteNode: "double_quoted",
+      afterRange: "4:0-4:5",
+    },
+  ]) {
+    const initial = writeSource(
+      `${fixture.name}-delimiter-initial`,
+      fixture.initial,
+    );
+    const final = writeSource(`${fixture.name}-delimiter-final`, fixture.final);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `replace-backquote-${fixture.name}-delimiter`,
+      ...fixture.edits,
+    )) {
+      assertCstRange(output, fixture.delimiterRange, "end: here_end");
+      assertCstRange(output, fixture.delimiterRange, fixture.quoteNode);
+      assertCstRange(output, "1:0-2:0", "quoted_here_document_body");
+      assertCstRange(output, "2:0-3:0", "here_document_end");
+      assertCstRange(output, fixture.afterRange, "command: complete_command");
+    }
+    assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `restore-backquote-${fixture.name}-delimiter`,
+      ...fixture.restore,
+    );
+  }
+
   const backquoteDocument = writeSource(
     "backquote-here-document",
     lines("cat <<\"`printf '%s' END`\"", "body", "`printf %s END`", "after"),
@@ -2414,6 +2504,139 @@ test("editing enclosing quotes updates backquote command word structure", () => 
     "5 1",
   );
   for (const output of restored) assertOccurrenceCount(output, "word: word", 4);
+
+  for (const [
+    name,
+    initialText,
+    finalText,
+    offset,
+    quoteRange,
+    escapeRanges,
+    quoteNode = "dollar_single_quoted",
+    parameterRange,
+  ] of [
+    ["plain", ": `: $'\\''`", ": `: $'\\\\''`", 7, "0:5-0:11", ["0:7-0:10"]],
+    [
+      "quoted",
+      ": \"`: $'\\''`\"",
+      ": \"`: $'\\\\''`\"",
+      8,
+      "0:6-0:12",
+      ["0:8-0:11"],
+    ],
+    [
+      "nested",
+      ": \"`: \\`: $'\\\\\\''\\``\"",
+      ": \"`: \\`: $'\\\\\\\\''\\``\"",
+      12,
+      "0:10-0:18",
+      ["0:12-0:17"],
+    ],
+    [
+      "paired",
+      ": `: $'\\\\\\\\\\''`",
+      ": `: $'\\\\\\\\\\\\''`",
+      7,
+      "0:5-0:15",
+      ["0:7-0:11", "0:11-0:14"],
+    ],
+    [
+      "control",
+      ": `: $'\\c\\\\\\\\'`",
+      ": `: $'\\\\c\\\\\\\\'`",
+      7,
+      "0:5-0:15",
+      ["0:7-0:14"],
+    ],
+    [
+      "nested-control",
+      ": \"`: \\`: $'\\\\\\c\\\\\\\\\\\\\\\\'\\``\"",
+      ": \"`: \\`: $'\\\\\\\\c\\\\\\\\\\\\\\\\'\\``\"",
+      12,
+      "0:10-0:26",
+      ["0:12-0:25"],
+    ],
+    [
+      "escaped-opener",
+      ": `: $'\\\\''`",
+      ": `: \\$'\\\\''`",
+      5,
+      "0:5-0:12",
+      ["0:8-0:11"],
+    ],
+    [
+      "double-quote-text",
+      "echo `a \"$'x'\"`",
+      "echo `a \"\\$'x'\"`",
+      9,
+      "0:8-0:15",
+      [],
+      "double_quoted",
+    ],
+    [
+      "parameter-word-text",
+      'echo `a "$' + "{x:-$'x'}\"`",
+      'echo `a "$' + "{x:-\\$'x'}\"`",
+      14,
+      "0:8-0:21",
+      [],
+      "double_quoted",
+      "0:9-0:20",
+    ],
+  ]) {
+    const initial = writeSource(
+      `backquote-dollar-quote-${name}-initial`,
+      lines(initialText),
+    );
+    const final = writeSource(
+      `backquote-dollar-quote-${name}-final`,
+      lines(finalText),
+    );
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `insert-backquote-dollar-quote-${name}-escape`,
+      `${offset} 0 \\`,
+    )) {
+      assertCstRange(output, quoteRange, quoteNode);
+      assertOccurrenceCount(
+        output,
+        "dollar_single_quoted",
+        quoteNode === "dollar_single_quoted" ? 1 : 0,
+      );
+      if (quoteNode === "double_quoted") {
+        assertContains(output, "double_quote_text");
+        assertOccurrenceCount(
+          output,
+          "parameter_expansion",
+          parameterRange === undefined ? 0 : 1,
+        );
+        if (parameterRange !== undefined) {
+          assertCstRange(output, parameterRange, "parameter_expansion");
+        }
+      }
+      assertOccurrenceCount(
+        output,
+        "dollar_single_quote_escape",
+        escapeRanges.length,
+      );
+      for (const range of escapeRanges) {
+        assertCstRange(output, range, "dollar_single_quote_escape");
+      }
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `delete-backquote-dollar-quote-${name}-escape`,
+      `${offset} 1`,
+    )) {
+      assertOccurrenceCount(
+        output,
+        "dollar_single_quoted",
+        quoteNode === "dollar_single_quoted" ? 1 : 0,
+      );
+    }
+  }
 });
 
 test("arithmetic raw newlines stay layout in every reading", () => {
@@ -3492,6 +3715,69 @@ test("an elif consequence owns the continued layout before its else", () => {
 });
 
 test("enclosing backquote escape runs keep bracket classification across edits", () => {
+  for (const [
+    name,
+    initialSource,
+    finalSource,
+    edit,
+    restore,
+    quoteRange,
+    escapeRange,
+  ] of [
+    [
+      "apostrophe",
+      ": `: [a-$'x']`\n",
+      ": `: [a-$'\\\\'']`\n",
+      "10 1 \\\\'",
+      "10 3 x",
+      "0:8-0:14",
+      "0:10-0:13",
+    ],
+    [
+      "backslash",
+      ": `: [a-$'x']`\n",
+      ": `: [a-$'\\\\\\\\']`\n",
+      "10 1 \\\\\\\\",
+      "10 4 x",
+      "0:8-0:15",
+      "0:10-0:14",
+    ],
+    [
+      "nested-apostrophe",
+      ": `: \\`: [a-$'x']\\``\n",
+      ": `: \\`: [a-$'\\\\\\\\'']\\``\n",
+      "14 1 \\\\\\\\'",
+      "14 5 x",
+      "0:12-0:20",
+      "0:14-0:19",
+    ],
+  ]) {
+    const initial = writeSource(
+      `bracket-dollar-quote-${name}-initial`,
+      initialSource,
+    );
+    const final = writeSource(
+      `bracket-dollar-quote-${name}-final`,
+      finalSource,
+    );
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `escape-bracket-dollar-quote-${name}`,
+      edit,
+    )) {
+      assertCstRange(output, quoteRange, "end: dollar_single_quoted");
+      assertCstRange(output, escapeRange, "dollar_single_quote_escape");
+      assertOccurrenceCount(output, "pattern_bracket_range_source", 1);
+    }
+    assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `restore-bracket-dollar-quote-${name}`,
+      restore,
+    );
+  }
+
   const escapedClose = writeSource(
     "backquote-bracket-escaped-close",
     "echo `echo [\\\\]`\n",

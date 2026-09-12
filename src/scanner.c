@@ -120,6 +120,9 @@ enum TokenType {
   BACKQUOTE_QUOTE_PREFIX,
   PIPELINE_NEGATION_BEGIN,
   BACKQUOTE_CONTINUATION_BEGIN,
+  DOLLAR_SINGLE_QUOTE_ESCAPE,
+  BACKQUOTE_DOLLAR_SINGLE_QUOTE_TEXT,
+  BACKQUOTE_DOLLAR_SINGLE_QUOTE_PREFIX,
   TOKEN_COUNT,
 };
 
@@ -798,10 +801,13 @@ classify_backquote_tick_prefix(size_t depth, size_t escape_count);
 
 static size_t fold_enclosed_plain_run(size_t run, size_t depth);
 
-static size_t fold_enclosed_quote_run(
+static size_t fold_enclosed_special_run(size_t run, size_t depth);
+
+static size_t fold_enclosed_escape_run(
   const struct Scanner *scanner,
   size_t run,
-  size_t depth
+  size_t depth,
+  int32_t following
 );
 
 // Backquote closers terminate comments too; escaped closers retain their
@@ -1251,18 +1257,14 @@ skip_bracket_escape(const struct Scanner *scanner, TSLexer *lexer) {
       fold_backquote_escape_run(scanner->backquote_depth, run).acting_level >
       scanner->backquote_depth +
       1;
-  } else if (follower == '$') {
-    size_t remainder = scanner->backquote_depth < sizeof(size_t) * CHAR_BIT
-      ? run >> scanner->backquote_depth
-      : 0;
-    follower_is_escaped = (remainder & 1) != 0;
-  } else if (follower == '"') {
-    follower_is_escaped =
-      (fold_enclosed_quote_run(scanner, run, scanner->backquote_depth) & 1) !=
-      0;
   } else {
-    follower_is_escaped =
-      (fold_enclosed_plain_run(run, scanner->backquote_depth) & 1) != 0;
+    follower_is_escaped = (fold_enclosed_escape_run(
+                             scanner,
+                             run,
+                             scanner->backquote_depth,
+                             follower
+                           ) &
+                            1) != 0;
   }
   if (follower_is_escaped) {
     lexer->advance(lexer, false);
@@ -1807,6 +1809,10 @@ delimiter_command_group_depth(const struct DelimiterGroupBuffer *groups) {
 
 static bool
 append_repeated_byte(struct ByteBuffer *buffer, uint8_t byte, size_t count) {
+  if (buffer == NULL) {
+    return true;
+  }
+
   if (count > SIZE_MAX - buffer->length) {
     return false;
   }
@@ -1901,88 +1907,48 @@ static enum DelimiterBackslashResult scan_delimiter_backslash_run(
   }
 
   if (lexer->lookahead == '`') {
-    while (escape_count > 0) {
-      enum BackquoteTickPrefix prefix =
-        classify_backquote_tick_prefix(*backquote_depth, escape_count);
-      if (prefix != BACKQUOTE_TICK_PREFIX_NONE) {
-        if (
-          prefix ==
-          BACKQUOTE_TICK_PREFIX_END &&
-          (groups->length ==
-            0 ||
-            groups->data[groups->length - 1].kind != DELIMITER_GROUP_BACKQUOTE)
-        ) {
-          return DELIMITER_BACKSLASH_ERROR;
-        }
-        if (
-          !append_repeated_byte(delimiter, '\\', escape_count / 2) ||
-          !append_byte(delimiter, '`')
-        ) {
-          return DELIMITER_BACKSLASH_ERROR;
-        }
-        mark_delimiter_quoted(
-          quoted,
-          collecting_nested_delimiter,
-          nested_delimiter_quoted
-        );
-        lexer->advance(lexer, false);
-
-        if (prefix == BACKQUOTE_TICK_PREFIX_START) {
-          if (
-            *backquote_depth ==
-            SIZE_MAX ||
-            !push_delimiter_group(
-              groups,
-              '`',
-              DELIMITER_GROUP_BACKQUOTE,
-              *quote
-            )
-          ) {
-            return DELIMITER_BACKSLASH_ERROR;
-          }
-          *backquote_depth += 1;
-          *quote = DELIMITER_UNQUOTED;
-        } else {
-          pop_delimiter_group(groups, cases, quote);
-          *backquote_depth -= 1;
-        }
-        return DELIMITER_BACKSLASH_OK;
-      }
-
-      if (escape_count == 1) {
-        if (!append_byte(delimiter, '`')) {
-          return DELIMITER_BACKSLASH_ERROR;
-        }
-        mark_delimiter_quoted(
-          quoted,
-          collecting_nested_delimiter,
-          nested_delimiter_quoted
-        );
-        lexer->advance(lexer, false);
-        return DELIMITER_BACKSLASH_OK;
-      }
-
-      if (!append_byte(delimiter, '\\')) {
-        return DELIMITER_BACKSLASH_ERROR;
-      }
-      mark_delimiter_quoted(
-        quoted,
-        collecting_nested_delimiter,
-        nested_delimiter_quoted
-      );
-      escape_count -= 2;
-    }
-
-    if (!append_byte(delimiter, '`')) {
-      return DELIMITER_BACKSLASH_ERROR;
-    }
-    lexer->advance(lexer, false);
+    struct BackquoteEscapeRunFold fold =
+      fold_backquote_escape_run(*backquote_depth, escape_count);
+    bool ends_group = fold.acting_level == *backquote_depth;
     if (
-      groups->length ==
-      0 ||
-      !toggle_delimiter_backquote_group(groups, cases, quote, backquote_depth)
+      fold.acting_level <
+      *backquote_depth ||
+      (ends_group &&
+        (groups->length ==
+          0 ||
+          groups->data[groups->length - 1].kind != DELIMITER_GROUP_BACKQUOTE))
     ) {
       return DELIMITER_BACKSLASH_ERROR;
+    }
+    size_t folded = ends_group
+      ? fold.leftover_count
+      : fold_enclosed_special_run(escape_count, *backquote_depth);
+    if (
+      !append_repeated_byte(delimiter, '\\', folded / 2) ||
+      !append_byte(delimiter, '`')
+    ) {
+      return DELIMITER_BACKSLASH_ERROR;
+    }
+    mark_delimiter_quoted(
+      quoted,
+      collecting_nested_delimiter,
+      nested_delimiter_quoted
+    );
+    lexer->advance(lexer, false);
+
+    if (ends_group) {
+      pop_delimiter_group(groups, cases, quote);
+      *backquote_depth -= 1;
+    } else if (fold.acting_level == *backquote_depth + 1) {
+      if (
+        *backquote_depth ==
+        SIZE_MAX ||
+        !push_delimiter_group(groups, '`', DELIMITER_GROUP_BACKQUOTE, *quote)
+      ) {
+        return DELIMITER_BACKSLASH_ERROR;
+      }
+      *backquote_depth += 1;
+      *quote = DELIMITER_UNQUOTED;
     }
     return DELIMITER_BACKSLASH_OK;
   }
@@ -2014,18 +1980,12 @@ static enum DelimiterBackslashResult scan_delimiter_backslash_run(
     return DELIMITER_BACKSLASH_OK;
   }
 
-  size_t folded = escape_count;
-  if (lexer->lookahead == '"') {
-    folded = fold_enclosed_quote_run(scanner, escape_count, *backquote_depth);
-  } else if (lexer->lookahead == '$') {
-    folded = *backquote_depth < sizeof(size_t) * CHAR_BIT
-      ? folded >> *backquote_depth
-      : 0;
-  } else {
-    for (size_t level = 0; level < *backquote_depth; level += 1) {
-      folded -= folded >> 1;
-    }
-  }
+  size_t folded = fold_enclosed_escape_run(
+    scanner,
+    escape_count,
+    *backquote_depth,
+    lexer->lookahead
+  );
 
   if (
     *quote ==
@@ -2167,8 +2127,19 @@ static bool control_escape_byte(int32_t character, uint8_t *value) {
   return true;
 }
 
-static bool
-scan_dollar_single_quote_escape(TSLexer *lexer, struct ByteBuffer *delimiter) {
+static bool scan_dollar_single_quote_backslashes(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  size_t depth,
+  size_t *folded
+);
+
+static bool scan_dollar_single_quote_escape(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  size_t depth,
+  struct ByteBuffer *delimiter
+) {
   int32_t character = lexer->lookahead;
   if (lexer_at_eof(lexer)) {
     return false;
@@ -2208,11 +2179,13 @@ scan_dollar_single_quote_escape(TSLexer *lexer, struct ByteBuffer *delimiter) {
     }
 
     if (lexer->lookahead == '\\') {
-      lexer->advance(lexer, false);
-      if (lexer->lookahead != '\\') {
+      size_t folded;
+      if (
+        !scan_dollar_single_quote_backslashes(scanner, lexer, depth, &folded) ||
+        folded != 2
+      ) {
         return false;
       }
-      lexer->advance(lexer, false);
       uint8_t value;
       return control_escape_byte('\\', &value) && append_byte(delimiter, value);
     }
@@ -2295,29 +2268,31 @@ static size_t fold_enclosed_quote_run(
   return fold_enclosed_plain_run(run, depth - level);
 }
 
-// Mirrors delimiter folding; false means the run reaches an enclosing closer.
+static size_t fold_enclosed_escape_run(
+  const struct Scanner *scanner,
+  size_t run,
+  size_t depth,
+  int32_t following
+) {
+  switch (following) {
+  case '$':
+  case '`':
+    return fold_enclosed_special_run(run, depth);
+  case '"':
+    return fold_enclosed_quote_run(scanner, run, depth);
+  default:
+    return fold_enclosed_plain_run(run, depth);
+  }
+}
+
 static bool
 fold_enclosed_backquote_run(size_t run, size_t depth, size_t *surviving) {
-  size_t remaining = run;
-  size_t emitted = 0;
-  while (remaining > 0) {
-    enum BackquoteTickPrefix prefix =
-      classify_backquote_tick_prefix(depth, remaining);
-    if (prefix == BACKQUOTE_TICK_PREFIX_END) {
-      return false;
-    }
-    if (prefix == BACKQUOTE_TICK_PREFIX_START) {
-      *surviving = emitted + remaining / 2;
-      return true;
-    }
-    if (remaining == 1) {
-      *surviving = emitted;
-      return true;
-    }
-    emitted += 1;
-    remaining -= 2;
+  struct BackquoteEscapeRunFold fold = fold_backquote_escape_run(depth, run);
+  if (fold.acting_level <= depth) {
+    return false;
   }
-  return false;
+  *surviving = fold_enclosed_special_run(run, depth);
+  return true;
 }
 
 static bool append_nested_here_document(
@@ -2472,12 +2447,9 @@ static enum HereDocumentLineKind read_here_document_line(
           pending_backslashes = 0;
           matches = false;
         }
-      } else if (lexer->lookahead == '$') {
-        pending_backslashes = fold_enclosed_special_run(run, depth);
-      } else if (lexer->lookahead == '"') {
-        pending_backslashes = fold_enclosed_quote_run(scanner, run, depth);
       } else {
-        pending_backslashes = fold_enclosed_plain_run(run, depth);
+        pending_backslashes =
+          fold_enclosed_escape_run(scanner, run, depth, lexer->lookahead);
         if (
           !document->quoted &&
           (pending_backslashes & 1) !=
@@ -2600,6 +2572,73 @@ static bool scan_nested_here_document_sequence(
   return true;
 }
 
+// Two logical backslashes complete an escape independently of the run's tail.
+static bool scan_dollar_single_quote_backslashes(
+  const struct Scanner *scanner,
+  TSLexer *lexer,
+  size_t depth,
+  size_t *folded
+) {
+  size_t pair_width =
+    depth < sizeof(size_t) * CHAR_BIT - 1 ? (size_t)2 << depth : SIZE_MAX;
+  size_t count = 0;
+  while (lexer->lookahead == '\\' && count < pair_width) {
+    lexer->advance(lexer, false);
+    count += 1;
+  }
+  if (count == pair_width) {
+    *folded = 2;
+    return true;
+  }
+  switch (lexer->lookahead) {
+  case '`':
+    return fold_enclosed_backquote_run(count, depth, folded);
+  case '\n':
+    *folded = fold_enclosed_quote_run(scanner, count, depth);
+    break;
+  default:
+    *folded = fold_enclosed_escape_run(scanner, count, depth, lexer->lookahead);
+    break;
+  }
+  return true;
+}
+
+static bool
+scan_dollar_single_quote_token(const struct Scanner *scanner, TSLexer *lexer) {
+  size_t folded;
+  if (!scan_dollar_single_quote_backslashes(
+        scanner,
+        lexer,
+        scanner->backquote_depth,
+        &folded
+      )) {
+    return false;
+  }
+  if (folded == 0) {
+    if (lexer_at_eof(lexer)) {
+      return false;
+    }
+    lexer->advance(lexer, false);
+    lexer->result_symbol = BACKQUOTE_DOLLAR_SINGLE_QUOTE_TEXT;
+  } else {
+    if (
+      folded ==
+      1 &&
+      !scan_dollar_single_quote_escape(
+        scanner,
+        lexer,
+        scanner->backquote_depth,
+        NULL
+      )
+    ) {
+      return false;
+    }
+    lexer->result_symbol = DOLLAR_SINGLE_QUOTE_ESCAPE;
+  }
+  lexer->mark_end(lexer);
+  return true;
+}
+
 static bool push_dollar_delimiter_group(
   const struct Scanner *scanner,
   size_t backquote_depth,
@@ -2673,12 +2712,11 @@ static bool scan_delimiter_single_quoted_segment(
         if (!fold_enclosed_backquote_run(run, backquote_depth, &folded)) {
           return false;
         }
-      } else if (following == '$') {
-        folded = fold_enclosed_special_run(run, backquote_depth);
-      } else if (following == '"' || following == '\n') {
+      } else if (following == '\n') {
         folded = fold_enclosed_quote_run(scanner, run, backquote_depth);
       } else {
-        folded = fold_enclosed_plain_run(run, backquote_depth);
+        folded =
+          fold_enclosed_escape_run(scanner, run, backquote_depth, following);
       }
       if (!append_repeated_byte(
             delimiter,
@@ -2688,7 +2726,12 @@ static bool scan_delimiter_single_quoted_segment(
         return false;
       }
       if (dollar && (folded & 1) != 0) {
-        if (!scan_dollar_single_quote_escape(lexer, delimiter)) {
+        if (!scan_dollar_single_quote_escape(
+              scanner,
+              lexer,
+              backquote_depth,
+              delimiter
+            )) {
           return false;
         }
       } else if (following == '\n' && folded == 0) {
@@ -2703,7 +2746,12 @@ static bool scan_delimiter_single_quoted_segment(
     }
     if (dollar && character == '\\') {
       lexer->advance(lexer, false);
-      if (!scan_dollar_single_quote_escape(lexer, delimiter)) {
+      if (!scan_dollar_single_quote_escape(
+            scanner,
+            lexer,
+            backquote_depth,
+            delimiter
+          )) {
         return false;
       }
       continue;
@@ -5142,21 +5190,15 @@ static bool read_embedded_escape_run(
   if (scanner == NULL) {
     return true;
   }
-  if (lexer->lookahead == '"') {
-    *run = fold_enclosed_quote_run(scanner, *run, scanner->backquote_depth);
-  } else if (lexer->lookahead == '$') {
-    *run = fold_enclosed_special_run(*run, scanner->backquote_depth);
-  } else if (lexer->lookahead == '`' && scanner->backquote_depth > 0) {
-    if (
-      fold_backquote_escape_run(scanner->backquote_depth, *run).acting_level <=
-      scanner->backquote_depth
-    ) {
-      return false;
-    }
-    *run = fold_enclosed_special_run(*run, scanner->backquote_depth);
-  } else {
-    *run = fold_enclosed_plain_run(*run, scanner->backquote_depth);
+  if (lexer->lookahead == '`') {
+    return fold_enclosed_backquote_run(*run, scanner->backquote_depth, run);
   }
+  *run = fold_enclosed_escape_run(
+    scanner,
+    *run,
+    scanner->backquote_depth,
+    lexer->lookahead
+  );
   return true;
 }
 
@@ -6445,6 +6487,7 @@ static bool backquote_prefix_token_is_valid(
   return scanner->backquote_depth >
     0 &&
     (valid_symbols[BACKQUOTE_DOLLAR_PREFIX] ||
+      valid_symbols[BACKQUOTE_DOLLAR_SINGLE_QUOTE_PREFIX] ||
       valid_symbols[BACKQUOTE_START_PREFIX] ||
       valid_symbols[DOUBLE_QUOTED_BACKQUOTE_START_PREFIX] ||
       valid_symbols[BACKQUOTE_QUOTE_PREFIX] ||
@@ -6476,9 +6519,12 @@ static bool scan_backquote_ordinary_escape_run(
     return false;
   }
 
-  size_t folded = lexer->lookahead == '"'
-    ? fold_enclosed_quote_run(scanner, escape_count, scanner->backquote_depth)
-    : fold_enclosed_plain_run(escape_count, scanner->backquote_depth);
+  size_t folded = fold_enclosed_escape_run(
+    scanner,
+    escape_count,
+    scanner->backquote_depth,
+    lexer->lookahead
+  );
   if (
     lexer->lookahead ==
     '"' &&
@@ -6534,9 +6580,8 @@ static bool scan_backquote_prefix_after_first_backslash(
   }
 
   if (lexer->lookahead == '$') {
-    size_t remainder = scanner->backquote_depth < sizeof(size_t) * CHAR_BIT
-      ? escape_count >> scanner->backquote_depth
-      : 0;
+    size_t remainder =
+      fold_enclosed_special_run(escape_count, scanner->backquote_depth);
     if ((remainder & 1) != 0) {
       if (valid_symbols[BACKQUOTE_CONTENT_RUN_BEGIN]) {
         lexer->result_symbol = BACKQUOTE_CONTENT_RUN_BEGIN;
@@ -6545,7 +6590,12 @@ static bool scan_backquote_prefix_after_first_backslash(
       return false;
     }
 
-    if (escape_count == 1 && valid_symbols[BACKQUOTE_DOLLAR_PREFIX]) {
+    if (
+      remainder ==
+      0 &&
+      (valid_symbols[BACKQUOTE_DOLLAR_PREFIX] ||
+        valid_symbols[BACKQUOTE_DOLLAR_SINGLE_QUOTE_PREFIX])
+    ) {
       lexer->mark_end(lexer);
       lexer->advance(lexer, false);
 
@@ -6554,12 +6604,21 @@ static bool scan_backquote_prefix_after_first_backslash(
         '{' &&
         lexer->lookahead !=
         '(' &&
+        !(lexer->lookahead ==
+          '\'' &&
+          valid_symbols[BACKQUOTE_DOLLAR_SINGLE_QUOTE_PREFIX]) &&
         !is_parameter_start_character(lexer->lookahead)
       ) {
         return false;
       }
 
-      lexer->result_symbol = BACKQUOTE_DOLLAR_PREFIX;
+      enum TokenType symbol = lexer->lookahead == '\''
+        ? BACKQUOTE_DOLLAR_SINGLE_QUOTE_PREFIX
+        : BACKQUOTE_DOLLAR_PREFIX;
+      if (!valid_symbols[symbol]) {
+        return false;
+      }
+      lexer->result_symbol = (TSSymbol)symbol;
       return true;
     }
 
@@ -7543,6 +7602,10 @@ static bool scan_dispatch(
 
   if (valid_symbols[DLESS] || valid_symbols[DLESSDASH]) {
     return scan_here_document_operator_commit(scanner, lexer, valid_symbols);
+  }
+
+  if (valid_symbols[DOLLAR_SINGLE_QUOTE_ESCAPE] && lexer->lookahead == '\\') {
+    return scan_dollar_single_quote_token(scanner, lexer);
   }
 
   if (
