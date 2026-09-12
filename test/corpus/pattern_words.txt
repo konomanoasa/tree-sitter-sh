@@ -1,5 +1,5 @@
 ==================
-Pattern source remains structured across words and path components
+pattern source remains structured across words and path components
 ==================
 
 printf src/*.c file?.txt '[*]' \? "[abc]"
@@ -67,7 +67,7 @@ printf src/*/file?.[ch]
     (newline_list)))
 
 ==================
-Assignments and redirections reuse word pattern source
+assignments and redirections reuse word pattern source
 ==================
 
 FILES=src/*.c printf value >out?.txt
@@ -110,7 +110,7 @@ FILES=src/*.c printf value >out?.txt
     (newline_list)))
 
 ==================
-Pattern nodes retain source shape without asserting runtime validity
+pattern nodes retain source shape without asserting runtime validity
 ==================
 
 printf a[b/c]d [[:not_a_posix_name:]]

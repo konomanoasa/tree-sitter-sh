@@ -1,5 +1,5 @@
 ==================
-Parameter value words retain ordinary quotes only outside inherited double quotes
+parameter value words retain ordinary quotes only outside inherited double quotes
 ==================
 
 printf ${x:-'foo'} ${x:-$'\n'} ${x:-\q} "${x:-'foo'}" "${x:-$'\n'}" "${x:-\q}" "${x:-\$}" "${x:-\}}" "${x:-'}"
@@ -91,7 +91,7 @@ printf ${x:-'foo'} ${x:-$'\n'} ${x:-\q} "${x:-'foo'}" "${x:-$'\n'}" "${x:-\q}" "
     (newline_list)))
 
 ==================
-Parameter value words retain backquote substitutions in both quote contexts
+parameter value words retain backquote substitutions in both quote contexts
 ==================
 
 printf ${x:-`printf nested`} "${x:-`printf nested`}"
@@ -160,7 +160,7 @@ printf ${x:-`printf nested`} "${x:-`printf nested`}"
     (newline_list)))
 
 ==================
-Parameter value words follow unquoted and double-quote-like contexts
+parameter value words follow unquoted and double-quote-like contexts
 ==================
 
 printf ${x:-~user/*?[a]} "${x:-~user/*?[a]}" "$(( ${x:-$'\n'} + ${y:-~} ))"
@@ -225,7 +225,7 @@ printf ${x:-~user/*?[a]} "${x:-~user/*?[a]}" "$(( ${x:-$'\n'} + ${y:-~} ))"
     (newline_list)))
 
 ==================
-Substring removal operators own optional pattern source
+substring removal operators own optional pattern source
 ==================
 
 printf ${path%/*} ${path%%/*} ${path#*/} ${path##*/} ${path%} ${path#}
@@ -287,7 +287,7 @@ printf ${path%/*} ${path%%/*} ${path#*/} ${path##*/} ${path%} ${path#}
     (newline_list)))
 
 ==================
-Substring patterns preserve inner and outer quote boundaries
+substring patterns preserve inner and outer quote boundaries
 ==================
 
 printf "${path#*}" ${path#"*"} ${path#\*} ${path#[!a-z]*} ${path#~} "${path#~}" "${path#'*'}"
@@ -367,7 +367,7 @@ printf "${path#*}" ${path#"*"} ${path#\*} ${path#[!a-z]*} ${path#~} "${path#~}" 
     (newline_list)))
 
 ==================
-Substring patterns retain nested source parts
+substring patterns retain nested source parts
 ==================
 
 printf ${10%${suffix}*$(printf x)?} ${value%%$((1 + 1))*} "${outer:-${inner:-*.js}}" "${outer#${inner:-*.js}}"
@@ -452,7 +452,7 @@ printf ${10%${suffix}*$(printf x)?} ${value%%$((1 + 1))*} "${outer:-${inner:-*.j
     (newline_list)))
 
 ==================
-Pattern specials in parameter values are not substring patterns
+pattern specials in parameter values are not substring patterns
 ==================
 
 printf ${name:-*}
@@ -484,7 +484,7 @@ printf ${name:-*}
     (newline_list)))
 
 ==================
-A bare special parameter after the hash is a string length expansion
+a bare special parameter after the hash is a string length expansion
 ==================
 
 printf "${#-}" "${#?}" "${#!}" ${#*}
@@ -529,7 +529,7 @@ printf "${#-}" "${#?}" "${#!}" ${#*}
     (newline_list)))
 
 ==================
-Hash special parameters remain distinct from length and pattern operators
+hash special parameters remain distinct from length and pattern operators
 ==================
 
 printf "${#}" "${#:-word}" "${#-word}" "${#%x}" "${##x}"
@@ -587,7 +587,7 @@ printf "${#}" "${#:-word}" "${#-word}" "${#%x}" "${##x}"
     (newline_list)))
 
 ==================
-Nested parameter expansions retain recursive source structure
+nested parameter expansions retain recursive source structure
 ==================
 
 echo ${outer:-${inner:-$(printf value)}}
@@ -638,7 +638,588 @@ echo ${outer:-${inner:-$(printf value)}}
     (newline_list)))
 
 ==================
-Adjacent dollar source distinguishes parameters from text fallback
+POSIX parameter names and positions have explicit structure
+==================
+
+printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${#name}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (positional_parameter))
+                        (double_quote_text)))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (special_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (positional_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (positional_parameter))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion)))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (parameter_length_operator)
+                          (variable_name)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+unclassified numeric parameter source stays anonymous
+==================
+
+printf ${00:-x} "${#00}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (parameter_length_operator)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+POSIX parameter value operators have explicit structure
+==================
+
+printf "${name:-default}" "${name:=value}" "${name:?message}" "${name:+alternate}" "${name-word}" "${name=value}" "${name?message}" "${name+alternate}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)))))
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+inherited parameter words keep dollar-single-quote source literal
+==================
+
+echo "${x:-$'text'}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)
+                            (double_quote_text))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+double-quoted substring processing keeps quoted pattern source
+==================
+
+echo "${x#*"}"}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (pattern_star_source)
+                            (double_quoted
+                              (double_quote_text)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a double-quoted parameter word nests quoted regions
+==================
+
+echo "${x:-"a b"}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quoted
+                              (double_quote_text)))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a nested quoted region hides its right brace from the closer search
+==================
+
+echo "${x:-"a}b"}"
+echo ${x:-"a}b"}
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quoted
+                              (double_quote_text))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (double_quoted
+                            (double_quote_text))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+blanks control characters and closers stay inside braced parameter words
+==================
+
+echo ${x:-$y z}
+echo ${x:-$y)z}
+echo ${x#* y}
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (parameter_expansion
+                            (variable_name))
+                          (literal))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (parameter_expansion
+                            (variable_name))
+                          (literal))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (pattern_star_source)
+                          (literal)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+raw newlines stay inside braced parameter words
+==================
+
+echo ${x:-a
+b}
+echo "${y:-c
+d}"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text)
+                            (double_quote_text)
+                            (double_quote_text))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a right brace inside pattern special constructs closes the expansion
+==================
+
+printf ${x#[[:a}b:]]} ${y%[[.}.]]} ${z%%[[=c}=]]}
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal)
+                          (literal)
+                          (literal)
+                          (literal)))
+                      (literal))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal)
+                          (literal)
+                          (literal)))
+                      (literal))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal)
+                          (literal)
+                          (literal)
+                          (literal)))
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+complete pattern special constructs stay inside parameter patterns
+==================
+
+printf ${x#[[:alpha:]]} ${y%[[.ch.]]} ${z%%[[=a=]]}
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (pattern_bracket_source
+                            (pattern_bracket_members_source
+                              (pattern_character_class_source
+                                (pattern_character_class_content_source)))))))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (pattern_bracket_source
+                            (pattern_bracket_members_source
+                              (pattern_collating_symbol_source
+                                (pattern_collating_symbol_character_source)
+                                (pattern_collating_symbol_character_source)))))))
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (pattern_bracket_source
+                            (pattern_bracket_members_source
+                              (pattern_equivalence_class_source
+                                (pattern_equivalence_class_character_source))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+adjacent dollar source distinguishes parameters from text fallback
 ==================
 
 value=x$x
@@ -768,588 +1349,7 @@ printf "${source:-a$fallback}" "${source:-a$%}" "${source#a$x}" "${source#a$%}"
     (newline_list)))
 
 ==================
-POSIX parameter names and positions have explicit structure
-==================
-
-printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${#name}"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (positional_parameter))
-                        (double_quote_text)))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (special_parameter))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (special_parameter))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (special_parameter))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (positional_parameter))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (positional_parameter))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion)))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (parameter_length_operator)
-                          (variable_name)))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Unclassified numeric parameter source stays anonymous
-==================
-
-printf ${00:-x} "${#00}"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (parameter_expansion
-                        (parameter_value_operator)
-                        (parameter_word
-                          (literal))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (parameter_length_operator)))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-POSIX parameter value operators have explicit structure
-==================
-
-printf "${name:-default}" "${name:=value}" "${name:?message}" "${name:+alternate}" "${name-word}" "${name=value}" "${name?message}" "${name+alternate}"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text)))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text)))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text)))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text)))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text)))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text)))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text)))))
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Inherited parameter words keep dollar-single-quote source literal
-==================
-
-echo "${x:-$'text'}"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text)
-                            (double_quote_text))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Double-quoted substring processing keeps quoted pattern source
-==================
-
-echo "${x#*"}"}"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_pattern_operator)
-                          (parameter_pattern
-                            (pattern_star_source)
-                            (double_quoted
-                              (double_quote_text)))))))))))))))
-  (linebreak
-    (newline_list)))
-
-================================================================================
-A double-quoted parameter word nests quoted regions
-================================================================================
-
-echo "${x:-"a b"}"
-
---------------------------------------------------------------------------------
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quoted
-                              (double_quote_text)))))))))))))))
-  (linebreak
-    (newline_list)))
-
-================================================================================
-A nested quoted region hides its right brace from the closer search
-================================================================================
-
-echo "${x:-"a}b"}"
-echo ${x:-"a}b"}
-
---------------------------------------------------------------------------------
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quoted
-                              (double_quote_text))))))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_value_operator)
-                        (parameter_word
-                          (double_quoted
-                            (double_quote_text))))))))))))))
-  (linebreak
-    (newline_list)))
-
-================================================================================
-Blanks control characters and closers stay inside braced parameter words
-================================================================================
-
-echo ${x:-$y z}
-echo ${x:-$y)z}
-echo ${x#* y}
-
---------------------------------------------------------------------------------
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_value_operator)
-                        (parameter_word
-                          (parameter_expansion
-                            (variable_name))
-                          (literal))))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_value_operator)
-                        (parameter_word
-                          (parameter_expansion
-                            (variable_name))
-                          (literal))))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_pattern_operator)
-                        (parameter_pattern
-                          (pattern_star_source)
-                          (literal)))))))))))))
-  (linebreak
-    (newline_list)))
-
-================================================================================
-Raw newlines stay inside braced parameter words
-================================================================================
-
-echo ${x:-a
-b}
-echo "${y:-c
-d}"
-
---------------------------------------------------------------------------------
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_value_operator)
-                        (parameter_word
-                          (literal))))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (parameter_expansion
-                          (variable_name)
-                          (parameter_value_operator)
-                          (parameter_word
-                            (double_quote_text)
-                            (double_quote_text)
-                            (double_quote_text))))))))))))))
-  (linebreak
-    (newline_list)))
-
-================================================================================
-A right brace inside pattern special constructs closes the expansion
-================================================================================
-
-printf ${x#[[:a}b:]]} ${y%[[.}.]]} ${z%%[[=c}=]]}
-
---------------------------------------------------------------------------------
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_pattern_operator)
-                        (parameter_pattern
-                          (literal)
-                          (literal)
-                          (literal)
-                          (literal)))
-                      (literal))
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_pattern_operator)
-                        (parameter_pattern
-                          (literal)
-                          (literal)
-                          (literal)))
-                      (literal))
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_pattern_operator)
-                        (parameter_pattern
-                          (literal)
-                          (literal)
-                          (literal)
-                          (literal)))
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-================================================================================
-Complete pattern special constructs stay inside parameter patterns
-================================================================================
-
-printf ${x#[[:alpha:]]} ${y%[[.ch.]]} ${z%%[[=a=]]}
-
---------------------------------------------------------------------------------
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_pattern_operator)
-                        (parameter_pattern
-                          (pattern_bracket_source
-                            (pattern_bracket_members_source
-                              (pattern_character_class_source
-                                (pattern_character_class_content_source)))))))
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_pattern_operator)
-                        (parameter_pattern
-                          (pattern_bracket_source
-                            (pattern_bracket_members_source
-                              (pattern_collating_symbol_source
-                                (pattern_collating_symbol_character_source)
-                                (pattern_collating_symbol_character_source)))))))
-                    (word
-                      (parameter_expansion
-                        (variable_name)
-                        (parameter_pattern_operator)
-                        (parameter_pattern
-                          (pattern_bracket_source
-                            (pattern_bracket_members_source
-                              (pattern_equivalence_class_source
-                                (pattern_equivalence_class_character_source))))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-An empty braced expansion lacks its parameter
+an empty braced expansion lacks its parameter
 :error
 ==================
 

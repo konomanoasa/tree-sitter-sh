@@ -19,6 +19,8 @@ function run(command, arguments_, options = {}) {
   const result = childProcess.spawnSync(command, arguments_, {
     cwd: repositoryDirectory,
     encoding: "utf8",
+    timeout: 60_000,
+    killSignal: "SIGKILL",
     env: process.env,
     maxBuffer: 64 * 1024 * 1024,
     stdio: options.stdio,
@@ -126,12 +128,25 @@ try {
   const requestedArguments = process.argv.slice(2);
   if (
     requestedArguments.length > 1 ||
-    (requestedArguments.length === 1 && requestedArguments[0] !== "--write")
+    (requestedArguments.length === 1 &&
+      !["--write", "--sanitize"].includes(requestedArguments[0]))
   ) {
-    throw new Error("Usage: node scripts/check-c.js [--write]");
+    throw new Error("Usage: node scripts/check-c.js [--write | --sanitize]");
   }
 
   const { clang, clangd, clangFormat } = resolveTools();
+
+  const versions = [clang, clangd, clangFormat].map((command) => {
+    const match = run(command, ["--version"]).stdout.match(/version ([0-9]+)/);
+    if (match === null)
+      throw new Error(`Cannot determine the version of ${command}.`);
+    return Number(match[1]);
+  });
+  if (new Set(versions).size !== 1) {
+    throw new Error(
+      "clang, clangd, and clang-format must use the same LLVM release.",
+    );
+  }
 
   if (requestedArguments[0] === "--write") {
     run(clangFormat, ["-i", ...cSources], {
@@ -144,6 +159,15 @@ try {
 
     checkExternalTokenOrder(scannerSource);
 
+    const sanitizerArguments =
+      requestedArguments[0] === "--sanitize"
+        ? [
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=undefined",
+            "-fno-omit-frame-pointer",
+            "-g",
+          ]
+        : [];
     const scannerReuseObject = path.join(temporaryDirectory, "scanner-reuse.o");
     const warningArguments = ["-Wall", "-Wextra", "-Werror", "-pedantic"];
     const scannerArguments = [
@@ -199,6 +223,7 @@ try {
 
     for (const standard of ["c99", "c17"]) {
       const scannerStandardArguments = [
+        ...sanitizerArguments,
         `-std=${standard}`,
         ...scannerArguments,
       ];

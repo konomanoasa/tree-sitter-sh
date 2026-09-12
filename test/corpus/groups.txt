@@ -1,5 +1,5 @@
 ==================
-Brace compound lists preserve continued operators and final separators
+brace compound lists preserve continued operators and final separators
 ==================
 
 holder() {
@@ -71,7 +71,7 @@ second
     (newline_list)))
 
 ==================
-Subshells and brace groups share a compound list hierarchy
+subshells and brace groups share a compound list hierarchy
 ==================
 
 (first; second)
@@ -183,7 +183,7 @@ Subshells and brace groups share a compound list hierarchy
     (newline_list)))
 
 ==================
-A compound command can close a reserved-delimited compound list without a separator
+a compound command can close a reserved-delimited compound list without a separator
 ==================
 
 { (false) }
@@ -224,7 +224,7 @@ A compound command can close a reserved-delimited compound list without a separa
     (newline_list)))
 
 ==================
-An argument-position right brace stays a word before a real closer
+an argument-position right brace stays a word before a real closer
 ==================
 
 { echo } ; }
@@ -262,7 +262,7 @@ An argument-position right brace stays a word before a real closer
     (newline_list)))
 
 ==================
-An undelimited right brace stays an ordinary word
+an undelimited right brace stays an ordinary word
 ==================
 
 { :; }x; }
@@ -307,7 +307,7 @@ An undelimited right brace stays an ordinary word
     (newline_list)))
 
 ==================
-A glued right brace stays inside the word it follows
+a glued right brace stays inside the word it follows
 ==================
 
 { x};}
@@ -415,7 +415,7 @@ A glued right brace stays inside the word it follows
     (newline_list)))
 
 ==================
-A right brace glued to a compound end closes the group
+a right brace glued to a compound end closes the group
 ==================
 
 { (x)}
@@ -492,7 +492,7 @@ A right brace glued to a compound end closes the group
     (newline_list)))
 
 ==================
-Group closers follow continuation-led layout lines
+group closers follow continuation-led layout lines
 ==================
 
 { a

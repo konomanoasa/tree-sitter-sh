@@ -1,5 +1,5 @@
 ==================
-Dot command name
+a dot utility name remains a command name
 ==================
 
 .
@@ -24,7 +24,7 @@ Dot command name
     (newline_list)))
 
 ==================
-Bracket utility command name
+a bracket utility name remains a command name
 ==================
 
 [ value ]
@@ -54,7 +54,7 @@ Bracket utility command name
     (newline_list)))
 
 ==================
-Blank-delimited words remain one command
+blank-delimited words remain one command
 ==================
 
 read -d : value
@@ -86,107 +86,7 @@ read -d : value
     (newline_list)))
 
 ==================
-Internal blanks in continuation runs separate simple-command elements
-==================
-
-echo\
- \
-argument
-echo first\
-\
- \
-second
-<input\
- \
-command
-<input\
- \
-NAME=value
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    (line_continuation)
-                    (line_continuation)
-                    word: (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal))
-                    (line_continuation)
-                    (line_continuation)
-                    (line_continuation)
-                    word: (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))
-                  (line_continuation)
-                  (line_continuation)
-                  word: (cmd_word
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))
-                    (line_continuation)
-                    (line_continuation)
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Quoted escaped and literal hyphen-prefixed arguments retain source structure
+quoted escaped and literal hyphen-prefixed arguments retain source structure
 ==================
 
 tool '-x' \-x "--long" --long
@@ -223,49 +123,7 @@ tool '-x' \-x "--long" --long
     (newline_list)))
 
 ==================
-A continuation followed by blank separates command words
-==================
-
-echo \
-  three
-next
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    (line_continuation)
-                    word: (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Reserved word spellings remain words outside reserved positions
+reserved word spellings remain words outside reserved positions
 ==================
 
 printf if then elif else fi for in do done case esac while until
@@ -445,7 +303,7 @@ case case in in) :;; esac
     (newline_list)))
 
 ==================
-Braces remain words in argument positions
+braces remain words in argument positions
 ==================
 
 echo } {
@@ -503,7 +361,7 @@ holder() { echo value; }
     (newline_list)))
 
 ==================
-Quoted and expanded command names retain word structure
+quoted and expanded command names retain word structure
 ==================
 
 "printf" value
@@ -548,7 +406,7 @@ ${runner} value
     (newline_list)))
 
 ==================
-Hyphen-prefixed words retain concatenated source parts
+hyphen-prefixed words retain concatenated source parts
 ==================
 
 tool --long'' -x${suffix} --long
@@ -583,7 +441,7 @@ tool --long'' -x${suffix} --long
     (newline_list)))
 
 ==================
-Command words after prefixes follow POSIX rule 7b
+command words after prefixes follow POSIX rule 7b
 ==================
 
 x=1 done arg
@@ -637,22 +495,7 @@ x=1 done arg
     (newline_list)))
 
 ==================
-A reserved word at a command-name position is never a command name
-:error
-==================
-
-fi
-{ x; } ; }
-in
-if a; then b; fi;fi
-echo $(done)
-
----
-
-
-
-==================
-Reserved closer spellings remain arguments inside compound commands
+reserved closer spellings remain arguments inside compound commands
 ==================
 
 if x; then echo fi done esac; fi
@@ -791,3 +634,158 @@ case x in x) echo fi done esac;; esac
                     (esac_keyword))))))))))
   (linebreak
     (newline_list)))
+
+==================
+internal blanks in continuation runs separate simple-command elements
+==================
+
+echo\
+ \
+argument
+echo first\
+\
+ \
+second
+<input\
+ \
+command
+<input\
+ \
+NAME=value
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    (line_continuation)
+                    (line_continuation)
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal))
+                    (line_continuation)
+                    (line_continuation)
+                    (line_continuation)
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))
+                  (line_continuation)
+                  (line_continuation)
+                  word: (cmd_word
+                    (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal)))))
+                    (line_continuation)
+                    (line_continuation)
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+a continuation followed by blank separates command words
+==================
+
+echo \
+  three
+next
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    (line_continuation)
+                    word: (word
+                      (literal))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+a reserved word at a command-name position is never a command name
+:error
+==================
+
+fi
+{ x; } ; }
+in
+if a; then b; fi;fi
+echo $(done)
+
+---

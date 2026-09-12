@@ -5,6 +5,7 @@
       "name": "sh",
       "title": "POSIX sh",
       "scope": "source.sh",
+      "path": ".",
       "file-types": ["sh"],
       "injection-regex": "^(sh|shell)$",
       "highlights": "queries/highlights.scm"

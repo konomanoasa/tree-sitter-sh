@@ -1,5 +1,5 @@
 ==================
-Here-documents attach to compound commands and function bodies
+here-documents attach to compound commands and function bodies
 ==================
 
 (:) <<OUTER
@@ -93,7 +93,7 @@ INNER
     (newline_list)))
 
 ==================
-Dollar and backquote substitutions reuse the command hierarchy
+dollar and backquote substitutions reuse the command hierarchy
 ==================
 
 printf '%s\n' "$(cat <<DOLLAR
@@ -189,7 +189,7 @@ BACK
     (newline_list)))
 
 ==================
-A nested substitution can suspend and resume an outer here-document
+a nested substitution can suspend and resume an outer here-document
 ==================
 
 cat <<OUTER
@@ -265,7 +265,7 @@ OUTER
             (here_document_end_text)))))))
 
 ==================
-An empty single-quoted delimiter preserves arithmetic expansion
+an empty single-quoted delimiter preserves arithmetic expansion
 ==================
 
 echo $(( $(cat <<''
@@ -327,7 +327,7 @@ echo $(( $(cat <<''
     (newline_list)))
 
 ==================
-An empty double-quoted delimiter preserves bracket source
+an empty double-quoted delimiter preserves bracket source
 ==================
 
 echo [$(cat <<""
@@ -387,7 +387,7 @@ echo [$(cat <<""
     (newline_list)))
 
 ==================
-An empty dollar-single-quoted delimiter preserves arithmetic expansion
+an empty dollar-single-quoted delimiter preserves arithmetic expansion
 ==================
 
 echo $(( $(cat <<$''
@@ -449,7 +449,7 @@ echo $(( $(cat <<$''
     (newline_list)))
 
 ==================
-Escaped backslash pairs keep nested document delimiters reachable
+escaped backslash pairs keep nested document delimiters reachable
 ==================
 
 : $(( $(cat <<I
@@ -513,7 +513,7 @@ I
     (newline_list)))
 
 ==================
-Backquote rescans fold the delimiter and its end line together
+backquote rescans fold the delimiter and its end line together
 ==================
 
 echo `cat <<\`x\`
@@ -634,7 +634,7 @@ text
     (newline_list)))
 
 ==================
-Deeper backquote nesting folds end lines the same way
+deeper backquote nesting folds end lines the same way
 ==================
 
 echo `echo \`cat <<\\\`x\\\`
@@ -722,7 +722,7 @@ b
     (newline_list)))
 
 ==================
-Backquote continuations preserve their physical pairs and document boundaries
+backquote continuations preserve their physical pairs and document boundaries
 ==================
 
 echo `cat <<\\
@@ -850,7 +850,7 @@ END
     (newline_list)))
 
 ==================
-A rescan-retained backslash keeps an end line from matching
+a rescan-retained backslash keeps an end line from matching
 :error
 ==================
 
@@ -860,5 +860,3 @@ body
 `
 
 ---
-
-

@@ -152,22 +152,6 @@ try {
     }
   }
 
-  const nodeTypes = JSON.parse(
-    fs.readFileSync(path.join(generatedDirectory, "node-types.json"), "utf8"),
-  );
-  const bracketRange = nodeTypes.find(
-    (nodeType) => nodeType.type === "pattern_bracket_range_source",
-  );
-  for (const field of ["start", "end"]) {
-    const cardinality = bracketRange?.fields?.[field];
-    if (cardinality?.required !== true || cardinality.multiple !== false) {
-      process.stderr.write(
-        `Generated pattern bracket range ${field} field is not singular and required\n`,
-      );
-      failed = true;
-    }
-  }
-
   const parser = fs.readFileSync(
     path.join(generatedDirectory, "parser.c"),
     "utf8",

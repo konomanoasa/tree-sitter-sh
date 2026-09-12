@@ -122,10 +122,54 @@ function runTreeSitter(arguments_, options = {}) {
   }
 }
 
+function fuzzParsers(arguments_) {
+  const directory = createEnvironmentDirectory("tree-sitter-sh-fuzz");
+  const library = path.join(
+    directory,
+    process.platform === "win32" ? "parser.dll" : "parser.so",
+  );
+  try {
+    runTreeSitter(["build", grammarDirectory, "--output", library], {
+      environmentDirectory: directory,
+      stdio: "inherit",
+    });
+    const result = runTreeSitter(
+      [
+        "fuzz",
+        "--lib-path",
+        library,
+        "--lang-name",
+        grammarName,
+        ...arguments_,
+      ],
+      {
+        environmentDirectory: directory,
+        allowedStatuses: [0, 1],
+        timeout: 600_000,
+      },
+    );
+    process.stdout.write(result.stdout);
+    process.stderr.write(result.stderr);
+    // The CLI can report failed fuzz cases while returning exit status zero.
+    if (
+      /^[1-9][0-9]* .+ corpus tests failed fuzzing$/m.test(
+        result.stdout + result.stderr,
+      )
+    )
+      return 1;
+    return result.status;
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 if (import.meta.main) {
   try {
-    const result = runTreeSitter(process.argv.slice(2), { stdio: "inherit" });
-    process.exitCode = result.status;
+    const [command, ...rest] = process.argv.slice(2);
+    process.exitCode =
+      command === "fuzz-all"
+        ? fuzzParsers(rest)
+        : runTreeSitter(process.argv.slice(2), { stdio: "inherit" }).status;
   } catch (error) {
     process.stderr.write(`${error.message}\n`);
     process.exitCode = 1;

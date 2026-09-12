@@ -1,6 +1,7 @@
 // Keep these regexes as strings: Biome removes the bracket escape that
 // Tree-sitter requires inside character classes.
-const LITERAL_TOKEN_PATTERN_SOURCE = "[^ \\t\\n;&|<>()/\\\\'\"$`*?\\[\\]~:#=]+";
+const LITERAL_TOKEN_PATTERN_SOURCE =
+  "[^A-Za-z_ \\t\\n;&|<>()/\\\\'\"$`*?\\[\\]~:#=]+";
 const PARAMETER_PATTERN_TEXT_PATTERN_SOURCE = "[^}\\n/'\"$`\\\\*?\\[\\]~]+";
 const LITERAL_TOKEN_PATTERN = RegExp(LITERAL_TOKEN_PATTERN_SOURCE);
 const PARAMETER_PATTERN_TEXT_PATTERN = RegExp(
@@ -690,7 +691,7 @@ const plainChunk = (part) => prec.right(repeat1(part));
 const wordPlainChunk = ($) =>
   plainChunk(
     choice(
-      $._name_token,
+      $._word_name_token,
       $._literal_token,
       $._literal_right_bracket,
       $._literal_tilde,
@@ -862,7 +863,6 @@ export default grammar({
     $._pipe_continuation,
     $._redirect_list_begin,
     $._case_item_end,
-    $._case_item_ns_boundary,
     $._function_body_continuation_boundary,
     $._command_substitution_body_begin,
     $._subshell_close,
@@ -877,8 +877,9 @@ export default grammar({
     $._assignment_tilde_end,
     $._tilde_bracket_literal_start,
     $._assignment_tilde_bracket_literal_start,
-    $._name_equals_begin,
-    $._fname_begin,
+    $._assignment_name_token,
+    $._fname_token,
+    $._word_name_token,
     $._and_or_continuation,
     $._word_separator_begin,
     $._list_continuation,
@@ -1189,7 +1190,7 @@ export default grammar({
 
     function_body: ($) => $._redirectable_compound_command,
 
-    fname: ($) => seq($._fname_begin, $._name_token),
+    fname: ($) => $._fname_token,
 
     name: ($) => $._name_token,
 
@@ -1297,18 +1298,10 @@ export default grammar({
         optional($._horizontal_layout),
         ")",
         choice(
-          seq(
-            optional($.linebreak),
-            optional($._horizontal_layout),
-            $._case_item_ns_boundary,
-          ),
+          seq(optional($.linebreak), optional($._horizontal_layout)),
           prec.dynamic(
             10,
-            seq(
-              field("body", $.compound_list),
-              optional($._closing_layout),
-              $._case_item_ns_boundary,
-            ),
+            seq(field("body", $.compound_list), optional($._closing_layout)),
           ),
         ),
       ),
@@ -1600,8 +1593,7 @@ export default grammar({
         prec.right(
           1,
           seq(
-            $._name_equals_begin,
-            field("name", $.variable_name),
+            field("name", alias($._assignment_name_token, $.variable_name)),
             "=",
             optional(field("value", $.assignment_value)),
             optional(lineContinuationRun($)),

@@ -1,5 +1,5 @@
 ==================
-Quoted and escaped separators stay inside one source word
+quoted and escaped separators stay inside one source word
 ==================
 
 printf 'a b;c#d'#suffix "e
@@ -59,7 +59,7 @@ next
     (newline_list)))
 
 ==================
-Empty and concatenated quotes still form source words
+empty and concatenated quotes still form source words
 ==================
 
 printf '' "" pre''post "a"'b'c#tail # ignored
@@ -114,7 +114,7 @@ next
     (newline_list)))
 
 ==================
-Dollar single quotes preserve internal separators
+dollar single quotes preserve internal separators
 ==================
 
 printf $'a b;\'c' tail
@@ -147,7 +147,7 @@ printf $'a b;\'c' tail
     (newline_list)))
 
 ==================
-Single quotes preserve literal multiline source
+single quotes preserve literal multiline source
 ==================
 
 printf 'a b
@@ -177,7 +177,7 @@ printf 'a b
     (newline_list)))
 
 ==================
-Double quotes expose escapes and parameter expansions
+double quotes expose escapes and parameter expansions
 ==================
 
 printf "a\$b\\c\q ${name}"
@@ -212,7 +212,7 @@ printf "a\$b\\c\q ${name}"
     (newline_list)))
 
 ==================
-Dollar single quotes expose escapes and multiline text
+dollar single quotes expose escapes and multiline text
 ==================
 
 printf $'a\nb\'c\\d\x41\101\cA\q\
@@ -254,7 +254,7 @@ tail'
     (newline_list)))
 
 ==================
-Dollar single quote control escapes retain their delimiter value
+dollar single quote control escapes retain their delimiter value
 ==================
 
 printf $'\c\\'
@@ -283,7 +283,7 @@ printf $'\c\\'
     (newline_list)))
 
 ==================
-Inherited double quotes keep dollar-single-quote source literal
+inherited double quotes keep dollar-single-quote source literal
 ==================
 
 echo "$'text'"
@@ -313,7 +313,7 @@ echo "$'text'"
     (newline_list)))
 
 ==================
-Double-quoted content escape runs stay quoted text
+double-quoted content escape runs stay quoted text
 ==================
 
 x=`echo "a\\\`b"`
@@ -359,7 +359,7 @@ x=`echo "a\\\`b"`
     (newline_list)))
 
 ==================
-Backquotes fold dollar-single-quote escapes before finding the closing quote
+backquotes fold dollar-single-quote escapes before finding the closing quote
 ==================
 
 : `: $'\\''`
@@ -403,7 +403,7 @@ Backquotes fold dollar-single-quote escapes before finding the closing quote
     (newline_list)))
 
 ==================
-Backquote double-quoted tails distinguish literal and parameter brace escapes
+backquote double-quoted tails distinguish literal and parameter brace escapes
 ==================
 
 : `: "\a" "\}" "${x:-\}}"`

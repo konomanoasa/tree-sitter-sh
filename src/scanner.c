@@ -85,7 +85,6 @@ enum TokenType {
   PIPE_CONTINUATION,
   REDIRECT_LIST_BEGIN,
   CASE_ITEM_END,
-  CASE_ITEM_NS_BOUNDARY,
   FUNCTION_BODY_CONTINUATION_BOUNDARY,
   COMMAND_SUBSTITUTION_BODY_BEGIN,
   SUBSHELL_CLOSE,
@@ -100,8 +99,9 @@ enum TokenType {
   ASSIGNMENT_TILDE_END,
   TILDE_BRACKET_LITERAL_START,
   ASSIGNMENT_TILDE_BRACKET_LITERAL_START,
-  NAME_EQUALS_BEGIN,
-  FNAME_BEGIN,
+  ASSIGNMENT_NAME_TOKEN,
+  FNAME_TOKEN,
+  WORD_NAME_TOKEN,
   AND_OR_CONTINUATION,
   WORD_SEPARATOR_BEGIN,
   LIST_CONTINUATION,
@@ -3734,28 +3734,6 @@ static bool read_reserved_word(
   return true;
 }
 
-static bool classify_case_item_ns_end(
-  const char *word,
-  const bool *valid_symbols,
-  TSSymbol *symbol
-) {
-  if (!valid_symbols[CASE_ITEM_NS_BOUNDARY] || strcmp(word, "esac") != 0) {
-    return false;
-  }
-
-  *symbol = CASE_ITEM_NS_BOUNDARY;
-  return true;
-}
-
-static bool classify_reserved_word_or_case_end(
-  const char *word,
-  const bool *valid_symbols,
-  TSSymbol *symbol
-) {
-  return classify_reserved_word(word, valid_symbols, symbol) ||
-    classify_case_item_ns_end(word, valid_symbols, symbol);
-}
-
 static bool scan_lowercase_dispatch(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -3772,7 +3750,7 @@ static bool scan_lowercase_dispatch(
   }
 
   TSSymbol symbol;
-  if (classify_reserved_word_or_case_end(word, valid_symbols, &symbol)) {
+  if (classify_reserved_word(word, valid_symbols, &symbol)) {
     lexer->result_symbol = symbol;
     return true;
   }
@@ -3782,7 +3760,15 @@ static bool scan_lowercase_dispatch(
 
 static bool scan_horizontal_blanks(TSLexer *lexer);
 
-static bool scan_name_equals_begin_or_reserved_word(
+static bool emit_word_name(TSLexer *lexer, const bool *valid_symbols) {
+  if (!valid_symbols[WORD_NAME_TOKEN]) {
+    return false;
+  }
+  lexer->result_symbol = WORD_NAME_TOKEN;
+  return true;
+}
+
+static bool scan_name_or_reserved_word(
   const struct Scanner *scanner,
   TSLexer *lexer,
   const bool *valid_symbols
@@ -3811,50 +3797,45 @@ static bool scan_name_equals_begin_or_reserved_word(
     lexer->advance(lexer, false);
   } while (is_name_character(lexer->lookahead));
 
+  lexer->mark_end(lexer);
+  if (valid_symbols[LITERAL_HASH]) {
+    return emit_word_name(lexer, valid_symbols);
+  }
+
   word[is_reserved_candidate ? length : 0] = '\0';
   const struct ReservedWord *reserved_word = find_reserved_word(word);
   // An unavailable reserved token forces recovery instead of a command name.
   TSSymbol symbol = TOKEN_COUNT;
   if (
-    !classify_reserved_word_or_case_end(word, valid_symbols, &symbol) &&
+    !classify_reserved_word(word, valid_symbols, &symbol) &&
     reserved_word !=
     NULL &&
-    valid_symbols[FNAME_BEGIN]
+    valid_symbols[FNAME_TOKEN]
   ) {
     symbol = (TSSymbol)reserved_word->symbol;
   }
-  if (
-    symbol !=
-    TOKEN_COUNT &&
-    symbol !=
-    CASE_ITEM_NS_BOUNDARY &&
-    lexer->lookahead != '='
-  ) {
-    lexer->mark_end(lexer);
-  }
-
   if (!skip_line_continuations(lexer)) {
-    return false;
+    return emit_word_name(lexer, valid_symbols);
   }
 
   if (lexer->lookahead == '=') {
-    if (!valid_symbols[NAME_EQUALS_BEGIN]) {
-      return false;
+    if (!valid_symbols[ASSIGNMENT_NAME_TOKEN]) {
+      return emit_word_name(lexer, valid_symbols);
     }
-    lexer->result_symbol = NAME_EQUALS_BEGIN;
+    lexer->result_symbol = ASSIGNMENT_NAME_TOKEN;
     return true;
   }
 
   if (
     is_name_character(lexer->lookahead) || !is_token_delimiter(scanner, lexer)
   ) {
-    return false;
+    return emit_word_name(lexer, valid_symbols);
   }
 
-  if (valid_symbols[FNAME_BEGIN] && reserved_word == NULL) {
+  if (valid_symbols[FNAME_TOKEN] && reserved_word == NULL) {
     while (true) {
       if (!scan_horizontal_blanks(lexer) && !skip_line_continuations(lexer)) {
-        return false;
+        return emit_word_name(lexer, valid_symbols);
       }
       if (
         lexer->lookahead !=
@@ -3867,14 +3848,14 @@ static bool scan_name_equals_begin_or_reserved_word(
       }
     }
     if (lexer->lookahead == '(') {
-      lexer->result_symbol = FNAME_BEGIN;
+      lexer->result_symbol = FNAME_TOKEN;
       return true;
     }
-    return false;
+    return emit_word_name(lexer, valid_symbols);
   }
 
   if (symbol == TOKEN_COUNT) {
-    return false;
+    return emit_word_name(lexer, valid_symbols);
   }
   lexer->result_symbol = symbol;
   return true;
@@ -3929,33 +3910,13 @@ escape_run_begins_word(const struct Scanner *scanner, TSLexer *lexer) {
 }
 
 static bool
-scan_case_item_ns_boundary(const struct Scanner *scanner, TSLexer *lexer) {
-  if (!is_lowercase_letter(lexer->lookahead)) {
-    return false;
-  }
-
-  char word[6];
-  if (
-    !read_reserved_word(scanner, lexer, word, NULL) || strcmp(word, "esac") != 0
-  ) {
-    return false;
-  }
-
-  lexer->result_symbol = CASE_ITEM_NS_BOUNDARY;
-  return true;
-}
-
-static bool
 closing_reserved_word_ends_term(const char *word, const bool *valid_symbols) {
   for (
     size_t index = 0; index < sizeof(CLOSING_WORDS) / sizeof(CLOSING_WORDS[0]);
     index += 1
   ) {
     if (strcmp(word, CLOSING_WORDS[index].text) == 0) {
-      return valid_symbols[CLOSING_WORDS[index].symbol] ||
-        (CLOSING_WORDS[index].symbol ==
-          ESAC_KEYWORD &&
-          valid_symbols[CASE_ITEM_NS_BOUNDARY]);
+      return valid_symbols[CLOSING_WORDS[index].symbol];
     }
   }
   return false;
@@ -4631,15 +4592,6 @@ static bool classify_shell_boundary(
       return false;
     }
     lexer->result_symbol = CASE_ITEM_END;
-    return true;
-  }
-
-  if (
-    valid_symbols[CASE_ITEM_NS_BOUNDARY] &&
-    !crossed_layout &&
-    !valid_symbols[LITERAL_HASH] &&
-    scan_case_item_ns_boundary(scanner, lexer)
-  ) {
     return true;
   }
 
@@ -7600,14 +7552,12 @@ static bool scan_dispatch(
   }
 
   if (
-    (valid_symbols[NAME_EQUALS_BEGIN] || valid_symbols[FNAME_BEGIN]) &&
+    (valid_symbols[ASSIGNMENT_NAME_TOKEN] ||
+      valid_symbols[FNAME_TOKEN] ||
+      valid_symbols[WORD_NAME_TOKEN]) &&
     is_name_start_character(lexer->lookahead)
   ) {
-    return scan_name_equals_begin_or_reserved_word(
-      scanner,
-      lexer,
-      valid_symbols
-    );
+    return scan_name_or_reserved_word(scanner, lexer, valid_symbols);
   }
 
   if (
@@ -7828,7 +7778,6 @@ static bool scan_dispatch(
     valid_symbols[AND_OR_CONTINUATION] ||
     valid_symbols[REDIRECT_LIST_BEGIN] ||
     valid_symbols[CASE_ITEM_END] ||
-    valid_symbols[CASE_ITEM_NS_BOUNDARY] ||
     comment_boundary_is_valid;
   bool direct_hash_boundary_is_valid = lexer->lookahead ==
     '#' &&
@@ -7845,8 +7794,6 @@ static bool scan_dispatch(
       (lexer->lookahead == '&' && valid_symbols[AND_OR_CONTINUATION]) ||
       (lexer->lookahead == ')' && valid_symbols[PATTERN_END]) ||
       (lexer->lookahead == ';' && valid_symbols[CASE_ITEM_END]) ||
-      (valid_symbols[CASE_ITEM_NS_BOUNDARY] &&
-        is_lowercase_letter(lexer->lookahead)) ||
       direct_hash_boundary_is_valid ||
       ((lexer->lookahead ==
          '<' ||
@@ -7956,7 +7903,7 @@ static bool scan_dispatch(
         !(valid_symbols[WORD_SEPARATOR_BEGIN] ||
           valid_symbols[ASSIGNMENT_SEPARATOR_BEGIN] ||
           valid_symbols[REDIRECT_SEPARATOR_BEGIN]));
-    return (closer_is_reachable || valid_symbols[FNAME_BEGIN]) &&
+    return (closer_is_reachable || valid_symbols[FNAME_TOKEN]) &&
       scan_delimited_character_token(scanner, lexer, RIGHT_BRACE);
   }
 
@@ -8007,7 +7954,7 @@ static bool scan_dispatch(
   }
 
   if (lexer->lookahead == '!') {
-    return (valid_symbols[PIPELINE_NEGATION] || valid_symbols[FNAME_BEGIN]) &&
+    return (valid_symbols[PIPELINE_NEGATION] || valid_symbols[FNAME_TOKEN]) &&
       scan_delimited_character_token(scanner, lexer, PIPELINE_NEGATION);
   }
 

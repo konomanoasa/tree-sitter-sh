@@ -1,5 +1,5 @@
 ==================
-If clauses retain conditions consequences and alternatives
+if clauses retain conditions consequences and alternatives
 ==================
 
 if first && second; then
@@ -111,69 +111,7 @@ fi
     (newline_list)))
 
 ==================
-Compound-command closers preserve intervening continuations
-==================
-
-if { :; }  \
- \
-then :; fi
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (if_clause
-                    (if_keyword)
-                    condition: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (compound_command
-                                  (brace_group
-                                    body: (compound_list
-                                      body: (term
-                                        and_or: (and_or
-                                          pipeline: (pipeline
-                                            sequence: (pipe_sequence
-                                              command: (command
-                                                body: (simple_command
-                                                  name: (cmd_name
-                                                    (word
-                                                      (literal)))))))))
-                                      terminator: (separator
-                                        operator: (separator_op)))))))))))
-                    (line_continuation)
-                    (line_continuation)
-                    (then_keyword)
-                    consequence: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        operator: (separator_op)))
-                    (fi_keyword))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-A terminal elif remains the alternative of its if clause
+a terminal elif remains the alternative of its if clause
 ==================
 
 if :; then :; elif :; then :; fi
@@ -250,7 +188,7 @@ if :; then :; elif :; then :; fi
     (newline_list)))
 
 ==================
-Trailing blanks separate and terminate an if body
+trailing blanks separate and terminate an if body
 ==================
 
 if :; then
@@ -320,14 +258,14 @@ fi
   trailing: (linebreak
     (newline_list)))
 
-================================================================================
-A closing spelling in an assignment value leaves the real closer
-================================================================================
+==================
+a closing spelling in an assignment value leaves the real closer
+==================
 
 if a; then y=fi
 fi
 
---------------------------------------------------------------------------------
+---
 
 (program
   (linebreak
@@ -374,66 +312,7 @@ fi
     (newline_list)))
 
 ==================
-A continuation before a blank line keeps a consequence closer reachable
-==================
-
-if true; then
-  echo hi \
-
-fi
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (if_clause
-                    (if_keyword)
-                    condition: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        operator: (separator_op)))
-                    (then_keyword)
-                    consequence: (compound_list
-                      leading: (linebreak
-                        (newline_list))
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))
-                                  suffix: (cmd_suffix
-                                    word: (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        newlines: (newline_list
-                          (line_continuation))))
-                    (fi_keyword))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-A continued closing layout after an elif consequence reaches the next branch
+a continued closing layout after an elif consequence reaches the next branch
 ==================
 
 if a; then b; elif c; then d; \
@@ -618,4 +497,125 @@ if a; then b; elif c; then d & \
                         (line_continuation)))
                     (fi_keyword))))))))))
   (linebreak
+    (newline_list)))
+
+==================
+compound-command closers preserve intervening continuations
+==================
+
+if { :; }  \
+ \
+then :; fi
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (if_clause
+                    (if_keyword)
+                    condition: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (compound_command
+                                  (brace_group
+                                    body: (compound_list
+                                      body: (term
+                                        and_or: (and_or
+                                          pipeline: (pipeline
+                                            sequence: (pipe_sequence
+                                              command: (command
+                                                body: (simple_command
+                                                  name: (cmd_name
+                                                    (word
+                                                      (literal)))))))))
+                                      terminator: (separator
+                                        operator: (separator_op)))))))))))
+                    (line_continuation)
+                    (line_continuation)
+                    (then_keyword)
+                    consequence: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        operator: (separator_op)))
+                    (fi_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+a continuation before a blank line keeps a consequence closer reachable
+==================
+
+if true; then
+  echo hi \
+
+fi
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (if_clause
+                    (if_keyword)
+                    condition: (compound_list
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        operator: (separator_op)))
+                    (then_keyword)
+                    consequence: (compound_list
+                      leading: (linebreak
+                        (newline_list))
+                      body: (term
+                        and_or: (and_or
+                          pipeline: (pipeline
+                            sequence: (pipe_sequence
+                              command: (command
+                                body: (simple_command
+                                  name: (cmd_name
+                                    (word
+                                      (literal)))
+                                  suffix: (cmd_suffix
+                                    word: (word
+                                      (literal)))))))))
+                      terminator: (separator
+                        newlines: (newline_list
+                          (line_continuation))))
+                    (fi_keyword))))))))))
+  trailing: (linebreak
     (newline_list)))

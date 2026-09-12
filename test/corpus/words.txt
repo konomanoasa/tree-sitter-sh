@@ -1,5 +1,5 @@
 ==================
-Expansion and substitution contents stay inside one source word
+expansion and substitution contents stay inside one source word
 ==================
 
 echo pre${value:-"a b;#"}post $(printf '%s\n'
@@ -108,7 +108,7 @@ next
     (newline_list)))
 
 ==================
-Adjacent source parts form one word
+adjacent source parts form one word
 ==================
 
 printf pre\ value'suffix'"tail"$name${other}
@@ -145,16 +145,16 @@ printf pre\ value'suffix'"tail"$name${other}
   trailing: (linebreak
     (newline_list)))
 
-================================================================================
-Reserved spellings after word-internal boundaries stay word source
-================================================================================
+==================
+reserved spellings after word-internal boundaries stay word source
+==================
 
 echo /then
 echo "x"done
 echo ~/elif
 cmd >a/esac
 
---------------------------------------------------------------------------------
+---
 
 (program
   (linebreak

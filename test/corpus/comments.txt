@@ -1,48 +1,5 @@
 ==================
-Hash starts a comment only at a token boundary
-==================
-
-echo value#suffix # ignored
-next
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal)
-                      (literal)
-                      (literal))))))))))
-    separator: (newline_list
-      (comment))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-List separators make an adjacent hash a comment
+list separators make an adjacent hash a comment
 ==================
 
 first;# after the first command
@@ -95,7 +52,7 @@ third
     (newline_list)))
 
 ==================
-Leading and trailing layout is not part of a comment node
+leading and trailing layout is not part of a comment node
 ==================
 
   # leading
@@ -126,7 +83,147 @@ echo value  # trailing
       (comment))))
 
 ==================
-A hash after a removed newline starts a comment at a token boundary
+comments can follow a continued connecting operator
+==================
+
+first &&\
+# continued comment
+second
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))
+          (and_if)
+          (linebreak
+            (newline_list
+              (line_continuation)
+              (comment)))
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a trailing comment after a completed line may end the input
+==================
+
+printf value
+# comment at EOF
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list))
+  (comment))
+
+==================
+a blank-led trailing comment may end the input
+==================
+
+printf value
+  # comment at EOF
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list))
+  (comment))
+
+==================
+hash starts a comment only at a token boundary
+==================
+
+echo value#suffix # ignored
+next
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (literal)
+                      (literal))))))))))
+    separator: (newline_list
+      (comment))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+a hash after a removed newline starts a comment at a token boundary
 ==================
 
 printf value \
@@ -169,7 +266,7 @@ after
     (newline_list)))
 
 ==================
-An EOF comment can follow a removed newline
+an EOF comment can follow a removed newline
 ==================
 
 printf value \
@@ -197,46 +294,7 @@ printf value \
   (comment))
 
 ==================
-Comments can follow a continued connecting operator
-==================
-
-first &&\
-# continued comment
-second
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))
-          (and_if)
-          (linebreak
-            (newline_list
-              (line_continuation)
-              (comment)))
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Line continuation exposes a comment at each command-start boundary
+line continuation exposes a comment at each command-start boundary
 ==================
 
 \
@@ -315,65 +373,7 @@ second &\
     (newline_list)))
 
 ==================
-A trailing comment after a completed line may end the input
-==================
-
-printf value
-# comment at EOF
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list))
-  (comment))
-
-==================
-A blank-led trailing comment may end the input
-==================
-
-printf value
-  # comment at EOF
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list))
-  (comment))
-
-==================
-Continuation runs before comment lines stay layout
+continuation runs before comment lines stay layout
 ==================
 
 \

@@ -1,5 +1,5 @@
 ==================
-Bracket expressions expose matching-list source structure
+bracket expressions expose matching-list source structure
 ==================
 
 printf [a] [abc] [!a-z] []-] [a-zA-Z] [^a] [*?] [a-*] [*-z] [[:alpha:]] [[.ch.]] [[=a=]] [[.a.]-[.z.]]
@@ -108,7 +108,7 @@ printf [a] [abc] [!a-z] []-] [a-zA-Z] [^a] [*?] [a-*] [*-z] [[:alpha:]] [[.ch.]]
     (newline_list)))
 
 ==================
-Quoted and escaped bracket members retain quote source
+quoted and escaped bracket members retain quote source
 ==================
 
 printf [a\]b] [a"-"z]
@@ -147,7 +147,7 @@ printf [a\]b] [a"-"z]
     (newline_list)))
 
 ==================
-Bracket expressions retain nested expansion source
+bracket expressions retain nested expansion source
 ==================
 
 printf [${chars}] [$(printf x)] [$((1 + 1))] [a"$value"b] [a"$(printf ']')"b]
@@ -236,40 +236,7 @@ printf [${chars}] [$(printf x)] [$((1 + 1))] [a"$value"b] [a"$(printf ']')"b]
     (newline_list)))
 
 ==================
-An incomplete parameter bracket stops at the expansion boundary
-==================
-
-printf ${value#[}suffix]
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_pattern_operator)
-                        pattern: (parameter_pattern
-                          (literal)))
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Only collating symbols retain a closing bracket as content
+only collating symbols retain a closing bracket as content
 ==================
 
 printf [[.].]] [[=]=]] ${x#[[.].]]}
@@ -352,7 +319,7 @@ case x in [[.].]]) :;; esac
     (newline_list)))
 
 ==================
-Escapes after a nested bracket or class marker stay members
+escapes after a nested bracket or class marker stay members
 ==================
 
 printf [[\a] [[\a [[:alpha:\]] ${x%[[:alpha:\]]}
@@ -415,7 +382,7 @@ printf [[\a] [[\a [[:alpha:\]] ${x%[[:alpha:\]]}
     (newline_list)))
 
 ==================
-Bracket source is stable across WORD grammar positions
+bracket source is stable across WORD grammar positions
 ==================
 
 [abc]
@@ -522,7 +489,7 @@ for item in [abc]; do :; done
     (newline_list)))
 
 ==================
-Hyphen can be either endpoint of a bracket range
+hyphen can be either endpoint of a bracket range
 ==================
 
 printf [%--] [--@]
@@ -562,7 +529,7 @@ printf [%--] [--@]
     (newline_list)))
 
 ==================
-Bracket expressions delegate nested command syntax to the grammar
+bracket expressions delegate nested command syntax to the grammar
 ==================
 
 printf [$(case x in x) printf ok ;; esac)] "${value#[${other#(}]}"
@@ -640,7 +607,7 @@ printf [$(case x in x) printf ok ;; esac)] "${value#[${other#(}]}"
     (newline_list)))
 
 ==================
-Initial negation outranks ranges and braces stay members
+initial negation outranks ranges and braces stay members
 ==================
 
 printf [!-a] [!-] [!!-a] [{] [}] ${v#[)]}
@@ -701,7 +668,7 @@ printf [!-a] [!-] [!!-a] [{] [}] ${v#[)]}
     (newline_list)))
 
 ==================
-A dollar sign that opens no expansion is a bracket member
+a dollar sign that opens no expansion is a bracket member
 ==================
 
 printf [a$] [$] [!$] [$=] [a-$] ${x#[a$]}
@@ -787,7 +754,7 @@ case x in [a$]) ;; esac
     (newline_list)))
 
 ==================
-Here-document parameter brackets include raw newline members
+here-document parameter brackets include raw newline members
 ==================
 
 cat <<END
@@ -837,7 +804,7 @@ END
             (here_document_end_text)))))))
 
 ==================
-Backquote bracket escape members retain range endpoints
+backquote bracket escape members retain range endpoints
 ==================
 
 : `: [0-\\\\z] [\\\\-z] [0-\\\\\\\\z]`
@@ -898,5 +865,38 @@ Backquote bracket escape members retain range endpoints
                                                     end: (escaped_character))
                                                   member: (escaped_character)
                                                   member: (pattern_bracket_character_source)))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+an incomplete parameter bracket stops at the expansion boundary
+==================
+
+printf ${value#[}suffix]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (literal)))
+                      (literal)))))))))))
   trailing: (linebreak
     (newline_list)))

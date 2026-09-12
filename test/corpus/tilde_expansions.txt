@@ -1,5 +1,5 @@
 ==================
-Tilde users retain every structured candidate before the formal delimiter
+tilde users retain every structured candidate before the formal delimiter
 ==================
 
 printf ~"$name/quoted"/tail ~'single/name'/tail ~$'dollar/name'/tail ~\/escaped/tail ~$name/tail ~${name}/tail ~$(printf command/name)/tail ~$((1 / 2))/tail ~`printf backquote/name`/tail ~日本%+/tail
@@ -239,7 +239,7 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
     (newline_list)))
 
 ==================
-Tilde prefixes are structured only where expansion can occur
+tilde prefixes are structured only where expansion can occur
 ==================
 
 printf ~ ~user ~/path x~user
@@ -327,7 +327,7 @@ printf "${value:-~fallback}"
     (newline_list)))
 
 ==================
-A removed newline after a tilde prefix ends the prefix
+a removed newline after a tilde prefix ends the prefix
 ==================
 
 echo ~user\
@@ -382,7 +382,7 @@ a=~user\
     (newline_list)))
 
 ==================
-Tilde prefixes stop at unquoted delimiters inside bracket source
+tilde prefixes stop at unquoted delimiters inside bracket source
 ==================
 
 : ~[/]

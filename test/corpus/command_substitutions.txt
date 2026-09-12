@@ -1,5 +1,5 @@
 ==================
-Substitutions preserve layout before their closing delimiter
+substitutions preserve layout before their closing delimiter
 ==================
 
 echo $(first )
@@ -226,7 +226,7 @@ echo `if x; then y; fi `
     (newline_list)))
 
 ==================
-Folded backslashes expose a bracket range parameter endpoint
+folded backslashes expose a bracket range parameter endpoint
 ==================
 
 echo `echo \`echo [a-\\$x]\``
@@ -290,7 +290,7 @@ echo `echo \`echo [a-\\$x]\``
     (newline_list)))
 
 ==================
-Command substitution ignores quoted and commented closing parentheses
+command substitution ignores quoted and commented closing parentheses
 ==================
 
 echo $( (printf value); printf ')' # ) ignored
@@ -370,7 +370,7 @@ next
     (newline_list)))
 
 ==================
-Nested substitutions preserve the outer source word
+nested substitutions preserve the outer source word
 ==================
 
 echo "$(printf '%s' "$(printf '%s' x)")" ${outer:-${inner:-$(printf y)}}
@@ -473,7 +473,7 @@ next
     (newline_list)))
 
 ==================
-Backquote substitution exposes escapes and nested expansions
+backquote substitution exposes escapes and nested expansions
 ==================
 
 echo `printf \`value\` ${name} $(other) \${escaped} \$(nested)`
@@ -562,180 +562,7 @@ echo `printf \`value\` ${name} $(other) \${escaped} \$(nested)`
     (newline_list)))
 
 ==================
-A backquote body owns a removed newline at its opening boundary
-==================
-
-printf `\
-command`
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (backquote_substitution
-                        body: (backquote_substitution_body
-                          (line_continuation)
-                          (complete_commands
-                            command: (complete_command
-                              body: (list
-                                and_or: (and_or
-                                  pipeline: (pipeline
-                                    sequence: (pipe_sequence
-                                      command: (command
-                                        body: (simple_command
-                                          name: (cmd_name
-                                            (word
-                                              (literal)))))))))))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Dollar command substitution closers retain boundary escaped newlines
-==================
-
-echo $(printf x\
-)
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (command_substitution
-                        (command_substitution_body
-                          (complete_commands
-                            (complete_command
-                              (list
-                                (and_or
-                                  (pipeline
-                                    (pipe_sequence
-                                      (command
-                                        (simple_command
-                                          (cmd_name
-                                            (word
-                                              (literal)))
-                                          (cmd_suffix
-                                            (word
-                                              (literal)))))))))))
-                          (line_continuation)))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-A continuation before a substitution closer stays layout
-==================
-
-x=$( a\
-)
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_prefix
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (command_substitution
-                          (command_substitution_body
-                            (complete_commands
-                              (complete_command
-                                (list
-                                  (and_or
-                                    (pipeline
-                                      (pipe_sequence
-                                        (command
-                                          (simple_command
-                                            (cmd_name
-                                              (word
-                                                (literal)))))))))))
-                            (line_continuation))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Backquote substitution closers retain boundary escaped newlines
-==================
-
-echo `printf x\
-`
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (backquote_substitution
-                        (backquote_substitution_body
-                          (complete_commands
-                            (complete_command
-                              (list
-                                (and_or
-                                  (pipeline
-                                    (pipe_sequence
-                                      (command
-                                        (simple_command
-                                          (cmd_name
-                                            (word
-                                              (literal)))
-                                          (cmd_suffix
-                                            (word
-                                              (literal)))))))))))
-                          (line_continuation)))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Command substitutions contain nested command source recursively
+command substitutions contain nested command source recursively
 ==================
 
 echo $(first "$(second)")
@@ -791,7 +618,7 @@ echo $(first "$(second)")
     (newline_list)))
 
 ==================
-Empty command substitution forms remain source parts
+empty command substitution forms remain source parts
 ==================
 
 printf $() ``
@@ -821,7 +648,7 @@ printf $() ``
     (newline_list)))
 
 ==================
-Legacy backquotes preserve three nested substitutions
+legacy backquotes preserve three nested substitutions
 ==================
 
 echo `one \`two \\\`three\\\` two\` one`
@@ -895,7 +722,7 @@ echo `one \`two \\\`three\\\` two\` one`
     (newline_list)))
 
 ==================
-Arithmetic expansion is distinguished from a subshell in command substitution
+arithmetic expansion is distinguished from a subshell in command substitution
 ==================
 
 printf "$((echo one; echo two))"
@@ -960,7 +787,7 @@ printf "$((echo one; echo two))"
     (newline_list)))
 
 ==================
-A backquote closer ends a substitution at every command position
+a backquote closer ends a substitution at every command position
 ==================
 
 x=`
@@ -1033,7 +860,7 @@ echo `a;`
     (newline_list)))
 
 ==================
-A backquote closer ends a tilde prefix
+a backquote closer ends a tilde prefix
 ==================
 
 echo `echo ~user`
@@ -1078,7 +905,7 @@ echo `echo ~user`
     (newline_list)))
 
 ==================
-A backquote closer ends a compound command reserved word
+a backquote closer ends a compound command reserved word
 ==================
 
 echo `if a; then b; fi`
@@ -1143,7 +970,7 @@ echo `if a; then b; fi`
     (newline_list)))
 
 ==================
-A backquote closer ends a case clause
+a backquote closer ends a case clause
 ==================
 
 echo `case x in a) :;; esac`
@@ -1203,7 +1030,7 @@ echo `case x in a) :;; esac`
     (newline_list)))
 
 ==================
-A backquote closer ends a brace group and a function body
+a backquote closer ends a brace group and a function body
 ==================
 
 echo `{ :; }`
@@ -1293,7 +1120,7 @@ echo `f() { :; }`
     (newline_list)))
 
 ==================
-Blanks after a substitution linebreak stay interior layout
+blanks after a substitution linebreak stay interior layout
 ==================
 
 first=$(
@@ -1370,7 +1197,7 @@ second=`
     (newline_list)))
 
 ==================
-Blanks between a substitution linebreak and its closer stay in the body
+blanks between a substitution linebreak and its closer stay in the body
 ==================
 
 first=$(
@@ -1419,7 +1246,7 @@ second=`
     (newline_list)))
 
 ==================
-An escaped-backslash word precedes the closing backquote
+an escaped-backslash word precedes the closing backquote
 ==================
 
 echo `p \\` end
@@ -1464,7 +1291,7 @@ echo `p \\` end
     (newline_list)))
 
 ==================
-A content escape run keeps the backquote literal at every level
+a content escape run keeps the backquote literal at every level
 ==================
 
 echo `echo \\\`date\\\``
@@ -1511,7 +1338,7 @@ echo `echo \\\`date\\\``
     (newline_list)))
 
 ==================
-Leading escaped pairs precede a nested closing spelling
+leading escaped pairs precede a nested closing spelling
 ==================
 
 echo `a \`b \\\\\` c`
@@ -1572,7 +1399,7 @@ echo `a \`b \\\\\` c`
     (newline_list)))
 
 ==================
-An odd content run keeps the dollar sign literal
+an odd content run keeps the dollar sign literal
 ==================
 
 echo `echo \\\$x`
@@ -1617,7 +1444,7 @@ echo `echo \\\$x`
     (newline_list)))
 
 ==================
-An even content run keeps the dollar sign literal
+an even content run keeps the dollar sign literal
 ==================
 
 echo `echo \\$x`
@@ -1662,7 +1489,7 @@ echo `echo \\$x`
     (newline_list)))
 
 ==================
-Escaped pairs before a deferred dollar sign stay body content
+escaped pairs before a deferred dollar sign stay body content
 ==================
 
 echo `echo \\\\\$x`
@@ -1708,7 +1535,7 @@ echo `echo \\\\\$x`
     (newline_list)))
 
 ==================
-A closing backquote can follow the here-document end line
+a closing backquote can follow the here-document end line
 ==================
 
 x=`cat <<EOF
@@ -1814,260 +1641,7 @@ E`" after
     (newline_list)))
 
 ==================
-Escape runs before ordinary characters fold through enclosing backquotes
-==================
-
-echo `printf %s \; a\\ b \\) "x\\"y" \\; :`
-echo `echo \`printf %s \\\\\; :\``
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (backquote_substitution
-                        (backquote_substitution_body
-                          (complete_commands
-                            (complete_command
-                              (list
-                                (and_or
-                                  (pipeline
-                                    (pipe_sequence
-                                      (command
-                                        (simple_command
-                                          (cmd_name
-                                            (word
-                                              (literal)))
-                                          (cmd_suffix
-                                            (word
-                                              (literal))
-                                            (word
-                                              (escaped_character))
-                                            (word
-                                              (literal)
-                                              (escaped_character)
-                                              (literal)
-                                              (literal))
-                                            (word
-                                              (escaped_character)
-                                              (literal))
-                                            (word
-                                              (double_quoted
-                                                (double_quote_text)
-                                                (double_quote_escape)
-                                                (double_quote_text)
-                                                (double_quote_text)))
-                                            (word
-                                              (escaped_character)
-                                              (literal))
-                                            (word
-                                              (literal))))))))))))))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (backquote_substitution
-                        (backquote_substitution_body
-                          (complete_commands
-                            (complete_command
-                              (list
-                                (and_or
-                                  (pipeline
-                                    (pipe_sequence
-                                      (command
-                                        (simple_command
-                                          (cmd_name
-                                            (word
-                                              (literal)))
-                                          (cmd_suffix
-                                            (word
-                                              (backquote_substitution
-                                                (backquote_substitution_body
-                                                  (complete_commands
-                                                    (complete_command
-                                                      (list
-                                                        (and_or
-                                                          (pipeline
-                                                            (pipe_sequence
-                                                              (command
-                                                                (simple_command
-                                                                  (cmd_name
-                                                                    (word
-                                                                      (literal)))
-                                                                  (cmd_suffix
-                                                                    (word
-                                                                      (literal))
-                                                                    (word
-                                                                      (escaped_character)
-                                                                      (escaped_character))))))))
-                                                        (separator_op)
-                                                        (and_or
-                                                          (pipeline
-                                                            (pipe_sequence
-                                                              (command
-                                                                (simple_command
-                                                                  (cmd_name
-                                                                    (word
-                                                                      (literal)))))))))))))))))))))))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Backquote quote removal follows the enclosing double-quote context
-==================
-
-echo "`printf %s \"a b\"`"
-echo `printf %s \"a b\"`
-echo "`echo \`printf %s \"a b\"\``"
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (double_quoted
-                        (backquote_substitution
-                          body: (backquote_substitution_body
-                            (complete_commands
-                              command: (complete_command
-                                body: (list
-                                  and_or: (and_or
-                                    pipeline: (pipeline
-                                      sequence: (pipe_sequence
-                                        command: (command
-                                          body: (simple_command
-                                            name: (cmd_name
-                                              (word
-                                                (literal)))
-                                            suffix: (cmd_suffix
-                                              word: (word
-                                                (literal))
-                                              word: (word
-                                                (double_quoted
-                                                  (double_quote_text))))))))))))))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (backquote_substitution
-                        body: (backquote_substitution_body
-                          (complete_commands
-                            command: (complete_command
-                              body: (list
-                                and_or: (and_or
-                                  pipeline: (pipeline
-                                    sequence: (pipe_sequence
-                                      command: (command
-                                        body: (simple_command
-                                          name: (cmd_name
-                                            (word
-                                              (literal)))
-                                          suffix: (cmd_suffix
-                                            word: (word
-                                              (literal))
-                                            word: (word
-                                              (escaped_character)
-                                              (literal))
-                                            word: (word
-                                              (literal)
-                                              (escaped_character))))))))))))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (double_quoted
-                        (backquote_substitution
-                          body: (backquote_substitution_body
-                            (complete_commands
-                              command: (complete_command
-                                body: (list
-                                  and_or: (and_or
-                                    pipeline: (pipeline
-                                      sequence: (pipe_sequence
-                                        command: (command
-                                          body: (simple_command
-                                            name: (cmd_name
-                                              (word
-                                                (literal)))
-                                            suffix: (cmd_suffix
-                                              word: (word
-                                                (backquote_substitution
-                                                  body: (backquote_substitution_body
-                                                    (complete_commands
-                                                      command: (complete_command
-                                                        body: (list
-                                                          and_or: (and_or
-                                                            pipeline: (pipeline
-                                                              sequence: (pipe_sequence
-                                                                command: (command
-                                                                  body: (simple_command
-                                                                    name: (cmd_name
-                                                                      (word
-                                                                        (literal)))
-                                                                    suffix: (cmd_suffix
-                                                                      word: (word
-                                                                        (literal))
-                                                                      word: (word
-                                                                        (double_quoted
-                                                                          (double_quote_text)))))))))))))))))))))))))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-A comment inside backquotes ends at the closing backtick
+a comment inside backquotes ends at the closing backtick
 ==================
 
 x=`echo a # comment`
@@ -2224,135 +1798,7 @@ echo `echo a # \` x`
     (newline_list)))
 
 ==================
-A bare backtick cannot close an escaped nested substitution
-:error
-==================
-
-echo `\`a`b`
-
----
-
-
-
-==================
-Enclosing backquote escape runs fold before a bracket close scan
-==================
-
-echo `echo [\\] [\\\] [\\\a] [\\\-a]`
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (backquote_substitution
-                        (backquote_substitution_body
-                          (complete_commands
-                            (complete_command
-                              (list
-                                (and_or
-                                  (pipeline
-                                    (pipe_sequence
-                                      (command
-                                        (simple_command
-                                          (cmd_name
-                                            (word
-                                              (literal)))
-                                          (cmd_suffix
-                                            (word
-                                              (literal)
-                                              (escaped_character)
-                                              (literal))
-                                            (word
-                                              (pattern_bracket_source
-                                                (pattern_bracket_members_source
-                                                  (escaped_character))))
-                                            (word
-                                              (pattern_bracket_source
-                                                (pattern_bracket_members_source
-                                                  (escaped_character)
-                                                  (pattern_bracket_character_source))))
-                                            (word
-                                              (pattern_bracket_source
-                                                (pattern_bracket_members_source
-                                                  (pattern_bracket_range_source
-                                                    (escaped_character)
-                                                    (pattern_bracket_range_operator_source)
-                                                    (pattern_bracket_character_source))))))))))))))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-An incomplete bracket ends at a nested backquote closer
-==================
-
-echo `\`echo [a\``
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (backquote_substitution
-                        (backquote_substitution_body
-                          (complete_commands
-                            (complete_command
-                              (list
-                                (and_or
-                                  (pipeline
-                                    (pipe_sequence
-                                      (command
-                                        (simple_command
-                                          (cmd_name
-                                            (word
-                                              (backquote_substitution
-                                                (backquote_substitution_body
-                                                  (complete_commands
-                                                    (complete_command
-                                                      (list
-                                                        (and_or
-                                                          (pipeline
-                                                            (pipe_sequence
-                                                              (command
-                                                                (simple_command
-                                                                  (cmd_name
-                                                                    (word
-                                                                      (literal)))
-                                                                  (cmd_suffix
-                                                                    (word
-                                                                      (literal)
-                                                                      (literal)))))))))))))))))))))))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Nested command starts preserve bracket source around case patterns
+nested command starts preserve bracket source around case patterns
 ==================
 
 : [$(: $(case x in x) :;; esac))]
@@ -2429,7 +1875,7 @@ Nested command starts preserve bracket source around case patterns
     (newline_list)))
 
 ==================
-Function body starts preserve bracket source around case patterns
+function body starts preserve bracket source around case patterns
 ==================
 
 : [$(f() case x in x) :;; esac)]
@@ -2492,3 +1938,555 @@ Function body starts preserve bracket source around case patterns
                                                     (esac_keyword))))))))))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+a backquote body owns a removed newline at its opening boundary
+==================
+
+printf `\
+command`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (line_continuation)
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+dollar command substitution closers retain boundary escaped newlines
+==================
+
+echo $(printf x\
+)
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (command_substitution
+                        (command_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (literal)))))))))))
+                          (line_continuation)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a continuation before a substitution closer stays layout
+==================
+
+x=$( a\
+)
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))))))))))
+                            (line_continuation))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+backquote substitution closers retain boundary escaped newlines
+==================
+
+echo `printf x\
+`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (literal)))))))))))
+                          (line_continuation)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+escape runs before ordinary characters fold through enclosing backquotes
+==================
+
+echo `printf %s \; a\\ b \\) "x\\"y" \\; :`
+echo `echo \`printf %s \\\\\; :\``
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (literal))
+                                            (word
+                                              (escaped_character))
+                                            (word
+                                              (literal)
+                                              (escaped_character)
+                                              (literal)
+                                              (literal))
+                                            (word
+                                              (escaped_character)
+                                              (literal))
+                                            (word
+                                              (double_quoted
+                                                (double_quote_text)
+                                                (double_quote_escape)
+                                                (double_quote_text)
+                                                (double_quote_text)))
+                                            (word
+                                              (escaped_character)
+                                              (literal))
+                                            (word
+                                              (literal))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (backquote_substitution
+                                                (backquote_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (literal))
+                                                                    (word
+                                                                      (escaped_character)
+                                                                      (escaped_character))))))))
+                                                        (separator_op)
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+backquote quote removal follows the enclosing double-quote context
+==================
+
+echo "`printf %s \"a b\"`"
+echo `printf %s \"a b\"`
+echo "`echo \`printf %s \"a b\"\``"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (backquote_substitution
+                          body: (backquote_substitution_body
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (simple_command
+                                            name: (cmd_name
+                                              (word
+                                                (literal)))
+                                            suffix: (cmd_suffix
+                                              word: (word
+                                                (literal))
+                                              word: (word
+                                                (double_quoted
+                                                  (double_quote_text))))))))))))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (literal))
+                                            word: (word
+                                              (escaped_character)
+                                              (literal))
+                                            word: (word
+                                              (literal)
+                                              (escaped_character))))))))))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (double_quoted
+                        (backquote_substitution
+                          body: (backquote_substitution_body
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (simple_command
+                                            name: (cmd_name
+                                              (word
+                                                (literal)))
+                                            suffix: (cmd_suffix
+                                              word: (word
+                                                (backquote_substitution
+                                                  body: (backquote_substitution_body
+                                                    (complete_commands
+                                                      command: (complete_command
+                                                        body: (list
+                                                          and_or: (and_or
+                                                            pipeline: (pipeline
+                                                              sequence: (pipe_sequence
+                                                                command: (command
+                                                                  body: (simple_command
+                                                                    name: (cmd_name
+                                                                      (word
+                                                                        (literal)))
+                                                                    suffix: (cmd_suffix
+                                                                      word: (word
+                                                                        (literal))
+                                                                      word: (word
+                                                                        (double_quoted
+                                                                          (double_quote_text)))))))))))))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+enclosing backquote escape runs fold before a bracket close scan
+==================
+
+echo `echo [\\] [\\\] [\\\a] [\\\-a]`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (literal)
+                                              (escaped_character)
+                                              (literal))
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (escaped_character))))
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (escaped_character)
+                                                  (pattern_bracket_character_source))))
+                                            (word
+                                              (pattern_bracket_source
+                                                (pattern_bracket_members_source
+                                                  (pattern_bracket_range_source
+                                                    (escaped_character)
+                                                    (pattern_bracket_range_operator_source)
+                                                    (pattern_bracket_character_source))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+an incomplete bracket ends at a nested backquote closer
+==================
+
+echo `\`echo [a\``
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (backquote_substitution
+                                                (backquote_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (simple_command
+                                                                  (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  (cmd_suffix
+                                                                    (word
+                                                                      (literal)
+                                                                      (literal)))))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a bare backtick cannot close an escaped nested substitution
+:error
+==================
+
+echo `\`a`b`
+
+---

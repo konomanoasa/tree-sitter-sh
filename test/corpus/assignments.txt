@@ -1,5 +1,5 @@
 ==================
-Assignments can precede a command and its arguments
+assignments can precede a command and its arguments
 ==================
 
 MODE=fast EMPTY= EXTRA==value command -v operand
@@ -40,7 +40,7 @@ MODE=fast EMPTY= EXTRA==value command -v operand
     (newline_list)))
 
 ==================
-An assignment-only simple command has no command name
+an assignment-only simple command has no command name
 ==================
 
 A= B=$value C=$(printf value)
@@ -89,7 +89,7 @@ A= B=$value C=$(printf value)
     (newline_list)))
 
 ==================
-A backquote assignment after a function remains a separate complete command
+a backquote assignment after a function remains a separate complete command
 ==================
 
 worker() {
@@ -160,7 +160,7 @@ result=`printf nested`
     (newline_list)))
 
 ==================
-Assignment values retain their source-word structure
+assignment values retain their source-word structure
 ==================
 
 VALUE=pre"quoted"${name}$((1 + 2))
@@ -196,7 +196,7 @@ VALUE=pre"quoted"${name}$((1 + 2))
     (newline_list)))
 
 ==================
-Assignment-shaped words after the command name are arguments
+assignment-shaped words after the command name are arguments
 ==================
 
 A=one command B=two C='three words' -x --long operand
@@ -239,7 +239,7 @@ A=one command B=two C='three words' -x --long operand
     (newline_list)))
 
 ==================
-Assignment command and argument positions remain distinct
+assignment command and argument positions remain distinct
 ==================
 
 A=-x -x --long
@@ -272,7 +272,7 @@ A=-x -x --long
     (newline_list)))
 
 ==================
-Quoted escaped expanded and invalid names are not assignments
+quoted escaped expanded and invalid names are not assignments
 ==================
 
 =value argument
@@ -367,7 +367,7 @@ NAME${suffix}=value argument
     (newline_list)))
 
 ==================
-Assignment-only commands retain command boundaries
+assignment-only commands retain command boundaries
 ==================
 
 A=one; B=two
@@ -456,15 +456,15 @@ next
   trailing: (linebreak
     (newline_list)))
 
-================================================================================
-Reserved word spellings stay assignment values
-================================================================================
+==================
+reserved word spellings stay assignment values
+==================
 
 y=then
 y=a:do
 cmd x=fi
 
---------------------------------------------------------------------------------
+---
 
 (program
   (linebreak
@@ -515,7 +515,7 @@ cmd x=fi
     (newline_list)))
 
 ==================
-A blank-led continuation run after an assignment reaches the end of input
+a blank-led continuation run after an assignment reaches the end of input
 ==================
 
 a=b \

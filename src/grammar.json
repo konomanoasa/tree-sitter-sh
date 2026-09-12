@@ -1372,17 +1372,8 @@
       "name": "_redirectable_compound_command"
     },
     "fname": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "_fname_begin"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_name_token"
-        }
-      ]
+      "type": "SYMBOL",
+      "name": "_fname_token"
     },
     "name": {
       "type": "SYMBOL",
@@ -2408,10 +2399,6 @@
                       "type": "BLANK"
                     }
                   ]
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "_case_item_ns_boundary"
                 }
               ]
             },
@@ -2440,10 +2427,6 @@
                         "type": "BLANK"
                       }
                     ]
-                  },
-                  {
-                    "type": "SYMBOL",
-                    "name": "_case_item_ns_boundary"
                   }
                 ]
               }
@@ -3977,15 +3960,16 @@
           "type": "SEQ",
           "members": [
             {
-              "type": "SYMBOL",
-              "name": "_name_equals_begin"
-            },
-            {
               "type": "FIELD",
               "name": "name",
               "content": {
-                "type": "SYMBOL",
-                "name": "variable_name"
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_assignment_name_token"
+                },
+                "named": true,
+                "value": "variable_name"
               }
             },
             {
@@ -4720,7 +4704,7 @@
                 "members": [
                   {
                     "type": "SYMBOL",
-                    "name": "_name_token"
+                    "name": "_word_name_token"
                   },
                   {
                     "type": "SYMBOL",
@@ -12477,7 +12461,7 @@
         "value": -1,
         "content": {
           "type": "PATTERN",
-          "value": "[^ \\t\\n;&|<>()/\\\\'\"$`*?\\[\\]~:#=]+"
+          "value": "[^A-Za-z_ \\t\\n;&|<>()/\\\\'\"$`*?\\[\\]~:#=]+"
         }
       }
     },
@@ -13460,10 +13444,6 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_case_item_ns_boundary"
-    },
-    {
-      "type": "SYMBOL",
       "name": "_function_body_continuation_boundary"
     },
     {
@@ -13520,11 +13500,15 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_name_equals_begin"
+      "name": "_assignment_name_token"
     },
     {
       "type": "SYMBOL",
-      "name": "_fname_begin"
+      "name": "_fname_token"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_word_name_token"
     },
     {
       "type": "SYMBOL",

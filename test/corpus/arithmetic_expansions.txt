@@ -1,5 +1,5 @@
 ==================
-Adjacent prefix increment spelling leaves arithmetic for command substitution
+adjacent prefix increment spelling leaves arithmetic for command substitution
 ==================
 
 : "$((++a))"
@@ -48,7 +48,7 @@ Adjacent prefix increment spelling leaves arithmetic for command substitution
     (newline_list)))
 
 ==================
-Adjacent prefix decrement spelling leaves arithmetic for command substitution
+adjacent prefix decrement spelling leaves arithmetic for command substitution
 ==================
 
 : "$((--a))"
@@ -97,7 +97,7 @@ Adjacent prefix decrement spelling leaves arithmetic for command substitution
     (newline_list)))
 
 ==================
-Arithmetic expansion preserves balanced and nested source
+arithmetic expansion preserves balanced and nested source
 ==================
 
 echo $((1 + (2 * ${factor}) + $(value) + $((3 + 4))))
@@ -156,7 +156,7 @@ echo $((1 + (2 * ${factor}) + $(value) + $((3 + 4))))
     (newline_list)))
 
 ==================
-Arithmetic layout remains at operators and closing delimiters
+arithmetic layout remains at operators and closing delimiters
 ==================
 
 : "$((a==b + 2))" "$((a==b + (2)))" "$((a=b + (2)))"
@@ -214,7 +214,7 @@ Arithmetic layout remains at operators and closing delimiters
     (newline_list)))
 
 ==================
-Every POSIX arithmetic operator category remains structured after horizontal layout
+every POSIX arithmetic operator category remains structured after horizontal layout
 ==================
 
 : "$((a = b *= c /= d %= e += f -= g <<= h >>= i &= j ^= k |= l))"
@@ -353,7 +353,7 @@ Every POSIX arithmetic operator category remains structured after horizontal lay
     (newline_list)))
 
 ==================
-Arithmetic layout spans raw newlines in the committed readings
+arithmetic layout spans raw newlines in the committed readings
 ==================
 
 : "$(($x
@@ -395,7 +395,7 @@ y))" "$((1 +
     (newline_list)))
 
 ==================
-Arithmetic unary negation remains arithmetic after horizontal layout
+arithmetic unary negation remains arithmetic after horizontal layout
 ==================
 
 : "$((! a))" "$((!!a))"
@@ -435,7 +435,7 @@ Arithmetic unary negation remains arithmetic after horizontal layout
     (newline_list)))
 
 ==================
-Arithmetic expansion follows POSIX expression precedence
+arithmetic expansion follows POSIX expression precedence
 ==================
 
 printf "$((a = b += 2 ? b << 1 : ~b & 7))" "$((0x10 + 077 + (value * 3)))"
@@ -498,7 +498,7 @@ printf "$((a = b += 2 ? b << 1 : ~b & 7))" "$((0x10 + 077 + (value * 3)))"
     (newline_list)))
 
 ==================
-Dynamic arithmetic source remains structured without evaluation
+dynamic arithmetic source remains structured without evaluation
 ==================
 
 printf "$((1 $operator 2))" "$(($left + $(value)))" "$((1 + (2 $operator 3)))"
@@ -564,7 +564,7 @@ printf "$((1 $operator 2))" "$(($left + $(value)))" "$((1 + (2 $operator 3)))"
     (newline_list)))
 
 ==================
-Runtime arithmetic fragments can precede parenthesized source
+runtime arithmetic fragments can precede parenthesized source
 ==================
 
 printf '%s\n' "$((a ${operator} (b + c)))"
@@ -604,70 +604,7 @@ printf '%s\n' "$((a ${operator} (b + c)))"
     (newline_list)))
 
 ==================
-A missing operand before the closers leaves arithmetic for command substitution
-==================
-
-printf "$((1 + ))"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (command_substitution
-                          (command_substitution_body
-                            (complete_commands
-                              (complete_command
-                                (list
-                                  (and_or
-                                    (pipeline
-                                      (pipe_sequence
-                                        (command
-                                          (compound_command
-                                            (subshell
-                                              (compound_list
-                                                (term
-                                                  (and_or
-                                                    (pipeline
-                                                      (pipe_sequence
-                                                        (command
-                                                          (simple_command
-                                                            (cmd_name
-                                                              (word
-                                                                (literal)))
-                                                            (cmd_suffix
-                                                              (word
-                                                                (literal))))))))))))))))))))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-An empty expression leaves arithmetic for an invalid empty subshell
-:error
-==================
-
-printf "$(())" "$((  ))" "$((()))"
-
----
-
-
-
-==================
-A top-level comma leaves arithmetic for command substitution
+a top-level comma leaves arithmetic for command substitution
 ==================
 
 printf "$((1, 2))"
@@ -719,7 +656,7 @@ printf "$((1, 2))"
     (newline_list)))
 
 ==================
-Parenthesized arithmetic variables remain valid assignment left operands
+parenthesized arithmetic variables remain valid assignment left operands
 ==================
 
 : "$(((name) = 1))" "$((((nested)) += 2))"
@@ -762,72 +699,7 @@ Parenthesized arithmetic variables remain valid assignment left operands
     (newline_list)))
 
 ==================
-A parenthesized non-lvalue cannot become an assignment left operand
-:error
-==================
-
-: "$(((name + 1) = 2))"
-
----
-
-
-
-==================
-A continuation before the closers stays in the command-substitution reading
-==================
-
-: "$((1 +\
-))"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (command_substitution
-                          (command_substitution_body
-                            (complete_commands
-                              (complete_command
-                                (list
-                                  (and_or
-                                    (pipeline
-                                      (pipe_sequence
-                                        (command
-                                          (compound_command
-                                            (subshell
-                                              (compound_list
-                                                (term
-                                                  (and_or
-                                                    (pipeline
-                                                      (pipe_sequence
-                                                        (command
-                                                          (simple_command
-                                                            (cmd_name
-                                                              (word
-                                                                (literal)))
-                                                            (cmd_suffix
-                                                              (word
-                                                                (literal))))))))))
-                                              (line_continuation)))))))))))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-Unary signs bind adjacent static operands
+unary signs bind adjacent static operands
 ==================
 
 : "$((-x))" "$((+x + y))" "$((1+-2))" "$((-x + $y))"
@@ -887,7 +759,7 @@ Unary signs bind adjacent static operands
     (newline_list)))
 
 ==================
-Sign runs adjacent to a runtime fragment stay flat source
+sign runs adjacent to a runtime fragment stay flat source
 ==================
 
 : "$((-x$y))" "$((1+x$y))" "$((-1$y))"
@@ -938,7 +810,7 @@ Sign runs adjacent to a runtime fragment stay flat source
     (newline_list)))
 
 ==================
-Adjacent repeated signs between operands leave arithmetic for command substitution
+adjacent repeated signs between operands leave arithmetic for command substitution
 ==================
 
 : $((a--b))
@@ -986,7 +858,7 @@ Adjacent repeated signs between operands leave arithmetic for command substituti
     (newline_list)))
 
 ==================
-A case pattern inside an embedded substitution stays inside the arithmetic reading
+a case pattern inside an embedded substitution stays inside the arithmetic reading
 ==================
 
 echo $(( $(case x in a) echo 1;; esac) + 1 ))
@@ -1053,18 +925,7 @@ echo $(( $(case x in a) echo 1;; esac) + 1 ))
     (newline_list)))
 
 ==================
-Input ending inside arithmetic requires recovery
-:error
-==================
-
-x=$((1 +
-
----
-
-
-
-==================
-A case pattern esac after a pipe stays inside the validated substitution
+a case pattern esac after a pipe stays inside the validated substitution
 ==================
 
 echo $(( $(case q in x|esac) echo 1;; esac) + 1 ))
@@ -1133,7 +994,7 @@ echo $(( $(case q in x|esac) echo 1;; esac) + 1 ))
     (newline_list)))
 
 ==================
-A numeric case word keeps the substitution inside the dynamic reading
+a numeric case word keeps the substitution inside the dynamic reading
 ==================
 
 echo $(( $(case 9 in x) echo 1;; esac) 1 ))
@@ -1199,7 +1060,7 @@ echo $(( $(case 9 in x) echo 1;; esac) 1 ))
     (newline_list)))
 
 ==================
-A case after a command-prefix reserved word stays inside the arithmetic reading
+a case after a command-prefix reserved word stays inside the arithmetic reading
 ==================
 
 echo $(( $(if :; then case a in b) echo 1;; esac; fi) + 1 ))
@@ -1291,7 +1152,7 @@ echo $(( $(if :; then case a in b) echo 1;; esac; fi) + 1 ))
     (newline_list)))
 
 ==================
-A case after a brace-group opener stays inside the arithmetic reading
+a case after a brace-group opener stays inside the arithmetic reading
 ==================
 
 echo $(( $({ case a in b) echo 1;; esac; }) + 1 ))
@@ -1368,7 +1229,61 @@ echo $(( $({ case a in b) echo 1;; esac; }) + 1 ))
     (newline_list)))
 
 ==================
-Arithmetic parameter prefixes undergo surrounding backquote quote removal
+a continuation before the closers stays in the command-substitution reading
+==================
+
+: "$((1 +\
+))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (subshell
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            (cmd_suffix
+                                                              (word
+                                                                (literal))))))))))
+                                              (line_continuation)))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+arithmetic parameter prefixes undergo surrounding backquote quote removal
 ==================
 
 : `: $((\$x))`
@@ -1413,7 +1328,7 @@ Arithmetic parameter prefixes undergo surrounding backquote quote removal
     (newline_list)))
 
 ==================
-Arithmetic command substitutions retain surrounding backquote quote removal
+arithmetic command substitutions retain surrounding backquote quote removal
 ==================
 
 : "`: $(( $(printf 1; : \")\") ))`"
@@ -1484,3 +1399,82 @@ Arithmetic command substitutions retain surrounding backquote quote removal
                                                                             (double_quote_text))))))))))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+a missing operand before the closers leaves arithmetic for command substitution
+==================
+
+printf "$((1 + ))"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (compound_command
+                                            (subshell
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))
+                                                            (cmd_suffix
+                                                              (word
+                                                                (literal))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+an empty expression leaves arithmetic for an invalid empty subshell
+:error
+==================
+
+printf "$(())" "$((  ))" "$((()))"
+
+---
+
+==================
+a parenthesized non-lvalue cannot become an assignment left operand
+:error
+==================
+
+: "$(((name + 1) = 2))"
+
+---
+
+==================
+input ending inside arithmetic requires recovery
+:error
+==================
+
+x=$((1 +
+
+---

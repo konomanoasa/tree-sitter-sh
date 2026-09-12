@@ -1,5 +1,5 @@
 ==================
-Case alternatives reuse pattern source nodes
+case alternatives reuse pattern source nodes
 ==================
 
 case "$value" in
@@ -116,7 +116,121 @@ esac
     (newline_list)))
 
 ==================
-Case pattern alternatives retain boundary escaped newlines
+case patterns allow layout before their closing parenthesis
+==================
+
+case value in
+  one | two   ) printf match ;;
+esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (literal))
+                          word: (word
+                            (literal)))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))
+                                      suffix: (cmd_suffix
+                                        word: (word
+                                          (literal))))))))))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+case pattern words absorb interior number signs
+==================
+
+case x in
+  p#q | "r"#s) : ;;
+esac
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (compound_command
+                  (case_clause
+                    (case_keyword)
+                    word: (word
+                      (literal))
+                    in: (in
+                      (in_keyword))
+                    (linebreak
+                      (newline_list))
+                    items: (case_list
+                      item: (case_item
+                        patterns: (pattern_list
+                          word: (word
+                            (literal)
+                            (literal)
+                            (literal))
+                          word: (word
+                            (double_quoted
+                              (double_quote_text))
+                            (literal)
+                            (literal)))
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        terminator: (dsemi)
+                        (linebreak
+                          (newline_list))))
+                    (esac_keyword))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+case pattern alternatives retain boundary escaped newlines
 ==================
 
 case value in
@@ -171,7 +285,7 @@ esac
     (newline_list)))
 
 ==================
-Case patterns preserve connector and closing-parenthesis continuations
+case patterns preserve connector and closing-parenthesis continuations
 ==================
 
 case x in
@@ -232,121 +346,7 @@ esac
     (newline_list)))
 
 ==================
-Case patterns allow layout before their closing parenthesis
-==================
-
-case value in
-  one | two   ) printf match ;;
-esac
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (case_clause
-                    (case_keyword)
-                    word: (word
-                      (literal))
-                    in: (in
-                      (in_keyword))
-                    (linebreak
-                      (newline_list))
-                    items: (case_list
-                      item: (case_item
-                        patterns: (pattern_list
-                          word: (word
-                            (literal))
-                          word: (word
-                            (literal)))
-                        body: (compound_list
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal)))
-                                      suffix: (cmd_suffix
-                                        word: (word
-                                          (literal))))))))))
-                        terminator: (dsemi)
-                        (linebreak
-                          (newline_list))))
-                    (esac_keyword))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Case pattern words absorb interior number signs
-==================
-
-case x in
-  p#q | "r"#s) : ;;
-esac
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (case_clause
-                    (case_keyword)
-                    word: (word
-                      (literal))
-                    in: (in
-                      (in_keyword))
-                    (linebreak
-                      (newline_list))
-                    items: (case_list
-                      item: (case_item
-                        patterns: (pattern_list
-                          word: (word
-                            (literal)
-                            (literal)
-                            (literal))
-                          word: (word
-                            (double_quoted
-                              (double_quote_text))
-                            (literal)
-                            (literal)))
-                        body: (compound_list
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        terminator: (dsemi)
-                        (linebreak
-                          (newline_list))))
-                    (esac_keyword))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Continuations between a pattern and its closing parenthesis stay layout
+continuations between a pattern and its closing parenthesis stay layout
 ==================
 
 case x in a\

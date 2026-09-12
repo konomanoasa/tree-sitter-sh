@@ -1,5 +1,5 @@
 ==================
-Function definition followed by a call
+a function definition and its following call remain separate commands
 ==================
 
 greet() {
@@ -53,7 +53,7 @@ greet
     (newline_list)))
 
 ==================
-Every compound command form can be a function body
+every compound command form can be a function body
 ==================
 
 brace_body() { :; }
@@ -301,9 +301,9 @@ until_body() until :; do :; done
   (linebreak
     (newline_list)))
 
-================================================================================
-Function bodies retain multiline conditionals around assignment-only commands
-================================================================================
+==================
+function bodies retain multiline conditionals around assignment-only commands
+==================
 
 if_worker() {
   before
@@ -314,7 +314,7 @@ if_worker() {
   after
 }
 
---------------------------------------------------------------------------------
+---
 
 (program
   (linebreak
@@ -407,9 +407,9 @@ if_worker() {
   (linebreak
     (newline_list)))
 
-================================================================================
-Function bodies retain one term across multiline conditionals and loops
-================================================================================
+==================
+function bodies retain one term across multiline conditionals and loops
+==================
 
 for_worker() {
   a=
@@ -422,7 +422,7 @@ for_worker() {
   b=
 }
 
---------------------------------------------------------------------------------
+---
 
 (program
   leading: (linebreak
@@ -546,86 +546,7 @@ for_worker() {
     (newline_list)))
 
 ==================
-A continuation between a function header and body remains layout
-==================
-
-long_function()\
-{
-  :
-}
-long_function
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (function_definition
-                  name: (fname)
-                  (line_continuation)
-                  body: (function_body
-                    body: (compound_command
-                      (brace_group
-                        body: (compound_list
-                          leading: (linebreak
-                            (newline_list))
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal)))))))))
-                          terminator: (separator
-                            newlines: (newline_list)))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Reserved words cannot be function names
-:error
-==================
-
-then() { :; }
-
----
-
-
-
-==================
-Function names must be POSIX names
-:error
-==================
-
-bad-name()
-9bad()
-
----
-
-
-
-==================
-A redirected function retains list boundaries
+a redirected function retains list boundaries
 ==================
 
 holder() { :; }>function_output & holder
@@ -678,7 +599,7 @@ holder() { :; }>function_output & holder
     (newline_list)))
 
 ==================
-A function body follows the pending here-document bodies
+a function body follows the pending here-document bodies
 ==================
 
 cat <<E; f()
@@ -742,3 +663,78 @@ E
                             operator: (separator_op))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+a continuation between a function header and body remains layout
+==================
+
+long_function()\
+{
+  :
+}
+long_function
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (function_definition
+                  name: (fname)
+                  (line_continuation)
+                  body: (function_body
+                    body: (compound_command
+                      (brace_group
+                        body: (compound_list
+                          leading: (linebreak
+                            (newline_list))
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))))))))
+                          terminator: (separator
+                            newlines: (newline_list)))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+reserved words cannot be function names
+:error
+==================
+
+then() { :; }
+
+---
+
+==================
+function names must be POSIX names
+:error
+==================
+
+bad-name()
+9bad()
+
+---

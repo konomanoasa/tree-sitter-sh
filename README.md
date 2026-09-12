@@ -19,7 +19,7 @@ npm install
 npm run parse -- script.sh
 ```
 
-## Specifications
+## Specification
 
 [POSIX.1-2024 Shell Command Language](https://pubs.opengroup.org/onlinepubs/9799919799.2024edition/utilities/V3_chap02.html)
 

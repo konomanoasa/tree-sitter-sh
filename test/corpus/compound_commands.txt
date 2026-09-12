@@ -1,5 +1,5 @@
 ==================
-Comments and linebreaks separate compound command parts
+comments and linebreaks separate compound command parts
 ==================
 
 if # before the condition
@@ -177,7 +177,7 @@ esac
     (newline_list)))
 
 ==================
-Compound commands occupy command positions and nest
+compound commands occupy command positions and nest
 ==================
 
 (first) | { second; } && if condition; then

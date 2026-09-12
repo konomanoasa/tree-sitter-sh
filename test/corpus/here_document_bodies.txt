@@ -1,5 +1,5 @@
 ==================
-An unquoted here-document keeps its declaration and body distinct
+an unquoted here-document keeps its declaration and body distinct
 ==================
 
 cat <<EOF
@@ -42,7 +42,7 @@ EOF
             (here_document_end_text)))))))
 
 ==================
-Empty bodies and an empty quoted delimiter retain command boundaries
+empty bodies and an empty quoted delimiter retain command boundaries
 ==================
 
 cat <<EOF
@@ -116,78 +116,7 @@ next
     (newline_list)))
 
 ==================
-Only unquoted bodies remove continuations before delimiter lines
-==================
-
-cat <<EOF
-\
-EOF
-cat <<'END'
-EN\
-D
-END
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal)))))))))))))
-    separator: (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          end: (here_document_end
-            (line_continuation)
-            (here_document_end_text)))))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (single_quoted
-                              (single_quote_content)))))))))))))))
-  trailing: (linebreak
-    (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (quoted_here_document_body
-            (quoted_here_document_text)
-            (quoted_here_document_text))
-          end: (here_document_end
-            (here_document_end_text)))))))
-
-==================
-Unquoted bodies expose nested expansions without executing them
+unquoted bodies expose nested expansions without executing them
 ==================
 
 cat <<OUTER
@@ -275,7 +204,7 @@ OUTER
             (here_document_end_text)))))))
 
 ==================
-Unquoted body escapes retain their source roles
+unquoted body escapes retain their source roles
 ==================
 
 cat <<EOF
@@ -323,7 +252,7 @@ EOF
             (here_document_end_text)))))))
 
 ==================
-Unquoted here-document bodies keep dollar-single-quote source literal
+unquoted here-document bodies keep dollar-single-quote source literal
 ==================
 
 cat <<EOF
@@ -421,7 +350,7 @@ after
     (newline_list)))
 
 ==================
-Body substitutions separate commands across body lines
+body substitutions separate commands across body lines
 ==================
 
 cat <<E
@@ -486,7 +415,7 @@ E
             (here_document_end_text)))))))
 
 ==================
-A resumed here-document separates further body commands
+a resumed here-document separates further body commands
 ==================
 
 cat <<E
@@ -579,7 +508,7 @@ E
             (here_document_end_text)))))))
 
 ==================
-A substitution newline does not start an enclosing here-document body
+a substitution newline does not start an enclosing here-document body
 ==================
 
 cmd <<E $(x
@@ -646,7 +575,7 @@ E
             (here_document_end_text)))))))
 
 ==================
-A backquote newline does not start an enclosing here-document body
+a backquote newline does not start an enclosing here-document body
 ==================
 
 cmd <<E `x
@@ -713,7 +642,7 @@ E
             (here_document_end_text)))))))
 
 ==================
-Substitution documents start inside and enclosing documents after it
+substitution documents start inside and enclosing documents after it
 ==================
 
 cmd <<A $(y <<B
@@ -787,74 +716,7 @@ A
             (here_document_end_text)))))))
 
 ==================
-Escaped backslash pairs keep body lines closed before continuations
-==================
-
-cat <<E; f()
-x\\
-E
-{ :; }
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal)))))))))))
-        separator: (separator_op)
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (function_definition
-                  name: (fname)
-                  linebreak: (linebreak
-                    (newline_list
-                      (here_document_sequence
-                        line_end: (here_document_line_end)
-                        document: (here_document
-                          body: (here_document_body
-                            (here_document_text)
-                            (here_document_escape))
-                          end: (here_document_end
-                            (here_document_end_text))))))
-                  body: (function_body
-                    body: (compound_command
-                      (brace_group
-                        body: (compound_list
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal)))))))))
-                          terminator: (separator
-                            operator: (separator_op))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Unquoted body expansions span body lines
+unquoted body expansions span body lines
 ==================
 
 cat <<EOF
@@ -938,7 +800,7 @@ after
     (newline_list)))
 
 ==================
-Backquote body runs preserve literal dollars and ordinary tails
+backquote body runs preserve literal dollars and ordinary tails
 ==================
 
 : `cat <<EOF
@@ -1003,7 +865,7 @@ EOF
     (newline_list)))
 
 ==================
-Backquote body paired escapes retain the following delimiter line
+backquote body paired escapes retain the following delimiter line
 ==================
 
 : `cat <<EOF
@@ -1060,4 +922,142 @@ EOF
                                   (here_document_end
                                     (here_document_end_text))))))))))))))))))
   (linebreak
+    (newline_list)))
+
+==================
+only unquoted bodies remove continuations before delimiter lines
+==================
+
+cat <<EOF
+\
+EOF
+cat <<'END'
+EN\
+D
+END
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal)))))))))))))
+    separator: (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          end: (here_document_end
+            (line_continuation)
+            (here_document_end_text)))))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (single_quoted
+                              (single_quote_content)))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (quoted_here_document_body
+            (quoted_here_document_text)
+            (quoted_here_document_text))
+          end: (here_document_end
+            (here_document_end_text)))))))
+
+==================
+escaped backslash pairs keep body lines closed before continuations
+==================
+
+cat <<E; f()
+x\\
+E
+{ :; }
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal)))))))))))
+        separator: (separator_op)
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (function_definition
+                  name: (fname)
+                  linebreak: (linebreak
+                    (newline_list
+                      (here_document_sequence
+                        line_end: (here_document_line_end)
+                        document: (here_document
+                          body: (here_document_body
+                            (here_document_text)
+                            (here_document_escape))
+                          end: (here_document_end
+                            (here_document_end_text))))))
+                  body: (function_body
+                    body: (compound_command
+                      (brace_group
+                        body: (compound_list
+                          body: (term
+                            and_or: (and_or
+                              pipeline: (pipeline
+                                sequence: (pipe_sequence
+                                  command: (command
+                                    body: (simple_command
+                                      name: (cmd_name
+                                        (word
+                                          (literal)))))))))
+                          terminator: (separator
+                            operator: (separator_op))))))))))))))
+  trailing: (linebreak
     (newline_list)))

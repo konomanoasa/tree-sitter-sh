@@ -1,5 +1,5 @@
 ==================
-Every compound command can own a trailing redirect list
+every compound command can own a trailing redirect list
 ==================
 
 (:)>subshell 2>>subshell_log
@@ -286,7 +286,7 @@ until :; do :; done 3>until_output
     (newline_list)))
 
 ==================
-Raw newlines end redirect attachment while escaped newlines preserve it
+raw newlines end redirect attachment while escaped newlines preserve it
 ==================
 
 (:)\
@@ -370,7 +370,7 @@ Raw newlines end redirect attachment while escaped newlines preserve it
     (newline_list)))
 
 ==================
-Redirected compound commands retain pipeline and list boundaries
+redirected compound commands retain pipeline and list boundaries
 ==================
 
 (:)>subshell_output | next
@@ -502,7 +502,7 @@ if :; then :; fi>if_output; next
     (newline_list)))
 
 ==================
-Brace-shaped words remain ordinary words before redirects
+brace-shaped words remain ordinary words before redirects
 ==================
 
 cat {fd}>output
@@ -553,7 +553,7 @@ cat {fd}>output
     (newline_list)))
 
 ==================
-A brace-shaped word can precede a here-document
+a brace-shaped word can precede a here-document
 ==================
 
 cat {input}<<EOF
@@ -596,7 +596,7 @@ EOF
             (here_document_end_text)))))))
 
 ==================
-A redirect target suffix cannot become a following descriptor
+a redirect target suffix cannot become a following descriptor
 ==================
 
 <""2>x
@@ -652,7 +652,7 @@ A redirect target suffix cannot become a following descriptor
     (newline_list)))
 
 ==================
-Every ordinary redirection operator has a structured target
+every ordinary redirection operator has a structured target
 ==================
 
 command < input >output >|forced >>append <&0 >&1 <>state
@@ -718,7 +718,7 @@ command < input >output >|forced >>append <&0 >&1 <>state
     (newline_list)))
 
 ==================
-Decimal file descriptors must immediately precede the operator
+decimal file descriptors must immediately precede the operator
 ==================
 
 command 0<input 1>output 2>>errors 3<&0 4>&1 5<>state 123>|forced
@@ -791,7 +791,7 @@ command 0<input 1>output 2>>errors 3<&0 4>&1 5<>state 123>|forced
     (newline_list)))
 
 ==================
-Separated quoted and escaped digits remain ordinary words
+separated quoted and escaped digits remain ordinary words
 ==================
 
 echo 2 >out \2>escaped "3">quoted 4\>literal x2>next
@@ -850,7 +850,7 @@ echo 2 >out \2>escaped "3">quoted 4\>literal x2>next
     (newline_list)))
 
 ==================
-Assignments and redirections can precede a command in source order
+assignments and redirections can precede a command in source order
 ==================
 
 A=one >first B=two <second command before>third middle 2>>errors after<last
@@ -918,7 +918,7 @@ A=one >first B=two <second command before>third middle 2>>errors after<last
     (newline_list)))
 
 ==================
-Redirection-only simple commands have no command name
+redirection-only simple commands have no command name
 ==================
 
 <input 2>output
@@ -971,7 +971,7 @@ A=one >assigned
     (newline_list)))
 
 ==================
-Adjacent redirections remain distinct
+adjacent redirections remain distinct
 ==================
 
 command<input>output 2>&1 3<&0
@@ -1021,7 +1021,7 @@ command<input>output 2>&1 3<&0
     (newline_list)))
 
 ==================
-Redirection targets retain source-word structure
+redirection targets retain source-word structure
 ==================
 
 command >pre"quoted"${name} 2>$(printf file) <'input file' >-x >A=value >$name
@@ -1099,7 +1099,7 @@ command >pre"quoted"${name} 2>$(printf file) <'input file' >-x >A=value >$name
     (newline_list)))
 
 ==================
-Quoted escaped and noninitial hashes remain target text
+quoted escaped and noninitial hashes remain target text
 ==================
 
 command >file#suffix >\#escaped >'#quoted'
@@ -1144,49 +1144,7 @@ command >file#suffix >\#escaped >'#quoted'
     (newline_list)))
 
 ==================
-Redirection token boundaries preserve intervening continuations
-==================
-
-2\
->out command >\
-target
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      number: (io_number)
-                      (line_continuation)
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))
-                  word: (cmd_word
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_file
-                        (line_continuation)
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-Digits inside preceding words are not file descriptors
+digits inside preceding words are not file descriptors
 ==================
 
 A=2>out
@@ -1276,7 +1234,7 @@ A=2 3>errors
     (newline_list)))
 
 ==================
-Redirections preserve command boundaries
+redirections preserve command boundaries
 ==================
 
 >out; <in
@@ -1349,7 +1307,7 @@ command>file && 2>errors other
     (newline_list)))
 
 ==================
-Closed compound and function commands retain trailing redirects
+closed compound and function commands retain trailing redirects
 ==================
 
 printf '%s\n' "$({ :; } >group)" "$(holder() { :; } >function)"
@@ -1443,7 +1401,7 @@ printf '%s\n' "$({ :; } >group)" "$(holder() { :; } >function)"
     (newline_list)))
 
 ==================
-Redirected closed commands preserve their real reserved closers
+redirected closed commands preserve their real reserved closers
 ==================
 
 if (:) >out then :; fi
@@ -1539,7 +1497,49 @@ if (:) >out then :; fi
     (newline_list)))
 
 ==================
-Digits before a redirection operator never form a target word
+redirection token boundaries preserve intervening continuations
+==================
+
+2\
+>out command >\
+target
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    redirect: (io_redirect
+                      number: (io_number)
+                      (line_continuation)
+                      body: (io_file
+                        filename: (filename
+                          word: (word
+                            (literal))))))
+                  word: (cmd_word
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_file
+                        (line_continuation)
+                        filename: (filename
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+digits before a redirection operator never form a target word
 :error
 ==================
 
