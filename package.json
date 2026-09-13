@@ -9,6 +9,7 @@
     "grammar.js",
     "queries/*.scm",
     "src/*.c",
+    "src/*.h",
     "src/*.json",
     "src/tree_sitter/*.h",
     "tree-sitter.json"

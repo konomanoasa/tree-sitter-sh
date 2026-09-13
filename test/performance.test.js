@@ -333,3 +333,89 @@ test("sh: nested arithmetic measurements cover ordinary editing depth", (context
     }
   }
 });
+
+test("sh: dense runtime arithmetic fragments preserve editing performance", (context) => {
+  const fragment = ` \${x} 1`;
+  for (const fixture of [
+    {
+      name: "viable dynamic arithmetic",
+      source: (count, finalNumber) =>
+        `echo $((1${fragment.repeat(count - 1)} \${x} ${finalNumber}))\n`,
+      arithmeticCount: 1,
+      commandCount: 0,
+      extraParameters: 0,
+    },
+    {
+      name: "global assignment fallback",
+      source: (count, finalNumber) =>
+        `echo $((1${fragment.repeat(count)} \${x} a = ${finalNumber}))\n`,
+      arithmeticCount: 0,
+      commandCount: 1,
+      extraParameters: 1,
+    },
+    {
+      name: "spaced runtime fragment fallback",
+      source: (count, finalNumber) =>
+        `echo $((1${` \${x} `.repeat(count)}= ${finalNumber}))\n`,
+      arithmeticCount: 0,
+      commandCount: 1,
+      extraParameters: 0,
+    },
+  ]) {
+    const measurements = [];
+    for (const count of [64, 128]) {
+      const name = `dense-${fixture.name}-${count}`;
+      const initialContents = fixture.source(count, "1");
+      const finalContents = fixture.source(count, "2");
+      const initial = writeSource(`${name}-initial`, initialContents);
+      const final = writeSource(`${name}-final`, finalContents);
+      const edit = {
+        byte: initialContents.lastIndexOf("1"),
+        deleteBytes: 1,
+        insert: "2",
+      };
+      for (const output of assertIncrementalEqualsFresh(
+        initial,
+        final,
+        name,
+        edit,
+      )) {
+        assertOccurrenceCount(
+          output,
+          "arithmetic_expansion",
+          fixture.arithmeticCount,
+        );
+        assertOccurrenceCount(
+          output,
+          "arithmetic_dynamic_expression",
+          fixture.arithmeticCount,
+        );
+        assertOccurrenceCount(
+          output,
+          "command_substitution\n",
+          fixture.commandCount,
+        );
+        assertOccurrenceCount(
+          output,
+          "parameter_expansion",
+          count + fixture.extraParameters,
+        );
+      }
+      measurements.push({
+        fresh: medianFreshParseDuration(final, name),
+        incremental: medianIncrementalParseDuration(initial, edit, name),
+      });
+    }
+    for (const operation of ["fresh", "incremental"]) {
+      const small = measurements[0][operation];
+      const large = measurements[1][operation];
+      const ratio =
+        small === 0
+          ? "below timing resolution"
+          : `${(large / small).toFixed(2)}x`;
+      context.diagnostic(
+        `${operation} ${fixture.name}, ${64 + fixture.extraParameters} to ${128 + fixture.extraParameters} runtime fragments: ${small}ms to ${large}ms (${ratio})`,
+      );
+    }
+  }
+});

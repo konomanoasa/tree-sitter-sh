@@ -1,3 +1,4 @@
+#include "arithmetic.h"
 #include "tree_sitter/alloc.h"
 #include "tree_sitter/parser.h"
 
@@ -125,6 +126,7 @@ enum TokenType {
   BACKQUOTE_DOLLAR_SINGLE_QUOTE_TEXT,
   BACKQUOTE_DOLLAR_SINGLE_QUOTE_PREFIX,
   BACKQUOTE_PATTERN_ESCAPE,
+  PATTERN_CHARACTER_CLASS_END_COLON,
   TOKEN_COUNT,
 };
 
@@ -929,12 +931,6 @@ static bool is_quote_or_expansion_start(int32_t character) {
   );
 }
 
-enum ArithmeticValidation {
-  ARITHMETIC_VALIDATION_INVALID,
-  ARITHMETIC_VALIDATION_INCOMPLETE,
-  ARITHMETIC_VALIDATION_VALID,
-  ARITHMETIC_VALIDATION_RESOURCE_FAILURE,
-};
 struct ValidationToken {
   uint8_t kind;
   uint8_t category;
@@ -948,6 +944,9 @@ struct ValidationTokenBuffer {
 
 struct ArithmeticScan {
   struct ValidationTokenBuffer tokens;
+  int32_t *source;
+  size_t source_length;
+  size_t source_capacity;
   struct EmbeddedSkip *embedded;
   char embedded_closer;
   size_t group_depth;
@@ -992,8 +991,8 @@ struct LookaheadLexer {
   bool failed;
 };
 
-static bool grow_element_buffer(
-  void **data,
+static void *grow_element_buffer(
+  void *data,
   size_t *capacity,
   size_t length,
   size_t element_size,
@@ -1007,17 +1006,19 @@ static void lookahead_seek(struct LookaheadLexer *lookahead, size_t position) {
 }
 
 static bool lookahead_append(struct LookaheadLexer *lookahead) {
-  if (!grow_element_buffer(
-        (void **)&lookahead->characters,
-        &lookahead->capacity,
-        lookahead->length,
-        sizeof(struct LookaheadCharacter),
-        64
-      )) {
+  struct LookaheadCharacter *characters = grow_element_buffer(
+    lookahead->characters,
+    &lookahead->capacity,
+    lookahead->length,
+    sizeof(struct LookaheadCharacter),
+    64
+  );
+  if (characters == NULL) {
     lookahead->failed = true;
     lookahead->lexer.lookahead = 0;
     return false;
   }
+  lookahead->characters = characters;
   lookahead->characters[lookahead->length++] = (struct LookaheadCharacter){
     .value =
       lexer_at_eof(lookahead->source) ? -1 : lookahead->source->lookahead,
@@ -1118,16 +1119,18 @@ lookup_ambiguous_substitution(const struct Scanner *scanner, TSLexer *lexer) {
       return substitution;
     }
   }
-  if (!grow_element_buffer(
-        (void **)&lookahead->substitutions,
-        &lookahead->substitution_capacity,
-        lookahead->substitution_count,
-        sizeof(struct AmbiguousSubstitution),
-        8
-      )) {
+  struct AmbiguousSubstitution *substitutions = grow_element_buffer(
+    lookahead->substitutions,
+    &lookahead->substitution_capacity,
+    lookahead->substitution_count,
+    sizeof(struct AmbiguousSubstitution),
+    8
+  );
+  if (substitutions == NULL) {
     lookahead->failed = true;
     return NULL;
   }
+  lookahead->substitutions = substitutions;
   size_t index = lookahead->substitution_count++;
   lookahead->substitutions[index] = (struct AmbiguousSubstitution){
     .start = lookahead->position,
@@ -1742,43 +1745,43 @@ static enum CaseTrackerNote case_tracker_note_word(
   return CASE_TRACKER_NOTE_WORD;
 }
 
-static bool grow_element_buffer(
-  void **data,
+static void *grow_element_buffer(
+  void *data,
   size_t *capacity,
   size_t length,
   size_t element_size,
   size_t initial_capacity
 ) {
   if (length < *capacity) {
-    return true;
+    return data;
   }
 
   size_t next_capacity = *capacity == 0 ? initial_capacity : *capacity * 2;
   if (next_capacity < *capacity || next_capacity > SIZE_MAX / element_size) {
-    return false;
+    return NULL;
   }
 
-  void *resized = ts_realloc(*data, next_capacity * element_size);
+  void *resized = ts_realloc(data, next_capacity * element_size);
   if (resized == NULL) {
-    return false;
+    return NULL;
   }
-  *data = resized;
   *capacity = next_capacity;
-  return true;
+  return resized;
 }
 
 static bool append_case_tracker(struct CaseTrackerBuffer *cases, size_t depth) {
-  if (!grow_element_buffer(
-        (void **)&cases->data,
-        &cases->capacity,
-        cases->length,
-        sizeof(struct CaseTracker),
-        8
-      )) {
+  struct CaseTracker *data = grow_element_buffer(
+    cases->data,
+    &cases->capacity,
+    cases->length,
+    sizeof(struct CaseTracker),
+    8
+  );
+  if (data == NULL) {
     cases->failed = true;
     return false;
   }
-
+  cases->data = data;
   cases->data[cases->length] = (struct CaseTracker){
     .depth = depth,
     .state = CASE_TRACKER_EXPECT_WORD,
@@ -1803,21 +1806,22 @@ static bool push_delimiter_group(
   enum DelimiterGroupKind kind,
   enum DelimiterQuote parent_quote
 ) {
-  if (
-    groups->length >=
-    SCANNER_STATE_CAPACITY ||
-    !grow_element_buffer(
-      (void **)&groups->data,
-      &groups->capacity,
-      groups->length,
-      sizeof(struct DelimiterGroupFrame),
-      16
-    )
-  ) {
+  if (groups->length >= SCANNER_STATE_CAPACITY) {
     groups->failed = true;
     return false;
   }
-
+  struct DelimiterGroupFrame *data = grow_element_buffer(
+    groups->data,
+    &groups->capacity,
+    groups->length,
+    sizeof(struct DelimiterGroupFrame),
+    16
+  );
+  if (data == NULL) {
+    groups->failed = true;
+    return false;
+  }
+  groups->data = data;
   groups->data[groups->length] = (struct DelimiterGroupFrame){
     .closing = closing,
     .kind = kind,
@@ -5011,20 +5015,80 @@ static bool append_validation_token(
   uint8_t kind,
   uint8_t category
 ) {
-  if (!grow_element_buffer(
-        (void **)&tokens->data,
-        &tokens->capacity,
-        tokens->length,
-        sizeof(struct ValidationToken),
-        64
-      )) {
+  struct ValidationToken *data = grow_element_buffer(
+    tokens->data,
+    &tokens->capacity,
+    tokens->length,
+    sizeof(struct ValidationToken),
+    64
+  );
+  if (data == NULL) {
     return false;
   }
-
+  tokens->data = data;
   tokens->data[tokens->length] =
     (struct ValidationToken){.kind = kind, .category = category};
   tokens->length += 1;
   return true;
+}
+
+static bool
+append_arithmetic_source(struct ArithmeticScan *scan, int32_t character) {
+  if (character == ' ' || character == '\t' || character == '\n') {
+    character = ' ';
+    if (
+      scan->source_length > 0 && scan->source[scan->source_length - 1] == ' '
+    ) {
+      return true;
+    }
+  }
+  if (character == -1 && scan->source_length > 0) {
+    if (scan->source[scan->source_length - 1] == -1) {
+      return true;
+    }
+    if (
+      scan->source_length >=
+      4 &&
+      scan->source[scan->source_length - 1] ==
+      ' ' &&
+      scan->source[scan->source_length - 2] ==
+      -1 &&
+      scan->source[scan->source_length - 3] ==
+      ' ' &&
+      scan->source[scan->source_length - 4] == -1
+    ) {
+      // Two fragments retain the mandatory blank separating their tokens.
+      scan->source_length -= 2;
+    }
+  }
+  int32_t *source = grow_element_buffer(
+    scan->source,
+    &scan->source_capacity,
+    scan->source_length,
+    sizeof(int32_t),
+    64
+  );
+  if (source == NULL) {
+    return false;
+  }
+  scan->source = source;
+  scan->source[scan->source_length++] = character;
+  return true;
+}
+
+static bool
+advance_arithmetic_source(TSLexer *lexer, struct ArithmeticScan *scan) {
+  if (!append_arithmetic_source(scan, lexer->lookahead)) {
+    return false;
+  }
+  lexer->advance(lexer, false);
+  return true;
+}
+
+static bool append_arithmetic_expansion(struct ArithmeticScan *scan) {
+  scan->has_expansion = true;
+  return append_arithmetic_source(scan, -1) &&
+    append_validation_token(&scan->tokens, VALIDATION_TOKEN_EXPANSION, 0);
 }
 
 enum EmbeddedFrameKind {
@@ -5065,6 +5129,7 @@ static void clear_embedded_skip(struct EmbeddedSkip *skip) {
 
 static void clear_arithmetic_scan(struct ArithmeticScan *scan) {
   ts_free(scan->tokens.data);
+  ts_free(scan->source);
   if (scan->embedded != NULL) {
     clear_embedded_skip(scan->embedded);
     ts_free(scan->embedded);
@@ -5078,15 +5143,17 @@ static bool embedded_push_frame(
   enum EmbeddedFrameKind kind,
   bool double_quoted
 ) {
-  if (!grow_element_buffer(
-        (void **)&skip->frames,
-        &skip->frame_capacity,
-        skip->frame_count,
-        sizeof(struct EmbeddedFrame),
-        16
-      )) {
+  struct EmbeddedFrame *frames = grow_element_buffer(
+    skip->frames,
+    &skip->frame_capacity,
+    skip->frame_count,
+    sizeof(struct EmbeddedFrame),
+    16
+  );
+  if (frames == NULL) {
     return false;
   }
+  skip->frames = frames;
   skip->frames[skip->frame_count] = (struct EmbeddedFrame){
     .closer = closer,
     .kind = kind,
@@ -5145,15 +5212,17 @@ static bool embedded_append_pending(
   struct EmbeddedSkip *skip,
   struct HereDocument document
 ) {
-  if (!grow_element_buffer(
-        (void **)&skip->pending,
-        &skip->pending_capacity,
-        skip->pending_count,
-        sizeof(struct HereDocument),
-        4
-      )) {
+  struct HereDocument *pending = grow_element_buffer(
+    skip->pending,
+    &skip->pending_capacity,
+    skip->pending_count,
+    sizeof(struct HereDocument),
+    4
+  );
+  if (pending == NULL) {
     return false;
   }
+  skip->pending = pending;
   skip->pending[skip->pending_count] = document;
   skip->pending_count += 1;
   return true;
@@ -5700,17 +5769,24 @@ skip_backquote_substitution(TSLexer *lexer, size_t enclosing_depth) {
 }
 
 static bool
-validate_number_source(TSLexer *lexer, struct ValidationTokenBuffer *tokens) {
+validate_number_source(TSLexer *lexer, struct ArithmeticScan *scan) {
+  struct ValidationTokenBuffer *tokens = &scan->tokens;
   bool single_token = true;
 
   if (lexer->lookahead == '0') {
-    lexer->advance(lexer, false);
+    if (!advance_arithmetic_source(lexer, scan)) {
+      return false;
+    }
     if (lexer->lookahead == 'x' || lexer->lookahead == 'X') {
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
       size_t digits = 0;
       while (is_hexadecimal_digit(lexer->lookahead)) {
         digits += 1;
-        lexer->advance(lexer, false);
+        if (!advance_arithmetic_source(lexer, scan)) {
+          return false;
+        }
       }
       single_token = digits > 0;
     } else {
@@ -5718,12 +5794,16 @@ validate_number_source(TSLexer *lexer, struct ValidationTokenBuffer *tokens) {
         if (lexer->lookahead > '7') {
           single_token = false;
         }
-        lexer->advance(lexer, false);
+        if (!advance_arithmetic_source(lexer, scan)) {
+          return false;
+        }
       }
     }
   } else {
     while (is_decimal_digit(lexer->lookahead)) {
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
     }
   }
 
@@ -5739,7 +5819,9 @@ validate_number_source(TSLexer *lexer, struct ValidationTokenBuffer *tokens) {
 
   if (is_name_character(lexer->lookahead)) {
     while (is_name_character(lexer->lookahead)) {
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
     }
     return append_validation_token(tokens, VALIDATION_TOKEN_VARIABLE, 0);
   }
@@ -5748,9 +5830,13 @@ validate_number_source(TSLexer *lexer, struct ValidationTokenBuffer *tokens) {
 
 static bool validate_operator_source(
   TSLexer *lexer,
-  struct ValidationTokenBuffer *tokens,
+  struct ArithmeticScan *scan,
   int32_t first
 ) {
+  struct ValidationTokenBuffer *tokens = &scan->tokens;
+  if (!append_arithmetic_source(scan, first)) {
+    return false;
+  }
   uint8_t category;
   int32_t second = lexer->lookahead;
 
@@ -5759,14 +5845,18 @@ static bool validate_operator_source(
     category = ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
     if (second == '=') {
       category = ARITHMETIC_OPERATOR_CATEGORY_EQUALITY;
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
     }
     break;
   case '!':
     category = VALIDATION_OPERATOR_BANG;
     if (second == '=') {
       category = ARITHMETIC_OPERATOR_CATEGORY_EQUALITY;
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
     }
     break;
   case '|':
@@ -5778,25 +5868,35 @@ static bool validate_operator_source(
                       : ARITHMETIC_OPERATOR_CATEGORY_BITWISE_XOR);
     if (second == '=') {
       category = ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
     } else if (second == first && first != '^') {
       category = first == '|' ? ARITHMETIC_OPERATOR_CATEGORY_LOGICAL_OR
                               : ARITHMETIC_OPERATOR_CATEGORY_LOGICAL_AND;
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
     }
     break;
   case '<':
   case '>':
     category = ARITHMETIC_OPERATOR_CATEGORY_RELATIONAL;
     if (second == first) {
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
       category = ARITHMETIC_OPERATOR_CATEGORY_SHIFT;
       if (lexer->lookahead == '=') {
         category = ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
-        lexer->advance(lexer, false);
+        if (!advance_arithmetic_source(lexer, scan)) {
+          return false;
+        }
       }
     } else if (second == '=') {
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
     }
     break;
   case '+':
@@ -5804,10 +5904,14 @@ static bool validate_operator_source(
     category = ARITHMETIC_OPERATOR_CATEGORY_ADDITIVE;
     if (second == '=') {
       category = ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
     } else if (second == first) {
       category = VALIDATION_OPERATOR_REPEATED_SIGN;
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
     }
     break;
   case '*':
@@ -5816,7 +5920,9 @@ static bool validate_operator_source(
     category = ARITHMETIC_OPERATOR_CATEGORY_MULTIPLICATIVE;
     if (second == '=') {
       category = ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
-      lexer->advance(lexer, false);
+      if (!advance_arithmetic_source(lexer, scan)) {
+        return false;
+      }
     }
     break;
   case '?':
@@ -5839,7 +5945,6 @@ static enum ArithmeticValidation validate_arithmetic_content(
   struct ArithmeticScan *scan
 ) {
   struct ValidationTokenBuffer *tokens = &scan->tokens;
-  bool *has_expansion = &scan->has_expansion;
 
   while (true) {
     if (scan->embedded != NULL) {
@@ -5864,8 +5969,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
       if (nested != ARITHMETIC_VALIDATION_VALID) {
         return nested;
       }
-      *has_expansion = true;
-      if (!append_validation_token(tokens, VALIDATION_TOKEN_EXPANSION, 0)) {
+      if (!append_arithmetic_expansion(scan)) {
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
@@ -5889,8 +5993,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
           if (nested != ARITHMETIC_VALIDATION_VALID) {
             return nested;
           }
-          *has_expansion = true;
-          if (!append_validation_token(tokens, VALIDATION_TOKEN_EXPANSION, 0)) {
+          if (!append_arithmetic_expansion(scan)) {
             return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
           }
           continue;
@@ -5920,6 +6023,9 @@ static enum ArithmeticValidation validate_arithmetic_content(
     }
 
     if (character == ' ' || character == '\t' || character == '\n') {
+      if (!append_arithmetic_source(scan, character)) {
+        return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
+      }
       lexer->advance(lexer, false);
       continue;
     }
@@ -5929,12 +6035,10 @@ static enum ArithmeticValidation validate_arithmetic_content(
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       scan->group_depth += 1;
-      lexer->advance(lexer, false);
-      if (!append_validation_token(
-            tokens,
-            VALIDATION_TOKEN_LEFT_PARENTHESIS,
-            0
-          )) {
+      if (
+        !advance_arithmetic_source(lexer, scan) ||
+        !append_validation_token(tokens, VALIDATION_TOKEN_LEFT_PARENTHESIS, 0)
+      ) {
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
@@ -5944,11 +6048,14 @@ static enum ArithmeticValidation validate_arithmetic_content(
       lexer->advance(lexer, false);
       if (scan->group_depth > 0) {
         scan->group_depth -= 1;
-        if (!append_validation_token(
-              tokens,
-              VALIDATION_TOKEN_RIGHT_PARENTHESIS,
-              0
-            )) {
+        if (
+          !append_arithmetic_source(scan, ')') ||
+          !append_validation_token(
+            tokens,
+            VALIDATION_TOKEN_RIGHT_PARENTHESIS,
+            0
+          )
+        ) {
           return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
         }
         continue;
@@ -5962,7 +6069,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
     }
 
     if (is_decimal_digit(character)) {
-      if (!validate_number_source(lexer, tokens)) {
+      if (!validate_number_source(lexer, scan)) {
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
@@ -5970,7 +6077,9 @@ static enum ArithmeticValidation validate_arithmetic_content(
 
     if (is_name_start_character(character)) {
       while (is_name_character(lexer->lookahead)) {
-        lexer->advance(lexer, false);
+        if (!advance_arithmetic_source(lexer, scan)) {
+          return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
+        }
       }
       if (!append_validation_token(tokens, VALIDATION_TOKEN_VARIABLE, 0)) {
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
@@ -6003,8 +6112,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
       } else {
         return ARITHMETIC_VALIDATION_INVALID;
       }
-      *has_expansion = true;
-      if (!append_validation_token(tokens, VALIDATION_TOKEN_EXPANSION, 0)) {
+      if (!append_arithmetic_expansion(scan)) {
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
@@ -6019,8 +6127,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
       if (nested != ARITHMETIC_VALIDATION_VALID) {
         return nested;
       }
-      *has_expansion = true;
-      if (!append_validation_token(tokens, VALIDATION_TOKEN_EXPANSION, 0)) {
+      if (!append_arithmetic_expansion(scan)) {
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
@@ -6028,7 +6135,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
 
     if (is_arithmetic_operator_start(character) || character == '~') {
       lexer->advance(lexer, false);
-      if (!validate_operator_source(lexer, tokens, character)) {
+      if (!validate_operator_source(lexer, scan, character)) {
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
       continue;
@@ -6140,16 +6247,18 @@ validate_structured_expression(const struct StructuredValidation *validation) {
         continue;
       }
       if (token->kind == VALIDATION_TOKEN_LEFT_PARENTHESIS) {
-        if (!grow_element_buffer(
-              (void **)&contexts,
-              &context_capacity,
-              context_count,
-              sizeof(uint8_t),
-              16
-            )) {
+        uint8_t *grown = grow_element_buffer(
+          contexts,
+          &context_capacity,
+          context_count,
+          sizeof(uint8_t),
+          16
+        );
+        if (grown == NULL) {
           ts_free(contexts);
           return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
         }
+        contexts = grown;
         contexts[context_count] = STRUCTURED_CONTEXT_GROUP;
         context_count += 1;
         at_expression_start = true;
@@ -6201,16 +6310,18 @@ validate_structured_expression(const struct StructuredValidation *validation) {
       continue;
     }
     if (token->category == ARITHMETIC_OPERATOR_CATEGORY_QUESTION) {
-      if (!grow_element_buffer(
-            (void **)&contexts,
-            &context_capacity,
-            context_count,
-            sizeof(uint8_t),
-            16
-          )) {
+      uint8_t *grown = grow_element_buffer(
+        contexts,
+        &context_capacity,
+        context_count,
+        sizeof(uint8_t),
+        16
+      );
+      if (grown == NULL) {
         ts_free(contexts);
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
+      contexts = grown;
       contexts[context_count] = STRUCTURED_CONTEXT_TERNARY;
       context_count += 1;
       expecting_operand = true;
@@ -6288,7 +6399,13 @@ static enum TokenType classify_arithmetic_source(
     } else if (structured == ARITHMETIC_VALIDATION_VALID) {
       symbol = ARITHMETIC_LEFT_PARENTHESIS;
     } else if (scan->has_expansion) {
-      symbol = ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS;
+      enum ArithmeticValidation dynamic =
+        validate_dynamic_arithmetic(scan->source, scan->source_length);
+      if (dynamic == ARITHMETIC_VALIDATION_VALID) {
+        symbol = ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS;
+      } else if (dynamic == ARITHMETIC_VALIDATION_RESOURCE_FAILURE) {
+        *result = dynamic;
+      }
     }
   } else if (*result == ARITHMETIC_VALIDATION_INCOMPLETE) {
     symbol = ARITHMETIC_LEFT_PARENTHESIS;
@@ -7839,6 +7956,15 @@ static bool scan_dispatch(
 
   if (lexer->lookahead == '$' && valid_symbols[DOLLAR_EXPANSION_START]) {
     return scan_dollar_expansion_start(lexer);
+  }
+
+  if (
+    lexer->lookahead == ':' && valid_symbols[PATTERN_CHARACTER_CLASS_END_COLON]
+  ) {
+    lexer->advance(lexer, false);
+    lexer->mark_end(lexer);
+    lexer->result_symbol = PATTERN_CHARACTER_CLASS_END_COLON;
+    return lexer->lookahead == ']';
   }
 
   if (lexer->lookahead == '[' && valid_symbols[PATTERN_SPECIAL_LEFT_BRACKET]) {

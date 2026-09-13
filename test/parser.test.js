@@ -372,6 +372,262 @@ test("sh: lexical leaves retain complete source without internal token children"
   }
 });
 
+test("sh: fixed arithmetic errors select a subshell despite runtime fragments", () => {
+  for (const [name, expression, subshells] of [
+    ["leading-colon", ": $x", 1],
+    ["optional-increment", "++a $x", 1],
+    ["optional-decrement", "--a $x", 1],
+    ["empty-conditional-consequence", "1 ? : $x", 1],
+    ["adjacent-fixed-operands", "1 2 $x", 1],
+    ["invalid-octal-before-fragment", "08 $x", 1],
+    ["uncompleted-hexadecimal-before-blank", "0x $x", 1],
+    ["invalid-fixed-operand-operator", "1 + * $x", 1],
+    ["invalid-operator-between-fragments", "$x + * $y", 1],
+    ["missing-final-operand", "1 + $x *", 1],
+    ["numeric-assignment-target", "1 = $x", 1],
+    ["binary-assignment-target", "a + $x = 2", 1],
+    ["parenthesized-fixed-error", "(1 = $x)", 2],
+  ]) {
+    const contents = `echo $((${expression}))\n`;
+    const end = contents.length - 1;
+    const output = parseValidCst(writeSource(name, contents));
+    assertOccurrenceCount(output, "arithmetic_expansion\n", 0);
+    assertOccurrenceCount(output, "command_substitution\n", 1);
+    assertOccurrenceCount(output, "subshell\n", subshells);
+    for (const [parentRange, parent, childRange, child] of [
+      [`0:5-0:${end}`, "command_substitution", "0:5-0:6", '"$"'],
+      [`0:5-0:${end}`, "command_substitution", "0:6-0:7", '"("'],
+      [`0:5-0:${end}`, "command_substitution", `0:${end - 1}-0:${end}`, '")"'],
+      [`0:7-0:${end - 1}`, "subshell", "0:7-0:8", '"("'],
+      [`0:7-0:${end - 1}`, "subshell", `0:${end - 2}-0:${end - 1}`, '")"'],
+    ]) {
+      assertCstDirectChildRange(output, parentRange, parent, childRange, child);
+    }
+  }
+});
+
+test("sh: runtime fragments can complete arithmetic lexemes and productions", () => {
+  for (const [name, expression, completion, completed] of [
+    ["hexadecimal-prefix", `0x\${x}`, "F", "0xF"],
+    ["octal-prefix", `0\${x}`, "7", "07"],
+    ["empty-numeric-fragment", `1\${x}2`, "", "12"],
+    ["numeric-suffix-and-operator", `1\${x} 2`, "+", "1+ 2"],
+    ["equality-operator", `1 =\${x} 2`, "=", "1 == 2"],
+    ["conditional-prefix", `\${x} : 2`, "1 ? 3", "1 ? 3 : 2"],
+    ["conditional-suffix", `1 ? \${x}`, "2 : 3", "1 ? 2 : 3"],
+    ["assignment-target", `\${x} = 1`, "a", "a = 1"],
+    ["parenthesized-assignment-target", `(\${x}) = 1`, "a", "(a) = 1"],
+    [
+      "conditional-assignment-consequence",
+      `a + \${x} = 2 : 3`,
+      "b ? c",
+      "a + b ? c = 2 : 3",
+    ],
+    ["parenthesized-operand", `(1 \${x}) * 2`, "+ 3", "(1 + 3) * 2"],
+    ["operator-before-group", `\${x}(1 + 2)`, "2 * ", "2 * (1 + 2)"],
+  ]) {
+    assert.equal(expression.replace(`\${x}`, completion), completed, name);
+    for (const [variant, value] of [
+      ["runtime", expression],
+      ["completion", completed],
+    ]) {
+      const contents = `echo $((${value}))\n`;
+      const output = parseValidCst(writeSource(`${name}-${variant}`, contents));
+      assertOccurrenceCount(output, "arithmetic_expansion\n", 1);
+      assertOccurrenceCount(output, "command_substitution\n", 0);
+      assertCstRange(
+        output,
+        `0:5-0:${contents.length - 1}`,
+        "arithmetic_expansion",
+      );
+    }
+  }
+});
+
+test("sh: arithmetic viability follows edits through nested scanner callers", () => {
+  for (const [name, initial, final, range, outerArithmetic] of [
+    [
+      "plain-substitution",
+      "echo $((1 $x))\n",
+      "echo $((: $x))\n",
+      "0:5-0:14",
+      0,
+    ],
+    [
+      "nested-arithmetic",
+      "echo $((1 + $((1 $x))))\n",
+      "echo $((1 + $((: $x))))\n",
+      "0:12-0:21",
+      1,
+    ],
+    [
+      "quoted-parameter-word",
+      `echo "\${value:-$((1 $x))}"\n`,
+      `echo "\${value:-$((: $x))}"\n`,
+      "0:15-0:24",
+      0,
+    ],
+    [
+      "here-document-body",
+      "cat <<END\n$((1 $x))\nEND\n",
+      "cat <<END\n$((: $x))\nEND\n",
+      "1:0-1:9",
+      0,
+    ],
+    [
+      "here-document-delimiter",
+      "cat <<$((1 $x))\nbody\n$((1 $x))\n",
+      "cat <<$((: $x))\nbody\n$((: $x))\n",
+      "0:6-0:15",
+      0,
+    ],
+    [
+      "backquote-command",
+      "echo `echo $((1 $x))`\n",
+      "echo `echo $((: $x))`\n",
+      "0:11-0:20",
+      0,
+    ],
+  ]) {
+    const initialSource = writeSource(`${name}-viable`, initial);
+    const finalSource = writeSource(`${name}-impossible`, final);
+    const edits = [];
+    for (
+      let byte = initial.indexOf("1 $x");
+      byte !== -1;
+      byte = initial.indexOf("1 $x", byte + 1)
+    ) {
+      edits.push({ byte, deleteBytes: 1, insert: ":" });
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      initialSource,
+      finalSource,
+      `${name}-select-command-substitution`,
+      ...edits,
+    )) {
+      assertCstRange(output, range, "command_substitution");
+      assertOccurrenceCount(output, "arithmetic_expansion\n", outerArithmetic);
+      assertOccurrenceCount(output, "command_substitution\n", 1);
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      finalSource,
+      initialSource,
+      `${name}-restore-arithmetic-expansion`,
+      ...edits.map((edit) => ({ ...edit, insert: "1" })),
+    )) {
+      assertCstRange(output, range, "arithmetic_expansion");
+      assertOccurrenceCount(
+        output,
+        "arithmetic_expansion\n",
+        outerArithmetic + 1,
+      );
+      assertOccurrenceCount(output, "command_substitution\n", 0);
+    }
+  }
+});
+
+test("sh: character-class source colons close only before a right bracket", () => {
+  for (const [
+    name,
+    initial,
+    final,
+    byte,
+    classRange,
+    contentRange,
+    content,
+    closerRange,
+  ] of [
+    [
+      "assignment-adjacent-colons",
+      "x=[[:a:]]\n",
+      "x=[[:a::]]\n",
+      6,
+      "0:3-0:9",
+      "0:5-0:7",
+      "a:",
+      "0:7-0:8",
+    ],
+    [
+      "word-interior-colon",
+      "echo [[:ab:]]\n",
+      "echo [[:a:b:]]\n",
+      9,
+      "0:6-0:13",
+      "0:8-0:11",
+      "a:b",
+      "0:11-0:12",
+    ],
+    [
+      "parameter-pattern-colon",
+      `echo \${x#[[:a:]]}\n`,
+      `echo \${x#[[:a::]]}\n`,
+      13,
+      "0:10-0:16",
+      "0:12-0:14",
+      "a:",
+      "0:14-0:15",
+    ],
+    [
+      "tilde-user-colon",
+      "echo ~[[:a:]]\n",
+      "echo ~[[:a::]]\n",
+      10,
+      "0:7-0:13",
+      "0:9-0:11",
+      "a:",
+      "0:11-0:12",
+    ],
+    [
+      "colon-before-expansion",
+      "echo [[:a$x:]]\n",
+      "echo [[:a:$x:]]\n",
+      9,
+      "0:6-0:14",
+      "0:8-0:10",
+      "a:",
+      "0:12-0:13",
+    ],
+  ]) {
+    for (const output of assertIncrementalEqualsFresh(
+      writeSource(`${name}-initial`, initial),
+      writeSource(`${name}-final`, final),
+      name,
+      { byte, deleteBytes: 0, insert: ":" },
+    )) {
+      assertCstDirectChildRange(
+        output,
+        classRange,
+        "member: pattern_character_class_source",
+        contentRange,
+        `content: pattern_character_class_content_source \`${content}\``,
+      );
+      assertCstDirectChildRange(
+        output,
+        classRange,
+        "member: pattern_character_class_source",
+        closerRange,
+        '":"',
+      );
+    }
+  }
+  const delimiterOutput = parseValidCst(
+    writeSource(
+      "here-document-class-colon-delimiter",
+      "cat <<[[:a::]]\nbody\n[[:a::]]\n",
+    ),
+  );
+  for (const [range, item] of [
+    ["0:6-0:14", "end: here_end"],
+    ["0:9-0:11", "content: pattern_character_class_content_source `a:`"],
+    ["0:11-0:12", '":"'],
+    ["1:0-2:0", "body: here_document_body"],
+    ["2:0-3:0", "end: here_document_end"],
+    ["2:0-2:8", "here_document_end_text `[[:a::]]`"],
+  ]) {
+    assertCstRange(delimiterOutput, range, item);
+  }
+});
+
 test("sh: parameter bracket elements retain literal spaces and dollars", () => {
   for (const [name, contents, range, leaf] of [
     [

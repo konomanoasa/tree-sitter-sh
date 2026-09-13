@@ -6689,7 +6689,7 @@
                 "type": "ALIAS",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "_pattern_character_class_colon"
+                  "name": "_pattern_character_class_end_colon"
                 },
                 "named": false,
                 "value": ":"
@@ -6866,7 +6866,7 @@
                 "type": "ALIAS",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "_pattern_character_class_colon"
+                  "name": "_pattern_character_class_end_colon"
                 },
                 "named": false,
                 "value": ":"
@@ -13782,6 +13782,10 @@
     {
       "type": "SYMBOL",
       "name": "_backquote_pattern_escape"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_pattern_character_class_end_colon"
     }
   ],
   "inline": [],

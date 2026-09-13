@@ -469,7 +469,7 @@ const patternCharacterClassSource = ($, content) =>
     seq(
       patternSpecialStart($, alias($._pattern_character_class_colon, ":")),
       patternCharacterClassBody($, content),
-      patternSpecialEnd($, alias($._pattern_character_class_colon, ":")),
+      patternSpecialEnd($, alias($._pattern_character_class_end_colon, ":")),
     ),
   );
 
@@ -897,6 +897,7 @@ export default grammar({
     $._backquote_dollar_single_quote_text,
     $._backquote_dollar_single_quote_prefix,
     $._backquote_pattern_escape,
+    $._pattern_character_class_end_colon,
   ],
 
   conflicts: ($) => [
