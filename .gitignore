@@ -4,3 +4,5 @@
 *.o
 
 node_modules/
+
+target/

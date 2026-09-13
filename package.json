@@ -6,6 +6,8 @@
   "license": "MIT",
   "repository": "git+https://github.com/konomanoasa/tree-sitter-sh.git",
   "files": [
+    "Cargo.toml",
+    "bindings/rust/*.rs",
     "grammar.js",
     "queries/*.scm",
     "src/*.c",
