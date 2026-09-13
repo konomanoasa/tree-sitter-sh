@@ -490,7 +490,6 @@ for i in\
                     (name)
                     (in
                       (in_keyword))
-                    (line_continuation)
                     (wordlist
                       (word
                         (literal)))
@@ -539,8 +538,6 @@ word; do :; done
                     name: (name)
                     in: (in
                       (in_keyword))
-                    (line_continuation)
-                    (line_continuation)
                     words: (wordlist
                       word: (word
                         (literal)))
@@ -588,7 +585,6 @@ do :; done
                   (for_clause
                     (for_keyword)
                     (name)
-                    (line_continuation)
                     (in
                       (in_keyword))
                     (wordlist
@@ -621,7 +617,6 @@ do :; done
                   (for_clause
                     (for_keyword)
                     (name)
-                    (line_continuation)
                     (do_group
                       (do_keyword)
                       (compound_list
@@ -648,3 +643,72 @@ for loop variables must be POSIX names
 for bad-name; do :; done
 
 ---
+
+
+
+==================
+encoded continuations delimit adjacent words and the end of a for list
+==================
+
+: `for x in one\\
+ ~user\\
+ ; do :; done`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (compound_command
+                                          (for_clause
+                                            (for_keyword)
+                                            (name)
+                                            (in
+                                              (in_keyword))
+                                            (wordlist
+                                              (word
+                                                (literal))
+                                              (word
+                                                (tilde_expansion
+                                                  (tilde_user
+                                                    (literal)))))
+                                            (sequential_sep)
+                                            (do_group
+                                              (do_keyword)
+                                              (compound_list
+                                                (term
+                                                  (and_or
+                                                    (pipeline
+                                                      (pipe_sequence
+                                                        (command
+                                                          (simple_command
+                                                            (cmd_name
+                                                              (word
+                                                                (literal)))))))))
+                                                (separator
+                                                  (separator_op)))
+                                              (done_keyword)))))))))))))))))))))))
+  (linebreak
+    (newline_list)))

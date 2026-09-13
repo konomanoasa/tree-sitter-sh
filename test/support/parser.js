@@ -3,10 +3,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { after, before } from "node:test";
 import { createTreeSitter, grammars, root } from "../../scripts/tree-sitter.js";
+import {
+  assertCstSourceContract,
+  continuationManifest,
+  cstFingerprint,
+  logicalProjection,
+  nodeIdentity,
+  parseCst,
+} from "./cst.js";
 
 const grammarName = grammars[0].name;
 
-const contractsQuerySource = `(line_continuation) @line.continuation
+const contractsQuerySource = `"\\\\" @line.continuation
 
 (function_definition
   name: (fname) @function)
@@ -85,9 +93,13 @@ function sourceEndPoint(source) {
   return `${row}:${bytes.length - bytes.lastIndexOf(10) - 1}`;
 }
 
-function runParserCommand(arguments_, allowedStatuses = [0]) {
+function runParserCommand(
+  arguments_,
+  allowedStatuses = [0],
+  processTimeout = parserProcessTimeout,
+) {
   const result = treeSitter.run(arguments_, {
-    timeout: parserProcessTimeout,
+    timeout: processTimeout,
   });
   assert.ifError(result.error);
   assert.ok(
@@ -157,6 +169,7 @@ function runParse({
   source,
   expectedSource = source,
   timeout = defaultParseTimeout,
+  processTimeout = parserProcessTimeout,
 }) {
   const arguments_ = [
     "parse",
@@ -181,7 +194,7 @@ function runParse({
   }
   arguments_.push("--", source);
 
-  const result = runParserCommand(arguments_, [0, 1]);
+  const result = runParserCommand(arguments_, [0, 1], processTimeout);
   const output = result.stdout;
   assert.ok(
     output.length > 0,
@@ -240,6 +253,9 @@ function runParse({
     expectedEnd,
     `${description}: parser stopped at ${actualEnd} before source EOF ${expectedEnd}`,
   );
+  if (format === "cst" && mode === "valid") {
+    assertCstSourceContract(output, fs.readFileSync(expectedSource));
+  }
   return {
     debugOutput: result.stderr,
     output,
@@ -260,32 +276,6 @@ function runQuery(source, queryPath = contractsQuery) {
     "--",
     source,
   ]).stdout;
-}
-
-function parseCst(output) {
-  const entries = [];
-  for (const line of output.split("\n")) {
-    const match = line.match(
-      /^([0-9]+:[0-9]+)[ ]+-[ ]+([0-9]+:[0-9]+)([ ]+)(.*)$/,
-    );
-    if (match === null) {
-      continue;
-    }
-    let content = match[4];
-    const rangeWidth = line.indexOf("-") - 1;
-    let depth = match[3].length - Math.max(0, rangeWidth - match[2].length);
-    if (content.startsWith("•")) {
-      content = content.slice(1);
-      depth += 1;
-    }
-    entries.push({
-      content,
-      depth,
-      line,
-      range: `${match[1]}-${match[2]}`,
-    });
-  }
-  return entries;
 }
 
 function assertContains(output, expected, description = expected) {
@@ -314,6 +304,13 @@ function assertOccurrenceCount(output, expected, count) {
     offset = found + expected.length;
   }
   assert.equal(actual, count, `expected ${count} occurrences of ${expected}`);
+}
+
+function assertNodeCount(output, type, count) {
+  const actual = parseCst(output).filter(
+    (entry) => nodeIdentity(entry).type === type,
+  ).length;
+  assert.equal(actual, count, `expected ${count} ${type} nodes`);
 }
 
 function normalizeRange(range) {
@@ -381,26 +378,6 @@ function parseValidCst(source, description = path.basename(source)) {
 function parseRecovery(source, description = path.basename(source)) {
   return runParse({ description, format: "tree", mode: "recovery", source })
     .output;
-}
-
-function cstFingerprint(output) {
-  const structure = [];
-  const continuations = [];
-  let continuationDepth;
-  for (const entry of parseCst(output)) {
-    if (continuationDepth !== undefined) {
-      if (entry.depth > continuationDepth) continue;
-      continuationDepth = undefined;
-    }
-    if (/^([a-z_]+: )?line_continuation([ ]|$)/.test(entry.content)) {
-      continuations.push(entry.range);
-      continuationDepth = entry.depth;
-    } else {
-      structure.push(entry.line);
-    }
-  }
-  assert.notEqual(structure.length, 0, "CST fingerprint is empty");
-  return JSON.stringify([structure, continuations]);
 }
 
 function assertCstOutputsEqual(name, left, right) {
@@ -507,31 +484,6 @@ function parseRecoveryAfterEdits(initialSource, finalSource, name, ...edits) {
   ).map(({ output }) => output);
 }
 
-function logicalProjection(output) {
-  const projection = [];
-  let rootDepth;
-  for (const entry of parseCst(output)) {
-    let { content, depth } = entry;
-    if (entry.line.includes("•")) {
-      content = `!${content}`;
-    }
-    if (content.startsWith('"') || content.startsWith("`")) {
-      continue;
-    }
-    content = content.replace(/[ ]+`.*`$/, "");
-    if (
-      content === "line_continuation" ||
-      content.endsWith(": line_continuation")
-    ) {
-      continue;
-    }
-    rootDepth ??= depth;
-    projection.push(`${depth - rootDepth}:${content}`);
-  }
-  assert.ok(projection.length > 0, "logical CST projection is empty");
-  return projection.join("\n");
-}
-
 function assertSameLogicalProjection(name, logicalOutput, physicalOutput) {
   assert.equal(
     logicalProjection(physicalOutput),
@@ -570,12 +522,12 @@ function assertManifestSourceOrder(manifest, name) {
         `${name}: line continuations are duplicated or out of order`,
       );
     }
+    assert.equal(current[2], current[0], `${name}: invalid continuation row`);
     assert.equal(
-      current[2],
-      current[0] + 1,
-      `${name}: invalid continuation row`,
+      current[3],
+      current[1] + 1,
+      `${name}: invalid continuation end column`,
     );
-    assert.equal(current[3], 0, `${name}: invalid continuation end column`);
     previous = current;
   }
 }
@@ -590,6 +542,8 @@ function assertLineContinuationManifest(
   const logicalOutput = parseValidCst(logicalSource, `${name} logical`);
   const actual = lineContinuationManifest(runQuery(physicalSource));
   assertManifestSourceOrder(actual, name);
+  assertCstSourceContract(physicalOutput, fs.readFileSync(physicalSource));
+  assert.deepEqual(continuationManifest(physicalOutput), actual);
   assert.deepEqual(actual, expected, `${name}: continuation ranges differ`);
   assertSameLogicalProjection(name, logicalOutput, physicalOutput);
 }
@@ -599,7 +553,7 @@ function assertNoLineContinuations(name, source) {
   assert.deepEqual(
     lineContinuationManifest(runQuery(source)),
     [],
-    `${name}: literal backslash-newline became line_continuation`,
+    `${name}: literal backslash-newline became a continuation`,
   );
 }
 
@@ -612,8 +566,10 @@ export {
   assertContains,
   assertCstDirectChildRange,
   assertCstRange,
+  assertCstSourceContract,
   assertIncrementalEqualsFresh,
   assertLineContinuationManifest,
+  assertNodeCount,
   assertNoLineContinuations,
   assertNotContains,
   assertOccurrenceCount,
@@ -621,6 +577,7 @@ export {
   assertSameLogicalProjection,
   assertValid,
   compareIncrementalAndFresh,
+  continuationManifest,
   cstFingerprint,
   hasRecovery,
   incrementalParseArguments,

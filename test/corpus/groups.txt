@@ -151,7 +151,6 @@ second
                                         (word
                                           (literal)))))))
                               operator: (and_if)
-                              (line_continuation)
                               pipeline: (pipeline
                                 sequence: (pipe_sequence
                                   command: (command
@@ -169,7 +168,6 @@ second
                                       name: (cmd_name
                                         (word
                                           (literal)))))
-                                  (line_continuation)
                                   command: (command
                                     body: (simple_command
                                       name: (cmd_name
@@ -527,8 +525,7 @@ group closers follow continuation-led layout lines
                                     (word
                                       (literal)))))))))
                       terminator: (separator
-                        newlines: (newline_list)))
-                    (line_continuation)))))))))
+                        newlines: (newline_list)))))))))))
     separator: (newline_list)
     command: (complete_command
       body: (list
@@ -549,8 +546,7 @@ group closers follow continuation-led layout lines
                                     (word
                                       (literal)))))))))
                       terminator: (separator
-                        newlines: (newline_list)))
-                    (line_continuation))))))))))
+                        newlines: (newline_list))))))))))))
   trailing: (linebreak
     (newline_list)))
 

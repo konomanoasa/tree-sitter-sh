@@ -36,7 +36,6 @@ esac
                         patterns: (pattern_list
                           word: (word
                             (literal)
-                            (literal)
                             (pattern_star_source)
                             (literal))
                           word: (word
@@ -193,13 +192,10 @@ esac
                       item: (case_item
                         patterns: (pattern_list
                           word: (word
-                            (literal)
-                            (literal)
                             (literal))
                           word: (word
                             (double_quoted
                               (double_quote_text))
-                            (literal)
                             (literal)))
                         body: (compound_list
                           body: (term
@@ -309,7 +305,6 @@ esac
                         patterns: (pattern_list
                           word: (word
                             (literal))
-                          (line_continuation)
                           word: (word
                             (literal)))
                         body: (compound_list
@@ -367,12 +362,8 @@ esac
                         patterns: (pattern_list
                           word: (word
                             (literal))
-                          (line_continuation)
-                          (line_continuation)
                           word: (word
                             (literal)))
-                        (line_continuation)
-                        (line_continuation)
                         body: (compound_list
                           body: (term
                             and_or: (and_or
@@ -424,8 +415,22 @@ case x in a\
                       (case_item
                         (pattern_list
                           (word
-                            (literal))
-                          (line_continuation))
+                            (literal)))
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        (dsemi))
+                      (case_item
+                        (pattern_list
+                          (word
+                            (literal)))
                         (compound_list
                           (term
                             (and_or
@@ -441,27 +446,8 @@ case x in a\
                         (pattern_list
                           (word
                             (literal))
-                          (line_continuation))
-                        (line_continuation)
-                        (compound_list
-                          (term
-                            (and_or
-                              (pipeline
-                                (pipe_sequence
-                                  (command
-                                    (simple_command
-                                      (cmd_name
-                                        (word
-                                          (literal))))))))))
-                        (dsemi))
-                      (case_item
-                        (pattern_list
                           (word
-                            (literal))
-                          (line_continuation)
-                          (word
-                            (literal))
-                          (line_continuation))
+                            (literal)))
                         (compound_list
                           (term
                             (and_or

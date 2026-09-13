@@ -879,8 +879,6 @@ case x\
                     (case_keyword)
                     (word
                       (literal))
-                    (line_continuation)
-                    (line_continuation)
                     (in
                       (in_keyword))
                     (case_list
@@ -949,7 +947,6 @@ case x in x):;;\
                                         (word
                                           (literal)))
                                       (cmd_suffix
-                                        (line_continuation)
                                         (word
                                           (literal))))))))))
                         (dsemi)))
@@ -964,7 +961,6 @@ case x in x):;;\
                 (compound_command
                   (case_clause
                     (case_keyword)
-                    (line_continuation)
                     (word
                       (literal))
                     (in
@@ -999,8 +995,7 @@ case x in x):;;\
                                       (cmd_name
                                         (word
                                           (literal))))))))))
-                        (dsemi)
-                        (line_continuation))
+                        (dsemi))
                       (case_item
                         (pattern_list
                           (word
@@ -1060,8 +1055,6 @@ case value \
                     (case_keyword)
                     word: (word
                       (literal))
-                    (line_continuation)
-                    (line_continuation)
                     in: (in
                       (in_keyword))
                     items: (case_list
@@ -1215,8 +1208,6 @@ in x) :;; esac
                     (case_keyword)
                     (word
                       (literal))
-                    (line_continuation)
-                    (line_continuation)
                     (in
                       (in_keyword))
                     (case_list
@@ -1272,9 +1263,7 @@ case y in b)\
                       (case_item_ns
                         (pattern_list
                           (word
-                            (literal)))
-                        (line_continuation)
-                        (line_continuation)))
+                            (literal)))))
                     (esac_keyword)))))))))
     (newline_list)
     (complete_command
@@ -1295,7 +1284,6 @@ case y in b)\
                         (pattern_list
                           (word
                             (literal)))
-                        (line_continuation)
                         (dsemi)))
                     (esac_keyword))))))))))
   (linebreak

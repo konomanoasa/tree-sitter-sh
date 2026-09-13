@@ -328,8 +328,6 @@ case x in [[.].]]) :;; esac
                       (pattern_bracket_source
                         members: (pattern_bracket_members_source
                           member: (pattern_bracket_character_source)))
-                      (literal)
-                      (literal)
                       (literal))
                     word: (word
                       (parameter_expansion
@@ -1239,8 +1237,7 @@ X
                                                                             (dless)
                                                                             (here_end
                                                                               (word
-                                                                                (escaped_character)
-                                                                                (literal))))))))))))))
+                                                                                (escaped_character))))))))))))))
                                                       (linebreak
                                                         (newline_list
                                                           (here_document_sequence
@@ -1693,8 +1690,7 @@ echo `echo [\\] [\\\] [\\\a] [\\\-a]`
                                           (cmd_suffix
                                             (word
                                               (literal)
-                                              (escaped_character)
-                                              (literal))
+                                              (escaped_character))
                                             (word
                                               (pattern_bracket_source
                                                 (pattern_bracket_members_source
@@ -1743,7 +1739,6 @@ printf [[\a] [[\a [[:alpha:\]] ${x%[[:alpha:\]]}
                           member: (pattern_bracket_character_source)
                           member: (escaped_character))))
                     word: (word
-                      (literal)
                       (literal)
                       (escaped_character))
                     word: (word
@@ -1836,13 +1831,10 @@ printf [ [abc [] [!
                     word: (word
                       (literal))
                     word: (word
-                      (literal)
                       (literal))
                     word: (word
-                      (literal)
                       (literal))
                     word: (word
-                      (literal)
                       (literal)))))))))))
   trailing: (linebreak
     (newline_list)))
@@ -1873,21 +1865,17 @@ printf "${value#[abc'x'}"
                   (cmd_suffix
                     (word
                       (literal)
-                      (literal)
                       (single_quoted
                         (single_quote_content)))
                     (word
-                      (literal)
                       (literal)
                       (double_quoted
                         (parameter_expansion
                           (variable_name))))
                     (word
                       (literal)
-                      (literal)
                       (escaped_character))
                     (word
-                      (literal)
                       (literal)
                       (parameter_expansion
                         (variable_name)))))))))))
@@ -1909,7 +1897,6 @@ printf "${value#[abc'x'}"
                           (variable_name)
                           (parameter_pattern_operator)
                           (parameter_pattern
-                            (literal)
                             (literal)
                             (single_quoted
                               (single_quote_content)))))))))))))))
@@ -2009,18 +1996,12 @@ printf [a/b ${v#[a/b}
                       (literal)))
                   suffix: (cmd_suffix
                     word: (word
-                      (literal)
-                      (literal)
-                      (literal)
                       (literal))
                     word: (word
                       (parameter_expansion
                         parameter: (variable_name)
                         operator: (parameter_pattern_operator)
                         pattern: (parameter_pattern
-                          (literal)
-                          (literal)
-                          (literal)
                           (literal)))))))))))))
   trailing: (linebreak
     (newline_list)))
@@ -2048,8 +2029,6 @@ incomplete=[[.
                     (assignment_word
                       (variable_name)
                       (assignment_value
-                        (literal)
-                        (literal)
                         (literal))))))))))))
   (linebreak
     (newline_list)))
@@ -2083,8 +2062,6 @@ printf "${value#[[.}" "${value#[x[: a]}"
                           (variable_name)
                           (parameter_pattern_operator)
                           (parameter_pattern
-                            (literal)
-                            (literal)
                             (literal)))))
                     (word
                       (double_quoted
@@ -2092,7 +2069,6 @@ printf "${value#[[.}" "${value#[x[: a]}"
                           (variable_name)
                           (parameter_pattern_operator)
                           (parameter_pattern
-                            (literal)
                             (literal)
                             (pattern_bracket_source
                               (pattern_bracket_members_source
@@ -2130,19 +2106,12 @@ printf []] [[. [[= [[: [][.] [[:alpha:] [a[.] [![.]
                         (pattern_bracket_members_source
                           (pattern_bracket_character_source))))
                     (word
-                      (literal)
-                      (literal)
                       (literal))
                     (word
-                      (literal)
-                      (literal)
                       (literal))
                     (word
-                      (literal)
-                      (literal)
                       (literal))
                     (word
-                      (literal)
                       (literal)
                       (pattern_bracket_source
                         (pattern_bracket_members_source
@@ -2160,12 +2129,10 @@ printf []] [[. [[= [[: [][.] [[:alpha:] [a[.] [![.]
                           (pattern_bracket_character_source))))
                     (word
                       (literal)
-                      (literal)
                       (pattern_bracket_source
                         (pattern_bracket_members_source
                           (pattern_bracket_character_source))))
                     (word
-                      (literal)
                       (literal)
                       (pattern_bracket_source
                         (pattern_bracket_members_source
@@ -2200,7 +2167,6 @@ after_again
                       (literal)))
                   (cmd_suffix
                     (word
-                      (literal)
                       (literal)
                       (parameter_expansion
                         (variable_name))
@@ -2276,7 +2242,6 @@ printf [a"x"*[.]
                   suffix: (cmd_suffix
                     word: (word
                       (literal)
-                      (literal)
                       (double_quoted
                         (double_quote_text))
                       (pattern_star_source)
@@ -2310,7 +2275,6 @@ echo [[abc [*[abc "${value#[[abc}" "${value#[*[abc}"
                       (literal)))
                   (cmd_suffix
                     (word
-                      (literal)
                       (literal))
                     (word
                       (literal)
@@ -2322,7 +2286,6 @@ echo [[abc [*[abc "${value#[[abc}" "${value#[*[abc}"
                           (variable_name)
                           (parameter_pattern_operator)
                           (parameter_pattern
-                            (literal)
                             (literal)))))
                     (word
                       (double_quoted
@@ -2485,7 +2448,6 @@ echo `\`echo [a\``
                                                                       (literal)))
                                                                   (cmd_suffix
                                                                     (word
-                                                                      (literal)
                                                                       (literal)))))))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))

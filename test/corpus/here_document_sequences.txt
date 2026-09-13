@@ -234,7 +234,6 @@ SECOND
                         end: (here_end
                           word: (word
                             (literal)))))
-                    (line_continuation)
                     word: (word
                       (literal))
                     redirect: (io_redirect
@@ -246,7 +245,8 @@ SECOND
   trailing: (linebreak
     (newline_list
       (here_document_sequence
-        comment: (comment)
+        comment: (comment
+          (comment_text))
         line_end: (here_document_line_end)
         document: (here_document
           body: (here_document_body
@@ -844,7 +844,6 @@ fourth
                       (literal))))))))))
     (newline_list
       (here_document_sequence
-        (line_continuation)
         (here_document_line_end)
         (here_document
           (here_document_body
@@ -893,8 +892,6 @@ fourth
                       (literal))))))))))
     (newline_list
       (here_document_sequence
-        (line_continuation)
-        (line_continuation)
         (here_document_line_end)
         (here_document
           (here_document_body
@@ -948,7 +945,6 @@ echo after
                             (literal)))))))))))))
     separator: (newline_list
       (here_document_sequence
-        (line_continuation)
         line_end: (here_document_line_end)
         document: (here_document
           end: (here_document_end

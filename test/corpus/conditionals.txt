@@ -354,8 +354,6 @@ then :; fi
                                                       (literal)))))))))
                                       terminator: (separator
                                         operator: (separator_op)))))))))))
-                    (line_continuation)
-                    (line_continuation)
                     (then_keyword)
                     consequence: (compound_list
                       body: (term
@@ -450,7 +448,6 @@ if a; then b; elif c; then d & \
                                         (literal)))))))))
                         (separator
                           (separator_op)))
-                      (line_continuation)
                       (else_part
                         (else_keyword)
                         (compound_list
@@ -528,7 +525,6 @@ if a; then b; elif c; then d & \
                                         (literal)))))))))
                         (separator
                           (separator_op)))
-                      (line_continuation)
                       (else_part
                         (elif_keyword)
                         (compound_list
@@ -555,8 +551,7 @@ if a; then b; elif c; then d & \
                                         (word
                                           (literal)))))))))
                           (separator
-                            (separator_op)))
-                        (line_continuation)))
+                            (separator_op)))))
                     (fi_keyword))))))))))
   (linebreak
     (newline_list)))
@@ -614,8 +609,7 @@ fi
                                     word: (word
                                       (literal)))))))))
                       terminator: (separator
-                        newlines: (newline_list
-                          (line_continuation))))
+                        newlines: (newline_list)))
                     (fi_keyword))))))))))
   trailing: (linebreak
     (newline_list)))

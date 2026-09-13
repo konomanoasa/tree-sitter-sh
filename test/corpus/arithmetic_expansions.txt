@@ -1408,8 +1408,7 @@ a continuation before the closers stays in the command-substitution reading
                                                                 (literal)))
                                                             (cmd_suffix
                                                               (word
-                                                                (literal))))))))))
-                                              (line_continuation)))))))))))))))))))))))
+                                                                (literal))))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -1474,6 +1473,8 @@ printf "$(())"
 
 ---
 
+
+
 ==================
 a blank arithmetic expression cannot form a subshell command
 :error
@@ -1482,6 +1483,8 @@ a blank arithmetic expression cannot form a subshell command
 printf "$((  ))"
 
 ---
+
+
 
 ==================
 an empty parenthesized arithmetic expression requires recovery
@@ -1492,6 +1495,8 @@ printf "$((()))"
 
 ---
 
+
+
 ==================
 a parenthesized non-lvalue cannot become an assignment left operand
 :error
@@ -1500,6 +1505,8 @@ a parenthesized non-lvalue cannot become an assignment left operand
 : "$(((name + 1) = 2))"
 
 ---
+
+
 
 ==================
 input ending inside arithmetic requires recovery

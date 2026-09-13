@@ -204,11 +204,10 @@ next
                         (double_quote_text))
                       (single_quoted
                         (single_quote_content))
-                      (literal)
-                      (literal)
                       (literal))))))))))
     separator: (newline_list
-      (comment))
+      (comment
+        (comment_text)))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -250,12 +249,9 @@ next
                     word: (word
                       (single_quoted
                         (single_quote_content))
-                      (literal)
                       (literal))
                     word: (word
                       (double_quoted
-                        (double_quote_text)
-                        (double_quote_text)
                         (double_quote_text)))
                     word: (word
                       (literal)
@@ -307,7 +303,6 @@ echo "$'text'"
                   (cmd_suffix
                     (word
                       (double_quoted
-                        (double_quote_text)
                         (double_quote_text))))))))))))
   (linebreak
     (newline_list)))
@@ -352,7 +347,6 @@ x=`echo "a\\\`b"`
                                               (word
                                                 (double_quoted
                                                   (double_quote_text)
-                                                  (double_quote_escape)
                                                   (double_quote_escape)
                                                   (double_quote_text)))))))))))))))))))))))))
   (linebreak

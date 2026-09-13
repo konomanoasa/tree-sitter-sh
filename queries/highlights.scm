@@ -50,9 +50,7 @@
   (here_document_escape)
 ] @string.escape
 
-(comment) @comment
-
-(line_continuation) @punctuation.special
+(comment_text) @comment
 
 [
   (arithmetic_number)
@@ -154,7 +152,7 @@
 
 (dollar_single_quoted
   [
-    "$'"
+    "$"
     "'"
   ] @punctuation.delimiter)
 
@@ -723,3 +721,5 @@
               ])
           ])
       ])))
+
+"\\" @punctuation.special

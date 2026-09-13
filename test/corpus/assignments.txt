@@ -162,8 +162,6 @@ cmd x=fi
                     (assignment_word
                       (variable_name)
                       (assignment_value
-                        (literal)
-                        (literal)
                         (literal)))))))))))
     (newline_list)
     (complete_command
@@ -403,8 +401,7 @@ next
                     assignment: (assignment_word
                       name: (variable_name)
                       value: (assignment_value
-                        (literal))
-                      (line_continuation))))))))))
+                        (literal)))))))))))
     separator: (newline_list)
     command: (complete_command
       body: (list
@@ -593,5 +590,4 @@ a=b \
                       value: (assignment_value
                         (literal))))))))))))
   trailing: (linebreak
-    (newline_list
-      (line_continuation))))
+    (newline_list)))

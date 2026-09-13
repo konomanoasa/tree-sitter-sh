@@ -79,7 +79,30 @@ function medianIncrementalParseDuration(
 }
 
 test("sh: parser scaling remains linear within the existing guard", () => {
+  const continuedComment = (count) => {
+    const slash = "\\";
+    const prefix = `: "\`: ${slash}"${slash}\`#x`;
+    const pair = `${slash.repeat(3)}\n${slash.repeat(4)}\n`;
+    return `${prefix}${pair.repeat(count)}world\n${slash}\`${slash}"\`"\n`;
+  };
+  const encodedWordlist = (count) => {
+    let source = `for x in value${"\\\n".repeat(count)} ; do :; done`;
+    for (let depth = 0; depth < 3; depth += 1) {
+      source = `: \`${source.replaceAll("\\", "\\\\").replaceAll("`", "\\`")}\``;
+    }
+    return `${source}\n`;
+  };
   const scalingSources = [
+    {
+      large: continuedComment(6_000),
+      name: "nested comment continuation parsing",
+      small: continuedComment(1_500),
+    },
+    {
+      large: encodedWordlist(12_000),
+      name: "backquote wordlist continuation parsing",
+      small: encodedWordlist(3_000),
+    },
     {
       large: `printf value${" \\\n".repeat(12_000)}after\n`,
       name: "spaced line-continuation parsing",
@@ -132,8 +155,8 @@ test("sh: incremental parsing reuses unchanged source and records editing timing
   function assertSourceReuse(parse, name) {
     assert.match(
       parse.debugOutput,
-      /^reuse_node /m,
-      `${name}: no source reuse recorded`,
+      /^reuse_node symbol:complete_command/m,
+      `${name}: no complete command reuse recorded`,
     );
   }
 

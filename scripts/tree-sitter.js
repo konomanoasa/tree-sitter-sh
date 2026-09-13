@@ -79,6 +79,10 @@ function resultStatus(result) {
     }
     throw result.error;
   }
+  if (result.signal) {
+    process.stderr.write(`Tree-sitter CLI terminated by ${result.signal}.\n`);
+    return 1;
+  }
   return result.status ?? 1;
 }
 

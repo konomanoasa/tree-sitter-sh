@@ -869,8 +869,7 @@ $v
                                                 operator: (dless)
                                                 end: (here_end
                                                   word: (word
-                                                    (escaped_character)
-                                                    (literal))))))))))))))
+                                                    (escaped_character))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence
@@ -982,7 +981,6 @@ second
                                                 end: (here_end
                                                   word: (word
                                                     (double_quoted
-                                                      (double_quote_escape)
                                                       (double_quote_escape)))))))))))))))
                           (linebreak
                             (newline_list
@@ -1541,7 +1539,6 @@ cat <<-EOF
         line_end: (here_document_line_end)
         document: (here_document
           end: (here_document_end
-            (line_continuation)
             (here_document_end_text)))))))
 
 ==================
@@ -1574,7 +1571,6 @@ after
                     redirect: (io_redirect
                       body: (io_here
                         operator: (dless)
-                        (line_continuation)
                         end: (here_end
                           word: (word
                             (literal)))))))))))))
@@ -1630,8 +1626,6 @@ after
                     redirect: (io_redirect
                       body: (io_here
                         operator: (dlessdash)
-                        (line_continuation)
-                        (line_continuation)
                         end: (here_end
                           word: (word
                             (literal)))))))))))))
@@ -1689,9 +1683,7 @@ after
                         (dless)
                         (here_end
                           (word
-                            (literal)
-                            (line_continuation)
-                            (line_continuation)))))))))))))
+                            (literal)))))))))))))
     (newline_list
       (here_document_sequence
         (here_document_line_end)
@@ -1743,8 +1735,6 @@ first
                         (dless)
                         (here_end
                           (word
-                            (literal)
-                            (literal)
                             (literal))))))))))))))
   (linebreak
     (newline_list

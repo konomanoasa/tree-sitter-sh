@@ -1,46 +1,40 @@
-// Keep these regexes as strings: Biome removes the bracket escape that
-// Tree-sitter requires inside character classes.
-const LITERAL_TOKEN_PATTERN_SOURCE =
-  "[^A-Za-z_ \\t\\n;&|<>()/\\\\'\"$`*?\\[\\]~:#=]+";
-const PARAMETER_PATTERN_TEXT_PATTERN_SOURCE = "[^}\\n/'\"$`\\\\*?\\[\\]~]+";
-const LITERAL_TOKEN_PATTERN = RegExp(LITERAL_TOKEN_PATTERN_SOURCE);
-const PARAMETER_PATTERN_TEXT_PATTERN = RegExp(
-  PARAMETER_PATTERN_TEXT_PATTERN_SOURCE,
-);
-
-const PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN = /[^ \t\n;&|<>()\\'"$`:.=\]-]/;
-const PARAMETER_PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN = /[^\\'"$`:.=\]}-]/;
 const ASSIGNMENT_WORD_PRECEDENCE = 3;
 
 const ARITHMETIC_BINARY_LEVELS = [
-  ["logical_or", ["||"]],
-  ["logical_and", ["&&"]],
-  ["bitwise_or", ["|"]],
-  ["bitwise_xor", ["^"]],
-  ["bitwise_and", ["&"]],
-  ["equality", ["==", "!="]],
-  ["relational", ["<=", ">=", "<", ">"]],
-  ["shift", ["<<", ">>"]],
-  ["additive", ["+", "-"]],
-  ["multiplicative", ["*", "/", "%"]],
+  "logical_or",
+  "logical_and",
+  "bitwise_or",
+  "bitwise_xor",
+  "bitwise_and",
+  "equality",
+  "relational",
+  "shift",
+  "additive",
+  "multiplicative",
 ];
 
 const arithmeticBinaryLevelSymbols = ($, suffix) =>
-  ARITHMETIC_BINARY_LEVELS.map(
-    ([level]) => $[`_arithmetic_${level}_${suffix}`],
-  );
+  ARITHMETIC_BINARY_LEVELS.map((level) => $[`_arithmetic_${level}_${suffix}`]);
 
 const PATTERN_PRECEDENCE = {
-  literalFallback: -2,
   expression: 2,
   range: 3,
   specialElement: 4,
-  negation: 5,
 };
 
-const structuredSourcePartsWithBackquoteRuns = ($, backquoteRuns) => [
+const lexical = ($, begin) =>
+  seq(begin, repeat1($._lexical_piece), $._lexical_end);
+
+const physical = ($, token, spelling, fieldName = null) =>
+  seq(
+    token,
+    repeat($._physical_prefix),
+    fieldName === null
+      ? alias($._physical_character, spelling)
+      : field(fieldName, alias($._physical_character, spelling)),
+  );
+const structuredSourceParts = ($) => [
   $.escaped_character,
-  ...backquoteRuns,
   $.single_quoted,
   $.double_quoted,
   $.dollar_single_quoted,
@@ -49,43 +43,213 @@ const structuredSourcePartsWithBackquoteRuns = ($, backquoteRuns) => [
   $.arithmetic_expansion,
   $.backquote_substitution,
 ];
-
-const structuredSourceParts = ($) =>
-  structuredSourcePartsWithBackquoteRuns($, [
-    $._backquote_content_escape_run,
-    $._backquote_escaped_pair_run,
-  ]);
-
-const patternBracketStructuredSourceParts = ($) =>
-  structuredSourcePartsWithBackquoteRuns($, [
-    alias($._backquote_pattern_escape, $.escaped_character),
-  ]);
-
-const backquoteContentEscapeRun = (
-  $,
-  escapeName,
-  literalName,
-  tail = alias($._backquote_escaped_tail, escapeName),
-) =>
-  seq(
-    $._backquote_content_run_begin,
-    repeat(alias($._backquote_escaped_pair, escapeName)),
+const hiddenPhysical = ($, begin) =>
+  seq(begin, repeat($._physical_prefix), $._physical_character);
+const fallbackLiteralParts = ($, character) =>
+  choice(
+    character,
+    hiddenPhysical($, $._fallback_bracket_open),
+    hiddenPhysical($, $._fallback_special_bracket_open),
+    hiddenPhysical($, $._fallback_bracket_close),
+    hiddenPhysical($, $._fallback_colon),
+    hiddenPhysical($, $._fallback_dot),
+    hiddenPhysical($, $._fallback_equals),
+    lexical($, $._pattern_negation_begin),
+    lexical($, $._pattern_bracket_hyphen_begin),
+  );
+const fallbackLiteral = ($, chunk) =>
+  prec.dynamic(-1, repeat1(fallbackLiteralParts($, chunk)));
+const fallbackFirstLiteral = ($, first, chunk) =>
+  prec.dynamic(
+    -1,
+    seq(lexical($, first), repeat(fallbackLiteralParts($, chunk))),
+  );
+const bracketFallback = ($, first, suffix, end) =>
+  seq(alias(first, $.literal), repeat(suffix), end);
+const fallbackRules = (kind) => {
+  const prefix = `_${kind}_fallback`;
+  const symbol = ($, suffix) => $[`${prefix}_${suffix}`];
+  const cell = ($) => lexical($, $[`${prefix}_character_begin`]);
+  const hidden = ($, suffix) => hiddenPhysical($, $[`_fallback_${suffix}`]);
+  const character = ($) =>
     choice(
-      $._line_continuation,
-      tail,
-      alias($._literal_dollar, literalName),
-      alias($._backquote_escaped_ordinary, literalName),
-    ),
-  );
-
-const backquoteEscapedPairRun = ($, pair) =>
-  seq(
-    $._backquote_pair_run_begin,
-    repeat1(alias($._backquote_escaped_pair, pair)),
-    optional("\\"),
-    $._backquote_pair_run_end,
-  );
-
+      cell($),
+      hidden($, "bracket_open"),
+      hidden($, "colon"),
+      hidden($, "dot"),
+      hidden($, "equals"),
+      lexical($, $._pattern_negation_begin),
+    );
+  const ordinary = ($) =>
+    choice(
+      character($),
+      hidden($, "special_bracket_open"),
+      lexical($, $._pattern_bracket_hyphen_begin),
+      lexical($, $._pattern_star_begin),
+      lexical($, $._pattern_question_begin),
+    );
+  const classified = ($, suffix, name) => alias(symbol($, suffix), $[name]);
+  const endpoint = ($) =>
+    choice(
+      classified($, "character", "pattern_bracket_character_source"),
+      classified($, "collating", "pattern_collating_symbol_source"),
+      $.pattern_bracket_hyphen_source,
+      ...structuredSourceParts($),
+    );
+  const range = ($, start = endpoint($)) =>
+    seq(
+      field("start", start),
+      field("operator", $.pattern_bracket_range_operator_source),
+      field("end", endpoint($)),
+    );
+  const special = ($, marker, body) =>
+    prec.dynamic(
+      PATTERN_PRECEDENCE.specialElement,
+      seq(
+        physical($, $._fallback_special_bracket_open, "["),
+        physical(
+          $,
+          $[`_fallback_${marker}`],
+          marker === "colon" ? ":" : marker === "dot" ? "." : "=",
+        ),
+        body,
+        prec(
+          1,
+          seq(
+            physical(
+              $,
+              $[`_fallback_${marker}`],
+              marker === "colon" ? ":" : marker === "dot" ? "." : "=",
+            ),
+            physical($, $._fallback_bracket_close, "]"),
+          ),
+        ),
+      ),
+    );
+  return {
+    [`${prefix}_first`]: ($) =>
+      fallbackFirstLiteral($, $[`${prefix}_literal_begin`], cell($)),
+    [`${prefix}_literal`]: ($) => fallbackLiteral($, cell($)),
+    [`${prefix}_suffix`]: ($) =>
+      seq(
+        choice(
+          classified($, "bracket", "pattern_bracket_source"),
+          $.pattern_star_source,
+          $.pattern_question_source,
+          ...structuredSourceParts($),
+        ),
+        optional(classified($, "literal", "literal")),
+      ),
+    [`${prefix}_character`]: ($) =>
+      choice(
+        character($),
+        lexical($, $._pattern_star_begin),
+        lexical($, $._pattern_question_begin),
+      ),
+    [`${prefix}_initial`]: ($) => hidden($, "bracket_close"),
+    [`${prefix}_range`]: ($) =>
+      prec.dynamic(PATTERN_PRECEDENCE.range, range($)),
+    [`${prefix}_initial_range`]: ($) =>
+      prec.dynamic(
+        PATTERN_PRECEDENCE.range,
+        range($, classified($, "initial", "pattern_bracket_character_source")),
+      ),
+    [`${prefix}_member`]: ($) =>
+      choice(
+        classified($, "class", "pattern_character_class_source"),
+        classified($, "collating", "pattern_collating_symbol_source"),
+        classified($, "equivalence", "pattern_equivalence_class_source"),
+        classified($, "range", "pattern_bracket_range_source"),
+        classified($, "character", "pattern_bracket_character_source"),
+        $.pattern_bracket_hyphen_source,
+        ...structuredSourceParts($),
+      ),
+    [`${prefix}_members`]: ($) =>
+      prec.right(
+        choice(
+          seq(
+            field(
+              "member",
+              choice(
+                classified($, "initial", "pattern_bracket_character_source"),
+                classified($, "initial_range", "pattern_bracket_range_source"),
+              ),
+            ),
+            repeat(field("member", symbol($, "member"))),
+          ),
+          repeat1(field("member", symbol($, "member"))),
+        ),
+      ),
+    [`${prefix}_bracket`]: ($) =>
+      prec.dynamic(
+        PATTERN_PRECEDENCE.expression,
+        seq(
+          physical(
+            $,
+            choice($._fallback_bracket_open, $._fallback_special_bracket_open),
+            "[",
+          ),
+          optional(
+            field("negation", prec(1, $.pattern_bracket_negation_source)),
+          ),
+          field(
+            "members",
+            classified($, "members", "pattern_bracket_members_source"),
+          ),
+          physical($, $._fallback_bracket_close, "]"),
+        ),
+      ),
+    [`${prefix}_class_text`]: ($) => prec.right(repeat1(ordinary($))),
+    [`${prefix}_class`]: ($) =>
+      special(
+        $,
+        "colon",
+        patternCharacterClassBody(
+          $,
+          classified($, "class_text", "pattern_character_class_content_source"),
+        ),
+      ),
+    [`${prefix}_collating_character`]: ($) =>
+      choice(ordinary($), hidden($, "bracket_close")),
+    [`${prefix}_collating`]: ($) =>
+      special(
+        $,
+        "dot",
+        repeat1(
+          field(
+            "value",
+            choice(
+              classified(
+                $,
+                "collating_character",
+                "pattern_collating_symbol_character_source",
+              ),
+              ...structuredSourceParts($),
+            ),
+          ),
+        ),
+      ),
+    [`${prefix}_equivalence_character`]: ($) => ordinary($),
+    [`${prefix}_equivalence`]: ($) =>
+      special(
+        $,
+        "equals",
+        repeat1(
+          field(
+            "value",
+            choice(
+              classified(
+                $,
+                "equivalence_character",
+                "pattern_equivalence_class_character_source",
+              ),
+              ...structuredSourceParts($),
+            ),
+          ),
+        ),
+      ),
+  };
+};
 const wordPatternSpecialSources = ($) => [
   $.pattern_character_class_source,
   $.pattern_collating_symbol_source,
@@ -110,119 +274,9 @@ const parameterPatternSpecialSources = ($) => [
   ),
 ];
 
-const patternSpecialContentCharacters = ($, plain) => [
-  plain,
-  $._literal_dollar,
-  $._pattern_special_marker_character,
-  $._pattern_bracket_hyphen_token,
-  $._pattern_special_left_bracket,
-];
-
-const patternCharacterClassContent = ($, plain) =>
-  prec.right(1, repeat1(choice(...patternSpecialContentCharacters($, plain))));
-
-const wordPatternBracketSources = ($) =>
-  choice(
-    $.pattern_bracket_source,
-    alias($._word_special_prefixed_bracket_source, $.pattern_bracket_source),
-  );
-
-const parameterPatternBracketSources = ($) =>
-  choice(
-    alias($._parameter_pattern_bracket_expression, $.pattern_bracket_source),
-    alias(
-      $._parameter_special_prefixed_bracket_source,
-      $.pattern_bracket_source,
-    ),
-  );
-
-const incompleteBracketLiteralRun = ($, atom) =>
-  prec.dynamic(
-    PATTERN_PRECEDENCE.literalFallback,
-    prec.right(
-      1,
-      seq(
-        $._pattern_bracket_left,
-        repeat(choice($._pattern_bracket_left, atom)),
-      ),
-    ),
-  );
-
-const patternBracketCharacter = ($, characterToken) =>
-  choice(
-    characterToken,
-    $._literal_dollar,
-    $._pattern_bracket_left,
-    $._pattern_bracket_exclamation,
-    $._pattern_character_class_colon,
-    $._pattern_collating_dot,
-    $._pattern_equivalence_equals,
-  );
-
-const incompleteBracketLiteral = ($, start, part, end) =>
-  prec.dynamic(
-    PATTERN_PRECEDENCE.literalFallback,
-    prec.right(1, seq(alias(start, $.literal), repeat(part), end)),
-  );
-
-const wordIncompleteBracketLiteralAtom = ($) =>
-  choice(
-    $._literal_dollar,
-    $._name_token,
-    $._literal_token,
-    $._literal_right_bracket,
-    $._literal_tilde,
-    $._literal_colon,
-    $._literal_equals,
-    $._literal_hash,
-    $._literal_slash,
-  );
-
-const parameterIncompleteBracketLiteralAtom = ($) =>
-  choice(
-    $._literal_dollar,
-    $._parameter_pattern_text_token,
-    $._literal_tilde,
-    $._literal_right_bracket,
-    $._literal_slash,
-    $._newline,
-  );
-
-const tildeExpansion = (user, end = null) =>
-  choice(
-    prec(2, "~"),
-    prec.dynamic(
-      2,
-      prec.right(
-        3,
-        seq("~", field("user", user), ...(end === null ? [] : [end])),
-      ),
-    ),
-  );
-
-const incompleteBracketLiteralPart = (
-  $,
-  bracketSource,
-  bracketLiteralRun,
-  literalSource,
-) =>
-  choice(
-    bracketSource,
-    prec.dynamic(
-      PATTERN_PRECEDENCE.literalFallback,
-      alias(bracketLiteralRun, $.literal),
-    ),
-    ...literalSource,
-    $.pattern_star_source,
-    $.pattern_question_source,
-    $._line_continuation,
-    ...structuredSourceParts($),
-  );
-
-const wordSeparator = ($, marker) =>
-  prec.right(2, seq(marker, repeat(choice($._blank, $._line_continuation))));
-
-const lineContinuationRun = ($) => prec.right(1, repeat1($._line_continuation));
+const tildeExpansion = ($, start, user, end) =>
+  prec.right(seq(physical($, start, "~"), optional(field("user", user)), end));
+const wordSeparator = ($, marker) => seq(marker, optional($._blank));
 
 const arithmeticBinaryExpression = ($, left, right, operatorSegment) =>
   prec.left(
@@ -242,23 +296,25 @@ const arithmeticOperatorSegment = ($, boundary, operator) =>
 
 const arithmeticOperandLayout = ($) => optional($._arithmetic_layout);
 
-const arithmeticUnaryExpression = ($, operator) =>
+const arithmeticUnaryExpression = ($) =>
   prec.right(
     seq(
-      field("operator", alias(operator, $.arithmetic_operator)),
+      field(
+        "operator",
+        alias($._arithmetic_unary_operator_lexeme, $.arithmetic_operator),
+      ),
       arithmeticOperandLayout($),
       field("operand", $._arithmetic_unary_expression),
     ),
   );
-
 const arithmeticBinaryLevelRules = () => {
   const rules = {};
-  ARITHMETIC_BINARY_LEVELS.forEach(([level], index) => {
+  ARITHMETIC_BINARY_LEVELS.forEach((level, index) => {
     const following = ARITHMETIC_BINARY_LEVELS[index + 1];
     const next = ($) =>
       following === undefined
         ? $._arithmetic_unary_expression
-        : $[`_arithmetic_${following[0]}_expression`];
+        : $[`_arithmetic_${following}_expression`];
     rules[`_arithmetic_${level}_expression`] = ($) =>
       choice(
         alias(
@@ -280,7 +336,7 @@ const arithmeticBinaryLevelRules = () => {
 
 const arithmeticBinaryOperatorSegmentRules = () => {
   const rules = {};
-  for (const [level] of ARITHMETIC_BINARY_LEVELS) {
+  for (const level of ARITHMETIC_BINARY_LEVELS) {
     rules[`_arithmetic_${level}_operator_segment`] = ($) =>
       arithmeticOperatorSegment(
         $,
@@ -293,16 +349,14 @@ const arithmeticBinaryOperatorSegmentRules = () => {
 
 const arithmeticBinaryOperatorRules = () => {
   const rules = {};
-  for (const [level, operators] of ARITHMETIC_BINARY_LEVELS) {
+  for (const level of ARITHMETIC_BINARY_LEVELS) {
+    rules[`_arithmetic_${level}_operator_lexeme`] = ($) =>
+      lexical($, $[`_arithmetic_${level}_operator_begin`]);
     rules[`_arithmetic_${level}_operator`] = ($) =>
-      alias(
-        operators.length === 1 ? operators[0] : choice(...operators),
-        $.arithmetic_operator,
-      );
+      alias($[`_arithmetic_${level}_operator_lexeme`], $.arithmetic_operator);
   }
   return rules;
 };
-
 const arithmeticClosingLayout = ($) =>
   seq($._arithmetic_closing_boundary, optional($._arithmetic_layout));
 
@@ -314,38 +368,32 @@ const arithmeticLvalue = ($) =>
 
 const parenthesizedArithmetic = ($, expression) =>
   seq(
-    "(",
+    physical($, $._punct_left_parenthesis, "("),
     optional($._arithmetic_layout),
     field("expression", expression),
     arithmeticClosingLayout($),
-    ")",
+    physical($, $._punct_right_parenthesis, ")"),
   );
-
 const arithmeticExpansionStart = ($, marker) =>
-  seq($._command_or_arithmetic_substitution_start, marker, "(");
-
-// The scanner boundary prevents layout from choosing a flat reading during
-// the structured reading's final reduce-versus-shift decision.
+  seq(
+    $._command_or_arithmetic_substitution_start,
+    marker,
+    physical($, $._punct_left_parenthesis, "("),
+  );
 const closedArithmeticExpansion = ($, start, expression, closing) =>
   seq(
     start,
     optional($._arithmetic_layout),
     field("expression", expression),
     closing,
-    ")",
-    ")",
+    physical($, $._arithmetic_close_first, ")"),
+    physical($, $._arithmetic_close_second, ")"),
   );
-
 const linebreakLayout = ($) =>
   seq(optional($.linebreak), optional($._horizontal_layout));
 
 const separatorOperatorLayout = ($, operator) =>
-  seq(
-    operator,
-    repeat(prec(2, $._line_continuation)),
-    optional(field("linebreak", $.linebreak)),
-  );
-
+  seq(operator, optional(field("linebreak", $.linebreak)));
 const reservedWordLinebreak = ($) =>
   choice(
     seq($.linebreak, optional($._horizontal_layout)),
@@ -356,10 +404,8 @@ const newlineListElements = ($) => [
   $.here_document_sequence,
   $._layout_newline,
   $._blank_line,
-  $._continued_blank_line,
   $._comment_line,
 ];
-
 const ledNewlineList = ($, lead) =>
   prec.right(seq(lead, repeat(choice(...newlineListElements($)))));
 
@@ -373,15 +419,11 @@ const doubleQuotedPart = ($) =>
   choice(
     $.double_quote_text,
     $.double_quote_escape,
-    $._backquote_double_quote_content_escape_run,
-    $._backquote_double_quote_escaped_pair_run,
-    alias($._newline, $.double_quote_text),
     alias($._double_quoted_parameter_expansion, $.parameter_expansion),
     $.command_substitution,
     $.arithmetic_expansion,
     alias($._double_quoted_backquote_substitution, $.backquote_substitution),
   );
-
 const completeCommandsTail = ($) =>
   seq(
     $.complete_commands,
@@ -396,8 +438,6 @@ const linebreakLedCommandsBody = ($) =>
     optional(choice(completeCommandsTail($), trailingComment($))),
   );
 
-// Keep leading continuations outside the body while `$(` can still become an
-// arithmetic expansion; backquotes pass their continuation-led layout here.
 const substitutionCommandsBody = ($, leadingLayout) =>
   choice(
     seq(leadingLayout, optional(completeCommandsTail($))),
@@ -406,34 +446,22 @@ const substitutionCommandsBody = ($, leadingLayout) =>
     trailingComment($),
   );
 
-const backquoteDollar = ($) =>
-  seq(alias($._backquote_dollar_prefix, "\\"), token.immediate("$"));
-
-// Recovery drops zero-width markers. Let the scanner own '$' so a literal
-// fallback cannot remain reusable when an edit turns it into an expansion.
 const dollarExpansionPrefix = ($) =>
-  choice(alias($._dollar_expansion_start, "$"), backquoteDollar($));
-
-const dollarExpansionStart = ($, delimiter) =>
-  seq(dollarExpansionPrefix($), delimiter);
-
-const backquoteDelimiter = (plain, prefix) =>
-  choice(alias(plain, "`"), seq(alias(prefix, "\\"), token.immediate("`")));
-
+  physical($, $._dollar_expansion_start, "$");
+const dollarExpansionStart = ($, token, spelling) =>
+  seq(dollarExpansionPrefix($), physical($, token, spelling));
+const backquoteDelimiter = ($, token) => physical($, token, "`");
 const commandSubstitution = ($, start) =>
   seq(
     start,
     $._command_substitution_body_begin,
     optional(field("body", $.command_substitution_body)),
-    alias($._command_substitution_close, ")"),
+    physical($, $._command_substitution_close, ")"),
   );
-
 const patternSpecialStart = ($, marker) =>
-  seq(alias($._pattern_special_left_bracket, "["), marker);
-
+  seq(physical($, $._pattern_special_left_bracket, "["), marker);
 const patternSpecialEnd = ($, marker) =>
-  seq(marker, alias($._literal_right_bracket, "]"));
-
+  seq(marker, physical($, $._punct_right_bracket, "]"));
 const patternSpecialClassSource = ($, marker, characterSource) =>
   prec.dynamic(
     PATTERN_PRECEDENCE.specialElement,
@@ -467,67 +495,13 @@ const patternCharacterClassSource = ($, content) =>
   prec.dynamic(
     PATTERN_PRECEDENCE.specialElement,
     seq(
-      patternSpecialStart($, alias($._pattern_character_class_colon, ":")),
+      patternSpecialStart($, physical($, $._punct_colon, ":")),
       patternCharacterClassBody($, content),
-      patternSpecialEnd($, alias($._pattern_character_class_end_colon, ":")),
-    ),
-  );
-
-const patternSpecialInitialRange = ($, endpoint) =>
-  patternBracketRange(
-    $,
-    endpoint,
-    alias(
-      $._pattern_special_marker_character,
-      $.pattern_bracket_character_source,
-    ),
-  );
-
-const patternSpecialPrefixedList = ($, member, initialRange) =>
-  prec.right(
-    choice(
-      seq(
-        field("member", alias(initialRange, $.pattern_bracket_range_source)),
-        repeat(field("member", member)),
-      ),
-      seq(
-        field(
-          "member",
-          alias(
-            $._pattern_special_marker_character,
-            $.pattern_bracket_character_source,
-          ),
-        ),
-        repeat(field("member", member)),
+      patternSpecialEnd(
+        $,
+        physical($, $._pattern_character_class_end_colon, ":"),
       ),
     ),
-  );
-
-const patternSpecialPrefixedExpression = ($, list) =>
-  prec.dynamic(
-    PATTERN_PRECEDENCE.expression,
-    seq(
-      alias($._pattern_special_left_bracket, "["),
-      field("members", alias(list, $.pattern_bracket_members_source)),
-      alias($._literal_right_bracket, "]"),
-    ),
-  );
-
-const patternDeferredBracketRangeEndpoint = ($, character, collatingSymbol) =>
-  choice(
-    alias(character, $.pattern_bracket_character_source),
-    collatingSymbol,
-    $.pattern_bracket_hyphen_source,
-    ...patternBracketStructuredSourceParts($),
-  );
-
-const patternDeferredBracketMember = ($, character, range, specialSources) =>
-  choice(
-    ...specialSources,
-    alias(range, $.pattern_bracket_range_source),
-    alias(character, $.pattern_bracket_character_source),
-    $.pattern_bracket_hyphen_source,
-    ...patternBracketStructuredSourceParts($),
   );
 
 const parameterExpansion = ($, bracedExpansion) =>
@@ -535,7 +509,7 @@ const parameterExpansion = ($, bracedExpansion) =>
     1,
     choice(
       seq(dollarExpansionPrefix($), field("parameter", $._unbraced_parameter)),
-      seq(dollarExpansionStart($, "{"), bracedExpansion),
+      seq(dollarExpansionStart($, $._parameter_open, "{"), bracedExpansion),
     ),
   );
 
@@ -554,7 +528,7 @@ const bracedParameterExpansion = ($, tail) =>
       seq(
         field("operator", $._parameter_length_operator),
         bracedParameterSource($, $._length_parameter),
-        "}",
+        physical($, $._parameter_close, "}"),
       ),
     ),
   );
@@ -564,21 +538,20 @@ const parameterOperatorTail = ($, word) =>
     seq(
       field("operator", $._parameter_value_operator),
       optional(field("word", word)),
-      "}",
+      physical($, $._parameter_close, "}"),
     ),
     seq(
       field("operator", $._parameter_pattern_operator),
       optional(field("pattern", $.parameter_pattern)),
-      "}",
+      physical($, $._parameter_close, "}"),
     ),
   );
 
 const parameterPatternSource = ($) =>
   choice(
-    $._parameter_tilde_source,
-    seq($._parameter_pattern_part, optional($._parameter_source_tail)),
+    seq($._parameter_tilde_source, repeat($._parameter_pattern_part)),
+    repeat1($._parameter_pattern_part),
   );
-
 const caseClauseItems = ($) =>
   choice(
     $._esac_keyword_source,
@@ -665,7 +638,6 @@ const redirectableCompoundCommand = ($) =>
   prec.right(
     seq(
       field("body", $.compound_command),
-      repeat($._line_continuation),
       optional(
         seq(
           $._redirect_list_begin,
@@ -675,51 +647,16 @@ const redirectableCompoundCommand = ($) =>
       ),
     ),
   );
-
-const plainChunk = (part) => prec.right(repeat1(part));
-
-const wordPlainChunk = ($) =>
-  plainChunk(
-    choice(
-      $._word_name_token,
-      $._literal_token,
-      $._literal_right_bracket,
-      $._literal_tilde,
-      $._literal_colon,
-      $._literal_equals,
-    ),
-  );
-
-const assignmentPlainChunk = ($) =>
-  plainChunk(
-    choice(
-      $._literal_dollar,
-      $._name_token,
-      $._literal_token,
-      $._literal_right_bracket,
-      $._literal_equals,
-    ),
-  );
-
-const parameterPlainChunk = ($) =>
-  plainChunk(
-    choice(
-      $._literal_dollar,
-      $._parameter_pattern_text_token,
-      $._literal_right_bracket,
-      $._newline,
-    ),
-  );
-
+const assignmentPlainChunk = ($) => lexical($, $._assignment_literal_begin);
+const parameterPlainChunk = ($) => lexical($, $._parameter_literal_begin);
 const functionDefinitionHeader = ($) =>
   seq(
     field("name", $.fname),
     optional($._horizontal_layout),
-    "(",
+    physical($, $._punct_left_parenthesis, "("),
     optional($._horizontal_layout),
-    ")",
+    physical($, $._punct_right_parenthesis, ")"),
   );
-
 const functionDefinitionWithBody = ($, body) =>
   seq(
     functionDefinitionHeader($),
@@ -729,29 +666,19 @@ const functionDefinitionWithBody = ($, body) =>
     field("body", body),
   );
 
-const patternBracketExpression = (
-  $,
-  list,
-  opener = alias($._literal_left_bracket, "["),
-) =>
+const patternBracketExpression = ($, list, opener) =>
   prec.dynamic(
     PATTERN_PRECEDENCE.expression,
     prec.right(
       2,
       seq(
-        opener,
-        choice(
-          seq(
-            field("negation", $.pattern_bracket_negation_source),
-            field("members", list),
-          ),
-          field("members", list),
-        ),
-        alias($._literal_right_bracket, "]"),
+        physical($, opener, "["),
+        optional(field("negation", $.pattern_bracket_negation_source)),
+        field("members", list),
+        physical($, $._punct_right_bracket, "]"),
       ),
     ),
   );
-
 const patternBracketList = ($, member, initialRange) =>
   prec.right(
     choice(
@@ -792,68 +719,74 @@ const patternInitialBracketRange = ($, endpoint) =>
 export default grammar({
   name: "sh",
 
-  extras: ($) => [$._here_document_content_line_start],
+  extras: ($) => [
+    "\\",
+    $._removed_newline,
+    $._source_begin,
+    $._removed_source,
+    $._here_document_content_line_start,
+  ],
 
   externals: ($) => [
     $._left_brace,
     $._right_brace,
-    $._io_number_token,
-    $._bang_token,
-    $._if_keyword,
-    $._then_keyword,
-    $._elif_keyword,
-    $._else_keyword,
-    $._fi_keyword,
-    $._for_keyword,
-    $._in_keyword,
-    $._do_keyword,
-    $._done_keyword,
-    $._case_keyword,
-    $._esac_keyword,
-    $._while_keyword,
-    $._until_keyword,
+    $._io_number_begin,
+    $._bang_begin,
+    $._if_keyword_begin,
+    $._then_keyword_begin,
+    $._elif_keyword_begin,
+    $._else_keyword_begin,
+    $._fi_keyword_begin,
+    $._for_keyword_begin,
+    $._in_keyword_begin,
+    $._do_keyword_begin,
+    $._done_keyword_begin,
+    $._case_keyword_begin,
+    $._esac_keyword_begin,
+    $._while_keyword_begin,
+    $._until_keyword_begin,
     $._dless_commit,
     $._dlessdash_commit,
     $._here_end_begin,
     $._here_end_commit,
-    $.here_document_line_end,
+    $._here_document_line_end_begin,
     $._here_document_body_start,
     $._quoted_here_document_body_start,
     $._quoted_here_document_end_begin,
-    $._quoted_here_document_end_text,
-    $._quoted_here_document_text,
-    $._quoted_here_document_text_run_begin,
+    $._quoted_here_document_end_text_begin,
+    $._quoted_here_document_text_begin,
     $._here_document_end_begin,
-    $._here_document_end_leading_tabs,
+    $._here_document_end_leading_tabs_begin,
     $._here_document_end_commit,
     $._here_document_sequence_end,
     $._here_document_content_line_start,
-    $._newline,
-    $.line_continuation,
+    $._newline_begin,
     $._arithmetic_assignment_operator_boundary,
     $._arithmetic_question_operator_boundary,
     $._arithmetic_colon_operator_boundary,
-    ...arithmeticBinaryLevelSymbols($, "operator_boundary"),
+    $._arithmetic_logical_or_operator_boundary,
+    $._arithmetic_logical_and_operator_boundary,
+    $._arithmetic_bitwise_or_operator_boundary,
+    $._arithmetic_bitwise_xor_operator_boundary,
+    $._arithmetic_bitwise_and_operator_boundary,
+    $._arithmetic_equality_operator_boundary,
+    $._arithmetic_relational_operator_boundary,
+    $._arithmetic_shift_operator_boundary,
+    $._arithmetic_additive_operator_boundary,
+    $._arithmetic_multiplicative_operator_boundary,
     $._arithmetic_closing_boundary,
     $._arithmetic_left_parenthesis,
     $._arithmetic_dynamic_left_parenthesis,
     $._pattern_special_left_bracket,
-    $._literal_hash,
     $._comment_boundary,
     $._trailing_comment_boundary,
-    $.comment,
-    $._comment_line_end,
+    $._comment_text_begin,
+    $._comment_line_end_begin,
     $._dollar_expansion_start,
     $._braced_parameter_number_start,
-    $._braced_positional_parameter_start,
+    $._braced_positional_parameter_begin,
     $._backquote_start,
-    $._backquote_start_prefix,
-    $._backquote_dollar_prefix,
     $._backquote_end,
-    $._backquote_end_prefix,
-    $._backquote_content_run_begin,
-    $._backquote_pair_run_begin,
-    $._backquote_pair_run_end,
     $._pattern_continuation,
     $._pattern_end,
     $._pipe_continuation,
@@ -862,22 +795,13 @@ export default grammar({
     $._function_body_continuation_boundary,
     $._command_substitution_body_begin,
     $._subshell_close,
-    $._word_bracket_literal_start,
-    $._assignment_bracket_literal_start,
-    $._parameter_bracket_literal_start,
-    $._word_bracket_fallback_end,
-    $._assignment_bracket_fallback_end,
-    $._parameter_bracket_fallback_end,
-    $._pattern_bracket_character_token,
-    $._parameter_pattern_bracket_character_token,
-    $._pattern_bracket_hyphen_token,
+    $._pattern_bracket_character_begin,
+    $._parameter_pattern_bracket_character_begin,
+    $._pattern_bracket_hyphen_begin,
     $._word_tilde_end,
     $._assignment_tilde_end,
-    $._tilde_bracket_literal_start,
-    $._assignment_tilde_bracket_literal_start,
-    $._assignment_name_token,
-    $._fname_token,
-    $._word_name_token,
+    $._assignment_name_begin,
+    $._fname_begin,
     $._and_or_continuation,
     $._word_separator_begin,
     $._list_continuation,
@@ -885,8 +809,7 @@ export default grammar({
     $._terminator_ahead,
     $._assignment_separator_begin,
     $._redirect_separator_begin,
-    $._pre_newline_blank,
-    $._trailing_continuation_begin,
+    $._pre_newline_blank_begin,
     $._command_substitution_close,
     $._separator_newline,
     $._layout_begin,
@@ -894,50 +817,144 @@ export default grammar({
     $._word_pattern_bracket_open,
     $._parameter_pattern_bracket_open,
     $._double_quoted_backquote_start,
-    $._double_quoted_backquote_start_prefix,
-    $._backquote_quote_prefix,
-    $._backquote_continuation_begin,
-    $.dollar_single_quote_escape,
-    $._backquote_dollar_single_quote_text,
-    $._backquote_dollar_single_quote_prefix,
-    $._backquote_pattern_escape,
+    $._dollar_single_quote_escape_begin,
     $._pattern_character_class_end_colon,
+    $._lexical_piece,
+    $._lexical_end,
+    "\\",
+    $._removed_newline,
+    $._physical_prefix,
+    $._literal_begin,
+    $._assignment_literal_begin,
+    $._parameter_literal_begin,
+    $._name_begin,
+    $._variable_name_begin,
+    $._escaped_character_begin,
+    $._single_quote_content_begin,
+    $._double_quote_text_begin,
+    $._double_quote_escape_begin,
+    $._dollar_single_quote_text_begin,
+    $._double_quoted_parameter_text_begin,
+    $._double_quoted_parameter_escape_begin,
+    $._here_document_text_begin,
+    $._here_document_escape_begin,
+    $._here_document_end_text_begin,
+    $._unbraced_positional_parameter_begin,
+    $._special_parameter_begin,
+    $._special_parameter_hash_begin,
+    $._parameter_value_operator_begin,
+    $._parameter_pattern_operator_begin,
+    $._arithmetic_number_begin,
+    $._arithmetic_variable_begin,
+    $._arithmetic_unary_operator_begin,
+    $._arithmetic_assignment_operator_begin,
+    $._arithmetic_question_operator_begin,
+    $._arithmetic_colon_operator_begin,
+    $._arithmetic_logical_or_operator_begin,
+    $._arithmetic_logical_and_operator_begin,
+    $._arithmetic_bitwise_or_operator_begin,
+    $._arithmetic_bitwise_xor_operator_begin,
+    $._arithmetic_bitwise_and_operator_begin,
+    $._arithmetic_equality_operator_begin,
+    $._arithmetic_relational_operator_begin,
+    $._arithmetic_shift_operator_begin,
+    $._arithmetic_additive_operator_begin,
+    $._arithmetic_multiplicative_operator_begin,
+    $._and_if_begin,
+    $._or_if_begin,
+    $._dsemi_begin,
+    $._semi_and_begin,
+    $._lessand_begin,
+    $._greatand_begin,
+    $._dgreat_begin,
+    $._lessgreat_begin,
+    $._clobber_begin,
+    $._dless_operator_begin,
+    $._dlessdash_operator_begin,
+    $._pattern_star_begin,
+    $._pattern_question_begin,
+    $._pattern_negation_begin,
+    $._pattern_class_content_begin,
+    $._parameter_pattern_class_content_begin,
+    $._pattern_collating_character_begin,
+    $._parameter_pattern_collating_character_begin,
+    $._pattern_equivalence_character_begin,
+    $._parameter_pattern_equivalence_character_begin,
+    $._punct_left_parenthesis,
+    $._punct_right_parenthesis,
+    $._punct_semicolon,
+    $._punct_ampersand,
+    $._punct_pipe,
+    $._punct_less,
+    $._punct_greater,
+    $._punct_equals,
+    $._punct_right_bracket,
+    $._punct_colon,
+    $._punct_dot,
+    $._sq_open,
+    $._sq_close,
+    $._dq_open,
+    $._dq_close,
+    $._dollar_sq_dollar,
+    $._dollar_sq_open,
+    $._dollar_sq_close,
+    $._parameter_open,
+    $._parameter_close,
+    $._command_open,
+    $._numeric_parameter_digit,
+    $._word_tilde_start,
+    $._assignment_tilde_start,
+    $._parameter_tilde_start,
+    $._physical_character,
+    $._logical_newline_begin,
+    $._logical_blank_begin,
+    $._arithmetic_close_first,
+    $._arithmetic_close_second,
+    $._pattern_initial_right_bracket_begin,
+    $._source_begin,
+    $._removed_source,
+    $._here_document_end_line_end_begin,
+    $._word_fallback_literal_begin,
+    $._assignment_fallback_literal_begin,
+    $._parameter_fallback_literal_begin,
+    $._fallback_bracket_open,
+    $._word_bracket_fallback_end,
+    $._assignment_bracket_fallback_end,
+    $._parameter_bracket_fallback_end,
+    $._fallback_bracket_close,
+    $._fallback_colon,
+    $._fallback_dot,
+    $._fallback_equals,
+    $._word_fallback_character_begin,
+    $._assignment_fallback_character_begin,
+    $._parameter_fallback_character_begin,
+    $._word_begin,
+    $._fallback_special_bracket_open,
+    $._here_document_line_layout_begin,
+    $._parameter_hyphen_begin,
+    $._parameter_question_begin,
   ],
 
   conflicts: ($) => [
     [$.term],
     [$.complete_commands],
-    [$._operator_separator],
-    [$._sequential_operator_separator],
     [$._sequential_newline_separator, $.linebreak],
     [$.case_list],
     [$._pattern_bracket_member, $._pattern_bracket_range_endpoint],
-    [$._pattern_deferred_member, $._pattern_deferred_range_endpoint],
-    [
-      $._parameter_pattern_deferred_member,
-      $._parameter_pattern_deferred_range_endpoint,
-    ],
-    [$.pattern_collating_symbol_source, $._pattern_special_marker_character],
-    [
-      $._parameter_pattern_collating_symbol_source,
-      $._pattern_special_marker_character,
-    ],
-    [$._word_special_prefixed_bracket_source, $._pattern_special_literal_left],
-    [
-      $._parameter_special_prefixed_bracket_source,
-      $._pattern_special_literal_left,
-    ],
     [
       $._parameter_pattern_bracket_member,
       $._parameter_pattern_bracket_range_endpoint,
     ],
-    [$.pattern_bracket_negation_source, $.pattern_bracket_character_source],
-    [$.pattern_bracket_negation_source, $._parameter_pattern_bracket_character],
     [$.pattern_bracket_range_operator_source, $.pattern_bracket_hyphen_source],
-    [$._special_parameter_hash, $._parameter_length_operator],
     [$._parenthesized_arithmetic_lvalue, $._arithmetic_primary_expression],
-    [$.arithmetic_dynamic_expression],
     [$.complete_command],
+    [$._special_parameter_hash, $._parameter_length_operator],
+    ...["word", "assignment", "parameter"].flatMap((kind) => [
+      [$[`_${kind}_fallback_first`]],
+      [$[`_${kind}_fallback_literal`]],
+      [$[`_${kind}_fallback_suffix`]],
+      [$[`_${kind}_fallback_range`], $[`_${kind}_fallback_member`]],
+    ]),
   ],
 
   rules: {
@@ -957,15 +974,91 @@ export default grammar({
         ),
       ),
 
-    _line_continuation: ($) =>
+    _arithmetic_unary_operator_lexeme: ($) =>
+      lexical($, $._arithmetic_unary_operator_begin),
+
+    _and_if_lexeme: ($) => lexical($, $._and_if_begin),
+
+    _or_if_lexeme: ($) => lexical($, $._or_if_begin),
+
+    _if_keyword_lexeme: ($) => lexical($, $._if_keyword_begin),
+
+    _then_keyword_lexeme: ($) => lexical($, $._then_keyword_begin),
+
+    _elif_keyword_lexeme: ($) => lexical($, $._elif_keyword_begin),
+
+    _else_keyword_lexeme: ($) => lexical($, $._else_keyword_begin),
+
+    _fi_keyword_lexeme: ($) => lexical($, $._fi_keyword_begin),
+
+    _for_keyword_lexeme: ($) => lexical($, $._for_keyword_begin),
+
+    _in_keyword_lexeme: ($) => lexical($, $._in_keyword_begin),
+
+    _do_keyword_lexeme: ($) => lexical($, $._do_keyword_begin),
+
+    _done_keyword_lexeme: ($) => lexical($, $._done_keyword_begin),
+
+    _case_keyword_lexeme: ($) => lexical($, $._case_keyword_begin),
+
+    _esac_keyword_lexeme: ($) => lexical($, $._esac_keyword_begin),
+
+    _while_keyword_lexeme: ($) => lexical($, $._while_keyword_begin),
+
+    _until_keyword_lexeme: ($) => lexical($, $._until_keyword_begin),
+
+    _dsemi_lexeme: ($) => lexical($, $._dsemi_begin),
+
+    _semi_and_lexeme: ($) => lexical($, $._semi_and_begin),
+
+    _dgreat_lexeme: ($) => lexical($, $._dgreat_begin),
+
+    _dless_operator_lexeme: ($) => lexical($, $._dless_operator_begin),
+
+    _dlessdash_operator_lexeme: ($) => lexical($, $._dlessdash_operator_begin),
+
+    _quoted_here_document_end_text_lexeme: ($) =>
+      lexical($, $._quoted_here_document_end_text_begin),
+
+    _quoted_here_document_text_lexeme: ($) =>
+      lexical($, $._quoted_here_document_text_begin),
+
+    _assignment_name_lexeme: ($) => lexical($, $._assignment_name_begin),
+
+    _special_parameter_hash_lexeme: ($) =>
+      lexical($, $._special_parameter_hash_begin),
+    _parameter_hyphen_lexeme: ($) => lexical($, $._parameter_hyphen_begin),
+    _parameter_question_lexeme: ($) => lexical($, $._parameter_question_begin),
+
+    _special_parameter_lexeme: ($) => lexical($, $._special_parameter_begin),
+
+    _parameter_value_operator_lexeme: ($) =>
       choice(
-        $.line_continuation,
-        seq(
-          $._backquote_continuation_begin,
-          repeat1("\\"),
-          $.line_continuation,
+        lexical($, $._parameter_value_operator_begin),
+        $._parameter_hyphen_lexeme,
+        $._parameter_question_lexeme,
+      ),
+
+    _parameter_pattern_operator_lexeme: ($) =>
+      choice(
+        lexical($, $._parameter_pattern_operator_begin),
+        prec.right(
+          1,
+          seq(
+            $._special_parameter_hash_lexeme,
+            optional($._special_parameter_hash_lexeme),
+          ),
         ),
       ),
+
+    _arithmetic_question_operator_lexeme: ($) =>
+      lexical($, $._arithmetic_question_operator_begin),
+
+    _arithmetic_colon_operator_lexeme: ($) =>
+      lexical($, $._arithmetic_colon_operator_begin),
+
+    _arithmetic_assignment_operator_lexeme: ($) =>
+      lexical($, $._arithmetic_assignment_operator_begin),
 
     complete_commands: ($) =>
       seq(
@@ -1048,7 +1141,7 @@ export default grammar({
           seq(
             $._pipe_continuation,
             optional($._horizontal_layout),
-            "|",
+            physical($, $._punct_pipe, "|"),
             linebreakLayout($),
             field("command", $.command),
           ),
@@ -1064,7 +1157,11 @@ export default grammar({
 
     _redirectable_compound_command: ($) => redirectableCompoundCommand($),
 
-    separator_op: (_) => choice("&", ";"),
+    separator_op: ($) =>
+      choice(
+        physical($, $._punct_ampersand, "&"),
+        physical($, $._punct_semicolon, ";"),
+      ),
 
     _operator_separator: ($) =>
       separatorOperatorLayout($, field("operator", $.separator_op)),
@@ -1089,7 +1186,8 @@ export default grammar({
         field("linebreak", alias($._here_document_led_linebreak, $.linebreak)),
       ),
 
-    _sequential_operator_separator: ($) => separatorOperatorLayout($, ";"),
+    _sequential_operator_separator: ($) =>
+      separatorOperatorLayout($, physical($, $._punct_semicolon, ";")),
 
     _sequential_newline_separator: ($) => field("newlines", $.newline_list),
 
@@ -1153,46 +1251,30 @@ export default grammar({
         ),
       ),
 
-    _and_if: ($) => alias("&&", $.and_if),
-
-    _or_if: ($) => alias("||", $.or_if),
-
-    bang: ($) => $._bang_token,
-
-    _if_keyword_source: ($) => alias($._if_keyword, $.if_keyword),
-
-    _then_keyword_source: ($) => alias($._then_keyword, $.then_keyword),
-
-    _elif_keyword_source: ($) => alias($._elif_keyword, $.elif_keyword),
-
-    _else_keyword_source: ($) => alias($._else_keyword, $.else_keyword),
-
-    _fi_keyword_source: ($) => alias($._fi_keyword, $.fi_keyword),
-
-    _for_keyword_source: ($) => alias($._for_keyword, $.for_keyword),
-
-    _in_keyword_source: ($) => alias($._in_keyword, $.in_keyword),
-
-    _do_keyword_source: ($) => alias($._do_keyword, $.do_keyword),
-
-    _done_keyword_source: ($) => alias($._done_keyword, $.done_keyword),
-
-    _case_keyword_source: ($) => alias($._case_keyword, $.case_keyword),
-
-    _esac_keyword_source: ($) => alias($._esac_keyword, $.esac_keyword),
-
-    _while_keyword_source: ($) => alias($._while_keyword, $.while_keyword),
-
-    _until_keyword_source: ($) => alias($._until_keyword, $.until_keyword),
-
+    _and_if: ($) => alias($._and_if_lexeme, $.and_if),
+    _or_if: ($) => alias($._or_if_lexeme, $.or_if),
+    bang: ($) => lexical($, $._bang_begin),
+    _if_keyword_source: ($) => alias($._if_keyword_lexeme, $.if_keyword),
+    _then_keyword_source: ($) => alias($._then_keyword_lexeme, $.then_keyword),
+    _elif_keyword_source: ($) => alias($._elif_keyword_lexeme, $.elif_keyword),
+    _else_keyword_source: ($) => alias($._else_keyword_lexeme, $.else_keyword),
+    _fi_keyword_source: ($) => alias($._fi_keyword_lexeme, $.fi_keyword),
+    _for_keyword_source: ($) => alias($._for_keyword_lexeme, $.for_keyword),
+    _in_keyword_source: ($) => alias($._in_keyword_lexeme, $.in_keyword),
+    _do_keyword_source: ($) => alias($._do_keyword_lexeme, $.do_keyword),
+    _done_keyword_source: ($) => alias($._done_keyword_lexeme, $.done_keyword),
+    _case_keyword_source: ($) => alias($._case_keyword_lexeme, $.case_keyword),
+    _esac_keyword_source: ($) => alias($._esac_keyword_lexeme, $.esac_keyword),
+    _while_keyword_source: ($) =>
+      alias($._while_keyword_lexeme, $.while_keyword),
+    _until_keyword_source: ($) =>
+      alias($._until_keyword_lexeme, $.until_keyword),
     function_definition: ($) => functionDefinitionWithBody($, $.function_body),
 
     function_body: ($) => $._redirectable_compound_command,
 
-    fname: ($) => $._fname_token,
-
-    name: ($) => $._name_token,
-
+    fname: ($) => lexical($, $._fname_begin),
+    name: ($) => lexical($, $._name_begin),
     compound_command: ($) =>
       choice(
         $.brace_group,
@@ -1208,21 +1290,19 @@ export default grammar({
 
     brace_group: ($) =>
       seq(
-        alias($._left_brace, "{"),
+        physical($, $._left_brace, "{"),
         compoundListField($, "body"),
         optional($._closing_layout),
-        alias($._right_brace, "}"),
+        physical($, $._right_brace, "}"),
       ),
 
     subshell: ($) =>
       seq(
-        "(",
+        physical($, $._punct_left_parenthesis, "("),
         field("body", $.compound_list),
         optional($._closing_layout),
-        optional($._subshell_close),
-        ")",
+        physical($, $._subshell_close, ")"),
       ),
-
     for_clause: ($) =>
       seq(
         $._for_keyword_source,
@@ -1237,15 +1317,9 @@ export default grammar({
       prec.right(
         seq(
           field("word", $.word),
-          repeat(
-            choice(
-              seq($._word_separator, field("word", $.word)),
-              prec(1, $._line_continuation),
-            ),
-          ),
+          repeat(seq($._word_separator, field("word", $.word))),
         ),
       ),
-
     do_group: ($) =>
       seq(
         $._do_keyword_source,
@@ -1300,7 +1374,7 @@ export default grammar({
         field("patterns", $.pattern_list),
         $._pattern_end,
         optional($._horizontal_layout),
-        ")",
+        physical($, $._punct_right_parenthesis, ")"),
         choice(
           seq(optional($.linebreak), optional($._horizontal_layout)),
           prec.dynamic(
@@ -1315,7 +1389,7 @@ export default grammar({
         field("patterns", $.pattern_list),
         $._pattern_end,
         optional($._horizontal_layout),
-        ")",
+        physical($, $._punct_right_parenthesis, ")"),
         choice(
           linebreakLayout($),
           prec.dynamic(10, field("body", $.compound_list)),
@@ -1329,26 +1403,26 @@ export default grammar({
       prec.dynamic(
         2,
         seq(
-          optional(seq("(", optional($._horizontal_layout))),
+          optional(
+            seq(
+              physical($, $._punct_left_parenthesis, "("),
+              optional($._horizontal_layout),
+            ),
+          ),
           field("word", $.word),
-          optional(lineContinuationRun($)),
           repeat(
             seq(
               $._pattern_continuation,
               optional($._horizontal_layout),
-              "|",
+              physical($, $._punct_pipe, "|"),
               optional($._horizontal_layout),
               field("word", $.word),
-              optional(lineContinuationRun($)),
             ),
           ),
         ),
       ),
-
-    _dsemi: ($) => prec(10, alias(";;", $.dsemi)),
-
-    _semi_and: ($) => prec(10, alias(";&", $.semi_and)),
-
+    _dsemi: ($) => alias($._dsemi_lexeme, $.dsemi),
+    _semi_and: ($) => alias($._semi_and_lexeme, $.semi_and),
     simple_command: ($) =>
       choice(
         seq(
@@ -1395,34 +1469,24 @@ export default grammar({
 
     io_redirect: ($) =>
       choice(
-        prec.dynamic(
-          2,
-          seq(
-            field("number", $.io_number),
-            repeat($._line_continuation),
-            field("body", choice($.io_file, $.io_here)),
-          ),
+        seq(
+          field("number", $.io_number),
+          field("body", choice($.io_file, $.io_here)),
         ),
         field("body", choice($.io_file, $.io_here)),
       ),
-
     _io_redirect_without_descriptor: ($) =>
       field("body", choice($.io_file, $.io_here)),
 
-    io_number: ($) => seq($._io_number_token, /[0-9]+/),
-
+    io_number: ($) => lexical($, $._io_number_begin),
     io_file: ($) =>
       seq(
-        field(
-          "operator",
-          choice(
-            "<",
-            ">",
-            $.lessand,
-            $.greatand,
-            $._dgreat,
-            $.lessgreat,
-            $.clobber,
+        choice(
+          physical($, $._punct_less, "<", "operator"),
+          physical($, $._punct_greater, ">", "operator"),
+          field(
+            "operator",
+            choice($.lessand, $.greatand, $._dgreat, $.lessgreat, $.clobber),
           ),
         ),
         optional($._horizontal_layout),
@@ -1431,16 +1495,11 @@ export default grammar({
 
     filename: ($) => field("word", $.word),
 
-    lessand: (_) => "<&",
-
-    greatand: (_) => ">&",
-
-    _dgreat: ($) => alias(">>", $.dgreat),
-
-    lessgreat: (_) => "<>",
-
-    clobber: (_) => ">|",
-
+    lessand: ($) => lexical($, $._lessand_begin),
+    greatand: ($) => lexical($, $._greatand_begin),
+    _dgreat: ($) => alias($._dgreat_lexeme, $.dgreat),
+    lessgreat: ($) => lexical($, $._lessgreat_begin),
+    clobber: ($) => lexical($, $._clobber_begin),
     io_here: ($) =>
       seq(
         field("operator", choice($._dless, $._dlessdash)),
@@ -1448,10 +1507,13 @@ export default grammar({
         field("end", $.here_end),
       ),
 
-    _dless: ($) => seq(alias("<<", $.dless), $._dless_commit),
-
-    _dlessdash: ($) => seq(alias("<<-", $.dlessdash), $._dlessdash_commit),
-
+    _dless: ($) =>
+      seq(alias($._dless_operator_lexeme, $.dless), $._dless_commit),
+    _dlessdash: ($) =>
+      seq(
+        alias($._dlessdash_operator_lexeme, $.dlessdash),
+        $._dlessdash_commit,
+      ),
     here_end: ($) =>
       seq(
         $._here_end_begin,
@@ -1459,32 +1521,15 @@ export default grammar({
         $._here_end_commit,
       ),
 
-    _here_end_source_word: ($) =>
-      prec(
-        1,
-        seq(
-          $._word_part,
-          repeat(choice(alias($._literal_hash, $.literal), $._word_part)),
-          optional(lineContinuationRun($)),
-        ),
-      ),
-
+    _here_end_source_word: ($) => $._source_word,
     here_document_sequence: ($) =>
       seq(
-        optional(
-          choice(
-            boundaryLineComment($, field("comment", $.comment)),
-            seq(
-              $._pre_newline_blank,
-              optional(seq(optional($._blank), $._continuation_led_run)),
-            ),
-          ),
-        ),
+        optional(seq($._here_document_line_layout_begin, $._closing_layout)),
+        optional(boundaryLineComment($, field("comment", $.comment))),
         field("line_end", $.here_document_line_end),
         repeat1(field("document", $.here_document)),
         $._here_document_sequence_end,
       ),
-
     here_document: ($) =>
       choice(
         seq(
@@ -1507,13 +1552,9 @@ export default grammar({
             repeat(
               choice(
                 $._here_document_end_leading_tabs,
-                $._line_continuation,
-                seq(
-                  optional($._quoted_here_document_text_run_begin),
-                  alias(
-                    $._quoted_here_document_end_text,
-                    $.here_document_end_text,
-                  ),
+                alias(
+                  $._quoted_here_document_end_text_lexeme,
+                  $.here_document_end_text,
                 ),
               ),
             ),
@@ -1521,41 +1562,27 @@ export default grammar({
           seq(
             $._here_document_end_begin,
             repeat(
-              choice($._here_document_end_leading_tabs, $._line_continuation),
-            ),
-            optional(
-              seq(
-                $._here_document_end_part,
-                repeat(choice($._here_document_end_part, $._line_continuation)),
+              choice(
+                $._here_document_end_leading_tabs,
+                $.here_document_end_text,
               ),
             ),
           ),
         ),
+        optional($._here_document_end_line_end),
         $._here_document_end_commit,
       ),
 
-    _here_document_end_part: ($) =>
-      choice(
-        $.here_document_end_text,
-        alias($._here_document_backslash, $.here_document_end_text),
-        alias($._here_document_end_backquote, $.here_document_end_text),
-      ),
+    _here_document_end_line_end: ($) =>
+      lexical($, $._here_document_end_line_end_begin),
 
-    here_document_end_text: (_) => token.immediate(/[^\\\n`]+/),
-
-    _here_document_end_backquote: (_) =>
-      token.immediate(prec(-2, seq(repeat("\\"), "`"))),
+    here_document_end_text: ($) => lexical($, $._here_document_end_text_begin),
 
     here_document_body: ($) =>
       repeat1(
         choice(
           $.here_document_text,
-          alias($._here_document_dollar, $.here_document_text),
-          alias($._here_document_backslash, $.here_document_text),
           $.here_document_escape,
-          $._backquote_here_document_content_escape_run,
-          $._backquote_here_document_escaped_pair_run,
-          $._line_continuation,
           $.parameter_expansion,
           $.command_substitution,
           $.arithmetic_expansion,
@@ -1563,184 +1590,86 @@ export default grammar({
           $._newline,
         ),
       ),
+    here_document_text: ($) => lexical($, $._here_document_text_begin),
 
-    here_document_text: (_) => token.immediate(prec(-1, /[^$`\\\n]+/)),
-
-    _here_document_dollar: (_) => token.immediate(prec(-2, /\$/)),
-
-    _here_document_backslash: (_) => token.immediate(prec(-2, /\\/)),
-
-    here_document_escape: (_) =>
-      token.immediate(seq("\\", choice("$", "`", "\\"))),
-
-    _backquote_here_document_content_escape_run: ($) =>
-      backquoteContentEscapeRun(
-        $,
-        $.here_document_escape,
-        $.here_document_text,
-        choice(
-          alias($._backquote_here_document_escape_tail, $.here_document_escape),
-          alias($._backquote_here_document_text_tail, $.here_document_text),
-        ),
-      ),
-
-    _backquote_here_document_escaped_pair_run: ($) =>
-      backquoteEscapedPairRun($, $.here_document_escape),
-
-    _backquote_here_document_escape_tail: (_) =>
-      token.immediate(seq("\\", choice("$", "`"))),
-
-    _backquote_here_document_text_tail: (_) =>
-      token.immediate(seq("\\", /[^\\\n$`]/)),
-
+    here_document_escape: ($) => lexical($, $._here_document_escape_begin),
     quoted_here_document_body: ($) =>
       repeat1(
         choice(
-          seq(
-            optional($._quoted_here_document_text_run_begin),
-            alias($._quoted_here_document_text, $.quoted_here_document_text),
+          alias(
+            $._quoted_here_document_text_lexeme,
+            $.quoted_here_document_text,
           ),
-          $._line_continuation,
           $._newline,
         ),
       ),
-
     assignment_word: ($) =>
       prec.dynamic(
         ASSIGNMENT_WORD_PRECEDENCE,
-        prec.right(
-          1,
-          seq(
-            field("name", alias($._assignment_name_token, $.variable_name)),
-            "=",
-            optional(field("value", $.assignment_value)),
-            optional(lineContinuationRun($)),
-          ),
+        seq(
+          field("name", alias($._assignment_name_lexeme, $.variable_name)),
+          physical($, $._punct_equals, "="),
+          optional(field("value", $.assignment_value)),
         ),
       ),
-
-    variable_name: ($) => $._name_token,
-
+    variable_name: ($) => lexical($, $._variable_name_begin),
     assignment_value: ($) => $._assignment_source_word,
 
     _assignment_source_word: ($) =>
-      choice(
-        prec.right(
-          seq(
-            alias($._assignment_tilde_expansion, $.tilde_expansion),
-            optional($._assignment_source_word_tail),
-          ),
-        ),
-        prec.right(
-          seq(
-            choice($._assignment_colon_part, $._assignment_word_part),
-            optional($._assignment_source_word_tail),
-          ),
+      repeat1(
+        choice(
+          alias($._assignment_tilde_expansion, $.tilde_expansion),
+          $._assignment_word_part,
         ),
       ),
 
-    _assignment_source_word_tail: ($) =>
-      repeat1(choice($._assignment_colon_part, $._assignment_word_part)),
-
     _assignment_non_delimiter_part: ($) =>
       choice(
+        $._assignment_bracket_fallback,
         $.pattern_bracket_source,
-        alias($._literal_hash, $.literal),
         alias($._assignment_literal, $.literal),
-        alias($._literal_tilde, $.literal),
         $.pattern_star_source,
         $.pattern_question_source,
         $._word_structured_part,
       ),
-
-    _assignment_word_part: ($) =>
-      choice(
-        $._assignment_non_delimiter_part,
-        $._assignment_incomplete_bracket_literal,
-        prec(-1, alias($._literal_slash, $.literal)),
-      ),
-
-    _assignment_incomplete_bracket_literal: ($) =>
-      incompleteBracketLiteral(
-        $,
-        $._assignment_bracket_literal_start,
-        choice(
-          $._word_incomplete_bracket_literal_part,
-          prec(-1, $._pattern_special_literal_left),
-        ),
-        $._assignment_bracket_fallback_end,
-      ),
+    _assignment_word_part: ($) => $._assignment_non_delimiter_part,
 
     _assignment_literal: ($) => prec.right(assignmentPlainChunk($)),
-
-    _assignment_colon_part: ($) =>
-      prec.right(
-        seq(
-          alias($._literal_colon, $.literal),
-          optional(
-            prec.dynamic(
-              3,
-              alias($._assignment_tilde_expansion, $.tilde_expansion),
-            ),
-          ),
-        ),
-      ),
 
     word: ($) => $._source_word,
 
     _source_word: ($) =>
-      choice(
-        prec.right(seq($.tilde_expansion, optional($._source_word_tail))),
-        prec.right(seq($._word_part, optional($._source_word_tail))),
+      seq(
+        $._word_begin,
+        choice(
+          seq($.tilde_expansion, repeat($._word_part)),
+          repeat1($._word_part),
+        ),
       ),
 
-    _source_word_tail: ($) =>
-      repeat1(choice(alias($._literal_hash, $.literal), $._word_part)),
-
-    tilde_expansion: ($) => tildeExpansion($.tilde_user, $._word_tilde_end),
-
+    tilde_expansion: ($) =>
+      tildeExpansion($, $._word_tilde_start, $.tilde_user, $._word_tilde_end),
     _assignment_tilde_expansion: ($) =>
       tildeExpansion(
+        $,
+        $._assignment_tilde_start,
         alias($._assignment_tilde_user, $.tilde_user),
         $._assignment_tilde_end,
       ),
-
     _parameter_tilde_expansion: ($) =>
       tildeExpansion(
+        $,
+        $._parameter_tilde_start,
         alias($._parameter_tilde_user, $.tilde_user),
         $._word_tilde_end,
       ),
 
-    _parameter_terminal_tilde_expansion: ($) =>
-      tildeExpansion(alias($._parameter_tilde_user, $.tilde_user), null),
-
-    tilde_user: ($) =>
-      repeat1(
-        choice(
-          alias($._tilde_bracket_literal_start, $.literal),
-          alias($._literal_hash, $.literal),
-          $._word_non_slash_part,
-        ),
-      ),
-
-    _assignment_tilde_user: ($) =>
-      repeat1(
-        choice(
-          alias($._assignment_tilde_bracket_literal_start, $.literal),
-          $._assignment_non_delimiter_part,
-        ),
-      ),
-
-    _parameter_tilde_user: ($) =>
-      repeat1(
-        choice(
-          alias($._tilde_bracket_literal_start, $.literal),
-          $._parameter_non_slash_part,
-        ),
-      ),
-
+    tilde_user: ($) => repeat1($._word_non_slash_part),
+    _assignment_tilde_user: ($) => repeat1($._assignment_non_delimiter_part),
+    _parameter_tilde_user: ($) => repeat1($._parameter_non_slash_part),
     _word_non_slash_part: ($) =>
       choice(
+        $._word_bracket_fallback,
         $.pattern_bracket_source,
         $.literal,
         $.pattern_star_source,
@@ -1748,59 +1677,44 @@ export default grammar({
         $._word_structured_part,
       ),
 
-    _word_part: ($) =>
-      choice(
-        $._word_non_slash_part,
-        $._word_incomplete_bracket_literal,
-        prec(-1, alias($._literal_slash, $.literal)),
-      ),
-
+    _word_part: ($) => $._word_non_slash_part,
     _word_structured_part: ($) => choice(...structuredSourceParts($)),
 
-    literal: ($) => prec.right(choice($._literal_dollar, wordPlainChunk($))),
+    literal: ($) => lexical($, $._literal_begin),
 
-    _word_incomplete_bracket_literal: ($) =>
-      incompleteBracketLiteral(
+    ...fallbackRules("word"),
+    ...fallbackRules("assignment"),
+    ...fallbackRules("parameter"),
+    _word_bracket_fallback: ($) =>
+      bracketFallback(
         $,
-        $._word_bracket_literal_start,
-        $._word_incomplete_bracket_literal_part,
+        $._word_fallback_first,
+        $._word_fallback_suffix,
         $._word_bracket_fallback_end,
       ),
-
-    _word_incomplete_bracket_literal_part: ($) =>
-      incompleteBracketLiteralPart(
+    _assignment_bracket_fallback: ($) =>
+      bracketFallback(
         $,
-        wordPatternBracketSources($),
-        $._word_incomplete_bracket_literal_run,
-        [
-          $._pattern_special_literal_start,
-          alias($._word_incomplete_bracket_literal_text, $.literal),
-        ],
+        $._assignment_fallback_first,
+        $._assignment_fallback_suffix,
+        $._assignment_bracket_fallback_end,
+      ),
+    _parameter_bracket_fallback: ($) =>
+      bracketFallback(
+        $,
+        $._parameter_fallback_first,
+        $._parameter_fallback_suffix,
+        $._parameter_bracket_fallback_end,
       ),
 
-    _word_special_prefixed_bracket_source: ($) =>
-      patternSpecialPrefixedExpression($, $._pattern_special_prefixed_members),
-
-    _word_incomplete_bracket_literal_text: ($) =>
-      prec.right(1, repeat1(wordIncompleteBracketLiteralAtom($))),
-
-    _word_incomplete_bracket_literal_run: ($) =>
-      incompleteBracketLiteralRun($, wordIncompleteBracketLiteralAtom($)),
-
-    pattern_star_source: (_) => token(prec(-1, "*")),
-
-    pattern_question_source: (_) => token(prec(-1, "?")),
-
+    pattern_star_source: ($) => lexical($, $._pattern_star_begin),
+    pattern_question_source: ($) => lexical($, $._pattern_question_begin),
     pattern_bracket_source: ($) =>
       patternBracketExpression(
         $,
         $.pattern_bracket_members_source,
-        choice(
-          alias($._word_pattern_bracket_open, "["),
-          alias($._literal_left_bracket, "["),
-        ),
+        $._word_pattern_bracket_open,
       ),
-
     _parameter_pattern_bracket_expression: ($) =>
       patternBracketExpression(
         $,
@@ -1808,15 +1722,10 @@ export default grammar({
           $._parameter_pattern_bracket_list,
           $.pattern_bracket_members_source,
         ),
-        choice(
-          alias($._parameter_pattern_bracket_open, "["),
-          alias($._literal_left_bracket, "["),
-        ),
+        $._parameter_pattern_bracket_open,
       ),
-
     pattern_bracket_negation_source: ($) =>
-      prec.dynamic(PATTERN_PRECEDENCE.negation, $._pattern_bracket_exclamation),
-
+      prec(1, lexical($, $._pattern_negation_begin)),
     pattern_bracket_members_source: ($) =>
       patternBracketList(
         $,
@@ -1841,7 +1750,7 @@ export default grammar({
         $.pattern_bracket_character_source,
         $._pattern_operator_bracket_character,
         $.pattern_bracket_hyphen_source,
-        ...patternBracketStructuredSourceParts($),
+        ...structuredSourceParts($),
       ),
 
     _parameter_pattern_bracket_member: ($) =>
@@ -1857,7 +1766,7 @@ export default grammar({
         ),
         $._pattern_operator_bracket_character,
         $.pattern_bracket_hyphen_source,
-        ...patternBracketStructuredSourceParts($),
+        ...structuredSourceParts($),
       ),
 
     pattern_bracket_range_source: ($) =>
@@ -1881,7 +1790,7 @@ export default grammar({
         $._pattern_operator_bracket_character,
         $.pattern_collating_symbol_source,
         $.pattern_bracket_hyphen_source,
-        ...patternBracketStructuredSourceParts($),
+        ...structuredSourceParts($),
       ),
 
     _parameter_pattern_bracket_range_endpoint: ($) =>
@@ -1893,99 +1802,23 @@ export default grammar({
         $._pattern_operator_bracket_character,
         parameterPatternCollatingSymbolSource($),
         $.pattern_bracket_hyphen_source,
-        ...patternBracketStructuredSourceParts($),
+        ...structuredSourceParts($),
       ),
 
     pattern_bracket_character_source: ($) =>
-      patternBracketCharacter($, $._pattern_bracket_character_token),
-
+      lexical($, $._pattern_bracket_character_begin),
     _parameter_pattern_bracket_character: ($) =>
-      patternBracketCharacter($, $._parameter_pattern_bracket_character_token),
-
+      lexical($, $._parameter_pattern_bracket_character_begin),
     _pattern_operator_bracket_character: ($) =>
       choice(
         alias($.pattern_star_source, $.pattern_bracket_character_source),
         alias($.pattern_question_source, $.pattern_bracket_character_source),
       ),
 
-    _pattern_deferred_bracket_character: ($) =>
-      choice(
-        $._pattern_special_plain_character,
-        $._literal_dollar,
-        $._pattern_special_marker_character,
-      ),
-
-    _pattern_deferred_range_endpoint: ($) =>
-      patternDeferredBracketRangeEndpoint(
-        $,
-        $._pattern_deferred_bracket_character,
-        $.pattern_collating_symbol_source,
-      ),
-
-    _pattern_deferred_range: ($) =>
-      patternBracketRange($, $._pattern_deferred_range_endpoint),
-
-    _pattern_deferred_initial_range: ($) =>
-      patternSpecialInitialRange($, $._pattern_deferred_range_endpoint),
-
-    _pattern_deferred_member: ($) =>
-      patternDeferredBracketMember(
-        $,
-        $._pattern_deferred_bracket_character,
-        $._pattern_deferred_range,
-        wordPatternSpecialSources($),
-      ),
-
-    _pattern_special_prefixed_members: ($) =>
-      patternSpecialPrefixedList(
-        $,
-        $._pattern_deferred_member,
-        $._pattern_deferred_initial_range,
-      ),
-
-    _parameter_pattern_deferred_bracket_character: ($) =>
-      choice(
-        $._parameter_pattern_special_plain_character,
-        $._literal_dollar,
-        $._pattern_special_marker_character,
-      ),
-
-    _parameter_pattern_deferred_range_endpoint: ($) =>
-      patternDeferredBracketRangeEndpoint(
-        $,
-        $._parameter_pattern_deferred_bracket_character,
-        parameterPatternCollatingSymbolSource($),
-      ),
-
-    _parameter_pattern_deferred_range: ($) =>
-      patternBracketRange($, $._parameter_pattern_deferred_range_endpoint),
-
-    _parameter_pattern_deferred_initial_range: ($) =>
-      patternSpecialInitialRange(
-        $,
-        $._parameter_pattern_deferred_range_endpoint,
-      ),
-
-    _parameter_pattern_deferred_member: ($) =>
-      patternDeferredBracketMember(
-        $,
-        $._parameter_pattern_deferred_bracket_character,
-        $._parameter_pattern_deferred_range,
-        parameterPatternSpecialSources($),
-      ),
-
-    _parameter_pattern_special_prefixed_members: ($) =>
-      patternSpecialPrefixedList(
-        $,
-        $._parameter_pattern_deferred_member,
-        $._parameter_pattern_deferred_initial_range,
-      ),
-
     pattern_bracket_range_operator_source: ($) =>
-      $._pattern_bracket_hyphen_token,
-
-    pattern_bracket_hyphen_source: ($) => $._pattern_bracket_hyphen_token,
-
+      lexical($, $._pattern_bracket_hyphen_begin),
+    pattern_bracket_hyphen_source: ($) =>
+      lexical($, $._pattern_bracket_hyphen_begin),
     pattern_character_class_source: ($) =>
       patternCharacterClassSource($, $.pattern_character_class_content_source),
 
@@ -1999,27 +1832,21 @@ export default grammar({
       ),
 
     pattern_character_class_content_source: ($) =>
-      patternCharacterClassContent($, $._pattern_special_plain_character),
-
+      lexical($, $._pattern_class_content_begin),
     _parameter_pattern_character_class_content_source: ($) =>
-      patternCharacterClassContent(
-        $,
-        $._parameter_pattern_special_plain_character,
-      ),
-
-    _pattern_character_class_colon: (_) => token.immediate(prec(-3, /:/)),
+      lexical($, $._parameter_pattern_class_content_begin),
 
     pattern_collating_symbol_source: ($) =>
       patternSpecialClassSource(
         $,
-        alias($._pattern_collating_dot, "."),
+        physical($, $._punct_dot, "."),
         $.pattern_collating_symbol_character_source,
       ),
 
     _parameter_pattern_collating_symbol_source: ($) =>
       patternSpecialClassSource(
         $,
-        alias($._pattern_collating_dot, "."),
+        physical($, $._punct_dot, "."),
         alias(
           $._parameter_pattern_collating_symbol_character_source,
           $.pattern_collating_symbol_character_source,
@@ -2027,36 +1854,21 @@ export default grammar({
       ),
 
     pattern_collating_symbol_character_source: ($) =>
-      choice(
-        ...patternSpecialContentCharacters(
-          $,
-          $._pattern_special_plain_character,
-        ),
-        $._literal_right_bracket,
-      ),
-
+      lexical($, $._pattern_collating_character_begin),
     _parameter_pattern_collating_symbol_character_source: ($) =>
-      choice(
-        ...patternSpecialContentCharacters(
-          $,
-          $._parameter_pattern_special_plain_character,
-        ),
-        $._literal_right_bracket,
-      ),
-
-    _pattern_collating_dot: (_) => token.immediate(prec(-2, /\./)),
+      lexical($, $._parameter_pattern_collating_character_begin),
 
     pattern_equivalence_class_source: ($) =>
       patternSpecialClassSource(
         $,
-        alias($._pattern_equivalence_equals, "="),
+        physical($, $._punct_equals, "="),
         $.pattern_equivalence_class_character_source,
       ),
 
     _parameter_pattern_equivalence_class_source: ($) =>
       patternSpecialClassSource(
         $,
-        alias($._pattern_equivalence_equals, "="),
+        physical($, $._punct_equals, "="),
         alias(
           $._parameter_pattern_equivalence_class_character_source,
           $.pattern_equivalence_class_character_source,
@@ -2064,115 +1876,41 @@ export default grammar({
       ),
 
     pattern_equivalence_class_character_source: ($) =>
-      choice(
-        ...patternSpecialContentCharacters(
-          $,
-          $._pattern_special_plain_character,
-        ),
-      ),
-
+      lexical($, $._pattern_equivalence_character_begin),
     _parameter_pattern_equivalence_class_character_source: ($) =>
-      choice(
-        ...patternSpecialContentCharacters(
-          $,
-          $._parameter_pattern_special_plain_character,
-        ),
+      lexical($, $._parameter_pattern_equivalence_character_begin),
+
+    escaped_character: ($) => lexical($, $._escaped_character_begin),
+    single_quoted: ($) =>
+      seq(
+        physical($, $._sq_open, "'"),
+        optional($.single_quote_content),
+        physical($, $._sq_close, "'"),
       ),
-
-    _pattern_equivalence_equals: (_) => token.immediate(prec(-2, /=/)),
-
-    escaped_character: (_) => token(seq("\\", /[^\n]/)),
-
-    _backquote_content_escape_run: ($) =>
-      backquoteContentEscapeRun($, $.escaped_character, $.literal),
-
-    _backquote_escaped_pair_run: ($) =>
-      backquoteEscapedPairRun($, $.escaped_character),
-
-    _backquote_double_quote_content_escape_run: ($) =>
-      backquoteContentEscapeRun(
-        $,
-        $.double_quote_escape,
-        $.double_quote_text,
-        choice(
-          alias($._backquote_double_quote_escape_tail, $.double_quote_escape),
-          alias($._backquote_double_quote_text_tail, $.double_quote_text),
-        ),
-      ),
-
-    _backquote_double_quote_escape_tail: (_) =>
-      token.immediate(seq("\\", choice("$", "`", '"'))),
-
-    _backquote_double_quote_text_tail: (_) =>
-      token.immediate(seq("\\", /[^\\\n$`"]/)),
-
-    _backquote_double_quote_escaped_pair_run: ($) =>
-      backquoteEscapedPairRun($, $.double_quote_escape),
-
-    _backquote_escaped_pair: (_) => /\\\\/,
-
-    _backquote_escaped_tail: (_) => token(prec(1, seq("\\", /[^\\\n]/))),
-
-    _backquote_escaped_ordinary: (_) => token.immediate(/[^\\\n$`]/),
-
-    single_quoted: ($) => seq("'", optional($.single_quote_content), "'"),
-
-    single_quote_content: ($) =>
-      repeat1(choice(token.immediate(/[^'\n]+/), $._newline)),
-
+    single_quote_content: ($) => lexical($, $._single_quote_content_begin),
     double_quoted: ($) =>
       seq(
-        $._double_quote_delimiter,
+        physical($, $._dq_open, '"'),
         repeat(doubleQuotedPart($)),
-        $._double_quote_delimiter,
+        physical($, $._dq_close, '"'),
       ),
 
-    _double_quote_delimiter: ($) =>
-      seq(optional(alias($._backquote_quote_prefix, "\\")), '"'),
+    double_quote_text: ($) => lexical($, $._double_quote_text_begin),
 
-    double_quote_text: ($) =>
-      prec.right(choice($._literal_dollar, $._double_quote_text_chunk)),
-
-    _double_quote_text_chunk: ($) =>
-      prec.right(
-        repeat1(
-          choice(
-            token.immediate(prec(-1, /[^"$`\\\n]+/)),
-            $._literal_backslash,
-          ),
-        ),
-      ),
-
-    double_quote_escape: (_) =>
-      token.immediate(seq("\\", choice("$", "`", '"', "\\"))),
-
+    double_quote_escape: ($) => lexical($, $._double_quote_escape_begin),
     dollar_single_quoted: ($) =>
-      prec(
-        2,
-        seq(
-          choice(
-            "$'",
-            seq(
-              alias($._backquote_dollar_single_quote_prefix, "\\"),
-              token.immediate("$'"),
-            ),
-          ),
-          repeat(
-            choice(
-              $.dollar_single_quote_text,
-              $.dollar_single_quote_escape,
-              alias(
-                $._backquote_dollar_single_quote_text,
-                $.dollar_single_quote_text,
-              ),
-              alias($._newline, $.dollar_single_quote_text),
-            ),
-          ),
-          "'",
+      seq(
+        physical($, $._dollar_sq_dollar, "$"),
+        physical($, $._dollar_sq_open, "'"),
+        repeat(
+          choice($.dollar_single_quote_text, $.dollar_single_quote_escape),
         ),
+        physical($, $._dollar_sq_close, "'"),
       ),
-
-    dollar_single_quote_text: (_) => token.immediate(prec(-1, /[^'\\\n]+/)),
+    dollar_single_quote_text: ($) =>
+      lexical($, $._dollar_single_quote_text_begin),
+    dollar_single_quote_escape: ($) =>
+      lexical($, $._dollar_single_quote_escape_begin),
 
     parameter_expansion: ($) =>
       parameterExpansion($, $._braced_parameter_expansion),
@@ -2187,13 +1925,19 @@ export default grammar({
       bracedParameterExpansion($, $._double_quoted_parameter_expansion_tail),
 
     _parameter_expansion_tail: ($) =>
-      choice("}", $._parameter_operator_expansion_tail),
+      choice(
+        physical($, $._parameter_close, "}"),
+        $._parameter_operator_expansion_tail,
+      ),
 
     _parameter_operator_expansion_tail: ($) =>
       parameterOperatorTail($, $.parameter_word),
 
     _double_quoted_parameter_expansion_tail: ($) =>
-      choice("}", $._double_quoted_parameter_operator_expansion_tail),
+      choice(
+        physical($, $._parameter_close, "}"),
+        $._double_quoted_parameter_operator_expansion_tail,
+      ),
 
     _double_quoted_parameter_operator_expansion_tail: ($) =>
       parameterOperatorTail(
@@ -2219,39 +1963,32 @@ export default grammar({
     _length_parameter: ($) =>
       choice($._braced_parameter, $._special_parameter_hash),
 
-    _special_parameter_hash: ($) => alias("#", $.special_parameter),
-
-    // Regex tokens lose to operator strings here, breaking the '${#-}' reading.
+    _special_parameter_hash: ($) =>
+      alias($._special_parameter_hash_lexeme, $.special_parameter),
     _special_parameter_except_hash: ($) =>
-      alias(choice("0", "*", "@", "?", "$", "!", "-"), $.special_parameter),
-
-    _unbraced_positional_parameter: (_) => /[1-9]/,
-
+      choice(
+        alias($._special_parameter_lexeme, $.special_parameter),
+        alias($._parameter_hyphen_lexeme, $.special_parameter),
+        alias($._parameter_question_lexeme, $.special_parameter),
+      ),
+    _unbraced_positional_parameter: ($) =>
+      lexical($, $._unbraced_positional_parameter_begin),
     positional_parameter: ($) =>
-      seq($._braced_positional_parameter_start, $._braced_numeric_parameter),
-
+      lexical($, $._braced_positional_parameter_begin),
     _unclassified_numeric_parameter_source: ($) =>
       seq(
         $._braced_parameter_number_start,
-        alias($._braced_numeric_parameter, "numeric_parameter_source"),
+        repeat1(
+          physical($, $._numeric_parameter_digit, "numeric_parameter_source"),
+        ),
       ),
 
-    _braced_numeric_parameter: (_) => /[0-9]+/,
-
-    _parameter_length_operator: ($) => alias("#", $.parameter_length_operator),
-
+    _parameter_length_operator: ($) =>
+      alias($._special_parameter_hash_lexeme, $.parameter_length_operator),
     _parameter_value_operator: ($) =>
-      alias(
-        choice(":-", ":=", ":?", ":+", "-", "=", "?", "+"),
-        $.parameter_value_operator,
-      ),
-
+      alias($._parameter_value_operator_lexeme, $.parameter_value_operator),
     _parameter_pattern_operator: ($) =>
-      prec(
-        2,
-        alias(choice("%%", "##", "%", "#"), $.parameter_pattern_operator),
-      ),
-
+      alias($._parameter_pattern_operator_lexeme, $.parameter_pattern_operator),
     parameter_word: ($) => parameterPatternSource($),
 
     _double_quoted_parameter_word: ($) =>
@@ -2261,9 +1998,6 @@ export default grammar({
       choice(
         alias($._double_quoted_parameter_text, $.double_quote_text),
         alias($._double_quoted_parameter_escape, $.double_quote_escape),
-        $._backquote_double_quoted_parameter_content_escape_run,
-        $._backquote_double_quote_escaped_pair_run,
-        alias($._newline, $.double_quote_text),
         $.double_quoted,
         alias($._double_quoted_parameter_expansion, $.parameter_expansion),
         $.command_substitution,
@@ -2273,148 +2007,53 @@ export default grammar({
           $.backquote_substitution,
         ),
       ),
-
     parameter_pattern: ($) => prec.right(1, parameterPatternSource($)),
 
-    _parameter_source_tail: ($) => repeat1($._parameter_pattern_part),
-
     _parameter_tilde_source: ($) =>
-      prec.right(
-        choice(
-          seq(
-            alias($._parameter_tilde_expansion, $.tilde_expansion),
-            prec(2, alias($._literal_slash, $.literal)),
-            repeat($._parameter_pattern_part),
-          ),
-          alias($._parameter_terminal_tilde_expansion, $.tilde_expansion),
-        ),
-      ),
-
+      alias($._parameter_tilde_expansion, $.tilde_expansion),
     _parameter_non_slash_part: ($) =>
       choice(
-        prec(
-          PATTERN_PRECEDENCE.specialElement,
-          alias(
-            $._parameter_pattern_bracket_expression,
-            $.pattern_bracket_source,
-          ),
+        $._parameter_bracket_fallback,
+        alias(
+          $._parameter_pattern_bracket_expression,
+          $.pattern_bracket_source,
         ),
         alias($._parameter_pattern_literal, $.literal),
-        alias($._literal_tilde, $.literal),
         $.pattern_star_source,
         $.pattern_question_source,
         $._word_structured_part,
       ),
-
-    _parameter_pattern_part: ($) =>
-      choice(
-        $._parameter_non_slash_part,
-        $._parameter_incomplete_bracket_literal,
-        prec(-1, alias($._literal_slash, $.literal)),
-      ),
-
-    _parameter_incomplete_bracket_literal: ($) =>
-      incompleteBracketLiteral(
-        $,
-        $._parameter_bracket_literal_start,
-        $._parameter_incomplete_bracket_literal_part,
-        $._parameter_bracket_fallback_end,
-      ),
-
-    _parameter_incomplete_bracket_literal_part: ($) =>
-      incompleteBracketLiteralPart(
-        $,
-        parameterPatternBracketSources($),
-        $._parameter_incomplete_bracket_literal_run,
-        [
-          $._pattern_special_literal_start,
-          alias($._parameter_incomplete_bracket_literal_text, $.literal),
-        ],
-      ),
-
-    _parameter_special_prefixed_bracket_source: ($) =>
-      patternSpecialPrefixedExpression(
-        $,
-        $._parameter_pattern_special_prefixed_members,
-      ),
-
-    _parameter_incomplete_bracket_literal_text: ($) =>
-      prec.right(1, repeat1(parameterIncompleteBracketLiteralAtom($))),
-
-    _parameter_incomplete_bracket_literal_run: ($) =>
-      incompleteBracketLiteralRun($, parameterIncompleteBracketLiteralAtom($)),
+    _parameter_pattern_part: ($) => $._parameter_non_slash_part,
 
     _parameter_pattern_literal: ($) => prec.right(parameterPlainChunk($)),
 
     _double_quoted_parameter_text: ($) =>
-      prec.right(
-        choice(
-          $._literal_dollar,
-          $._literal_backslash,
-          $._double_quoted_parameter_text_chunk,
-        ),
-      ),
+      lexical($, $._double_quoted_parameter_text_begin),
 
-    _double_quoted_parameter_text_chunk: (_) =>
-      token.immediate(prec(-1, /[^}"$`\\\n]+/)),
-
-    _double_quoted_parameter_escape: (_) =>
-      token.immediate(seq("\\", choice("$", "`", '"', "\\", "}"))),
-
-    _backquote_double_quoted_parameter_content_escape_run: ($) =>
-      backquoteContentEscapeRun(
-        $,
-        $.double_quote_escape,
-        $.double_quote_text,
-        choice(
-          alias(
-            $._backquote_double_quoted_parameter_escape_tail,
-            $.double_quote_escape,
-          ),
-          alias(
-            $._backquote_double_quoted_parameter_text_tail,
-            $.double_quote_text,
-          ),
-        ),
-      ),
-
-    _backquote_double_quoted_parameter_escape_tail: (_) =>
-      token.immediate(seq("\\", choice("$", "`", '"', "}"))),
-
-    _backquote_double_quoted_parameter_text_tail: (_) =>
-      token.immediate(seq("\\", /[^\\\n$`"}]/)),
-
+    _double_quoted_parameter_escape: ($) =>
+      lexical($, $._double_quoted_parameter_escape_begin),
     command_substitution: ($) =>
       commandSubstitution($, $._command_or_arithmetic_substitution_start),
 
-    _command_substitution_start: ($) => dollarExpansionStart($, "("),
-
+    _command_substitution_start: ($) =>
+      dollarExpansionStart($, $._command_open, "("),
     _command_or_arithmetic_substitution_start: ($) =>
-      prec.right(
-        1,
-        seq($._command_substitution_start, optional(lineContinuationRun($))),
-      ),
-
+      $._command_substitution_start,
     command_substitution_body: ($) =>
       prec.left(substitutionCommandsBody($, $._closing_layout)),
 
     backquote_substitution: ($) =>
       seq(
-        backquoteDelimiter($._backquote_start, $._backquote_start_prefix),
+        backquoteDelimiter($, $._backquote_start),
         optional(field("body", $.backquote_substitution_body)),
-        backquoteDelimiter($._backquote_end, $._backquote_end_prefix),
+        backquoteDelimiter($, $._backquote_end),
       ),
-
     _double_quoted_backquote_substitution: ($) =>
       seq(
-        backquoteDelimiter(
-          $._double_quoted_backquote_start,
-          $._double_quoted_backquote_start_prefix,
-        ),
+        backquoteDelimiter($, $._double_quoted_backquote_start),
         optional(field("body", $.backquote_substitution_body)),
-        backquoteDelimiter($._backquote_end, $._backquote_end_prefix),
+        backquoteDelimiter($, $._backquote_end),
       ),
-
     backquote_substitution_body: ($) => $._substitution_body,
 
     _substitution_body: ($) =>
@@ -2438,18 +2077,22 @@ export default grammar({
           $,
           $._arithmetic_dynamic_expansion_start,
           $.arithmetic_dynamic_expression,
-          optional($._arithmetic_layout),
+          arithmeticClosingLayout($),
         ),
       ),
 
     arithmetic_dynamic_expression: ($) =>
-      seq(
-        repeat(seq($._arithmetic_source_part, optional($._arithmetic_layout))),
-        field("runtime_fragment", $._arithmetic_runtime_fragment),
-        repeat(
-          seq(
-            optional($._arithmetic_layout),
-            choice($._arithmetic_source_part, $._arithmetic_runtime_fragment),
+      prec.right(
+        seq(
+          repeat(
+            seq($._arithmetic_source_part, optional($._arithmetic_layout)),
+          ),
+          field("runtime_fragment", $._arithmetic_runtime_fragment),
+          repeat(
+            seq(
+              optional($._arithmetic_layout),
+              choice($._arithmetic_source_part, $._arithmetic_runtime_fragment),
+            ),
           ),
         ),
       ),
@@ -2478,24 +2121,25 @@ export default grammar({
       choice(
         $._arithmetic_assignment_operator,
         ...arithmeticBinaryLevelSymbols($, "operator"),
-        alias(choice("!", "~", "?", ":"), $.arithmetic_operator),
+        alias($._arithmetic_unary_operator_lexeme, $.arithmetic_operator),
+        alias($._arithmetic_question_operator_lexeme, $.arithmetic_operator),
+        alias($._arithmetic_colon_operator_lexeme, $.arithmetic_operator),
       ),
-
     parenthesized_arithmetic_source: ($) =>
       seq(
-        "(",
+        physical($, $._punct_left_parenthesis, "("),
         optional($._arithmetic_layout),
         repeat(seq($._arithmetic_source_part, optional($._arithmetic_layout))),
-        ")",
+        physical($, $._punct_right_parenthesis, ")"),
       ),
 
     parenthesized_arithmetic_dynamic_source: ($) =>
       seq(
-        "(",
+        physical($, $._punct_left_parenthesis, "("),
         optional($._arithmetic_layout),
         field("expression", $.arithmetic_dynamic_expression),
-        optional($._arithmetic_layout),
-        ")",
+        arithmeticClosingLayout($),
+        physical($, $._punct_right_parenthesis, ")"),
       ),
 
     _arithmetic_assignment_expression: ($) =>
@@ -2549,13 +2193,7 @@ export default grammar({
     _arithmetic_unary_expression: ($) =>
       choice($.arithmetic_unary_expression, $._arithmetic_primary_expression),
 
-    arithmetic_unary_expression: ($) =>
-      choice(
-        arithmeticUnaryExpression($, "+"),
-        arithmeticUnaryExpression($, "-"),
-        arithmeticUnaryExpression($, choice("!", "~")),
-      ),
-
+    arithmetic_unary_expression: ($) => arithmeticUnaryExpression($),
     _arithmetic_primary_expression: ($) =>
       choice(
         $.arithmetic_number,
@@ -2573,15 +2211,8 @@ export default grammar({
     parenthesized_arithmetic: ($) =>
       parenthesizedArithmetic($, $._arithmetic_assignment_expression),
 
-    arithmetic_number: (_) =>
-      choice(
-        token(prec(2, /0[xX][0-9A-Fa-f]+/)),
-        token(/[1-9][0-9]*/),
-        token(/0[0-7]*/),
-      ),
-
-    arithmetic_variable: ($) => $._name_token,
-
+    arithmetic_number: ($) => lexical($, $._arithmetic_number_begin),
+    arithmetic_variable: ($) => lexical($, $._arithmetic_variable_begin),
     _arithmetic_assignment_operator_segment: ($) =>
       arithmeticOperatorSegment(
         $,
@@ -2593,92 +2224,24 @@ export default grammar({
       arithmeticOperatorSegment(
         $,
         $._arithmetic_question_operator_boundary,
-        alias("?", $.arithmetic_operator),
+        alias($._arithmetic_question_operator_lexeme, $.arithmetic_operator),
       ),
-
     _arithmetic_colon_operator_segment: ($) =>
       arithmeticOperatorSegment(
         $,
         $._arithmetic_colon_operator_boundary,
-        alias(":", $.arithmetic_operator),
+        alias($._arithmetic_colon_operator_lexeme, $.arithmetic_operator),
       ),
-
     ...arithmeticBinaryOperatorSegmentRules(),
 
     _arithmetic_assignment_operator: ($) =>
-      alias(
-        choice(
-          "<<=",
-          ">>=",
-          "*=",
-          "/=",
-          "%=",
-          "+=",
-          "-=",
-          "&=",
-          "^=",
-          "|=",
-          "=",
-        ),
-        $.arithmetic_operator,
-      ),
-
+      alias($._arithmetic_assignment_operator_lexeme, $.arithmetic_operator),
     ...arithmeticBinaryOperatorRules(),
 
     _arithmetic_layout: ($) => repeat1(choice($._blank, $._newline)),
 
-    _literal_dollar: (_) => /\$/,
-
-    _literal_backslash: (_) => /\\/,
-
-    _literal_token: (_) => token(prec(-1, LITERAL_TOKEN_PATTERN)),
-
-    _literal_left_bracket: (_) => /\[/,
-
-    _literal_right_bracket: (_) => /\]/,
-
-    _literal_tilde: (_) => /~/,
-
-    _literal_slash: (_) => /\//,
-
-    _literal_colon: (_) => /:/,
-
-    _literal_equals: (_) => /=/,
-
-    _parameter_pattern_text_token: (_) =>
-      token.immediate(prec(-1, PARAMETER_PATTERN_TEXT_PATTERN)),
-
-    _pattern_initial_right_bracket: (_) => token.immediate(/\]/),
-
-    _pattern_bracket_left: (_) => token.immediate(/\[/),
-
-    _pattern_special_literal_start: ($) =>
-      seq(
-        $._pattern_special_literal_left,
-        alias($._pattern_special_marker_character, $.literal),
-      ),
-
-    _pattern_special_literal_left: ($) =>
-      alias($._pattern_special_left_bracket, $.literal),
-
-    _pattern_special_plain_character: (_) =>
-      token.immediate(prec(-2, PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN)),
-
-    _parameter_pattern_special_plain_character: (_) =>
-      token.immediate(
-        prec(-2, PARAMETER_PATTERN_SPECIAL_PLAIN_CHARACTER_PATTERN),
-      ),
-
-    _pattern_special_marker_character: ($) =>
-      choice(
-        $._pattern_character_class_colon,
-        $._pattern_collating_dot,
-        $._pattern_equivalence_equals,
-      ),
-
-    _pattern_bracket_exclamation: (_) => token.immediate(/!/),
-
-    _name_token: (_) => token(prec(1, /[A-Za-z_][A-Za-z0-9_]*/)),
+    _pattern_initial_right_bracket: ($) =>
+      lexical($, $._pattern_initial_right_bracket_begin),
 
     newline_list: ($) => prec.right(repeat1(choice(...newlineListElements($)))),
 
@@ -2690,27 +2253,8 @@ export default grammar({
 
     linebreak: ($) => $.newline_list,
 
-    _horizontal_layout: ($) =>
-      prec.right(
-        1,
-        seq(
-          optional($._layout_begin),
-          repeat1(choice($._blank, prec(2, $._line_continuation))),
-        ),
-      ),
-
-    _closing_layout: ($) =>
-      prec.right(
-        1,
-        choice(
-          seq(
-            $._blank,
-            repeat(choice($._blank, prec(2, $._line_continuation))),
-          ),
-          seq($._trailing_continuation_begin, $._continuation_led_run),
-        ),
-      ),
-
+    _horizontal_layout: ($) => seq(optional($._layout_begin), $._blank),
+    _closing_layout: ($) => $._blank,
     _word_separator: ($) => wordSeparator($, $._word_separator_begin),
 
     _assignment_separator: ($) =>
@@ -2721,33 +2265,27 @@ export default grammar({
     _free_trailing_layout: ($) =>
       prec.right(1, choice($._closing_layout, trailingComment($))),
 
+    comment: ($) => $.comment_text,
+    comment_text: ($) => lexical($, $._comment_text_begin),
+
+    _comment_line_end: ($) => physical($, $._comment_line_end_begin, "\n"),
+
+    _pre_newline_blank: ($) => lexical($, $._pre_newline_blank_begin),
+
+    here_document_line_end: ($) => lexical($, $._here_document_line_end_begin),
+
+    _here_document_end_leading_tabs: ($) =>
+      lexical($, $._here_document_end_leading_tabs_begin),
+
     _comment_line: ($) =>
       seq(boundaryLineComment($, $.comment), $._comment_line_end),
 
-    _continued_blank_line: ($) =>
-      prec.dynamic(
-        2,
-        seq(
-          $._pre_newline_blank,
-          optional($._blank),
-          $._continuation_led_run,
-          $._layout_newline,
-        ),
-      ),
-
     _blank_line: ($) => seq($._pre_newline_blank, $._layout_newline),
 
-    _layout_newline: (_) => "\n",
+    _layout_newline: ($) => physical($, $._logical_newline_begin, "\n"),
 
-    _continuation_led_run: ($) =>
-      prec.right(
-        1,
-        seq(
-          $._line_continuation,
-          repeat(choice($._blank, $._line_continuation)),
-        ),
-      ),
+    _newline: ($) => lexical($, $._newline_begin),
 
-    _blank: (_) => /[ \t]+/,
+    _blank: ($) => lexical($, $._logical_blank_begin),
   },
 });

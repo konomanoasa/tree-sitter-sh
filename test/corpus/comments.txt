@@ -23,11 +23,10 @@ next
                       (literal)))
                   suffix: (cmd_suffix
                     word: (word
-                      (literal)
-                      (literal)
                       (literal))))))))))
     separator: (newline_list
-      (comment))
+      (comment
+        (comment_text)))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -53,7 +52,8 @@ echo value  # trailing
 (program
   leading: (linebreak
     (newline_list
-      (comment)))
+      (comment
+        (comment_text))))
   commands: (complete_commands
     command: (complete_command
       body: (list
@@ -70,7 +70,8 @@ echo value  # trailing
                       (literal)))))))))))
   trailing: (linebreak
     (newline_list
-      (comment))))
+      (comment
+        (comment_text)))))
 
 ==================
 list separators make an adjacent hash a comment
@@ -98,7 +99,8 @@ third
                       (literal)))))))))
       terminator: (separator_op))
     separator: (newline_list
-      (comment))
+      (comment
+        (comment_text)))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -111,7 +113,8 @@ third
                       (literal)))))))))
       terminator: (separator_op))
     separator: (newline_list
-      (comment))
+      (comment
+        (comment_text)))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -165,7 +168,8 @@ esac
                     condition: (compound_list
                       leading: (linebreak
                         (newline_list
-                          (comment)))
+                          (comment
+                            (comment_text))))
                       body: (term
                         and_or: (and_or
                           pipeline: (pipeline
@@ -177,12 +181,14 @@ esac
                                       (literal)))))))))
                       terminator: (separator
                         newlines: (newline_list
-                          (comment))))
+                          (comment
+                            (comment_text)))))
                     (then_keyword)
                     consequence: (compound_list
                       leading: (linebreak
                         (newline_list
-                          (comment)))
+                          (comment
+                            (comment_text))))
                       body: (term
                         and_or: (and_or
                           pipeline: (pipeline
@@ -199,7 +205,8 @@ esac
                       body: (compound_list
                         leading: (linebreak
                           (newline_list
-                            (comment)))
+                            (comment
+                              (comment_text))))
                         body: (term
                           and_or: (and_or
                             pipeline: (pipeline
@@ -232,13 +239,15 @@ esac
                         (literal)))
                     separator: (sequential_sep
                       newlines: (newline_list
-                        (comment)))
+                        (comment
+                          (comment_text))))
                     body: (do_group
                       (do_keyword)
                       body: (compound_list
                         leading: (linebreak
                           (newline_list
-                            (comment)))
+                            (comment
+                              (comment_text))))
                         body: (term
                           and_or: (and_or
                             pipeline: (pipeline
@@ -270,12 +279,14 @@ esac
                       (literal))
                     (linebreak
                       (newline_list
-                        (comment)))
+                        (comment
+                          (comment_text))))
                     in: (in
                       (in_keyword))
                     (linebreak
                       (newline_list
-                        (comment)))
+                        (comment
+                          (comment_text))))
                     items: (case_list
                       item: (case_item
                         patterns: (pattern_list
@@ -284,7 +295,8 @@ esac
                         body: (compound_list
                           leading: (linebreak
                             (newline_list
-                              (comment)))
+                              (comment
+                                (comment_text))))
                           body: (term
                             and_or: (and_or
                               pipeline: (pipeline
@@ -330,8 +342,8 @@ second
           (and_if)
           (linebreak
             (newline_list
-              (line_continuation)
-              (comment)))
+              (comment
+                (comment_text))))
           (pipeline
             (pipe_sequence
               (command
@@ -370,8 +382,8 @@ after
                     (word
                       (literal))))))))))
     (newline_list
-      (line_continuation)
-      (comment))
+      (comment
+        (comment_text)))
     (complete_command
       (list
         (and_or
@@ -406,8 +418,8 @@ second &\
 (program
   (linebreak
     (newline_list
-      (line_continuation)
-      (comment)))
+      (comment
+        (comment_text))))
   (complete_commands
     (complete_command
       (list
@@ -421,8 +433,8 @@ second &\
                       (literal)))))))))
       (separator_op))
     (newline_list
-      (line_continuation)
-      (comment))
+      (comment
+        (comment_text)))
     (complete_command
       (list
         (and_or
@@ -435,8 +447,8 @@ second &\
                       (literal)))))))))
       (separator_op))
     (newline_list
-      (line_continuation)
-      (comment))
+      (comment
+        (comment_text)))
     (complete_command
       (list
         (and_or
@@ -448,8 +460,8 @@ second &\
                     (compound_list
                       (linebreak
                         (newline_list
-                          (line_continuation)
-                          (comment)))
+                          (comment
+                            (comment_text))))
                       (term
                         (and_or
                           (pipeline
@@ -486,9 +498,8 @@ echo
 (program
   (linebreak
     (newline_list
-      (line_continuation)
-      (line_continuation)
-      (comment)))
+      (comment
+        (comment_text))))
   (complete_commands
     (complete_command
       (list
@@ -502,8 +513,8 @@ echo
                       (literal)))))))))
       (separator_op))
     (newline_list
-      (line_continuation)
-      (comment))
+      (comment
+        (comment_text)))
     (complete_command
       (list
         (and_or
@@ -516,9 +527,8 @@ echo
                       (literal)))))))))
       (separator_op))
     (newline_list
-      (line_continuation)
-      (line_continuation)
-      (comment))
+      (comment
+        (comment_text)))
     (complete_command
       (list
         (and_or
@@ -531,9 +541,8 @@ echo
                       (literal)))))))))))
   (linebreak
     (newline_list
-      (line_continuation)
-      (line_continuation)
-      (comment))))
+      (comment
+        (comment_text)))))
 
 ==================
 a trailing comment after a completed line may end the input
@@ -562,7 +571,8 @@ printf value
                       (literal)))))))))))
   (linebreak
     (newline_list))
-  (comment))
+  (comment
+    (comment_text)))
 
 ==================
 a blank-led trailing comment may end the input
@@ -591,7 +601,8 @@ printf value
                       (literal)))))))))))
   (linebreak
     (newline_list))
-  (comment))
+  (comment
+    (comment_text)))
 
 ==================
 an EOF comment can follow a removed newline
@@ -618,5 +629,298 @@ printf value \
                   (cmd_suffix
                     (word
                       (literal)))))))))))
-  (line_continuation)
-  (comment))
+  (comment
+    (comment_text)))
+
+==================
+here-document read-time continuations precede inner comment recognition
+==================
+
+cat <<OUT
+$( : # hello\
+) ; <<IN ignored
+)
+OUT
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (command_substitution
+              (command_substitution_body
+                (complete_commands
+                  (complete_command
+                    (list
+                      (and_or
+                        (pipeline
+                          (pipe_sequence
+                            (command
+                              (simple_command
+                                (cmd_name
+                                  (word
+                                    (literal)))))))))))
+                (linebreak
+                  (newline_list
+                    (comment
+                      (comment_text)))))))
+          (here_document_end
+            (here_document_end_text)))))))
+
+==================
+quoted backquotes expose continued comments as text and physical pairs
+==================
+
+: "`: \`: # hello\\\
+world
+\``"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (backquote_substitution
+                          (backquote_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))
+                                            (cmd_suffix
+                                              (word
+                                                (backquote_substitution
+                                                  (backquote_substitution_body
+                                                    (complete_commands
+                                                      (complete_command
+                                                        (list
+                                                          (and_or
+                                                            (pipeline
+                                                              (pipe_sequence
+                                                                (command
+                                                                  (simple_command
+                                                                    (cmd_name
+                                                                      (word
+                                                                        (literal)))))))))))
+                                                    (linebreak
+                                                      (newline_list
+                                                        (comment
+                                                          (comment_text)))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+retained comment prefixes preserve the next logical newline
+==================
+
+: "`: \"\`#x\\\
+\\
+world
+\`\"`"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (backquote_substitution
+                          (backquote_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))
+                                            (cmd_suffix
+                                              (word
+                                                (double_quoted
+                                                  (backquote_substitution
+                                                    (backquote_substitution_body
+                                                      (linebreak
+                                                        (newline_list
+                                                          (comment
+                                                            (comment_text))))
+                                                      (complete_commands
+                                                        (complete_command
+                                                          (list
+                                                            (and_or
+                                                              (pipeline
+                                                                (pipe_sequence
+                                                                  (command
+                                                                    (simple_command
+                                                                      (cmd_name
+                                                                        (word
+                                                                          (literal)))))))))))
+                                                      (linebreak
+                                                        (newline_list))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+retained comment prefixes remove the next physical pair
+==================
+
+: "`: \"\`#x\\\
+\\\\
+world
+\`\"`"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (backquote_substitution
+                          (backquote_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))
+                                            (cmd_suffix
+                                              (word
+                                                (double_quoted
+                                                  (backquote_substitution
+                                                    (backquote_substitution_body
+                                                      (linebreak
+                                                        (newline_list
+                                                          (comment
+                                                            (comment_text))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+retained comment prefixes can remove a bare source newline
+==================
+
+: "`: \"\`#x\\\
+
+world
+\`\"`"
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (backquote_substitution
+                          (backquote_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))
+                                            (cmd_suffix
+                                              (word
+                                                (double_quoted
+                                                  (backquote_substitution
+                                                    (backquote_substitution_body
+                                                      (linebreak
+                                                        (newline_list
+                                                          (comment
+                                                            (comment_text))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))

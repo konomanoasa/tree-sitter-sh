@@ -544,7 +544,8 @@ next
                                                 (single_quote_content))))))))))))
                           (linebreak
                             (newline_list
-                              (comment))))))))))))))
+                              (comment
+                                (comment_text)))))))))))))))
     separator: (newline_list)
     command: (complete_command
       body: (list
@@ -725,8 +726,7 @@ echo $(printf x\
                                               (literal)))
                                           (cmd_suffix
                                             (word
-                                              (literal)))))))))))
-                          (line_continuation)))))))))))))
+                                              (literal)))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -766,8 +766,7 @@ x=$( a\
                                           (simple_command
                                             (cmd_name
                                               (word
-                                                (literal)))))))))))
-                            (line_continuation))))))))))))))
+                                                (literal))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -779,6 +778,8 @@ a done keyword cannot begin a command substitution body
 echo $(done)
 
 ---
+
+
 
 ==================
 fixed arithmetic errors remain subshell commands around runtime fragments

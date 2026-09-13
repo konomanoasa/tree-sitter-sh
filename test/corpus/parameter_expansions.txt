@@ -486,9 +486,6 @@ printf ${x:-'foo'} ${x:-$'\n'} ${x:-\q} "${x:-'foo'}" "${x:-$'\n'}" "${x:-\q}" "
                           parameter: (variable_name)
                           operator: (parameter_value_operator)
                           word: (parameter_word
-                            (double_quote_text)
-                            (double_quote_text)
-                            (double_quote_text)
                             (double_quote_text)))))
                     word: (word
                       (double_quoted
@@ -496,7 +493,6 @@ printf ${x:-'foo'} ${x:-$'\n'} ${x:-\q} "${x:-'foo'}" "${x:-$'\n'}" "${x:-\q}" "
                           parameter: (variable_name)
                           operator: (parameter_value_operator)
                           word: (parameter_word
-                            (double_quote_text)
                             (double_quote_text)))))
                     word: (word
                       (double_quoted
@@ -574,9 +570,6 @@ printf ${x:-~user/*?[a]} "${x:-~user/*?[a]}" "$(( ${x:-$'\n'} + ${y:-~} ))"
                               parameter: (variable_name)
                               operator: (parameter_value_operator)
                               word: (parameter_word
-                                (double_quote_text)
-                                (double_quote_text)
-                                (double_quote_text)
                                 (double_quote_text)))
                             operator: (arithmetic_operator)
                             right: (parameter_expansion
@@ -904,7 +897,6 @@ echo "${x:-$'text'}"
                           (variable_name)
                           (parameter_value_operator)
                           (parameter_word
-                            (double_quote_text)
                             (double_quote_text))))))))))))))
   (linebreak
     (newline_list)))
@@ -1157,8 +1149,6 @@ d}"
                           (variable_name)
                           (parameter_value_operator)
                           (parameter_word
-                            (double_quote_text)
-                            (double_quote_text)
                             (double_quote_text))))))))))))))
   (linebreak
     (newline_list)))
@@ -1191,9 +1181,6 @@ printf ${x#[[:a}b:]]} ${y%[[.}.]]} ${z%%[[=c}=]]}
                         (variable_name)
                         (parameter_pattern_operator)
                         (parameter_pattern
-                          (literal)
-                          (literal)
-                          (literal)
                           (literal)))
                       (literal))
                     (word
@@ -1201,8 +1188,6 @@ printf ${x#[[:a}b:]]} ${y%[[.}.]]} ${z%%[[=c}=]]}
                         (variable_name)
                         (parameter_pattern_operator)
                         (parameter_pattern
-                          (literal)
-                          (literal)
                           (literal)))
                       (literal))
                     (word
@@ -1210,9 +1195,6 @@ printf ${x#[[:a}b:]]} ${y%[[.}.]]} ${z%%[[=c}=]]}
                         (variable_name)
                         (parameter_pattern_operator)
                         (parameter_pattern
-                          (literal)
-                          (literal)
-                          (literal)
                           (literal)))
                       (literal)))))))))))
   (linebreak
@@ -1283,11 +1265,8 @@ printf "${source:-a$fallback}" "${source:-a$%}" "${source#a$x}" "${source#a$%}"
                       (parameter_expansion
                         parameter: (special_parameter)))
                     word: (word
-                      (literal)
                       (literal))
                     word: (word
-                      (literal)
-                      (literal)
                       (literal))
                     word: (word
                       (double_quoted
@@ -1296,8 +1275,6 @@ printf "${source:-a$fallback}" "${source:-a$%}" "${source#a$x}" "${source#a$%}"
                           parameter: (variable_name))))
                     word: (word
                       (double_quoted
-                        (double_quote_text)
-                        (double_quote_text)
                         (double_quote_text)))))))))))
     separator: (newline_list)
     command: (complete_command
@@ -1326,8 +1303,6 @@ printf "${source:-a$fallback}" "${source:-a$%}" "${source#a$x}" "${source#a$%}"
                           parameter: (variable_name)
                           operator: (parameter_value_operator)
                           word: (parameter_word
-                            (double_quote_text)
-                            (double_quote_text)
                             (double_quote_text)))))
                     word: (word
                       (double_quoted
@@ -1356,6 +1331,8 @@ an unquoted braced expansion requires a parameter
 echo ${}
 
 ---
+
+
 
 ==================
 a quoted braced expansion requires a parameter

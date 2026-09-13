@@ -16,7 +16,6 @@ import {
   assertRepeatedColdParse,
   assertSameLogicalProjection,
   assertValid,
-  cstFingerprint,
   hasRecovery,
   lineContinuationManifest,
   lines,
@@ -71,7 +70,9 @@ test("sh: backquote closers delimit keywords and trailing word continuations", (
         }
         assert.deepEqual(
           lineContinuationManifest(runQuery(source)),
-          continuationOffsets.map((column) => `0:${boundary + column}-1:0`),
+          continuationOffsets.map(
+            (column) => `0:${boundary + column}-0:${boundary + column + 1}`,
+          ),
           name,
         );
       }
@@ -96,7 +97,7 @@ test("sh: folded continuations preserve keyword and function-name classification
     assertOccurrenceCount(output, node, 1);
     const newline = sourceText.indexOf("\n");
     assert.deepEqual(lineContinuationManifest(runQuery(source)), [
-      `0:${newline - 1}-1:0`,
+      `0:${newline - 1}-0:${newline}`,
     ]);
   }
   for (const [name, sourceText] of [
@@ -347,8 +348,7 @@ test("sh: lexical leaves retain complete source without internal token children"
   const output = parseValidCst(source);
   for (const [range, leaf] of [
     ["0:2-0:13", "literal `abc:def=a~b`"],
-    ["1:3-1:6", "double_quote_text `a\\\\q`"],
-    ["1:6-1:7", "double_quote_text `$`"],
+    ["1:3-1:7", "double_quote_text `a\\\\q$`"],
     ["2:3-2:4", "pattern_bracket_negation_source `!`"],
     ["2:4-2:5", "pattern_bracket_character_source `:`"],
     ["2:10-2:15", "pattern_character_class_content_source `alpha`"],
@@ -365,11 +365,41 @@ test("sh: lexical leaves retain complete source without internal token children"
     ["5:11-5:13", "parameter_value_operator `:-`"],
     ["5:20-5:21", "arithmetic_operator `+`"],
     ["6:4-6:6", "dless `<<`"],
-    ["7:0-7:1", "here_document_text `\\\\`"],
-    ["7:2-7:3", "here_document_text `$`"],
+    ["7:0-7:3", "here_document_text `\\\\q$`"],
     ["8:0-8:1", "here_document_end_text `$`"],
   ]) {
     assertCstRange(output, range, leaf);
+  }
+});
+
+test("sh: backquote escape units retain their enclosing source classification", () => {
+  for (const [name, contents, type, range] of [
+    ["quoted-text", ': `: "\\\\q"`\n', "double_quote_text", "0:6-0:9"],
+    ["quoted-escape", ': `: "\\\\""`\n', "double_quote_escape", "0:6-0:9"],
+    [
+      "quoted-operand",
+      `: \`: "\${p:-\\\\}}"\`\n`,
+      "double_quote_escape",
+      "0:11-0:14",
+    ],
+    [
+      "document-text",
+      ": `cat <<IN\n\\\\q\nIN\n`\n",
+      "here_document_text",
+      "1:0-1:3",
+    ],
+    [
+      "bracket-dollar",
+      ": `: [\\$]`\n",
+      "pattern_bracket_character_source",
+      "0:6-0:8",
+    ],
+  ]) {
+    const source = writeSource(name, contents);
+    const output = parseValidCst(source);
+    assertCstRange(output, range, type);
+    assertOccurrenceCount(output, type, 1);
+    assertOccurrenceCount(output, "escaped_character", 0);
   }
 });
 
@@ -720,26 +750,27 @@ test("sh: parameter bracket elements retain literal spaces and dollars", () => {
   }
 });
 
-test("sh: missing closing keywords remain public recovery tokens", () => {
-  const directory = mkdtempSync(join(tmpdir(), "sh-missing-keywords-"));
-  try {
-    const query = join(directory, "missing.scm");
-    writeFileSync(query, "(MISSING) @missing\n");
-    for (const [name, contents, keyword] of [
-      ["conditional", "if :; then :; f\n", "fi_keyword"],
-      ["loop", "while :; do :;\n", "done_keyword"],
-      ["case", "case x in x) :;;\n", "esac_keyword"],
-    ]) {
-      const source = writeSource(`missing-${name}-closer`, contents);
-      const parsed = runParse({ source, description: name, mode: "recovery" });
-      assert.equal(parsed.status, 1);
-      assertCstRange(parsed.output, "1:0-1:0", keyword);
-      const captures = runQuery(source, query);
-      assertOccurrenceCount(captures, "capture: 0 - missing", 1);
-      assertContains(captures, "start: (1, 0), end: (1, 0)");
+test("sh: incomplete compounds reach EOF and regain their closing keywords", () => {
+  for (const [name, incomplete, closing, keyword] of [
+    ["conditional", "if :; then :; f\n", "fi\n", "fi_keyword"],
+    ["loop", "while :; do :;\n", "done\n", "done_keyword"],
+    ["case", "case x in x) :;;\n", "esac\n", "esac_keyword"],
+  ]) {
+    const source = writeSource(`missing-${name}-closer`, incomplete);
+    const repaired = writeSource(
+      `repaired-${name}-closer`,
+      incomplete + closing,
+    );
+    const parsed = runParse({ source, description: name, mode: "recovery" });
+    assert.equal(parsed.status, 1);
+    for (const output of assertIncrementalEqualsFresh(
+      source,
+      repaired,
+      `restore-${name}-closing-keyword`,
+      { byte: incomplete.length, deleteBytes: 0, insert: closing },
+    )) {
+      assertCstRange(output, `1:0-1:${closing.length - 1}`, keyword);
     }
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
   }
 });
 
@@ -882,9 +913,9 @@ test("sh: nested here-documents activate at the scanner state capacity", () => {
     );
   }
 
-  const below = writeSource("nested-documents-below-capacity", source(501));
-  const exact = writeSource("nested-documents-at-capacity", source(503));
-  const above = writeSource("nested-documents-above-capacity", source(504));
+  const below = writeSource("nested-documents-below-capacity", source(466));
+  const exact = writeSource("nested-documents-at-capacity", source(468));
+  const above = writeSource("nested-documents-above-capacity", source(469));
   const outputs = [parseValidCst(exact)];
   outputs.push(
     ...assertIncrementalEqualsFresh(
@@ -892,7 +923,7 @@ test("sh: nested here-documents activate at the scanner state capacity", () => {
       exact,
       "grow-nested-document-metadata-to-capacity",
       {
-        byte: source(501).lastIndexOf("\nA") + 1,
+        byte: source(466).lastIndexOf("\nA") + 1,
         deleteBytes: 0,
         insert: "AA",
       },
@@ -902,13 +933,13 @@ test("sh: nested here-documents activate at the scanner state capacity", () => {
       above,
       exact,
       "restore-nested-document-metadata-within-capacity",
-      { byte: source(504).lastIndexOf("\nA") + 1, deleteBytes: 1, insert: "" },
+      { byte: source(469).lastIndexOf("\nA") + 1, deleteBytes: 1, insert: "" },
       { byte: 6, deleteBytes: 1, insert: "" },
     ),
   );
   for (const output of outputs) {
     assertOccurrenceCount(output, "document: here_document", 3);
-    assertCstRange(output, "0:6-0:509", "end: here_end");
+    assertCstRange(output, "0:6-0:474", "end: here_end");
     assertCstRange(output, "1:8-1:259", "end: here_end");
     assertCstRange(output, "1:262-1:513", "end: here_end");
     assertCstRange(output, "1:0-7:0", "body: here_document_body");
@@ -923,8 +954,16 @@ test("sh: nested here-documents activate at the scanner state capacity", () => {
     exact,
     below,
     "shrink-nested-document-metadata-below-capacity",
-    { byte: source(503).lastIndexOf("\nA") + 1, deleteBytes: 2, insert: "" },
+    { byte: source(468).lastIndexOf("\nA") + 1, deleteBytes: 2, insert: "" },
     { byte: 6, deleteBytes: 2, insert: "" },
+  );
+  assert.equal(
+    runParse({
+      source: above,
+      mode: "resource",
+      description: "1025-byte state",
+    }).status,
+    1,
   );
   assertRepeatedColdParse("resource", above, "nested-documents-above-capacity");
 });
@@ -972,8 +1011,18 @@ test("sh: parser resource bounds preserve complete roots and deterministic recov
     return `${contents}after\n`;
   }
 
-  const deepDocuments = writeSource("deep-documents", nestedDocuments(150));
+  const deepDocuments = writeSource("deep-documents", nestedDocuments(49));
   assertValid(deepDocuments);
+  const excessDepth = writeSource("excess-document-depth", nestedDocuments(50));
+  assert.equal(
+    runParse({
+      source: excessDepth,
+      mode: "resource",
+      description: "nested document metadata exceeds 1024 bytes",
+    }).status,
+    1,
+  );
+  assertRepeatedColdParse("resource", excessDepth, "excess-document-depth");
   const boundedDocuments = writeSource(
     "deep-documents-bounded",
     nestedDocuments(300),
@@ -1054,50 +1103,6 @@ test("sh: CST helpers preserve hierarchy across coordinate widths", () => {
   }
 });
 
-test("sh: CST fingerprints distinguish anonymous tokens", () => {
-  const semicolon = writeSource("semicolon-fingerprint", "a;b\n");
-  const ampersand = writeSource("ampersand-fingerprint", "a&b\n");
-  assert.notEqual(
-    cstFingerprint(parseValidCst(semicolon)),
-    cstFingerprint(parseValidCst(ampersand)),
-  );
-});
-
-test("sh: CST fingerprints preserve continuation ranges and order without ownership", () => {
-  const root = "0:0 - 2:0   program";
-  const first = "0:0 - 1:0     line_continuation";
-  const firstSource = "0:0 - 0:2       `\\\\\\n`";
-  const second = "1:0 - 2:0     line_continuation";
-  const secondSource = "1:0 - 1:2       `\\\\\\n`";
-  const source = lines(root, first, firstSource, second, secondSource);
-  const expected = cstFingerprint(source);
-  assert.equal(
-    cstFingerprint(
-      lines(
-        root,
-        "0:0 - 1:0     leading: line_continuation",
-        firstSource,
-        "1:0 - 2:0     trailing: line_continuation",
-        secondSource,
-      ),
-    ),
-    expected,
-  );
-  assert.equal(cstFingerprint(lines(root, first, second)), expected);
-  for (const [name, changed] of [
-    ["missing continuation", lines(root, first, firstSource)],
-    ["duplicate continuation", lines(root, first, first, second)],
-    ["reversed continuations", lines(root, second, first)],
-    [
-      "changed continuation range",
-      lines(root, first, "1:1 - 2:0     line_continuation"),
-    ],
-    ["changed root range", lines("0:0 - 3:0   program", first, second)],
-  ]) {
-    assert.notEqual(cstFingerprint(changed), expected, name);
-  }
-});
-
 test("sh: Unicode source retains byte ranges without normalization", () => {
   const source = writeSource(
     "unicode-source-ranges",
@@ -1147,6 +1152,15 @@ test("sh: corpus fuzz propagates CLI failures even when its exit status is zero"
       stderr: "fuzz command failed\n",
       expectedStatus: 1,
     },
+    {
+      name: "signal termination retains its cause",
+      status: null,
+      signal: "SIGTERM",
+      stdout: "fuzz progress\n",
+      stderr: "",
+      expectedStatus: 1,
+      expectedDiagnostic: "Tree-sitter CLI terminated by SIGTERM.\n",
+    },
   ];
   try {
     for (const fixture of fixtures) {
@@ -1187,6 +1201,12 @@ syncBuiltinESMExports();
         result.stderr.includes(fixture.stderr),
         `${fixture.name}: CLI stderr is missing`,
       );
+      if (fixture.expectedDiagnostic !== undefined) {
+        assert.ok(
+          result.stderr.includes(fixture.expectedDiagnostic),
+          `${fixture.name}: termination cause is missing`,
+        );
+      }
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

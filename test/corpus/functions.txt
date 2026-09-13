@@ -766,7 +766,6 @@ long_function
               command: (command
                 body: (function_definition
                   name: (fname)
-                  (line_continuation)
                   body: (function_body
                     body: (compound_command
                       (brace_group
@@ -807,6 +806,8 @@ then() { :; }
 
 ---
 
+
+
 ==================
 function names cannot contain hyphens
 :error
@@ -815,6 +816,8 @@ function names cannot contain hyphens
 bad-name() { :; }
 
 ---
+
+
 
 ==================
 function names cannot start with digits

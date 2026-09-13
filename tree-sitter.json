@@ -8,7 +8,7 @@
       "path": ".",
       "file-types": ["sh"],
       "injection-regex": "^(sh|shell)$",
-      "external-files": ["src/arithmetic.h"],
+      "external-files": ["src/arithmetic.h", "src/input.h", "src/source.h"],
       "highlights": "queries/highlights.scm"
     }
   ],

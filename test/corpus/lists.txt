@@ -69,7 +69,8 @@ first && second || third &&
           operator: (and_if)
           (linebreak
             (newline_list
-              (comment)))
+              (comment
+                (comment_text))))
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
@@ -159,8 +160,6 @@ third three
                 body: (simple_command
                   name: (cmd_name
                     (word
-                      (literal)
-                      (literal)
                       (literal)))
                   suffix: (cmd_suffix
                     word: (word
@@ -221,7 +220,8 @@ third
                     (word
                       (literal))))))))))
     separator: (newline_list
-      (comment))
+      (comment
+        (comment_text)))
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -711,7 +711,8 @@ holder() {
                               (separator_op)
                               (linebreak
                                 (newline_list
-                                  (comment))))
+                                  (comment
+                                    (comment_text)))))
                             (and_or
                               (pipeline
                                 (pipe_sequence
@@ -1083,9 +1084,6 @@ regular_file_identity() {
                                                                     (io_file
                                                                       (filename
                                                                         (word
-                                                                          (literal)
-                                                                          (literal)
-                                                                          (literal)
                                                                           (literal)))))))))))))))))))))))
                               (or_if)
                               (pipeline
@@ -1137,9 +1135,6 @@ regular_file_identity() {
                                                                     (io_file
                                                                       (filename
                                                                         (word
-                                                                          (literal)
-                                                                          (literal)
-                                                                          (literal)
                                                                           (literal)))))))))))))))))))))))
                               (or_if)
                               (pipeline
@@ -1210,7 +1205,8 @@ fifth five&sixth six;seventh seven
           operator: (or_if)
           (linebreak
             (newline_list
-              (comment)))
+              (comment
+                (comment_text))))
           pipeline: (pipeline
             sequence: (pipe_sequence
               command: (command
@@ -1290,7 +1286,8 @@ first |
                       (literal)))))
               (linebreak
                 (newline_list
-                  (comment)))
+                  (comment
+                    (comment_text))))
               command: (command
                 body: (simple_command
                   name: (cmd_name
@@ -1324,7 +1321,6 @@ pipeline negation permits continued layout before its command
         and_or: (and_or
           pipeline: (pipeline
             negation: (bang)
-            (line_continuation)
             sequence: (pipe_sequence
               command: (command
                 body: (simple_command
@@ -1578,7 +1574,6 @@ fifth\
                   name: (cmd_name
                     (word
                       (literal)))))
-              (line_continuation)
               command: (command
                 body: (simple_command
                   name: (cmd_name
@@ -1595,7 +1590,6 @@ fifth\
                   name: (cmd_name
                     (word
                       (literal)))))))
-          (line_continuation)
           operator: (or_if)
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -1615,7 +1609,6 @@ fifth\
                   name: (cmd_name
                     (word
                       (literal)))))))
-          (line_continuation)
           operator: (and_if)
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -1647,7 +1640,6 @@ c; d  \
 (program
   leading: (linebreak
     (newline_list))
-  (line_continuation)
   commands: (complete_commands
     command: (complete_command
       body: (list
@@ -1660,8 +1652,6 @@ c; d  \
                     (word
                       (literal))))))))
         separator: (separator_op)
-        (line_continuation)
-        (line_continuation)
         and_or: (and_or
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -1671,7 +1661,6 @@ c; d  \
                     (word
                       (literal))))))))
         separator: (separator_op)
-        (line_continuation)
         and_or: (and_or
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -1689,15 +1678,11 @@ c; d  \
                   name: (cmd_name
                     (word
                       (literal)))))
-              (line_continuation)
-              (line_continuation)
               command: (command
                 body: (simple_command
                   name: (cmd_name
                     (word
                       (literal)))))))
-          (line_continuation)
-          (line_continuation)
           operator: (and_if)
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -1727,8 +1712,6 @@ first\
 (program
   leading: (linebreak
     (newline_list))
-  (line_continuation)
-  (line_continuation)
   commands: (complete_commands
     command: (complete_command
       body: (list
@@ -1751,7 +1734,6 @@ first\
                   name: (cmd_name
                     (word
                       (literal)))))
-              (line_continuation)
               command: (command
                 body: (simple_command
                   name: (cmd_name
@@ -1768,8 +1750,6 @@ first\
                   name: (cmd_name
                     (word
                       (literal)))))))
-          (line_continuation)
-          (line_continuation)
           operator: (and_if)
           pipeline: (pipeline
             sequence: (pipe_sequence
@@ -1806,8 +1786,7 @@ second
                   name: (cmd_name
                     (word
                       (literal))))))))))
-    separator: (newline_list
-      (line_continuation))
+    separator: (newline_list)
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -1845,8 +1824,7 @@ second
                   name: (cmd_name
                     (word
                       (literal))))))))))
-    separator: (newline_list
-      (line_continuation))
+    separator: (newline_list)
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -1876,9 +1854,7 @@ echo
 
 (program
   (linebreak
-    (newline_list
-      (line_continuation)
-      (line_continuation)))
+    (newline_list))
   (complete_commands
     (complete_command
       (list
@@ -1891,9 +1867,7 @@ echo
                     (word
                       (literal)))))))))))
   (linebreak
-    (newline_list
-      (line_continuation)
-      (line_continuation))))
+    (newline_list)))
 
 ==================
 a continuation-only program stays layout
@@ -1903,9 +1877,7 @@ a continuation-only program stays layout
 
 ---
 
-(program
-  (line_continuation)
-  (line_continuation))
+(program)
 
 ==================
 a trailing continuation after a command stays layout at the end of input
@@ -1928,8 +1900,7 @@ first\
                 (simple_command
                   (cmd_name
                     (word
-                      (literal)))))))))))
-  (line_continuation))
+                      (literal))))))))))))
 
 ==================
 trailing continuation runs stay layout at the end of input
@@ -1955,8 +1926,7 @@ b;\
                   name: (cmd_name
                     (word
                       (literal))))))))))
-    separator: (newline_list
-      (line_continuation))
+    separator: (newline_list)
     command: (complete_command
       body: (list
         and_or: (and_or
@@ -1967,8 +1937,7 @@ b;\
                   name: (cmd_name
                     (word
                       (literal)))))))))
-      terminator: (separator_op)))
-  (line_continuation))
+      terminator: (separator_op))))
 
 ==================
 a blank-led continuation run after a closed group reaches the end of input
@@ -2005,8 +1974,7 @@ a blank-led continuation run after a closed group reaches the end of input
                       terminator: (separator
                         operator: (separator_op))))))))))))
   trailing: (linebreak
-    (newline_list
-      (line_continuation))))
+    (newline_list)))
 
 ==================
 a bang after a pipe requires a new pipeline head
@@ -2017,6 +1985,8 @@ echo hi | !
 
 ---
 
+
+
 ==================
 a bang cannot prefix a command after a pipe
 :error
@@ -2025,6 +1995,8 @@ a bang cannot prefix a command after a pipe
 echo hi | ! x
 
 ---
+
+
 
 ==================
 a pipeline cannot repeat its leading bang

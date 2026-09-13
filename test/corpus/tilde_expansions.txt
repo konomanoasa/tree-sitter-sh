@@ -31,7 +31,6 @@ printf "${value:-~fallback}"
                           (literal))))
                     word: (word
                       (tilde_expansion)
-                      (literal)
                       (literal))
                     word: (word
                       (literal))))))))))
@@ -51,15 +50,9 @@ printf "${value:-~fallback}"
                           user: (tilde_user
                             (literal)))
                         (literal)
-                        (literal)
-                        (literal)
-                        (literal)
-                        (literal)
-                        (literal)
                         (tilde_expansion
                           user: (tilde_user
                             (literal)))
-                        (literal)
                         (literal))))
                   word: (cmd_word
                     (word
@@ -118,42 +111,36 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
                             (parameter_expansion
                               (variable_name))
                             (double_quote_text))))
-                      (literal)
                       (literal))
                     (word
                       (tilde_expansion
                         (tilde_user
                           (single_quoted
                             (single_quote_content))))
-                      (literal)
                       (literal))
                     (word
                       (tilde_expansion
                         (tilde_user
                           (dollar_single_quoted
                             (dollar_single_quote_text))))
-                      (literal)
                       (literal))
                     (word
                       (tilde_expansion
                         (tilde_user
                           (escaped_character)
                           (literal)))
-                      (literal)
                       (literal))
                     (word
                       (tilde_expansion
                         (tilde_user
                           (parameter_expansion
                             (variable_name))))
-                      (literal)
                       (literal))
                     (word
                       (tilde_expansion
                         (tilde_user
                           (parameter_expansion
                             (variable_name))))
-                      (literal)
                       (literal))
                     (word
                       (tilde_expansion
@@ -173,10 +160,7 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
                                                   (literal)))
                                               (cmd_suffix
                                                 (word
-                                                  (literal)
-                                                  (literal)
                                                   (literal)))))))))))))))
-                      (literal)
                       (literal))
                     (word
                       (tilde_expansion
@@ -186,7 +170,6 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
                               (arithmetic_number)
                               (arithmetic_operator)
                               (arithmetic_number)))))
-                      (literal)
                       (literal))
                     (word
                       (tilde_expansion
@@ -206,16 +189,12 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
                                                   (literal)))
                                               (cmd_suffix
                                                 (word
-                                                  (literal)
-                                                  (literal)
                                                   (literal)))))))))))))))
-                      (literal)
                       (literal))
                     (word
                       (tilde_expansion
                         (tilde_user
                           (literal)))
-                      (literal)
                       (literal))))))))))
     (newline_list)
     (complete_command
@@ -246,15 +225,12 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
                                                     (literal)))
                                                 (cmd_suffix
                                                   (word
-                                                    (literal)
-                                                    (literal)
                                                     (literal)))))))))))))))
                         (literal)
                         (tilde_expansion
                           (tilde_user
                             (double_quoted
                               (double_quote_text))))
-                        (literal)
                         (literal))))
                   (cmd_word
                     (word
@@ -293,10 +269,7 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
                                                       (literal)))
                                                   (cmd_suffix
                                                     (word
-                                                      (literal)
-                                                      (literal)
                                                       (literal)))))))))))))))
-                          (literal)
                           (literal))))
                     (word
                       (parameter_expansion
@@ -320,8 +293,6 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
                                                       (literal)))
                                                   (cmd_suffix
                                                     (word
-                                                      (literal)
-                                                      (literal)
                                                       (literal)))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
@@ -354,7 +325,6 @@ x=~[:]
                       (tilde_expansion
                         (tilde_user
                           (literal)))
-                      (literal)
                       (literal))))))))))
     (newline_list)
     (complete_command
@@ -371,7 +341,6 @@ x=~[:]
                         (tilde_expansion
                           (tilde_user
                             (literal)))
-                        (literal)
                         (literal))))))))))))
   (linebreak
     (newline_list)))
@@ -406,7 +375,6 @@ a=~user\
                       (tilde_expansion
                         (tilde_user
                           (literal))))
-                    (line_continuation)
                     (word
                       (literal))))))))))
     (newline_list)
@@ -423,8 +391,7 @@ a=~user\
                       (assignment_value
                         (tilde_expansion
                           (tilde_user
-                            (literal))))
-                      (line_continuation)))
+                            (literal))))))
                   (cmd_word
                     (word
                       (literal)))))))))))
@@ -455,30 +422,21 @@ A=[a:~/x] B=[[:~user]/x] C=[a:~/x D=[a\:~/x]
                       name: (variable_name)
                       value: (assignment_value
                         (literal)
-                        (literal)
-                        (literal)
                         (tilde_expansion)
-                        (literal)
                         (literal)))
                     assignment: (assignment_word
                       name: (variable_name)
                       value: (assignment_value
-                        (literal)
-                        (literal)
                         (literal)
                         (tilde_expansion
                           user: (tilde_user
                             (literal)))
-                        (literal)
                         (literal)))
                     assignment: (assignment_word
                       name: (variable_name)
                       value: (assignment_value
                         (literal)
-                        (literal)
-                        (literal)
                         (tilde_expansion)
-                        (literal)
                         (literal)))
                     assignment: (assignment_word
                       name: (variable_name)
@@ -597,4 +555,87 @@ nested backquote closers end assignment and argument tilde prefixes
                                                                         user: (tilde_user
                                                                           (literal)))))))))))))))))))))))))))))))))))))
   trailing: (linebreak
+    (newline_list)))
+
+==================
+encoded continuations end argument and assignment tilde users
+==================
+
+: `: ~user\\
+ :`
+: `A=~user\\
+ :`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (tilde_expansion
+                                                (tilde_user
+                                                  (literal))))
+                                            (word
+                                              (literal))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_prefix
+                                            (assignment_word
+                                              (variable_name)
+                                              (assignment_value
+                                                (tilde_expansion
+                                                  (tilde_user
+                                                    (literal))))))
+                                          (cmd_word
+                                            (word
+                                              (literal)))))))))))))))))))))))
+  (linebreak
     (newline_list)))

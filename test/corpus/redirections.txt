@@ -1253,8 +1253,6 @@ command >file#suffix >\#escaped >'#quoted'
                       body: (io_file
                         filename: (filename
                           word: (word
-                            (literal)
-                            (literal)
                             (literal)))))
                     redirect: (io_redirect
                       body: (io_file
@@ -1524,7 +1522,6 @@ raw newlines end redirect attachment while escaped newlines preserve it
                                   name: (cmd_name
                                     (word
                                       (literal))))))))))))
-                (line_continuation)
                 redirects: (redirect_list
                   redirect: (io_redirect
                     number: (io_number)
@@ -1532,7 +1529,6 @@ raw newlines end redirect attachment while escaped newlines preserve it
                       filename: (filename
                         word: (word
                           (literal)))))
-                  (line_continuation)
                   redirect: (io_redirect
                     body: (io_file
                       filename: (filename
@@ -1598,7 +1594,6 @@ target
                   prefix: (cmd_prefix
                     redirect: (io_redirect
                       number: (io_number)
-                      (line_continuation)
                       body: (io_file
                         filename: (filename
                           word: (word
@@ -1609,7 +1604,6 @@ target
                   suffix: (cmd_suffix
                     redirect: (io_redirect
                       body: (io_file
-                        (line_continuation)
                         filename: (filename
                           word: (word
                             (literal))))))))))))))
@@ -1624,6 +1618,8 @@ a descriptor before a second redirection leaves the first target missing
 echo 1>2>3
 
 ---
+
+
 
 ==================
 a descriptor before an output redirection cannot satisfy an input target

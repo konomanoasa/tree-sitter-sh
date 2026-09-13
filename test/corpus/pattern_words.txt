@@ -24,7 +24,6 @@ printf src/*/file?.[ch]
                   (cmd_suffix
                     (word
                       (literal)
-                      (literal)
                       (pattern_star_source)
                       (literal))
                     (word
@@ -53,9 +52,7 @@ printf src/*/file?.[ch]
                   (cmd_suffix
                     (word
                       (literal)
-                      (literal)
                       (pattern_star_source)
-                      (literal)
                       (literal)
                       (pattern_question_source)
                       (literal)
@@ -89,7 +86,6 @@ FILES=src/*.c printf value >out?.txt
                     assignment: (assignment_word
                       name: (variable_name)
                       value: (assignment_value
-                        (literal)
                         (literal)
                         (pattern_star_source)
                         (literal))))
