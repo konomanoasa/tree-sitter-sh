@@ -272,7 +272,8 @@ function parseCst(output) {
       continue;
     }
     let content = match[4];
-    let depth = line.length - content.length;
+    const rangeWidth = line.indexOf("-") - 1;
+    let depth = match[3].length - Math.max(0, rangeWidth - match[2].length);
     if (content.startsWith("•")) {
       content = content.slice(1);
       depth += 1;

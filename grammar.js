@@ -821,6 +821,8 @@ export default grammar({
     $._quoted_here_document_body_start,
     $._quoted_here_document_end_begin,
     $._quoted_here_document_end_text,
+    $._quoted_here_document_text,
+    $._quoted_here_document_text_run_begin,
     $._here_document_end_begin,
     $._here_document_end_leading_tabs,
     $._here_document_end_commit,
@@ -861,8 +863,10 @@ export default grammar({
     $._command_substitution_body_begin,
     $._subshell_close,
     $._word_bracket_literal_start,
+    $._assignment_bracket_literal_start,
     $._parameter_bracket_literal_start,
     $._word_bracket_fallback_end,
+    $._assignment_bracket_fallback_end,
     $._parameter_bracket_fallback_end,
     $._pattern_bracket_character_token,
     $._parameter_pattern_bracket_character_token,
@@ -1500,9 +1504,18 @@ export default grammar({
         choice(
           seq(
             $._quoted_here_document_end_begin,
-            optional($._here_document_end_leading_tabs),
-            optional(
-              alias($._quoted_here_document_end_text, $.here_document_end_text),
+            repeat(
+              choice(
+                $._here_document_end_leading_tabs,
+                $._line_continuation,
+                seq(
+                  optional($._quoted_here_document_text_run_begin),
+                  alias(
+                    $._quoted_here_document_end_text,
+                    $.here_document_end_text,
+                  ),
+                ),
+              ),
             ),
           ),
           seq(
@@ -1581,9 +1594,16 @@ export default grammar({
       token.immediate(seq("\\", /[^\\\n$`]/)),
 
     quoted_here_document_body: ($) =>
-      repeat1(choice($.quoted_here_document_text, $._newline)),
-
-    quoted_here_document_text: (_) => token.immediate(prec(-1, /[^\n]+/)),
+      repeat1(
+        choice(
+          seq(
+            optional($._quoted_here_document_text_run_begin),
+            alias($._quoted_here_document_text, $.quoted_here_document_text),
+          ),
+          $._line_continuation,
+          $._newline,
+        ),
+      ),
 
     assignment_word: ($) =>
       prec.dynamic(
@@ -1636,8 +1656,19 @@ export default grammar({
     _assignment_word_part: ($) =>
       choice(
         $._assignment_non_delimiter_part,
-        $._word_incomplete_bracket_literal,
+        $._assignment_incomplete_bracket_literal,
         prec(-1, alias($._literal_slash, $.literal)),
+      ),
+
+    _assignment_incomplete_bracket_literal: ($) =>
+      incompleteBracketLiteral(
+        $,
+        $._assignment_bracket_literal_start,
+        choice(
+          $._word_incomplete_bracket_literal_part,
+          prec(-1, $._pattern_special_literal_left),
+        ),
+        $._assignment_bracket_fallback_end,
       ),
 
     _assignment_literal: ($) => prec.right(assignmentPlainChunk($)),

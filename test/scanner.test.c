@@ -352,6 +352,7 @@ static void test_state_round_trip(void) {
   scanner->backquote_depth = 7;
   scanner->substitution_depth = 5;
   scanner->body_backquote_depth = 3;
+  scanner->quoted_here_document_text_run_remaining = 128;
 
   assert(append_pending_document(scanner, make_document("first", true, false)));
   assert(
@@ -388,6 +389,7 @@ static void test_state_round_trip(void) {
   assert(restored->backquote_depth == 7);
   assert(restored->substitution_depth == 5);
   assert(restored->body_backquote_depth == 3);
+  assert(restored->quoted_here_document_text_run_remaining == 128);
   assert(restored->pending_count == 2);
   assert_document(&restored->pending_documents[0], "first", true, false);
   assert(restored->pending_documents[0].declaration_depth == 12);
@@ -411,6 +413,79 @@ static void test_state_round_trip(void) {
 
   tree_sitter_sh_external_scanner_destroy(restored);
   tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+static void test_here_document_line_start_only_emits_valid_tokens(void) {
+  const struct {
+    const char *source;
+    bool content_valid;
+    bool end_valid;
+    enum TokenType expected;
+  } fixtures[] = {
+    {"body\n", false, false, TOKEN_COUNT},
+    {"EOF\n", false, false, TOKEN_COUNT},
+    {"body\n", false, true, TOKEN_COUNT},
+    {"EOF\n", false, true, HERE_DOCUMENT_END_BEGIN},
+    {"body\n", true, false, HERE_DOCUMENT_CONTENT_LINE_START},
+    {"EOF\n", true, false, HERE_DOCUMENT_CONTENT_LINE_START},
+    {"body\n", true, true, HERE_DOCUMENT_CONTENT_LINE_START},
+    {"EOF\n", true, true, HERE_DOCUMENT_END_BEGIN},
+  };
+  for (size_t quoted = 0; quoted < 2; quoted += 1) {
+    for (
+      size_t index = 0; index < sizeof(fixtures) / sizeof(fixtures[0]);
+      index += 1
+    ) {
+      struct Scanner scanner = {0};
+      assert(append_pending_document(
+        &scanner,
+        make_document("EOF", quoted != 0, false)
+      ));
+      assert(activate_startable_pending_documents(&scanner));
+      scanner.at_here_document_line_start = true;
+      char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+      unsigned before_length = snapshot_scanner(&scanner, before);
+      int32_t input[5];
+      size_t length = strlen(fixtures[index].source);
+      for (size_t character = 0; character < length; character += 1) {
+        input[character] = (unsigned char)fixtures[index].source[character];
+      }
+      struct MockLexer mock;
+      init_mock_lexer(&mock, input, length);
+      enum TokenType end =
+        quoted != 0 ? QUOTED_HERE_DOCUMENT_END_BEGIN : HERE_DOCUMENT_END_BEGIN;
+      bool valid_symbols[TOKEN_COUNT] = {false};
+      valid_symbols[HERE_DOCUMENT_CONTENT_LINE_START] =
+        fixtures[index].content_valid;
+      valid_symbols[end] = fixtures[index].end_valid;
+      bool accepted = tree_sitter_sh_external_scanner_scan(
+        &scanner,
+        &mock.lexer,
+        valid_symbols
+      );
+      assert(accepted == (fixtures[index].expected != TOKEN_COUNT));
+      if (accepted) {
+        enum TokenType expected =
+          fixtures[index].expected == HERE_DOCUMENT_END_BEGIN
+          ? end
+          : fixtures[index].expected;
+        assert(mock.lexer.result_symbol == expected);
+        assert(valid_symbols[mock.lexer.result_symbol]);
+        assert(!scanner.at_here_document_line_start);
+        assert(mock.mark == 0);
+        assert(scanner.active_count == 1);
+        assert_document(
+          &scanner.active_documents[0],
+          "EOF",
+          quoted != 0,
+          false
+        );
+      } else {
+        assert_scanner_matches_snapshot(&scanner, before, before_length);
+      }
+      clear_scanner(&scanner);
+    }
+  }
 }
 
 static void test_old_state_is_rejected(void) {
@@ -790,6 +865,169 @@ static bool scan_delimiter_fixture(
     assert(mock.mark == 0);
   }
   return result;
+}
+
+static void test_nested_here_documents_keep_enclosing_read_policies(void) {
+  struct Scanner scanner = {0};
+  assert(append_pending_document(&scanner, make_document("OUT", false, true)));
+  assert(activate_startable_pending_documents(&scanner));
+  scanner.backquote_depth = 1;
+  scanner.expecting_delimiter = true;
+  const int32_t declaration[] = {'\'', 'I', 'N', '\'', '\n'};
+  assert(scan_delimiter_fixture(
+    &scanner,
+    declaration,
+    sizeof(declaration) / sizeof(declaration[0])
+  ));
+  assert_document(&scanner.pending_documents[0], "IN", true, true);
+  assert(activate_startable_pending_documents(&scanner));
+  assert(scanner.suspended_frame_count == 1);
+  assert(scanner.body_backquote_depth == 1);
+
+  const int32_t inherited_end[] = {'\t', '\\', '\n', '\t', 'I', 'N', '\n'};
+  struct MockLexer mock;
+  init_mock_lexer(
+    &mock,
+    inherited_end,
+    sizeof(inherited_end) / sizeof(inherited_end[0])
+  );
+  assert(
+    read_here_document_line(
+      &scanner,
+      &mock.lexer,
+      &scanner.active_documents[0],
+      1,
+      NULL,
+      NULL
+    ) == HERE_DOCUMENT_LINE_DELIMITER
+  );
+
+  const int32_t even_run[] = {'\\', '\\', '\n', 'I', 'N', '\n'};
+  init_mock_lexer(&mock, even_run, sizeof(even_run) / sizeof(even_run[0]));
+  assert(
+    read_here_document_line(
+      &scanner,
+      &mock.lexer,
+      &scanner.active_documents[0],
+      1,
+      NULL,
+      NULL
+    ) == HERE_DOCUMENT_LINE_CONTENT
+  );
+  scanner.active_documents[0].quoted = false;
+  init_mock_lexer(&mock, even_run, sizeof(even_run) / sizeof(even_run[0]));
+  assert(
+    read_here_document_line(
+      &scanner,
+      &mock.lexer,
+      &scanner.active_documents[0],
+      1,
+      NULL,
+      NULL
+    ) == HERE_DOCUMENT_LINE_DELIMITER
+  );
+  scanner.active_documents[0].quoted = true;
+
+  const int32_t continuation[] = {'\\', '\n'};
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[QUOTED_HERE_DOCUMENT_TEXT] = true;
+  valid_symbols[LINE_CONTINUATION] = true;
+  assert_scan_result(
+    &scanner,
+    valid_symbols,
+    continuation,
+    2,
+    true,
+    LINE_CONTINUATION,
+    2,
+    2,
+    0
+  );
+  assert_scan_result(
+    &scanner,
+    valid_symbols,
+    even_run,
+    2,
+    true,
+    QUOTED_HERE_DOCUMENT_TEXT,
+    2,
+    2,
+    0
+  );
+
+  const int32_t odd_run[] = {'\\', '\\', '\\', '\n'};
+  valid_symbols[QUOTED_HERE_DOCUMENT_TEXT_RUN_BEGIN] = true;
+  assert_scan_result(
+    &scanner,
+    valid_symbols,
+    odd_run,
+    4,
+    true,
+    QUOTED_HERE_DOCUMENT_TEXT_RUN_BEGIN,
+    0,
+    3,
+    '\n'
+  );
+  assert(scanner.quoted_here_document_text_run_remaining == 2);
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(&scanner, before);
+  const int32_t edited_prefix[] = {'\\', 'x'};
+  assert_scan_result(
+    &scanner,
+    valid_symbols,
+    edited_prefix,
+    2,
+    false,
+    0,
+    0,
+    1,
+    'x'
+  );
+  assert_scanner_matches_snapshot(&scanner, before, before_length);
+  assert_scan_result(
+    &scanner,
+    valid_symbols,
+    odd_run,
+    4,
+    true,
+    QUOTED_HERE_DOCUMENT_TEXT,
+    2,
+    2,
+    '\\'
+  );
+  assert(scanner.quoted_here_document_text_run_remaining == 0);
+
+  before_length = snapshot_scanner(&scanner, before);
+  assert(append_pending_document(
+    &scanner,
+    make_repeated_document(
+      TREE_SITTER_SERIALIZATION_BUFFER_SIZE - before_length - 4
+    )
+  ));
+  before_length = snapshot_scanner(&scanner, before);
+  assert(before_length == TREE_SITTER_SERIALIZATION_BUFFER_SIZE);
+  assert_scan_result(&scanner, valid_symbols, odd_run, 4, false, 0, 0, 3, '\n');
+  assert_scanner_matches_snapshot(&scanner, before, before_length);
+  clear_document_array(&scanner.pending_documents, &scanner.pending_count);
+
+  finish_active_document(&scanner);
+  restore_suspended_documents(&scanner);
+  assert_document(&scanner.active_documents[0], "OUT", false, true);
+  assert(scanner.body_backquote_depth == 0);
+  assert(scanner.suspended_frame_count == 0);
+  scanner.active_documents[0].quoted = true;
+  assert_scan_result(
+    &scanner,
+    valid_symbols,
+    continuation,
+    2,
+    true,
+    QUOTED_HERE_DOCUMENT_TEXT,
+    1,
+    1,
+    '\n'
+  );
+  clear_scanner(&scanner);
 }
 
 static void assert_text_delimiter_fixture(
@@ -2360,6 +2598,20 @@ static void test_enclosing_closer_ends_incomplete_bracket(void) {
   );
 
   valid_symbols[WORD_BRACKET_FALLBACK_END] = false;
+  valid_symbols[ASSIGNMENT_BRACKET_FALLBACK_END] = true;
+  assert_scan_result(
+    scanner,
+    valid_symbols,
+    nested_closer,
+    2,
+    true,
+    ASSIGNMENT_BRACKET_FALLBACK_END,
+    0,
+    1,
+    '`'
+  );
+
+  valid_symbols[ASSIGNMENT_BRACKET_FALLBACK_END] = false;
   valid_symbols[PARAMETER_BRACKET_FALLBACK_END] = true;
   assert_scan_result(
     scanner,
@@ -3403,6 +3655,37 @@ static void test_dollar_expansion_start_contract(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
+static void test_assignment_bracket_colon_preserves_the_following_token(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  bool valid_symbols[TOKEN_COUNT] = {false};
+  valid_symbols[ASSIGNMENT_BRACKET_FALLBACK_END] = true;
+  valid_symbols[DOLLAR_EXPANSION_START] = true;
+  valid_symbols[BACKQUOTE_START] = true;
+  valid_symbols[NEWLINE] = true;
+
+  const int32_t followers[] = {'~', '$', '`', '\n'};
+  for (
+    size_t index = 0; index < sizeof(followers) / sizeof(followers[0]);
+    index += 1
+  ) {
+    const int32_t input[] = {':', followers[index], 'x'};
+    assert_scan_result(
+      scanner,
+      valid_symbols,
+      input,
+      3,
+      followers[index] == '~',
+      ASSIGNMENT_BRACKET_FALLBACK_END,
+      0,
+      1,
+      followers[index]
+    );
+    assert(scanner->backquote_depth == 0);
+  }
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
 static void assert_tilde_end_marker(
   enum TokenType symbol,
   int32_t lookahead,
@@ -3517,6 +3800,31 @@ static void test_tilde_end_marker_contract(void) {
     2,
     ':'
   );
+
+  const int32_t nested_closer[] = {'\\', '`'};
+  valid_symbols[BACKQUOTE_START_PREFIX] = true;
+  scanner->backquote_depth = 2;
+  const enum TokenType tilde_ends[] = {WORD_TILDE_END, ASSIGNMENT_TILDE_END};
+  for (
+    size_t index = 0; index < sizeof(tilde_ends) / sizeof(tilde_ends[0]);
+    index += 1
+  ) {
+    valid_symbols[WORD_TILDE_END] = tilde_ends[index] == WORD_TILDE_END;
+    valid_symbols[ASSIGNMENT_TILDE_END] =
+      tilde_ends[index] == ASSIGNMENT_TILDE_END;
+    assert_scan_result(
+      scanner,
+      valid_symbols,
+      nested_closer,
+      2,
+      true,
+      (TSSymbol)tilde_ends[index],
+      0,
+      1,
+      '`'
+    );
+    assert(scanner->backquote_depth == 2);
+  }
 
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
@@ -4617,6 +4925,7 @@ static void test_ambiguous_lookahead_allocation_failure_preserves_state(void) {
 
 int main(void) {
   test_disabled_and_all_valid_scans_preserve_state();
+  test_here_document_line_start_only_emits_valid_tokens();
   test_state_round_trip();
   test_old_state_is_rejected();
   test_exact_fit_state_round_trip();
@@ -4640,6 +4949,7 @@ int main(void) {
   test_control_escape_table();
   test_byte_delimiter_matching();
   test_nested_here_document_logical_line_tabs();
+  test_nested_here_documents_keep_enclosing_read_policies();
   test_here_document_line_backslash_parity();
   test_enclosed_here_document_line_folds();
   test_backquote_prefix_classification();
@@ -4673,6 +4983,7 @@ int main(void) {
   test_arithmetic_left_parenthesis_classification();
   test_dollar_expansion_start_contract();
   test_tilde_end_marker_contract();
+  test_assignment_bracket_colon_preserves_the_following_token();
   test_nul_and_eof_are_distinct();
   test_an_open_backquote_ends_tokens();
   test_newline_resets_delimiter_flags();

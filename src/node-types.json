@@ -3000,6 +3000,10 @@
       "required": false,
       "types": [
         {
+          "type": "line_continuation",
+          "named": true
+        },
+        {
           "type": "quoted_here_document_text",
           "named": true
         }

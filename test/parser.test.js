@@ -14,6 +14,7 @@ import {
   assertNotContains,
   assertOccurrenceCount,
   assertRepeatedColdParse,
+  assertSameLogicalProjection,
   assertValid,
   cstFingerprint,
   hasRecovery,
@@ -369,6 +370,55 @@ test("sh: lexical leaves retain complete source without internal token children"
     ["8:0-8:1", "here_document_end_text `$`"],
   ]) {
     assertCstRange(output, range, leaf);
+  }
+});
+
+test("sh: tilde prefixes retain ownership across bracket and backquote edits", () => {
+  for (const [name, contents, prefixes] of [
+    ["complete bracket", "A=[a:~/x]\n", ["~"]],
+    ["incomplete bracket", "A=[a:~/x\n", ["~"]],
+    ["nested bracket", "A=[a[b:~/x]]\n", ["~"]],
+    ["closing bracket in login name", "A=[a:~root]/x\n", ["~root]"]],
+    ["character class", "A=[[:alpha:]:~/x]\n", ["~"]],
+    ["class marker colon", "A=[[:~/x]]\n", ["~"]],
+    ["collating symbol", "A=[[.a:~/x.]]\n", ["~"]],
+    ["equivalence class", "A=[[=a:~/x=]]\n", ["~"]],
+    ["two prefixes", "A=[a:~/x]:~/y\n", ["~", "~"]],
+    ["parameter after colon", `A=[a:\${x}:~/x]\n`, ["~"]],
+    ["command after colon", "A=[a:$(printf x):~/x]\n", ["~"]],
+    ["backquote after colon", "A=[a:`printf x`:~/x]\n", ["~"]],
+    ["nested backquote", ": `: \\`A=[a:~x\\``\n", ["~x"]],
+    ["nested backquote assignment", ": `: \\`A=~x\\``\n", ["~x"]],
+    ["nested backquote argument", ": `: \\`: ~x\\``\n", ["~x"]],
+    ["escaped colon", "A=[a\\:~/x]\n", []],
+    ["quoted colon", 'A=[a":"~/x]\n', []],
+    ["nested colon", `A=[a\${x:-:}~/x]\n`, []],
+    ["quoted tilde", 'A=[a:"~"/x]\n', []],
+    ["ordinary word", ": [a:~/x]\n", []],
+    ["parameter word", `: \${x:-[a:~/x]}\n`, []],
+  ]) {
+    const initial = writeSource(name, contents.replaceAll("~", "Q"));
+    const final = writeSource(name, contents);
+    const edits = Array.from(contents.matchAll(/~/g), (match) => ({
+      byte: match.index,
+      deleteBytes: 1,
+      insert: "~",
+    }));
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      name,
+      ...edits,
+    )) {
+      assertOccurrenceCount(output, "tilde_expansion", prefixes.length);
+      let offset = 0;
+      for (const prefix of prefixes) {
+        const start = contents.indexOf(prefix, offset);
+        const end = start + prefix.length;
+        assertCstRange(output, `0:${start}-0:${end}`, "tilde_expansion");
+        offset = end;
+      }
+    }
   }
 });
 
@@ -957,6 +1007,51 @@ test("sh: parser rejects a timeout as structural recovery", () => {
       timeout: 1,
     }),
   );
+});
+
+test("sh: CST helpers preserve hierarchy across coordinate widths", () => {
+  const caseContents = "case x in a) :;; b) :;& c) :; esac\n";
+  for (const [name, contents, layout, rootRange, commandsRange] of [
+    ["two-digit-row", caseContents, " \\\n", "0:0-10:0", "0:0-9:4"],
+    [
+      "three-digit-row",
+      caseContents,
+      " \\\n".repeat(11),
+      "0:0-100:0",
+      "0:0-99:4",
+    ],
+    [
+      "mixed-coordinate-widths",
+      "x=1 y=2 : z > out 2> err\n",
+      " \\\n\t\\\n ",
+      "0:0-15:0",
+      "0:0-14:4",
+    ],
+  ]) {
+    const logical = parseValidCst(writeSource(`${name}-logical`, contents));
+    const physical = parseValidCst(
+      writeSource(name, contents.replaceAll(" ", layout)),
+    );
+    assertSameLogicalProjection(name, logical, physical);
+    assertCstDirectChildRange(
+      physical,
+      rootRange,
+      "program",
+      commandsRange,
+      "commands: complete_commands",
+    );
+    assert.throws(
+      () =>
+        assertCstDirectChildRange(
+          physical,
+          rootRange,
+          "program",
+          commandsRange,
+          "command: complete_command",
+        ),
+      /directly under program/,
+    );
+  }
 });
 
 test("sh: CST fingerprints distinguish anonymous tokens", () => {

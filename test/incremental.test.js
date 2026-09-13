@@ -2787,6 +2787,193 @@ test("sh: here-document redirect lines keep a continuation before a following co
   );
 });
 
+test("sh: nested here-documents inherit enclosing input removal across quote edits", () => {
+  const fixtures = [
+    {
+      name: "plain-inner-inherits-tabs",
+      source: "cat <<-OUT\n$(cat <<IN\n\tbody\n\tIN\n)\nOUT\n",
+      ends: [["3:0-4:0", "3:1-3:3"]],
+      continuations: [],
+      quotedBodies: 0,
+    },
+    {
+      name: "quoted-inner-inherits-tabs-without-expansion",
+      source: "cat <<-OUT\n$(cat <<'IN'\n\t$x\n\tIN\n)\nOUT\n",
+      ends: [["3:0-4:0", "3:1-3:3"]],
+      continuations: [],
+      quotedBodies: 1,
+    },
+    {
+      name: "grandchild-inherits-tabs-through-plain-parent",
+      source:
+        "cat <<-OUT\n$(cat <<MID\n$(cat <<'IN'\n\t$x\n\tIN\n)\n\tMID\n)\nOUT\n",
+      ends: [
+        ["4:0-5:0", "4:1-4:3"],
+        ["6:0-7:0", "6:1-6:4"],
+      ],
+      continuations: [],
+      quotedBodies: 1,
+    },
+    {
+      name: "own-tab-removal-does-not-leak-to-pending-sibling",
+      source: "cat <<OUT\n$(cat <<-A <<'B'\n\tA\n\tB\nB\n)\nOUT\n",
+      ends: [
+        ["2:0-3:0", "2:1-2:2"],
+        ["4:0-5:0", "4:0-4:1"],
+      ],
+      continuations: [],
+      quotedBodies: 1,
+    },
+    {
+      name: "tab-removal-ends-with-enclosing-body",
+      source: "cat <<-OUT\n$(cat <<'IN'\n\tIN\n)\nOUT\ncat <<'IN'\n\tIN\nIN\n",
+      ends: [
+        ["2:0-3:0", "2:1-2:3"],
+        ["7:0-8:0", "7:0-7:2"],
+      ],
+      continuations: [],
+      quotedBodies: 1,
+    },
+    {
+      name: "quoted-inner-inherits-continuation-before-delimiter",
+      source: "cat <<OUT\n$(cat <<'IN'\n\\\nIN\n)\nOUT\n",
+      ends: [["2:0-4:0", "3:0-3:2"]],
+      continuations: ["2:0-3:0"],
+      quotedBodies: 0,
+    },
+    {
+      name: "quoted-inner-body-remains-opaque-before-continuation",
+      source: "cat <<OUT\n$(cat <<'IN'\n$x\n\\\nIN\n)\nOUT\n",
+      ends: [["3:0-5:0", "4:0-4:2"]],
+      continuations: ["3:0-4:0"],
+      quotedBodies: 1,
+    },
+    {
+      name: "quoted-empty-delimiter-inherits-continuation",
+      source: "cat <<OUT\n$(cat <<''\n\\\n\n)\nOUT\n",
+      ends: [["2:0-4:0", null]],
+      continuations: ["2:0-3:0"],
+      quotedBodies: 0,
+    },
+    {
+      name: "quoted-inner-preserves-text-before-boundary-continuation",
+      source: "cat <<OUT\n$(cat <<'IN'\n\\\\\\\n \nIN\n)\nOUT\n",
+      ends: [["4:0-5:0", "4:0-4:2"]],
+      continuations: ["2:2-3:0"],
+      prefixes: ["2:0-2:2"],
+      quotedBodies: 1,
+    },
+    {
+      name: "continuation-removal-precedes-inherited-tab-removal",
+      source: "cat <<-OUT\n$(cat <<'IN'\n\t\\\n\tIN\n)\nOUT\n",
+      ends: [["2:0-4:0", "3:1-3:3"]],
+      continuations: ["2:1-3:0"],
+      quotedBodies: 0,
+    },
+    {
+      name: "continuation-removal-ends-with-enclosing-body",
+      source: "cat <<OUT\n$(cat <<'IN'\n\\\nIN\n)\nOUT\ncat <<'IN'\n\\\nIN\n",
+      ends: [
+        ["2:0-4:0", "3:0-3:2"],
+        ["8:0-9:0", "8:0-8:2"],
+      ],
+      continuations: ["2:0-3:0"],
+      quotedBodies: 1,
+    },
+  ];
+  for (const fixture of fixtures) {
+    const delimiterByte = fixture.source.indexOf("OUT");
+    const initial = writeSource(
+      `${fixture.name}-quoted-outer`,
+      fixture.source.replace("OUT", "'OUT'"),
+    );
+    const source = writeSource(fixture.name, fixture.source);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      source,
+      fixture.name,
+      { byte: delimiterByte + 4, deleteBytes: 1, insert: "" },
+      { byte: delimiterByte, deleteBytes: 1, insert: "" },
+    )) {
+      for (const [end, text] of fixture.ends) {
+        assertCstRange(output, end, "end: here_document_end");
+        if (text !== null) {
+          assertCstRange(output, text, "here_document_end_text");
+        }
+      }
+      assertOccurrenceCount(
+        output,
+        "quoted_here_document_body",
+        fixture.quotedBodies,
+      );
+      for (const range of fixture.prefixes ?? []) {
+        assertCstRange(output, range, "quoted_here_document_text");
+      }
+      assertNotContains(output, "parameter_expansion");
+    }
+    assert.deepEqual(
+      lineContinuationManifest(runQuery(source)),
+      fixture.continuations,
+      fixture.name,
+    );
+    assertIncrementalEqualsFresh(
+      source,
+      initial,
+      `${fixture.name}-restore-quoted-outer`,
+      { byte: delimiterByte, deleteBytes: 0, insert: "'" },
+      { byte: delimiterByte + 4, deleteBytes: 0, insert: "'" },
+    );
+  }
+});
+
+test("sh: editing retained quoted-body backslash prefixes matches a fresh parse", () => {
+  const prefix = "cat <<OUT\n$(cat <<'IN'\n";
+  const suffix = "\n \nIN\n)\nOUT\n";
+  const initial = writeSource(
+    "quoted-body-prefix-initial",
+    `${prefix}${"\\".repeat(3)}${suffix}`,
+  );
+  for (const [name, run, edit, continuations, textRange] of [
+    [
+      "extend-prefix",
+      "\\".repeat(5),
+      { byte: prefix.length + 1, deleteBytes: 0, insert: "\\\\" },
+      ["2:4-3:0"],
+      "2:0-2:4",
+    ],
+    [
+      "remove-continuation-by-changing-parity",
+      "\\\\",
+      { byte: prefix.length + 1, deleteBytes: 1, insert: "" },
+      [],
+      "2:0-2:2",
+    ],
+    [
+      "replace-counted-backslash-with-text",
+      "\\x\\",
+      { byte: prefix.length + 1, deleteBytes: 1, insert: "x" },
+      ["2:2-3:0"],
+      "2:0-2:2",
+    ],
+  ]) {
+    const source = writeSource(name, `${prefix}${run}${suffix}`);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      source,
+      name,
+      edit,
+    )) {
+      assertCstRange(output, textRange, "quoted_here_document_text");
+      assertCstRange(output, "4:0-5:0", "end: here_document_end");
+    }
+    assert.deepEqual(
+      lineContinuationManifest(runQuery(source)),
+      continuations,
+      name,
+    );
+  }
+});
+
 test("sh: empty quoted here-document delimiters preserve enclosing source after recovery", () => {
   const fixtures = [
     {

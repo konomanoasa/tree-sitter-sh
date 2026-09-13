@@ -430,3 +430,171 @@ a=~user\
                       (literal)))))))))))
   (linebreak
     (newline_list)))
+
+==================
+assignment tildes take precedence over complete and incomplete bracket source
+==================
+
+A=[a:~/x] B=[[:~user]/x] C=[a:~/x D=[a\:~/x]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)
+                        (literal)
+                        (literal)
+                        (tilde_expansion)
+                        (literal)
+                        (literal)))
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)
+                        (literal)
+                        (literal)
+                        (tilde_expansion
+                          user: (tilde_user
+                            (literal)))
+                        (literal)
+                        (literal)))
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (literal)
+                        (literal)
+                        (literal)
+                        (tilde_expansion)
+                        (literal)
+                        (literal)))
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (pattern_bracket_source
+                          members: (pattern_bracket_members_source
+                            member: (pattern_bracket_character_source)
+                            member: (escaped_character)
+                            member: (pattern_bracket_character_source)
+                            member: (pattern_bracket_character_source)
+                            member: (pattern_bracket_character_source))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+nested backquote closers end assignment and argument tilde prefixes
+==================
+
+: `: \`A=~x\``
+: `: \`: ~x\``
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (backquote_substitution
+                                                body: (backquote_substitution_body
+                                                  (complete_commands
+                                                    command: (complete_command
+                                                      body: (list
+                                                        and_or: (and_or
+                                                          pipeline: (pipeline
+                                                            sequence: (pipe_sequence
+                                                              command: (command
+                                                                body: (simple_command
+                                                                  prefix: (cmd_prefix
+                                                                    assignment: (assignment_word
+                                                                      name: (variable_name)
+                                                                      value: (assignment_value
+                                                                        (tilde_expansion
+                                                                          user: (tilde_user
+                                                                            (literal)))))))))))))))))))))))))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            word: (word
+                                              (backquote_substitution
+                                                body: (backquote_substitution_body
+                                                  (complete_commands
+                                                    command: (complete_command
+                                                      body: (list
+                                                        and_or: (and_or
+                                                          pipeline: (pipeline
+                                                            sequence: (pipe_sequence
+                                                              command: (command
+                                                                body: (simple_command
+                                                                  name: (cmd_name
+                                                                    (word
+                                                                      (literal)))
+                                                                  suffix: (cmd_suffix
+                                                                    word: (word
+                                                                      (tilde_expansion
+                                                                        user: (tilde_user
+                                                                          (literal)))))))))))))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))

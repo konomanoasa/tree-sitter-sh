@@ -11,7 +11,7 @@
 #define TREE_SITTER_SERIALIZATION_BUFFER_SIZE 1024
 #endif
 
-#define SCANNER_SERIALIZATION_VERSION 17
+#define SCANNER_SERIALIZATION_VERSION 18
 #define SCANNER_STATE_CAPACITY (TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 1)
 
 enum TokenType {
@@ -41,6 +41,8 @@ enum TokenType {
   QUOTED_HERE_DOCUMENT_BODY_START,
   QUOTED_HERE_DOCUMENT_END_BEGIN,
   QUOTED_HERE_DOCUMENT_END_TEXT,
+  QUOTED_HERE_DOCUMENT_TEXT,
+  QUOTED_HERE_DOCUMENT_TEXT_RUN_BEGIN,
   HERE_DOCUMENT_END_BEGIN,
   HERE_DOCUMENT_END_LEADING_TABS,
   HERE_DOCUMENT_END_COMMIT,
@@ -90,8 +92,10 @@ enum TokenType {
   COMMAND_SUBSTITUTION_BODY_BEGIN,
   SUBSHELL_CLOSE,
   WORD_BRACKET_LITERAL_START,
+  ASSIGNMENT_BRACKET_LITERAL_START,
   PARAMETER_BRACKET_LITERAL_START,
   WORD_BRACKET_FALLBACK_END,
+  ASSIGNMENT_BRACKET_FALLBACK_END,
   PARAMETER_BRACKET_FALLBACK_END,
   PATTERN_BRACKET_CHARACTER,
   PARAMETER_PATTERN_BRACKET_CHARACTER,
@@ -204,6 +208,7 @@ struct Scanner {
   size_t backquote_depth;
   size_t substitution_depth;
   size_t body_backquote_depth;
+  size_t quoted_here_document_text_run_remaining;
   size_t *quoted_backquote_depths;
   size_t quoted_backquote_count;
 };
@@ -301,6 +306,7 @@ static void clear_scanner(struct Scanner *scanner) {
   scanner->backquote_depth = 0;
   scanner->substitution_depth = 0;
   scanner->body_backquote_depth = 0;
+  scanner->quoted_here_document_text_run_remaining = 0;
   ts_free(scanner->quoted_backquote_depths);
   scanner->quoted_backquote_depths = NULL;
   scanner->quoted_backquote_count = 0;
@@ -501,6 +507,7 @@ static void restore_suspended_documents(struct Scanner *scanner) {
 }
 
 static void finish_active_document(struct Scanner *scanner) {
+  scanner->quoted_here_document_text_run_remaining = 0;
   trim_backquote_depth(scanner, scanner->body_backquote_depth);
   clear_document(&scanner->active_documents[0]);
   scanner->active_count -= 1;
@@ -1312,6 +1319,15 @@ static bool skip_bracket_class_element(
 ) {
   int32_t marker = lexer->lookahead;
   lexer->advance(lexer, false);
+  if (
+    symbol ==
+    ASSIGNMENT_BRACKET_LITERAL_START &&
+    marker ==
+    ':' &&
+    lexer->lookahead == '~'
+  ) {
+    return false;
+  }
   bool has_content = false;
   while (
     !is_bracket_literal_boundary(scanner, lexer, parameter_pattern, symbol)
@@ -1339,6 +1355,15 @@ static bool skip_bracket_class_element(
       return false;
     }
     lexer->advance(lexer, false);
+    if (
+      symbol ==
+      ASSIGNMENT_BRACKET_LITERAL_START &&
+      character ==
+      ':' &&
+      lexer->lookahead == '~'
+    ) {
+      return false;
+    }
     if (character == marker && has_content) {
       if (lexer->lookahead == ']') {
         lexer->advance(lexer, false);
@@ -1429,6 +1454,16 @@ static bool scan_bracket_literal_start(
     }
 
     lexer->advance(lexer, false);
+    if (
+      symbol ==
+      ASSIGNMENT_BRACKET_LITERAL_START &&
+      character ==
+      ':' &&
+      lexer->lookahead == '~'
+    ) {
+      lexer->result_symbol = (TSSymbol)symbol;
+      return true;
+    }
     has_member = true;
   }
 
@@ -1488,6 +1523,16 @@ static bool scan_bracket_fallback_end(
   bool parameter_pattern
 ) {
   lexer->mark_end(lexer);
+  if (
+    end_symbol == ASSIGNMENT_BRACKET_FALLBACK_END && lexer->lookahead == ':'
+  ) {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead != '~') {
+      return false;
+    }
+    lexer->result_symbol = (TSSymbol)end_symbol;
+    return true;
+  }
   if (!is_bracket_scan_boundary(scanner, lexer, parameter_pattern)) {
     return false;
   }
@@ -2462,6 +2507,53 @@ fold_enclosed_backquote_run(size_t run, size_t depth, size_t *surviving) {
   return true;
 }
 
+static bool here_document_continuation_depth(
+  const struct Scanner *scanner,
+  const struct HereDocument *document,
+  size_t depth,
+  size_t run,
+  size_t *removal_depth
+) {
+  if (scanner != NULL) {
+    for (size_t index = 0; index < scanner->suspended_frame_count; index += 1) {
+      const struct HereDocumentFrame *frame = &scanner->suspended_frames[index];
+      if (
+        frame->count >
+        0 &&
+        !frame->documents[0].quoted &&
+        (fold_enclosed_plain_run(run, frame->body_backquote_depth) & 1) != 0
+      ) {
+        *removal_depth = frame->body_backquote_depth;
+        return true;
+      }
+    }
+    if (
+      scanner->active_count >
+      0 &&
+      document !=
+      &scanner->active_documents[0] &&
+      !scanner->active_documents[0].quoted &&
+      (fold_enclosed_plain_run(run, scanner->body_backquote_depth) & 1) != 0
+    ) {
+      *removal_depth = scanner->body_backquote_depth;
+      return true;
+    }
+  }
+  if (!document->quoted && (fold_enclosed_plain_run(run, depth) & 1) != 0) {
+    *removal_depth = depth;
+    return true;
+  }
+  return false;
+}
+
+static bool here_document_removes_continuations(
+  const struct Scanner *scanner,
+  const struct HereDocument *document
+) {
+  size_t depth;
+  return here_document_continuation_depth(scanner, document, 0, 1, &depth);
+}
+
 static bool append_nested_here_document(
   struct HereDocument **documents,
   size_t *count,
@@ -2588,7 +2680,11 @@ static enum HereDocumentLineKind read_here_document_line(
     size_t pending_backslashes = 0;
     int32_t pending_character = character;
     bool has_pending_character = true;
-    if (character == '\\' && (depth > 0 || !document->quoted)) {
+    if (
+      character ==
+      '\\' &&
+      (depth > 0 || here_document_removes_continuations(scanner, document))
+    ) {
       size_t run = 0;
       while (lexer->lookahead == '\\') {
         run += 1;
@@ -2597,14 +2693,28 @@ static enum HereDocumentLineKind read_here_document_line(
         }
       }
       has_pending_character = false;
-      if (depth == 0) {
-        pending_backslashes = run;
-        if ((pending_backslashes & 1) != 0 && lexer->lookahead == '\n') {
-          if (!advance_here_document_source(lexer, source)) {
-            return HERE_DOCUMENT_LINE_INVALID;
-          }
-          pending_backslashes -= 1;
+      size_t removal_depth;
+      if (
+        lexer->lookahead ==
+        '\n' &&
+        here_document_continuation_depth(
+          scanner,
+          document,
+          depth,
+          run,
+          &removal_depth
+        )
+      ) {
+        if (!advance_here_document_source(lexer, source)) {
+          return HERE_DOCUMENT_LINE_INVALID;
         }
+        pending_backslashes = fold_enclosed_plain_run(run, removal_depth) - 1;
+        if (depth > removal_depth) {
+          pending_backslashes =
+            fold_enclosed_plain_run(pending_backslashes, depth - removal_depth);
+        }
+      } else if (depth == 0) {
+        pending_backslashes = run;
       } else if (lexer->lookahead == '`') {
         if (!advance_here_document_source(lexer, source)) {
           return HERE_DOCUMENT_LINE_INVALID;
@@ -2618,17 +2728,6 @@ static enum HereDocumentLineKind read_here_document_line(
       } else {
         pending_backslashes =
           fold_enclosed_escape_run(scanner, run, depth, lexer->lookahead);
-        if (
-          !document->quoted &&
-          (pending_backslashes & 1) !=
-          0 &&
-          lexer->lookahead == '\n'
-        ) {
-          if (!advance_here_document_source(lexer, source)) {
-            return HERE_DOCUMENT_LINE_INVALID;
-          }
-          pending_backslashes -= 1;
-        }
       }
       if (pending_backslashes == 0 && !has_pending_character) {
         continue;
@@ -2714,18 +2813,20 @@ static enum HereDocumentLineKind read_here_document_line(
 }
 
 static bool scan_nested_here_document_sequence(
+  const struct Scanner *scanner,
   TSLexer *lexer,
   struct ByteBuffer *source,
   const struct HereDocument *documents,
-  size_t count
+  size_t count,
+  size_t depth
 ) {
   for (size_t index = 0; index < count; index += 1) {
     while (true) {
       enum HereDocumentLineKind kind = read_here_document_line(
-        NULL,
+        scanner,
         lexer,
         &documents[index],
-        0,
+        depth,
         source,
         NULL
       );
@@ -3056,6 +3157,11 @@ static enum DelimiterReadResult read_here_document_delimiter(
   bool collecting_nested_delimiter = false;
   bool nested_delimiter_quoted = false;
   bool nested_delimiter_strips_tabs = false;
+  bool inherited_strip_tabs = scanner !=
+    NULL &&
+    scanner->active_count >
+    0 &&
+    scanner->active_documents[0].strip_tabs;
   bool valid = true;
 
   while (valid) {
@@ -3126,7 +3232,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
         &delimiter,
         nested_delimiter_start,
         nested_delimiter_quoted,
-        nested_delimiter_strips_tabs
+        nested_delimiter_strips_tabs || inherited_strip_tabs
       );
       collecting_nested_delimiter = false;
       if (command_group_depth > 0) {
@@ -3257,10 +3363,12 @@ static enum DelimiterReadResult read_here_document_delimiter(
         );
         if (nested_document_count > 0) {
           valid = scan_nested_here_document_sequence(
+            scanner,
             lexer,
             &delimiter,
             nested_documents,
-            nested_document_count
+            nested_document_count,
+            delimiter_backquote_depth
           );
           clear_document_array(&nested_documents, &nested_document_count);
         }
@@ -3582,10 +3690,12 @@ static enum DelimiterReadResult read_here_document_delimiter(
 
       if (character == '\n' && nested_document_count > 0) {
         valid = scan_nested_here_document_sequence(
+          scanner,
           lexer,
           &delimiter,
           nested_documents,
-          nested_document_count
+          nested_document_count,
+          delimiter_backquote_depth
         );
         clear_document_array(&nested_documents, &nested_document_count);
       }
@@ -3619,7 +3729,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
     .delimiter = (uint8_t *)delimiter.data,
     .delimiter_length = delimiter.length,
     .quoted = quoted,
-    .strip_tabs = strip_tabs,
+    .strip_tabs = strip_tabs || inherited_strip_tabs,
   };
   return DELIMITER_READ_WORD;
 }
@@ -6861,11 +6971,22 @@ static bool scan_backquote_prefix_after_first_backslash(
     fold.leftover_count == 0 && fold.acting_level == scanner->backquote_depth
   ) {
     if (!valid_symbols[BACKQUOTE_END_PREFIX]) {
-      bool word_end = valid_symbols[WORD_BRACKET_FALLBACK_END];
+      if (
+        valid_symbols[ASSIGNMENT_TILDE_END] || valid_symbols[WORD_TILDE_END]
+      ) {
+        lexer->result_symbol = valid_symbols[ASSIGNMENT_TILDE_END]
+          ? ASSIGNMENT_TILDE_END
+          : WORD_TILDE_END;
+        return true;
+      }
+      bool word_end = valid_symbols[WORD_BRACKET_FALLBACK_END] ||
+        valid_symbols[ASSIGNMENT_BRACKET_FALLBACK_END];
       bool parameter_end = valid_symbols[PARAMETER_BRACKET_FALLBACK_END];
       if (word_end != parameter_end) {
-        lexer->result_symbol =
-          word_end ? WORD_BRACKET_FALLBACK_END : PARAMETER_BRACKET_FALLBACK_END;
+        lexer->result_symbol = parameter_end ? PARAMETER_BRACKET_FALLBACK_END
+          : valid_symbols[ASSIGNMENT_BRACKET_FALLBACK_END]
+          ? ASSIGNMENT_BRACKET_FALLBACK_END
+          : WORD_BRACKET_FALLBACK_END;
         return true;
       }
       return false;
@@ -6958,31 +7079,94 @@ scan_here_document_end_commit(struct Scanner *scanner, TSLexer *lexer) {
   return true;
 }
 
-static bool scan_quoted_here_document_end_text(
-  const struct Scanner *scanner,
-  TSLexer *lexer
+static bool scan_quoted_here_document_text(
+  struct Scanner *scanner,
+  TSLexer *lexer,
+  const bool *valid_symbols,
+  bool end
 ) {
+  const struct HereDocument *document = &scanner->active_documents[0];
+  enum TokenType text_symbol =
+    end ? QUOTED_HERE_DOCUMENT_END_TEXT : QUOTED_HERE_DOCUMENT_TEXT;
+  if (scanner->quoted_here_document_text_run_remaining > 0) {
+    size_t remaining = scanner->quoted_here_document_text_run_remaining;
+    while (remaining > 0) {
+      if (lexer->lookahead != '\\') {
+        return false;
+      }
+      lexer->advance(lexer, false);
+      remaining -= 1;
+    }
+    scanner->quoted_here_document_text_run_remaining = 0;
+    lexer->mark_end(lexer);
+    lexer->result_symbol = (TSSymbol)text_symbol;
+    return valid_symbols[text_symbol];
+  }
   bool consumed = false;
+  lexer->mark_end(lexer);
   while (
     !lexer_at_eof(lexer) &&
     lexer->lookahead !=
     '\n' &&
-    !(scanner->body_backquote_depth > 0 && lexer->lookahead == '`')
+    !(end && scanner->body_backquote_depth > 0 && lexer->lookahead == '`')
   ) {
-    if (scanner->body_backquote_depth > 0 && lexer->lookahead == '\\') {
+    if (lexer->lookahead == '\\') {
+      size_t run = 0;
       do {
+        run += 1;
         lexer->advance(lexer, false);
       } while (lexer->lookahead == '\\');
-      if (lexer->lookahead == '`') {
+
+      size_t removal_depth;
+      if (
+        lexer->lookahead ==
+        '\n' &&
+        here_document_continuation_depth(
+          scanner,
+          document,
+          scanner->body_backquote_depth,
+          run,
+          &removal_depth
+        )
+      ) {
+        if (consumed) {
+          break;
+        }
+        size_t prefix = removal_depth < sizeof(size_t) * CHAR_BIT - 1
+          ? ((run - 1) >> (removal_depth + 1)) << (removal_depth + 1)
+          : 0;
+        if (prefix > 0) {
+          if (!valid_symbols[QUOTED_HERE_DOCUMENT_TEXT_RUN_BEGIN]) {
+            return false;
+          }
+          struct Scanner next = *scanner;
+          next.quoted_here_document_text_run_remaining = prefix;
+          if (!scanner_state_fits(&next)) {
+            return false;
+          }
+          scanner->quoted_here_document_text_run_remaining = prefix;
+          lexer->result_symbol = QUOTED_HERE_DOCUMENT_TEXT_RUN_BEGIN;
+          return true;
+        }
+        if (run > 1) {
+          lexer->result_symbol = BACKQUOTE_CONTINUATION_BEGIN;
+          return valid_symbols[BACKQUOTE_CONTINUATION_BEGIN];
+        }
+        lexer->advance(lexer, false);
+        lexer->mark_end(lexer);
+        lexer->result_symbol = LINE_CONTINUATION;
+        return valid_symbols[LINE_CONTINUATION];
+      }
+      if (end && scanner->body_backquote_depth > 0 && lexer->lookahead == '`') {
         lexer->advance(lexer, false);
       }
     } else {
       lexer->advance(lexer, false);
     }
     consumed = true;
+    lexer->mark_end(lexer);
   }
-  lexer->mark_end(lexer);
-  lexer->result_symbol = QUOTED_HERE_DOCUMENT_END_TEXT;
+  lexer->result_symbol = (TSSymbol)text_symbol;
   return consumed;
 }
 
@@ -6996,6 +7180,7 @@ static bool scan_active_here_document(
     ? QUOTED_HERE_DOCUMENT_BODY_START
     : HERE_DOCUMENT_BODY_START;
   if (valid_symbols[body_start_symbol]) {
+    scanner->quoted_here_document_text_run_remaining = 0;
     scanner->at_here_document_line_start = true;
     lexer->mark_end(lexer);
     lexer->result_symbol = (TSSymbol)body_start_symbol;
@@ -7003,6 +7188,14 @@ static bool scan_active_here_document(
   }
 
   if (scanner->at_here_document_line_start) {
+    enum TokenType end_begin = document->quoted ? QUOTED_HERE_DOCUMENT_END_BEGIN
+                                                : HERE_DOCUMENT_END_BEGIN;
+    if (
+      !valid_symbols[end_begin] &&
+      !valid_symbols[HERE_DOCUMENT_CONTENT_LINE_START]
+    ) {
+      return false;
+    }
     lexer->mark_end(lexer);
     bool is_end = read_here_document_line(
                     scanner,
@@ -7012,20 +7205,28 @@ static bool scan_active_here_document(
                     NULL,
                     NULL
                   ) == HERE_DOCUMENT_LINE_DELIMITER;
-    enum TokenType end_begin = document->quoted ? QUOTED_HERE_DOCUMENT_END_BEGIN
-                                                : HERE_DOCUMENT_END_BEGIN;
     if (is_end && valid_symbols[end_begin]) {
       lexer->result_symbol = (TSSymbol)end_begin;
       scanner->at_here_document_line_start = false;
       return true;
     }
 
+    if (!valid_symbols[HERE_DOCUMENT_CONTENT_LINE_START]) {
+      return false;
+    }
     scanner->at_here_document_line_start = false;
     lexer->result_symbol = HERE_DOCUMENT_CONTENT_LINE_START;
     return true;
   }
 
+  if (valid_symbols[QUOTED_HERE_DOCUMENT_TEXT] && lexer->lookahead != '\n') {
+    return scan_quoted_here_document_text(scanner, lexer, valid_symbols, false);
+  }
+
   if (valid_symbols[LINE_CONTINUATION] && lexer->lookahead == '\\') {
+    if (!here_document_removes_continuations(scanner, document)) {
+      return false;
+    }
     lexer->advance(lexer, false);
     if (lexer->lookahead != '\n') {
       return false;
@@ -7211,7 +7412,8 @@ static bool serialize_scanner_state(
         (scanner->delimiter_strips_tabs ? 2 : 0) |
         (scanner->sequence_end_pending ? 4 : 0) |
         (scanner->at_here_document_line_start ? 8 : 0) |
-        (scanner->quoted_backquote_count > 0 ? 16 : 0)
+        (scanner->quoted_backquote_count > 0 ? 16 : 0) |
+        (scanner->quoted_here_document_text_run_remaining > 0 ? 32 : 0)
     ) ||
     !write_state_size(writer, scanner->backquote_depth) ||
     !write_state_size(writer, scanner->substitution_depth) ||
@@ -7265,6 +7467,13 @@ static bool serialize_scanner_state(
         return false;
       }
     }
+  }
+  if (
+    scanner->quoted_here_document_text_run_remaining >
+    0 &&
+    !write_state_size(writer, scanner->quoted_here_document_text_run_remaining)
+  ) {
+    return false;
   }
   return true;
 }
@@ -7438,7 +7647,7 @@ static bool deserialize_scanner_state(
   uint8_t flags;
   if (
     !read_byte(&state, &flags) ||
-    (flags & ~UINT8_C(31)) !=
+    (flags & ~UINT8_C(63)) !=
     0 ||
     !read_size(&state, &scanner->backquote_depth) ||
     !read_size(&state, &scanner->substitution_depth) ||
@@ -7537,6 +7746,14 @@ static bool deserialize_scanner_state(
       previous = depth;
     }
     scanner->quoted_backquote_count = count;
+  }
+  if (
+    (flags & 32) !=
+    0 &&
+    (!read_size(&state, &scanner->quoted_here_document_text_run_remaining) ||
+      scanner->quoted_here_document_text_run_remaining == 0)
+  ) {
+    return false;
   }
   if (state.offset != state.length) {
     return false;
@@ -7704,19 +7921,23 @@ static bool scan_dispatch(
   bool parameter_bracket_boundary_is_valid =
     valid_symbols[PARAMETER_BRACKET_FALLBACK_END];
   bool word_bracket_boundary_is_valid =
-    valid_symbols[WORD_BRACKET_FALLBACK_END];
+    valid_symbols[WORD_BRACKET_FALLBACK_END] ||
+    valid_symbols[ASSIGNMENT_BRACKET_FALLBACK_END];
   if (parameter_bracket_boundary_is_valid != word_bracket_boundary_is_valid) {
     bool parameter_pattern = parameter_bracket_boundary_is_valid;
-    if (
-      scan_bracket_fallback_end(
-        scanner,
-        lexer,
-        parameter_pattern ? PARAMETER_BRACKET_FALLBACK_END
-                          : WORD_BRACKET_FALLBACK_END,
-        parameter_pattern
-      )
-    ) {
-      return true;
+    bool assignment_colon =
+      valid_symbols[ASSIGNMENT_BRACKET_FALLBACK_END] && lexer->lookahead == ':';
+    bool found = scan_bracket_fallback_end(
+      scanner,
+      lexer,
+      parameter_pattern ? PARAMETER_BRACKET_FALLBACK_END
+        : valid_symbols[ASSIGNMENT_BRACKET_FALLBACK_END]
+        ? ASSIGNMENT_BRACKET_FALLBACK_END
+        : WORD_BRACKET_FALLBACK_END,
+      parameter_pattern
+    );
+    if (found || assignment_colon) {
+      return found;
     }
   }
 
@@ -7741,6 +7962,8 @@ static bool scan_dispatch(
     '\\' &&
     !(scanner->active_count > 0 && scanner->at_here_document_line_start) &&
     !(scanner->expecting_delimiter && valid_symbols[HERE_END_BEGIN]) &&
+    !valid_symbols[QUOTED_HERE_DOCUMENT_TEXT] &&
+    !valid_symbols[QUOTED_HERE_DOCUMENT_END_TEXT] &&
     backquote_prefix_token_is_valid(scanner, valid_symbols)
   ) {
     return scan_backquote_prefix(scanner, lexer, valid_symbols);
@@ -7788,7 +8011,12 @@ static bool scan_dispatch(
       return true;
     }
     if (valid_symbols[QUOTED_HERE_DOCUMENT_END_TEXT]) {
-      return scan_quoted_here_document_end_text(scanner, lexer);
+      return scan_quoted_here_document_text(
+        scanner,
+        lexer,
+        valid_symbols,
+        true
+      );
     }
   }
 
@@ -7798,6 +8026,7 @@ static bool scan_dispatch(
     (scanner->at_here_document_line_start ||
       valid_symbols[HERE_DOCUMENT_BODY_START] ||
       valid_symbols[QUOTED_HERE_DOCUMENT_BODY_START] ||
+      valid_symbols[QUOTED_HERE_DOCUMENT_TEXT] ||
       (valid_symbols[LINE_CONTINUATION] && lexer->lookahead == '\\') ||
       (valid_symbols[NEWLINE] && lexer->lookahead == '\n'))
   ) {
@@ -8045,6 +8274,7 @@ static bool scan_dispatch(
     lexer->lookahead ==
     '[' &&
     (valid_symbols[WORD_BRACKET_LITERAL_START] ||
+      valid_symbols[ASSIGNMENT_BRACKET_LITERAL_START] ||
       valid_symbols[PARAMETER_BRACKET_LITERAL_START] ||
       valid_symbols[TILDE_BRACKET_LITERAL_START] ||
       valid_symbols[ASSIGNMENT_TILDE_BRACKET_LITERAL_START])
@@ -8061,6 +8291,8 @@ static bool scan_dispatch(
       literal_symbol = ASSIGNMENT_TILDE_BRACKET_LITERAL_START;
     } else if (valid_symbols[TILDE_BRACKET_LITERAL_START]) {
       literal_symbol = TILDE_BRACKET_LITERAL_START;
+    } else if (valid_symbols[ASSIGNMENT_BRACKET_LITERAL_START]) {
+      literal_symbol = ASSIGNMENT_BRACKET_LITERAL_START;
     }
     return scan_bracket_literal_start(
       scanner,
@@ -8233,6 +8465,7 @@ bool tree_sitter_sh_external_scanner_scan(
     (lexer->lookahead ==
       '[' &&
       (valid_symbols[WORD_BRACKET_LITERAL_START] ||
+        valid_symbols[ASSIGNMENT_BRACKET_LITERAL_START] ||
         valid_symbols[PARAMETER_BRACKET_LITERAL_START] ||
         valid_symbols[TILDE_BRACKET_LITERAL_START] ||
         valid_symbols[ASSIGNMENT_TILDE_BRACKET_LITERAL_START]))
