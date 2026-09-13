@@ -75,6 +75,43 @@ test("CST parsing ignores multiline source display fragments", () => {
   );
 });
 
+test("CST projection retains text containing Unicode line and paragraph separators", () => {
+  const output = [
+    "0:0 - 0:9   program",
+    "0:0 - 0:9     word: literal `a\u2028b\u2029c`",
+  ].join("\n");
+  assert.deepEqual(
+    parseCst(output).map(({ content, range }) => [content, range]),
+    [
+      ["program", "0:0-0:9"],
+      ["word: literal `a\u2028b\u2029c`", "0:0-0:9"],
+    ],
+  );
+  assert.deepEqual(JSON.parse(logicalProjection(output)), [
+    [0, null, "program", false],
+    [2, "word", "literal", false],
+  ]);
+});
+
+test("CST projection distinguishes recovery markers from literal bullets", () => {
+  const output = ["0:0 - 0:3   program", "0:0 - 0:3     literal `•`"].join(
+    "\n",
+  );
+  assert.deepEqual(JSON.parse(logicalProjection(output)), [
+    [0, null, "program", false],
+    [2, null, "literal", false],
+  ]);
+  assert.deepEqual(
+    JSON.parse(
+      logicalProjection(output.replace("     literal `•`", "    •ERROR")),
+    ),
+    [
+      [0, null, "program", false],
+      [2, null, "ERROR", true],
+    ],
+  );
+});
+
 test("lexical nodes expose only real one-byte continuation children", () => {
   const source = "foo\\\nbar";
   const output = [

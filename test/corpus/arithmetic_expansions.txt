@@ -1516,3 +1516,34 @@ input ending inside arithmetic requires recovery
 x=$((1 +
 
 ---
+==================
+arithmetic vertical tabs and form feeds separate operands and operators
+==================
+
+echo $((1+2))
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (arithmetic_expansion
+                        expression: (arithmetic_binary_expression
+                          left: (arithmetic_number)
+                          operator: (arithmetic_operator)
+                          right: (arithmetic_number)))))))))))))
+  trailing: (linebreak
+    (newline_list)))

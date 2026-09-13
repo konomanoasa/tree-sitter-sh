@@ -221,6 +221,7 @@ enum TokenType {
   HERE_DOCUMENT_LINE_LAYOUT_BEGIN,
   PARAMETER_HYPHEN_BEGIN,
   PARAMETER_QUESTION_BEGIN,
+  ARITHMETIC_BLANK_BEGIN,
   TOKEN_COUNT,
 };
 
@@ -1037,6 +1038,7 @@ struct LookaheadLexer {
 
 static void lookahead_fail(struct LookaheadLexer *lookahead) {
   lookahead->failed = true;
+  lookahead->lexer.lookahead = 0;
   if (
     lookahead->source != NULL && lookahead->source->advance == logical_advance
   ) {
@@ -1054,6 +1056,9 @@ static void *grow_element_buffer(
 
 static void lookahead_seek(struct LookaheadLexer *lookahead, size_t position) {
   lookahead->position = position;
+  if (lookahead->failed) {
+    return;
+  }
   int32_t character = lookahead->characters[position].value;
   lookahead->lexer.lookahead = character < 0 ? 0 : character;
 }
@@ -1062,7 +1067,6 @@ static bool lookahead_append(struct LookaheadLexer *lookahead, size_t view) {
   struct LogicalLexer *input = lookahead->views[view].input;
   if (input->result == SOURCE_FAILURE) {
     lookahead_fail(lookahead);
-    lookahead->lexer.lookahead = 0;
     return false;
   }
   struct LookaheadCharacter *characters = grow_element_buffer(
@@ -1074,7 +1078,6 @@ static bool lookahead_append(struct LookaheadLexer *lookahead, size_t view) {
   );
   if (characters == NULL) {
     lookahead_fail(lookahead);
-    lookahead->lexer.lookahead = 0;
     return false;
   }
   lookahead->characters = characters;
@@ -1690,6 +1693,7 @@ enum DelimiterQuote {
   DELIMITER_SINGLE_QUOTED,
   DELIMITER_DOUBLE_QUOTED,
   DELIMITER_PARAMETER_DOUBLE_QUOTED,
+  DELIMITER_ARITHMETIC,
   DELIMITER_DOLLAR_SINGLE_QUOTED,
 };
 
@@ -2185,7 +2189,9 @@ static bool push_backquote_delimiter_group(
         lexer,
         *quote ==
           DELIMITER_DOUBLE_QUOTED ||
-          *quote == DELIMITER_PARAMETER_DOUBLE_QUOTED,
+          *quote ==
+          DELIMITER_PARAMETER_DOUBLE_QUOTED ||
+          *quote == DELIMITER_ARITHMETIC,
         &groups->data[groups->length - 1].source_context
       )) {
     return false;
@@ -2325,10 +2331,8 @@ scan_dollar_single_quote_escape(TSLexer *lexer, struct ByteBuffer *delimiter) {
     }
 
     uint8_t value = 0;
-    uint8_t digits = 0;
-    while (digits < 2 && is_hexadecimal_digit(lexer->lookahead)) {
+    while (is_hexadecimal_digit(lexer->lookahead)) {
       value = (uint8_t)((value << 4) | hexadecimal_value(lexer->lookahead));
-      digits += 1;
       lexer->advance(lexer, false);
     }
     return append_byte(delimiter, value);
@@ -2706,8 +2710,9 @@ static bool push_dollar_delimiter_group(
   TSLexer *lexer,
   struct ByteBuffer *delimiter,
   struct DelimiterGroupBuffer *groups,
-  enum DelimiterQuote parent_quote
+  enum DelimiterQuote *quote
 ) {
+  enum DelimiterQuote parent_quote = *quote;
   int32_t opening = lexer->lookahead;
   char closing = opening == '(' ? ')' : '}';
   enum DelimiterGroupKind kind =
@@ -2719,6 +2724,15 @@ static bool push_dollar_delimiter_group(
     return false;
   }
   lexer->advance(lexer, false);
+  *quote = opening ==
+      '{' &&
+      (parent_quote ==
+        DELIMITER_DOUBLE_QUOTED ||
+        parent_quote ==
+        DELIMITER_PARAMETER_DOUBLE_QUOTED ||
+        parent_quote == DELIMITER_ARITHMETIC)
+    ? DELIMITER_PARAMETER_DOUBLE_QUOTED
+    : DELIMITER_UNQUOTED;
 
   if (opening == '(' && lexer->lookahead == '(') {
     struct Scanner context = scanner == NULL ? (struct Scanner){0} : *scanner;
@@ -2741,13 +2755,14 @@ static bool push_dollar_delimiter_group(
         groups,
         ')',
         DELIMITER_GROUP_ARITHMETIC,
-        DELIMITER_UNQUOTED
+        DELIMITER_ARITHMETIC
       ) ||
       !append_byte(delimiter, '(')
     ) {
       return false;
     }
     lexer->advance(lexer, false);
+    *quote = DELIMITER_ARITHMETIC;
   }
   return true;
 }
@@ -2793,8 +2808,10 @@ static bool scan_delimiter_double_quoted_character(
   struct ByteBuffer *delimiter,
   struct DelimiterGroupBuffer *groups,
   enum DelimiterQuote *quote,
-  size_t *backquote_depth
+  size_t *backquote_depth,
+  bool *escaped
 ) {
+  *escaped = false;
   int32_t character = lexer->lookahead;
   if (lexer_at_eof(lexer)) {
     return false;
@@ -2812,19 +2829,16 @@ static bool scan_delimiter_double_quoted_character(
       return false;
     }
     if (lexer->lookahead == '(' || lexer->lookahead == '{') {
-      bool parameter = lexer->lookahead == '{';
       if (!push_dollar_delimiter_group(
             scanner,
             *backquote_depth,
             lexer,
             delimiter,
             groups,
-            *quote
+            quote
           )) {
         return false;
       }
-      *quote =
-        parameter ? DELIMITER_PARAMETER_DOUBLE_QUOTED : DELIMITER_UNQUOTED;
     }
     return true;
   }
@@ -2853,12 +2867,12 @@ static bool scan_delimiter_double_quoted_character(
       '$' ||
       lexer->lookahead ==
       '`' ||
-      lexer->lookahead ==
-      '"' ||
+      (lexer->lookahead == '"' && *quote != DELIMITER_ARITHMETIC) ||
       lexer->lookahead ==
       '\\' ||
       (*quote == DELIMITER_PARAMETER_DOUBLE_QUOTED && lexer->lookahead == '}')
     ) {
+      *escaped = true;
       if (!append_codepoint(delimiter, lexer->lookahead)) {
         return false;
       }
@@ -3025,16 +3039,29 @@ static enum DelimiterReadResult read_here_document_delimiter(
     if (
       quote ==
       DELIMITER_DOUBLE_QUOTED ||
-      quote == DELIMITER_PARAMETER_DOUBLE_QUOTED
+      quote ==
+      DELIMITER_PARAMETER_DOUBLE_QUOTED ||
+      (quote ==
+        DELIMITER_ARITHMETIC &&
+        (character == '$' || character == '`' || character == '\\'))
     ) {
+      bool escaped;
       valid = scan_delimiter_double_quoted_character(
         scanner,
         lexer,
         &delimiter,
         &groups,
         &quote,
-        &delimiter_backquote_depth
+        &delimiter_backquote_depth,
+        &escaped
       );
+      if (escaped) {
+        mark_delimiter_quoted(
+          &quoted,
+          collecting_nested_delimiter,
+          &nested_delimiter_quoted
+        );
+      }
       continue;
     }
 
@@ -3233,7 +3260,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
       break;
     }
 
-    if (character == '\'') {
+    if (character == '\'' && quote != DELIMITER_ARITHMETIC) {
       track_delimiter_command_character(
         command_word,
         at_nested_delimiter_base,
@@ -3250,7 +3277,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
       continue;
     }
 
-    if (character == '"') {
+    if (character == '"' && quote != DELIMITER_ARITHMETIC) {
       track_delimiter_command_character(
         command_word,
         at_nested_delimiter_base,
@@ -3341,7 +3368,7 @@ static enum DelimiterReadResult read_here_document_delimiter(
           lexer,
           &delimiter,
           &groups,
-          quote
+          &quote
         );
       }
       continue;
@@ -4474,13 +4501,7 @@ static bool is_arithmetic_operand_start(int32_t character) {
 static bool
 scan_arithmetic_boundary(TSLexer *lexer, const bool *valid_symbols) {
   lexer->mark_end(lexer);
-  while (
-    lexer->lookahead ==
-    ' ' ||
-    lexer->lookahead ==
-    '\t' ||
-    lexer->lookahead == '\n'
-  ) {
+  while (arithmetic_whitespace(lexer->lookahead)) {
     lexer->advance(lexer, false);
   }
 
@@ -4548,7 +4569,7 @@ static bool append_validation_token(
 
 static bool
 append_arithmetic_source(struct ArithmeticScan *scan, int32_t character) {
-  if (character == ' ' || character == '\t' || character == '\n') {
+  if (arithmetic_whitespace(character)) {
     character = ' ';
     if (
       scan->source_length > 0 && scan->source[scan->source_length - 1] == ' '
@@ -4712,16 +4733,6 @@ static void embedded_note_word(struct EmbeddedSkip *skip, bool in_command) {
   track_command_word_character(
     &skip->frames[skip->frame_count - 1].command.word,
     '\\'
-  );
-}
-
-static bool embedded_word_is_delimited(const TSLexer *lexer) {
-  return (
-    lexer_at_eof(lexer) ||
-    is_horizontal_blank(lexer->lookahead) ||
-    lexer->lookahead ==
-    '\n' ||
-    is_control_operator_start(lexer->lookahead)
   );
 }
 
@@ -4900,7 +4911,7 @@ static enum ArithmeticValidation resume_embedded_construct(
 
     if (
       in_command &&
-      embedded_word_is_delimited(lexer) &&
+      is_token_delimiter(lexer) &&
       !finish_command_word(
         &skip->cases,
         skip->frame_count,
@@ -5437,7 +5448,7 @@ static enum ArithmeticValidation validate_arithmetic_content(
       return ARITHMETIC_VALIDATION_INCOMPLETE;
     }
 
-    if (character == ' ' || character == '\t' || character == '\n') {
+    if (arithmetic_whitespace(character)) {
       if (!append_arithmetic_source(scan, character)) {
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
       }
@@ -6703,8 +6714,7 @@ scan_dispatch(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
       is_arithmetic_operator_start(lexer->lookahead) ||
       lexer->lookahead ==
       ')' ||
-      is_horizontal_blank(lexer->lookahead) ||
-      lexer->lookahead == '\n')
+      arithmetic_whitespace(lexer->lookahead))
   ) {
     return scan_arithmetic_boundary(lexer, valid);
   }
@@ -7251,6 +7261,7 @@ static bool lexical_symbol_has_source(enum TokenType symbol) {
   switch (symbol) {
   case PARAMETER_HYPHEN_BEGIN:
   case PARAMETER_QUESTION_BEGIN:
+  case ARITHMETIC_BLANK_BEGIN:
   case WORD_FALLBACK_CHARACTER_BEGIN:
   case ASSIGNMENT_FALLBACK_CHARACTER_BEGIN:
   case PARAMETER_FALLBACK_CHARACTER_BEGIN:
@@ -7815,6 +7826,21 @@ static bool lexical_classify(struct LogicalLexer *input, const bool *valid) {
     lexer->result_symbol = LOGICAL_BLANK_BEGIN;
     return true;
   }
+  if (
+    valid[ARITHMETIC_BLANK_BEGIN] &&
+    lexer->lookahead !=
+    '\n' &&
+    arithmetic_whitespace(lexer->lookahead)
+  ) {
+    do {
+      lexer->advance(lexer, false);
+    } while (
+      lexer->lookahead != '\n' && arithmetic_whitespace(lexer->lookahead)
+    );
+    lexer->mark_end(lexer);
+    lexer->result_symbol = ARITHMETIC_BLANK_BEGIN;
+    return true;
+  }
   const struct LexicalPunctuation characters[] = {
     {'*', PATTERN_STAR_BEGIN},
     {'?', PATTERN_QUESTION_BEGIN},
@@ -8270,10 +8296,7 @@ static bool classify_logical_source(
       (character ==
         '/' ||
         (context == ASSIGNMENT_TILDE_START && character == ':') ||
-        (context == PARAMETER_TILDE_START && character == '}') ||
-        character ==
-        SOURCE_BACKQUOTE_BOUNDARY ||
-        is_token_delimiter(&input->lexer))
+        pattern_boundary(&input->lexer, context == PARAMETER_TILDE_START))
     ) {
       input->lexer.mark_end(&input->lexer);
       input->lexer.result_symbol = (TSSymbol)end;

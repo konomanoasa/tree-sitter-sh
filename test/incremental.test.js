@@ -1817,6 +1817,70 @@ test("sh: arithmetic grouping, lvalues, and unary operators remain stable", () =
   }
 });
 
+test("sh: arithmetic vertical tabs and form feeds retain expression structure", () => {
+  for (const [name, whitespace] of [
+    ["vertical-tab", "\v"],
+    ["form-feed", "\f"],
+  ]) {
+    for (const [kind, expression, expected] of [
+      ["variable", `${whitespace}value${whitespace}`, "arithmetic_variable"],
+      [
+        "binary",
+        `1${whitespace}+${whitespace}2${whitespace}`,
+        "arithmetic_binary_expression",
+      ],
+      [
+        "assignment",
+        `(${whitespace}value${whitespace})${whitespace}=${whitespace}1`,
+        "arithmetic_assignment_expression",
+      ],
+      [
+        "dynamic",
+        `1${whitespace}$value${whitespace}2`,
+        "arithmetic_dynamic_expression",
+      ],
+      ["unary-plus", `1+${whitespace}+2`, "arithmetic_binary_expression"],
+      ["unary-minus", `1-${whitespace}-2`, "arithmetic_binary_expression"],
+    ]) {
+      const output = parseValidCst(
+        writeSource(`arithmetic-${name}-${kind}`, `echo $((${expression}))\n`),
+      );
+      assertNodeCount(output, "arithmetic_expansion", 1);
+      assertContains(output, `expression: ${expected}`);
+      assertNotContains(output, "command_substitution");
+    }
+
+    const shellWord = parseValidCst(
+      writeSource(`shell-word-${name}`, `echo a${whitespace}b\n`),
+    );
+    assertCstRange(shellWord, "0:5-0:8", "literal");
+    assertNodeCount(shellWord, "word", 2);
+
+    const initial = writeSource(
+      `arithmetic-${name}-initial`,
+      "echo $((1 + 2))\n",
+    );
+    const final = writeSource(
+      `arithmetic-${name}-final`,
+      `echo $((1${whitespace}+ 2))\n`,
+    );
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `replace-arithmetic-space-with-${name}`,
+      { byte: 9, deleteBytes: 1, insert: whitespace },
+    )) {
+      assertCstRange(output, "0:8-0:13", "arithmetic_binary_expression");
+    }
+    assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `replace-arithmetic-${name}-with-space`,
+      { byte: 9, deleteBytes: 1, insert: " " },
+    );
+  }
+});
+
 test("sh: arithmetic raw newlines stay layout in every reading", () => {
   const structuredNewline = writeSource(
     "arithmetic-structured-newline",
@@ -1847,6 +1911,87 @@ test("sh: arithmetic raw newlines stay layout in every reading", () => {
     { byte: 8, deleteBytes: 1, insert: "\n" },
   );
   assertCstRange(dynamicOutput, "0:6-1:1", "arithmetic_dynamic_expression");
+});
+
+test("sh: parameter tilde prefixes retain shell separators after structured source", () => {
+  for (const [name, source, tildeRange, userRange, textRange] of [
+    [
+      "single-quote-space",
+      `echo \${x:-~'a' b}\n`,
+      "0:10-0:16",
+      "0:11-0:16",
+      "0:14-0:16",
+    ],
+    [
+      "parameter-pattern-semicolon",
+      `echo \${x#~$u;b}\n`,
+      "0:9-0:14",
+      "0:10-0:14",
+      "0:12-0:14",
+    ],
+    [
+      "command-substitution-newline",
+      `echo \${x:-~$(echo a)\nb}\n`,
+      "0:10-1:1",
+      "0:11-1:1",
+      "0:20-1:1",
+    ],
+    [
+      "pattern-source-space",
+      `echo \${x:-~* b}\n`,
+      "0:10-0:14",
+      "0:11-0:14",
+      "0:12-0:14",
+    ],
+    [
+      "escape-tab",
+      `echo \${x:-~\\a\tb}\n`,
+      "0:10-0:15",
+      "0:11-0:15",
+      "0:13-0:15",
+    ],
+  ]) {
+    const output = parseValidCst(writeSource(name, source));
+    assertNodeCount(output, "tilde_expansion", 1);
+    assertCstRange(output, tildeRange, "tilde_expansion");
+    assertCstDirectChildRange(
+      output,
+      userRange,
+      "user: tilde_user",
+      textRange,
+      "*",
+    );
+    assertCstRange(output, textRange, "literal");
+  }
+
+  const initial = writeSource("parameter-tilde-slash", `echo \${x:-~$u/b}\n`);
+  for (const [name, separator, end] of [
+    ["space", " ", "0:15"],
+    ["newline", "\n", "1:1"],
+  ]) {
+    const final = writeSource(
+      `parameter-tilde-${name}`,
+      `echo \${x:-~$u${separator}b}\n`,
+    );
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `replace-tilde-slash-with-${name}`,
+      { byte: 13, deleteBytes: 1, insert: separator },
+    )) {
+      assertCstRange(output, `0:10-${end}`, "tilde_expansion");
+      assertCstRange(output, `0:11-${end}`, "user: tilde_user");
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `replace-tilde-${name}-with-slash`,
+      { byte: 13, deleteBytes: 1, insert: "/" },
+    )) {
+      assertCstRange(output, "0:10-0:13", "tilde_expansion");
+      assertCstRange(output, "0:11-0:13", "user: tilde_user");
+    }
+  }
 });
 
 test("sh: tilde, assignment, and compound-tail classifications remain stable", () => {

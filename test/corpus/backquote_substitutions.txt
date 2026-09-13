@@ -1723,3 +1723,91 @@ quoted ancestors remove continuations at inner command boundaries
                                                                         (literal))))))))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+a final backquote esac preserves the enclosing arithmetic reading
+==================
+
+: $((1+$(case x in x) : `case y in esac`;; z) esac)))
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (arithmetic_expansion
+                        expression: (arithmetic_binary_expression
+                          left: (arithmetic_number)
+                          operator: (arithmetic_operator)
+                          right: (command_substitution
+                            body: (command_substitution_body
+                              (complete_commands
+                                command: (complete_command
+                                  body: (list
+                                    and_or: (and_or
+                                      pipeline: (pipeline
+                                        sequence: (pipe_sequence
+                                          command: (command
+                                            body: (compound_command
+                                              (case_clause
+                                                (case_keyword)
+                                                word: (word
+                                                  (literal))
+                                                in: (in
+                                                  (in_keyword))
+                                                items: (case_list_ns
+                                                  terminated: (case_list
+                                                    item: (case_item
+                                                      patterns: (pattern_list
+                                                        word: (word
+                                                          (literal)))
+                                                      body: (compound_list
+                                                        body: (term
+                                                          and_or: (and_or
+                                                            pipeline: (pipeline
+                                                              sequence: (pipe_sequence
+                                                                command: (command
+                                                                  body: (simple_command
+                                                                    name: (cmd_name
+                                                                      (word
+                                                                        (literal)))
+                                                                    suffix: (cmd_suffix
+                                                                      word: (word
+                                                                        (backquote_substitution
+                                                                          body: (backquote_substitution_body
+                                                                            (complete_commands
+                                                                              command: (complete_command
+                                                                                body: (list
+                                                                                  and_or: (and_or
+                                                                                    pipeline: (pipeline
+                                                                                      sequence: (pipe_sequence
+                                                                                        command: (command
+                                                                                          body: (compound_command
+                                                                                            (case_clause
+                                                                                              (case_keyword)
+                                                                                              word: (word
+                                                                                                (literal))
+                                                                                              in: (in
+                                                                                                (in_keyword))
+                                                                                              (esac_keyword)))))))))))))))))))))
+                                                      terminator: (dsemi)))
+                                                  item: (case_item_ns
+                                                    patterns: (pattern_list
+                                                      word: (word
+                                                        (literal)))))
+                                                (esac_keyword))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))

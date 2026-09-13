@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { nodeIdentity, parseCst, sourceByteOffset } from "./support/cst.js";
 import {
   assertCstRange,
+  assertIncrementalEqualsFresh,
   assertNodeCount,
   assertSameLogicalProjection,
   parseValidCst,
@@ -202,5 +203,101 @@ test("backquote escape decoding resumes at the next bracket character", () => {
         suffix === "-a]" && count >= 3 ? 1 : 0,
       );
     }
+  }
+});
+
+test("here-document delimiter tildes remain literal around quoted parts", () => {
+  for (const [name, operator, delimiter, closing, literals, quoted] of [
+    ["bare", "<<", "~", "~", ["cat", "~"], false],
+    [
+      "login and path",
+      "<<",
+      "~root/path",
+      "~root/path",
+      ["cat", "~root/path"],
+      false,
+    ],
+    [
+      "single quoted login",
+      "<<",
+      "~'root'/path",
+      "~root/path",
+      ["cat", "~", "/path"],
+      true,
+    ],
+    [
+      "double quoted login",
+      "<<-",
+      '~"root"/path',
+      "\t~root/path",
+      ["cat", "~", "/path"],
+      true,
+    ],
+    [
+      "dollar quoted login",
+      "<<",
+      "~$'root'/path",
+      "~root/path",
+      ["cat", "~", "/path"],
+      true,
+    ],
+    [
+      "escaped login",
+      "<<-",
+      "~\\root/path",
+      "\t~root/path",
+      ["cat", "~", "oot/path"],
+      true,
+    ],
+  ]) {
+    const source = `cat ${operator}${delimiter}\n$name\n${closing}\n`;
+    const output = parseValidCst(writeSource(name, source));
+    assertNodeCount(output, "tilde_expansion", 0);
+    assert.deepEqual(lexicalTexts(output, source, "literal"), literals);
+    assertNodeCount(output, "parameter_expansion", quoted ? 0 : 1);
+    assertNodeCount(output, "quoted_here_document_body", quoted ? 1 : 0);
+    assertNodeCount(output, "here_document", 1);
+  }
+});
+
+test("embedded here-document delimiter constructs retain their own tilde contexts", () => {
+  for (const [name, delimiter] of [
+    ["parameter word", `~\${value:-~fallback}`],
+    ["parameter pattern", `~\${value#~fallback}`],
+    ["command substitution", "~$(printf ~fallback)"],
+    ["backquote substitution", "~`printf ~fallback`"],
+  ]) {
+    const source = `cat <<${delimiter}\n${delimiter}\n`;
+    const output = parseValidCst(writeSource(name, source));
+    const start = source.indexOf("~fallback");
+    assertNodeCount(output, "tilde_expansion", 1);
+    assertCstRange(output, `0:${start}-0:${start + 9}`, "tilde_expansion");
+    assertCstRange(output, "0:6-0:7", "literal");
+    assertNodeCount(output, "here_document", 1);
+  }
+});
+
+test("changing a file redirect to a here-document updates tilde classification", () => {
+  const file = writeSource("tilde filename", "cat <~root\n~root\n");
+  const document = writeSource("tilde delimiter", "cat <<~root\n~root\n");
+  assertNodeCount(parseValidCst(file), "tilde_expansion", 2);
+  for (const output of assertIncrementalEqualsFresh(
+    file,
+    document,
+    "replace filename with delimiter",
+    { byte: 5, deleteBytes: 0, insert: "<" },
+  )) {
+    assertNodeCount(output, "tilde_expansion", 0);
+    assertNodeCount(output, "io_here", 1);
+    assertCstRange(output, "0:6-0:11", "literal");
+  }
+  for (const output of assertIncrementalEqualsFresh(
+    document,
+    file,
+    "replace delimiter with filename",
+    { byte: 5, deleteBytes: 1, insert: "" },
+  )) {
+    assertNodeCount(output, "tilde_expansion", 2);
+    assertNodeCount(output, "filename", 1);
   }
 });

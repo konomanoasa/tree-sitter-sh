@@ -1,4 +1,75 @@
 ==================
+parameter tilde users retain shell separators after structured source
+==================
+
+echo ${x:-~'a' b} ${x#~$u;b} ${x:-~$(echo a)
+b}
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (tilde_expansion
+                            user: (tilde_user
+                              (single_quoted
+                                (single_quote_content))
+                              (literal))))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_pattern_operator)
+                        pattern: (parameter_pattern
+                          (tilde_expansion
+                            user: (tilde_user
+                              (parameter_expansion
+                                parameter: (variable_name))
+                              (literal))))))
+                    word: (word
+                      (parameter_expansion
+                        parameter: (variable_name)
+                        operator: (parameter_value_operator)
+                        word: (parameter_word
+                          (tilde_expansion
+                            user: (tilde_user
+                              (command_substitution
+                                body: (command_substitution_body
+                                  (complete_commands
+                                    command: (complete_command
+                                      body: (list
+                                        and_or: (and_or
+                                          pipeline: (pipeline
+                                            sequence: (pipe_sequence
+                                              command: (command
+                                                body: (simple_command
+                                                  name: (cmd_name
+                                                    (word
+                                                      (literal)))
+                                                  suffix: (cmd_suffix
+                                                    word: (word
+                                                      (literal)))))))))))))
+                              (literal)))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 tilde prefixes are structured only where expansion can occur
 ==================
 

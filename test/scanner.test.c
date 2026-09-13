@@ -275,6 +275,7 @@ test_embedded_readers_apply_source_views_before_comments_and_closers(void) {
     {"x=$((echo one); (echo two)) ) tail", 1, ' '},
     {"printf '\\\n)'; : ) tail", 1, ' '},
     {": `printf '%s' x` ) tail", 1, ' '},
+    {"case x in x) : `case y in esac`;; z) :;; esac)tail", 1, 't'},
     {": #x\\\n)ignored\n) tail", 1, 'i'},
     {": #x\\\n)ignored\n) tail", 2, ' '},
     {"\"`printf #x\\\n) ignored\n`\" ) tail", 1, ' '},
@@ -1321,6 +1322,38 @@ static void test_double_quoted_parameter_delimiters(void) {
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
+static void test_arithmetic_delimiters_preserve_nested_quote_context(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  const struct {
+    const char *source;
+    const char *delimiter;
+    bool quoted;
+  } fixtures[] = {
+    {"\"$((1+${x:-'2'}))\"\n", "$((1+${x:-'2'}))", true},
+    {"$((1+${x:-'2'}))\n", "$((1+${x:-'2'}))", false},
+    {"$((1+${x:-'}))\n", "$((1+${x:-'}))", false},
+    {"$((1+${x:-a\\qb}))\n", "$((1+${x:-a\\qb}))", false},
+    {"$((1+${x:-a\\}b}))\n", "$((1+${x:-a}b}))", true},
+    {"$((1+${x:-\\$y}))\n", "$((1+${x:-$y}))", true},
+    {"$((1+${x#'2'}))\n", "$((1+${x#2}))", true},
+    {"$((1+$((2+${x:-'3'}))))\n", "$((1+$((2+${x:-'3'}))))", false},
+    {"$((1+$(printf '2')))\n", "$((1+$(printf 2)))", true},
+    {"$((1+`printf \\\"2\\\"`))\n", "$((1+`printf 2`))", true},
+  };
+  for (
+    size_t index = 0; index < sizeof(fixtures) / sizeof(fixtures[0]); index += 1
+  ) {
+    assert_text_delimiter_fixture(
+      scanner,
+      fixtures[index].source,
+      fixtures[index].delimiter,
+      fixtures[index].quoted
+    );
+  }
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
 static void test_substitution_hash_delimiter_words(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
@@ -1395,6 +1428,32 @@ static void test_substitution_hash_delimiter_words(void) {
   );
 
   tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+static void test_dollar_single_quote_escape_units(void) {
+  const struct {
+    int32_t source[9];
+    size_t length;
+    size_t end;
+    int32_t following;
+  } cases[] = {
+    {{'\\', 'x', '1', '2', '3', 'g'}, 6, 5, 'g'},
+    {{'\\', 'x', 'a', 'B', 'C', 'D', 'E', 'f', '\''}, 9, 8, '\''},
+    {{'\\', 'x', '4', '1', '\''}, 5, 4, '\''},
+    {{'\\', 'x', 'F', 'g'}, 4, 3, 'g'},
+    {{'\\', '1', '2', '3', '4'}, 5, 4, '4'},
+    {{'\\', 'x', '1', '2', '3'}, 5, 5, 0},
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index += 1) {
+    struct MockLexer mock;
+    init_mock_lexer(&mock, cases[index].source, cases[index].length);
+    assert(scan_dollar_single_quote_token(&mock.lexer));
+    assert(mock.lexer.result_symbol == DOLLAR_SINGLE_QUOTE_ESCAPE);
+    assert(mock.offset == cases[index].end);
+    assert(mock.mark == cases[index].end);
+    assert(mock.lexer.lookahead == cases[index].following);
+    assert(mock_eof(&mock.lexer) == (cases[index].end == cases[index].length));
+  }
 }
 
 static void test_dollar_single_quote_delimiter_bytes(void) {
@@ -1925,6 +1984,45 @@ test_reserved_word_allocation_failures_do_not_fall_back_to_word(void) {
     assert(reuse_live_allocations == 0);
   }
 }
+
+static void test_comment_boundary_allocation_failures_terminate(void) {
+  const int32_t source[] = {' ', '#', ' ', '`', '\n'};
+  bool valid[TOKEN_COUNT] = {false};
+  valid[TERM_CONTINUATION] = true;
+  valid[TRAILING_COMMENT_BOUNDARY] = true;
+  struct Scanner scanner = {0};
+  assert(scanner_source_ready(&scanner));
+  assert(source_context_push(&scanner, BACKQUOTE_START));
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(&scanner, before);
+  struct MockLexer lexer;
+  init_mock_lexer(&lexer, source, sizeof(source) / sizeof(source[0]));
+  size_t first_allocation = reuse_allocation_calls;
+  assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+  size_t allocation_count = reuse_allocation_calls - first_allocation;
+  assert(allocation_count > 0);
+  assert(lexer.lexer.result_symbol == TRAILING_COMMENT_BOUNDARY);
+  assert(lexer.mark == 0);
+  clear_scanner(&scanner);
+  assert(reuse_live_allocations == 0);
+  for (size_t failure = 1; failure <= allocation_count; failure += 1) {
+    tree_sitter_sh_external_scanner_deserialize(
+      &scanner,
+      before,
+      before_length
+    );
+    init_mock_lexer(&lexer, source, sizeof(source) / sizeof(source[0]));
+    reuse_fail_allocation_call = reuse_allocation_calls + failure;
+    assert(
+      !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+    );
+    assert(reuse_allocation_calls >= reuse_fail_allocation_call);
+    reuse_fail_allocation_call = 0;
+    assert_scanner_matches_snapshot(&scanner, before, before_length);
+    clear_scanner(&scanner);
+    assert(reuse_live_allocations == 0);
+  }
+}
 #endif
 
 int main(void) {
@@ -1949,7 +2047,9 @@ int main(void) {
   test_control_escape_table();
   test_byte_delimiter_matching();
   test_double_quoted_parameter_delimiters();
+  test_arithmetic_delimiters_preserve_nested_quote_context();
   test_substitution_hash_delimiter_words();
+  test_dollar_single_quote_escape_units();
   test_dollar_single_quote_delimiter_bytes();
   test_delimiter_scan_resource_rollback();
   test_logical_lexical_emission_keeps_individual_physical_pairs();
@@ -1963,6 +2063,7 @@ int main(void) {
   test_reuse_allocator_realloc_failure_rolls_back();
   test_source_callback_allocation_failures_are_transactional();
   test_reserved_word_allocation_failures_do_not_fall_back_to_word();
+  test_comment_boundary_allocation_failures_terminate();
   test_reuse_allocator_contract();
 #endif
   return 0;

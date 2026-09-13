@@ -558,7 +558,7 @@ function assertNoLineContinuations(name, source) {
 }
 
 function hasRecovery(cst) {
-  return /^[0-9: \t-]+•/m.test(cst);
+  return parseCst(cst).some((entry) => entry.recovery);
 }
 
 export {

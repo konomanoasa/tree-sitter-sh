@@ -1757,3 +1757,179 @@ body
 echo after
 
 ---
+
+==================
+here-document delimiter tildes remain literal outside embedded expansions
+==================
+
+cat <<~root/path <<-~"user" <<~${value:-~fallback}
+~root/path
+	~user
+~${value:-~fallback}
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)))))
+                    (io_redirect
+                      (io_here
+                        (dlessdash)
+                        (here_end
+                          (word
+                            (literal)
+                            (double_quoted
+                              (double_quote_text))))))
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)
+                            (parameter_expansion
+                              (variable_name)
+                              (parameter_value_operator)
+                              (parameter_word
+                                (tilde_expansion
+                                  (tilde_user
+                                    (literal))))))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_end
+            (here_document_end_text)))
+        (here_document
+          (here_document_end
+            (here_document_end_text)))
+        (here_document
+          (here_document_end
+            (here_document_end_text)))))))
+
+==================
+arithmetic here-document delimiters retain parameter value quoting and remove pattern quoting
+==================
+
+: <<"$((1+${x:-'2'}))" <<$((1+${x:-a\qb})) <<$((1+${x#'2'}))
+$quoted
+$((1+${x:-'2'}))
+$unquoted
+$((1+${x:-a\qb}))
+$pattern
+$((1+${x#2}))
+: after
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (double_quoted
+                              (arithmetic_expansion
+                                expression: (arithmetic_binary_expression
+                                  left: (arithmetic_number)
+                                  operator: (arithmetic_operator)
+                                  right: (parameter_expansion
+                                    parameter: (variable_name)
+                                    operator: (parameter_value_operator)
+                                    word: (parameter_word
+                                      (double_quote_text))))))))))
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (arithmetic_expansion
+                              expression: (arithmetic_binary_expression
+                                left: (arithmetic_number)
+                                operator: (arithmetic_operator)
+                                right: (parameter_expansion
+                                  parameter: (variable_name)
+                                  operator: (parameter_value_operator)
+                                  word: (parameter_word
+                                    (double_quote_text)))))))))
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (arithmetic_expansion
+                              expression: (arithmetic_binary_expression
+                                left: (arithmetic_number)
+                                operator: (arithmetic_operator)
+                                right: (parameter_expansion
+                                  parameter: (variable_name)
+                                  operator: (parameter_pattern_operator)
+                                  pattern: (parameter_pattern
+                                    (single_quoted
+                                      (single_quote_content))))))))))))))))))
+    separator: (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (quoted_here_document_body
+            (quoted_here_document_text))
+          end: (here_document_end
+            (here_document_end_text)))
+        document: (here_document
+          body: (here_document_body
+            (parameter_expansion
+              parameter: (variable_name)))
+          end: (here_document_end
+            (here_document_end_text)))
+        document: (here_document
+          body: (quoted_here_document_body
+            (quoted_here_document_text))
+          end: (here_document_end
+            (here_document_end_text)))))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))

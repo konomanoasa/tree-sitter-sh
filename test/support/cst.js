@@ -55,13 +55,14 @@ function parseCst(output) {
   const entries = [];
   for (const line of output.split("\n")) {
     const match = line.match(
-      /^([0-9]+:[0-9]+)[ ]+-[ ]+([0-9]+:[0-9]+)([ ]+)(.*)$/,
+      /^([0-9]+:[0-9]+)[ ]+-[ ]+([0-9]+:[0-9]+)([ ]+)([^\n]*)$/,
     );
     if (match === null) continue;
     let content = match[4];
     const rangeWidth = line.indexOf("-") - 1;
     let depth = match[3].length - Math.max(0, rangeWidth - match[2].length);
-    if (content.startsWith("•")) {
+    const recovery = content.startsWith("•");
+    if (recovery) {
       content = content.slice(1);
       depth += 1;
     }
@@ -71,6 +72,7 @@ function parseCst(output) {
       depth,
       line,
       range: `${match[1]}-${match[2]}`,
+      recovery,
     });
   }
   return entries;
@@ -80,8 +82,8 @@ function nodeIdentity(entry) {
   const field = entry.content.match(/^([a-z_]+): /)?.[1];
   let type =
     field === undefined ? entry.content : entry.content.slice(field.length + 2);
-  if (!type.startsWith('"')) type = type.replace(/[ ]+`.*$/, "");
-  return { field, type, recovery: entry.line.includes("•") };
+  if (!type.startsWith('"')) type = type.replace(/[ ]+`[^\n]*$/, "");
+  return { field, type, recovery: entry.recovery };
 }
 
 function isContinuation(entry) {

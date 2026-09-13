@@ -26,6 +26,109 @@ import {
   writeSource,
 } from "./support/parser.js";
 
+test("sh: embedded backquote case closers preserve enclosing arithmetic and patterns", () => {
+  for (const [name, inner, depth] of [
+    ["direct", "case y in esac", 1],
+    ["nested", "case y in y) : \\`case z in esac\\`;; z) :;; esac", 2],
+  ]) {
+    for (const [context, prefix, suffix, node] of [
+      ["arithmetic", ": $((1+$(", ")))\n", "arithmetic_expansion"],
+      ["pattern", ": [$(", ")]\n", "pattern_bracket_source"],
+    ]) {
+      const command = `case x in x) : \`${inner}`;
+      const tail = `\`;; z) :;; esac${suffix}`;
+      const compactText = prefix + command + tail;
+      const spacedText = `${prefix}${command} ${tail}`;
+      const compact = writeSource(`${name}-${context}-compact`, compactText);
+      const spaced = writeSource(`${name}-${context}-spaced`, spacedText);
+      const offset = prefix.length + command.length;
+      assertSameLogicalProjection(
+        `${name}-${context}`,
+        parseValidCst(spaced),
+        parseValidCst(compact),
+      );
+      for (const [before, after, deleteBytes, insert] of [
+        [spaced, compact, 1, ""],
+        [compact, spaced, 0, " "],
+      ]) {
+        for (const output of assertIncrementalEqualsFresh(
+          before,
+          after,
+          `${name}-${context}`,
+          { byte: offset, deleteBytes, insert },
+        )) {
+          assertOccurrenceCount(output, node, 1);
+          assertOccurrenceCount(output, "command_substitution_body", 1);
+          assertOccurrenceCount(output, "backquote_substitution_body", depth);
+          assertNotContains(output, "subshell");
+        }
+      }
+    }
+  }
+});
+
+test("sh: hexadecimal quote escapes retain every digit across edits", () => {
+  for (const [name, initialText, finalText, edit, initialRange, finalRange] of [
+    [
+      "third-hexadecimal-digit",
+      ": $'\\x12g'\n",
+      ": $'\\x123g'\n",
+      { byte: 8, deleteBytes: 0, insert: "3" },
+      "0:4-0:8",
+      "0:4-0:9",
+    ],
+    [
+      "fourth-hexadecimal-digit",
+      ": $'\\x123g'\n",
+      ": $'\\x1234g'\n",
+      { byte: 9, deleteBytes: 0, insert: "4" },
+      "0:4-0:9",
+      "0:4-0:10",
+    ],
+    [
+      "backquote-third-hexadecimal-digit",
+      ": `: $'\\\\x12g'`\n",
+      ": `: $'\\\\x123g'`\n",
+      { byte: 12, deleteBytes: 0, insert: "3" },
+      "0:7-0:12",
+      "0:7-0:13",
+    ],
+  ]) {
+    const initial = writeSource(`${name}-initial`, initialText);
+    const final = writeSource(`${name}-final`, finalText);
+    for (const [before, after, change, range] of [
+      [initial, final, edit, finalRange],
+      [
+        final,
+        initial,
+        { byte: edit.byte, deleteBytes: 1, insert: "" },
+        initialRange,
+      ],
+    ]) {
+      for (const output of assertIncrementalEqualsFresh(
+        before,
+        after,
+        name,
+        change,
+      )) {
+        assertOccurrenceCount(output, "dollar_single_quote_escape", 1);
+        assertCstRange(output, range, "dollar_single_quote_escape");
+        const end = Number(range.split("-")[1].split(":")[1]);
+        assertCstRange(
+          output,
+          `0:${end}-0:${end + 1}`,
+          "dollar_single_quote_text `g`",
+        );
+        assertCstRange(
+          output,
+          `0:${end + 1}-0:${end + 2}`,
+          JSON.stringify("'"),
+        );
+      }
+    }
+  }
+});
+
 test("sh: backquote closers delimit keywords and trailing word continuations", () => {
   const contexts = [
     ["nested", ": `: \\`", "\\``\n", 2],
@@ -1111,6 +1214,30 @@ test("sh: Unicode source retains byte ranges without normalization", () => {
   const output = parseValidCst(source);
   assertCstRange(output, "0:7-0:13", "literal `é😀`");
   assertCstRange(output, "1:7-1:10", "literal `é`");
+});
+
+test("sh: only the initial BOM is omitted and original byte ranges survive edits", () => {
+  const initial = writeSource("without-bom", "printf é\n");
+  for (const [name, prefix, range, spelling] of [
+    ["initial", "\ufeff", "0:3-0:9", "printf"],
+    ["second", "\ufeff\ufeff", "0:3-0:12", "\ufeffprintf"],
+    ["after-continuation", "\\\n\ufeff", "1:0-1:9", "\ufeffprintf"],
+    ["before-continuation", "\ufeff\\\n", "1:0-1:6", "printf"],
+  ]) {
+    const source = writeSource(`${name}-bom`, `${prefix}printf é\n`);
+    for (const output of assertIncrementalEqualsFresh(initial, source, name, {
+      byte: 0,
+      deleteBytes: 0,
+      insert: prefix,
+    })) {
+      assertCstRange(output, range, `literal \`${spelling}\``);
+    }
+    assertIncrementalEqualsFresh(source, initial, `${name} remove`, {
+      byte: 0,
+      deleteBytes: Buffer.byteLength(prefix),
+      insert: "",
+    });
+  }
 });
 
 test("sh: long unterminated quotes parse through EOF with native recovery", () => {

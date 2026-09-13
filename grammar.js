@@ -933,6 +933,7 @@ export default grammar({
     $._here_document_line_layout_begin,
     $._parameter_hyphen_begin,
     $._parameter_question_begin,
+    $._arithmetic_blank_begin,
   ],
 
   conflicts: ($) => [
@@ -1521,7 +1522,7 @@ export default grammar({
         $._here_end_commit,
       ),
 
-    _here_end_source_word: ($) => $._source_word,
+    _here_end_source_word: ($) => seq($._word_begin, repeat1($._word_part)),
     here_document_sequence: ($) =>
       seq(
         optional(seq($._here_document_line_layout_begin, $._closing_layout)),
@@ -2238,7 +2239,8 @@ export default grammar({
       alias($._arithmetic_assignment_operator_lexeme, $.arithmetic_operator),
     ...arithmeticBinaryOperatorRules(),
 
-    _arithmetic_layout: ($) => repeat1(choice($._blank, $._newline)),
+    _arithmetic_layout: ($) =>
+      repeat1(choice(lexical($, $._arithmetic_blank_begin), $._newline)),
 
     _pattern_initial_right_bracket: ($) =>
       lexical($, $._pattern_initial_right_bracket_begin),

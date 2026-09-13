@@ -14,6 +14,17 @@ const fixtures = [
   ["command name", "pri§ntf value\n", [["literal", "printf"]]],
   ["argument", "printf foo§bar\n", [["literal", "foobar"]]],
   ["Unicode argument", "printf é§🙂a§bc\n", [["literal", "é🙂abc"]]],
+  ["bullet in argument", "printf a§•§b\n", [["literal", "a•b"]]],
+  [
+    "Unicode separators in argument",
+    "printf a\u2028§b\u2029§c\n",
+    [["literal", "a\u2028b\u2029c"]],
+  ],
+  [
+    "Unicode separators in double quote text",
+    'printf "a\u2028§b\u2029§c"\n',
+    [["double_quote_text", "a\u2028b\u2029c"]],
+  ],
   [
     "assignment",
     "VA§R=va§lue\n",

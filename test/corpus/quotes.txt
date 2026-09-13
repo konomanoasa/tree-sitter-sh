@@ -449,3 +449,39 @@ backquote double-quoted tails distinguish literal and parameter brace escapes
                                                     (double_quote_escape))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+hexadecimal quote escapes consume all digits while octal escapes stop after three
+==================
+
+: $'\x123' $'\xABCDEf' $'\1234'
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (dollar_single_quoted
+                        (dollar_single_quote_escape)))
+                    word: (word
+                      (dollar_single_quoted
+                        (dollar_single_quote_escape)))
+                    word: (word
+                      (dollar_single_quoted
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text))))))))))))
+  trailing: (linebreak
+    (newline_list)))

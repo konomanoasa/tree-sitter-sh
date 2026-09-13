@@ -135,15 +135,13 @@ static void *dynamic_arithmetic_grow(
   return grown;
 }
 
-static bool dynamic_arithmetic_blank(int32_t character) {
+static bool arithmetic_whitespace(int32_t character) {
   return character ==
     ' ' ||
     character ==
     '\t' ||
     character ==
     '\n' ||
-    character ==
-    '\r' ||
     character ==
     '\v' ||
     character == '\f';
@@ -170,7 +168,7 @@ static int dynamic_arithmetic_lex(uint8_t state, int32_t character) {
   bool digit = dynamic_arithmetic_digit(character);
   switch (state) {
   case DYNAMIC_LEX_START:
-    if (dynamic_arithmetic_blank(character)) {
+    if (arithmetic_whitespace(character)) {
       return DYNAMIC_LEX_START;
     }
     if (name) {
@@ -344,9 +342,7 @@ static size_t dynamic_arithmetic_boundary(
   size_t position
 ) {
   while (
-    position <
-    graph->length &&
-    dynamic_arithmetic_blank(graph->source[position])
+    position < graph->length && arithmetic_whitespace(graph->source[position])
   ) {
     position += 1;
   }
@@ -1311,7 +1307,7 @@ validate_dynamic_arithmetic(const int32_t *source, size_t length) {
       length &&
       source[index] !=
       -1 &&
-      !dynamic_arithmetic_blank(source[index])
+      !arithmetic_whitespace(source[index])
     ) {
       graph.required_end = index + 1;
     }

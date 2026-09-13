@@ -4304,8 +4304,20 @@
       ]
     },
     "_here_end_source_word": {
-      "type": "SYMBOL",
-      "name": "_source_word"
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_word_begin"
+        },
+        {
+          "type": "REPEAT1",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_word_part"
+          }
+        }
+      ]
     },
     "here_document_sequence": {
       "type": "SEQ",
@@ -19337,8 +19349,24 @@
         "type": "CHOICE",
         "members": [
           {
-            "type": "SYMBOL",
-            "name": "_blank"
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_arithmetic_blank_begin"
+              },
+              {
+                "type": "REPEAT1",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "_lexical_piece"
+                }
+              },
+              {
+                "type": "SYMBOL",
+                "name": "_lexical_end"
+              }
+            ]
           },
           {
             "type": "SYMBOL",
@@ -20750,6 +20778,10 @@
     {
       "type": "SYMBOL",
       "name": "_parameter_question_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_arithmetic_blank_begin"
     }
   ],
   "inline": [],
