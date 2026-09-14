@@ -3399,8 +3399,7 @@
   },
   {
     "type": "\\",
-    "named": false,
-    "extra": true
+    "named": false
   },
   {
     "type": "]",

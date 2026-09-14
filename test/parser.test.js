@@ -67,6 +67,78 @@ test("sh: embedded backquote case closers preserve enclosing arithmetic and patt
   }
 });
 
+test("sh: nested backquotes preserve arithmetic classification across edits", () => {
+  for (const [name, initialBody, finalBody, initialKind, finalKind] of [
+    [
+      "operator-to-subshell",
+      ": $((1 `printf +` 2))",
+      ": $((1 `printf +` 2; :))",
+      "arithmetic_dynamic_expression",
+      "subshell",
+    ],
+    [
+      "assignment-target-to-operand",
+      ": $((`printf a` = 1))",
+      ": $((`printf a` + 1))",
+      "arithmetic_dynamic_expression",
+      "arithmetic_binary_expression",
+    ],
+  ]) {
+    for (const depth of [1, 2]) {
+      for (const quoted of [false, true]) {
+        const wrap = (body) => {
+          for (let level = 0; level < depth; level += 1) {
+            body = `: \`${body.replaceAll("\\", "\\\\").replaceAll("`", "\\`")}\``;
+          }
+          return `${quoted ? `: "${body.slice(2)}"` : body}\n`;
+        };
+        const initialText = wrap(initialBody);
+        const finalText = wrap(finalBody);
+        const initial = writeSource(`${name}-initial`, initialText);
+        const final = writeSource(`${name}-final`, finalText);
+        let start = 0;
+        while (initialText[start] === finalText[start]) start += 1;
+        let suffix = 0;
+        while (initialText.at(-suffix - 1) === finalText.at(-suffix - 1)) {
+          suffix += 1;
+        }
+        for (const [before, after, beforeText, afterText, kind] of [
+          [initial, final, initialText, finalText, finalKind],
+          [final, initial, finalText, initialText, initialKind],
+        ]) {
+          for (const output of assertIncrementalEqualsFresh(
+            before,
+            after,
+            `${name}-${depth}-${quoted}`,
+            {
+              byte: start,
+              deleteBytes: beforeText.length - suffix - start,
+              insert: afterText.slice(start, afterText.length - suffix),
+            },
+          )) {
+            assertOccurrenceCount(output, `${kind}\n`, 1);
+            assertOccurrenceCount(
+              output,
+              "arithmetic_expansion\n",
+              kind === "subshell" ? 0 : 1,
+            );
+            assertOccurrenceCount(
+              output,
+              "command_substitution\n",
+              kind === "subshell" ? 1 : 0,
+            );
+            assertOccurrenceCount(
+              output,
+              "backquote_substitution_body",
+              depth + 1,
+            );
+          }
+        }
+      }
+    }
+  }
+});
+
 test("sh: hexadecimal quote escapes retain every digit across edits", () => {
   for (const [name, initialText, finalText, edit, initialRange, finalRange] of [
     [
@@ -624,6 +696,54 @@ test("sh: runtime fragments can complete arithmetic lexemes and productions", ()
         "arithmetic_expansion",
       );
     }
+  }
+});
+
+test("sh: dynamic arithmetic retains later runtime fragments across edits", () => {
+  for (const [
+    name,
+    prefix,
+    fragment,
+    suffix,
+    parameters,
+    arithmetic,
+    commands,
+    backquotes,
+  ] of [
+    ["adjacent-parameters", "a$x", "$y", "", 2, 1, 0, 0],
+    ["braced-parameters", `a\${x}`, `\${y}`, "", 2, 1, 0, 0],
+    ["later-variable-suffix", "a$x + a", "$y", "", 2, 1, 0, 0],
+    ["parenthesized-parameters", "(a$x", "$y", ")", 2, 1, 0, 0],
+    ["later-command-substitution", "a$x", "$(echo y)", "", 1, 1, 1, 0],
+    ["later-arithmetic-expansion", "a$x", "$((1))", "", 1, 2, 0, 0],
+    ["later-backquote-substitution", "a$x", "`echo y`", "", 1, 1, 0, 1],
+  ]) {
+    const initial = writeSource(
+      `${name}-initial`,
+      `echo $((${prefix}${suffix}))\n`,
+    );
+    const final = writeSource(
+      `${name}-final`,
+      `echo $((${prefix}${fragment}${suffix}))\n`,
+    );
+    const byte = 8 + prefix.length;
+    for (const output of assertIncrementalEqualsFresh(initial, final, name, {
+      byte,
+      deleteBytes: 0,
+      insert: fragment,
+    })) {
+      assertContains(output, "arithmetic_dynamic_expression\n");
+      assertOccurrenceCount(output, "parameter_expansion\n", parameters);
+      assertOccurrenceCount(output, "arithmetic_expansion\n", arithmetic);
+      assertOccurrenceCount(output, "command_substitution\n", commands);
+      assertOccurrenceCount(output, "backquote_substitution\n", backquotes);
+      assertNotContains(output, "subshell");
+    }
+    assertIncrementalEqualsFresh(final, initial, `${name}-remove`, {
+      byte,
+      deleteBytes: fragment.length,
+      insert: "",
+    });
   }
 });
 

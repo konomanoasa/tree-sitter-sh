@@ -3,144 +3,162 @@
   "name": "sh",
   "rules": {
     "program": {
-      "type": "CHOICE",
+      "type": "SEQ",
       "members": [
         {
-          "type": "SEQ",
+          "type": "CHOICE",
           "members": [
             {
-              "type": "CHOICE",
+              "type": "SEQ",
               "members": [
                 {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "FIELD",
+                      "name": "leading",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "linebreak"
+                      }
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_horizontal_layout"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                },
+                {
                   "type": "FIELD",
-                  "name": "leading",
+                  "name": "commands",
                   "content": {
                     "type": "SYMBOL",
-                    "name": "linebreak"
+                    "name": "complete_commands"
                   }
                 },
                 {
-                  "type": "BLANK"
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "FIELD",
+                      "name": "trailing",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "linebreak"
+                      }
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_free_trailing_layout"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
                 }
               ]
             },
             {
-              "type": "CHOICE",
+              "type": "SEQ",
               "members": [
                 {
-                  "type": "SYMBOL",
-                  "name": "_horizontal_layout"
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "FIELD",
+                      "name": "leading",
+                      "content": {
+                        "type": "SYMBOL",
+                        "name": "linebreak"
+                      }
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
                 },
                 {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "FIELD",
-              "name": "commands",
-              "content": {
-                "type": "SYMBOL",
-                "name": "complete_commands"
-              }
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "FIELD",
-                  "name": "trailing",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "linebreak"
-                  }
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_horizontal_layout"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
                 },
                 {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_free_trailing_layout"
-                },
-                {
-                  "type": "BLANK"
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SEQ",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "_trailing_comment_boundary"
+                        },
+                        {
+                          "type": "CHOICE",
+                          "members": [
+                            {
+                              "type": "SYMBOL",
+                              "name": "_horizontal_layout"
+                            },
+                            {
+                              "type": "BLANK"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "comment"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
                 }
               ]
             }
           ]
         },
         {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "FIELD",
-                  "name": "leading",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "linebreak"
-                  }
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_horizontal_layout"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SEQ",
-                  "members": [
-                    {
-                      "type": "SYMBOL",
-                      "name": "_trailing_comment_boundary"
-                    },
-                    {
-                      "type": "CHOICE",
-                      "members": [
-                        {
-                          "type": "SYMBOL",
-                          "name": "_horizontal_layout"
-                        },
-                        {
-                          "type": "BLANK"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "SYMBOL",
-                      "name": "comment"
-                    }
-                  ]
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            }
-          ]
+          "type": "SYMBOL",
+          "name": "_end_of_input"
         }
       ]
+    },
+    "_continuation_source": {
+      "type": "ALIAS",
+      "content": {
+        "type": "SYMBOL",
+        "name": "_continuation"
+      },
+      "named": false,
+      "value": "\\"
     },
     "_arithmetic_unary_operator_lexeme": {
       "type": "SEQ",
@@ -19860,8 +19878,8 @@
   },
   "extras": [
     {
-      "type": "STRING",
-      "value": "\\"
+      "type": "SYMBOL",
+      "name": "_continuation_source"
     },
     {
       "type": "SYMBOL",
@@ -20332,8 +20350,8 @@
       "name": "_lexical_end"
     },
     {
-      "type": "STRING",
-      "value": "\\"
+      "type": "SYMBOL",
+      "name": "_continuation"
     },
     {
       "type": "SYMBOL",
@@ -20782,6 +20800,10 @@
     {
       "type": "SYMBOL",
       "name": "_arithmetic_blank_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_end_of_input"
     }
   ],
   "inline": [],

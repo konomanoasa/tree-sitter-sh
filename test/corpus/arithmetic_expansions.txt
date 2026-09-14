@@ -1547,3 +1547,238 @@ echo $((1+2))
                           right: (arithmetic_number)))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+Dynamic arithmetic preserves later adjacent runtime fragments
+==================
+
+echo $((a$x$b)) $((name${x} + name${y}))
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (arithmetic_expansion
+                        expression: (arithmetic_dynamic_expression
+                          (arithmetic_variable)
+                          runtime_fragment: (parameter_expansion
+                            parameter: (variable_name))
+                          (parameter_expansion
+                            parameter: (variable_name)))))
+                    word: (word
+                      (arithmetic_expansion
+                        expression: (arithmetic_dynamic_expression
+                          (arithmetic_variable)
+                          runtime_fragment: (parameter_expansion
+                            parameter: (variable_name))
+                          (arithmetic_operator)
+                          (arithmetic_variable)
+                          (parameter_expansion
+                            parameter: (variable_name))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+Nested backquotes preserve dynamic arithmetic and subshell fallback
+==================
+
+: `: $((1 \`printf +\` 2))`
+: `: $((\`printf a\` = 1))`
+: `: $((1 \`printf +\` 2; :))`
+
+---
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (arithmetic_expansion
+                                                (arithmetic_dynamic_expression
+                                                  (arithmetic_number)
+                                                  (backquote_substitution
+                                                    (backquote_substitution_body
+                                                      (complete_commands
+                                                        (complete_command
+                                                          (list
+                                                            (and_or
+                                                              (pipeline
+                                                                (pipe_sequence
+                                                                  (command
+                                                                    (simple_command
+                                                                      (cmd_name
+                                                                        (word
+                                                                          (literal)))
+                                                                      (cmd_suffix
+                                                                        (word
+                                                                          (literal)))))))))))))
+                                                  (arithmetic_number))))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (arithmetic_expansion
+                                                (arithmetic_dynamic_expression
+                                                  (backquote_substitution
+                                                    (backquote_substitution_body
+                                                      (complete_commands
+                                                        (complete_command
+                                                          (list
+                                                            (and_or
+                                                              (pipeline
+                                                                (pipe_sequence
+                                                                  (command
+                                                                    (simple_command
+                                                                      (cmd_name
+                                                                        (word
+                                                                          (literal)))
+                                                                      (cmd_suffix
+                                                                        (word
+                                                                          (literal)))))))))))))
+                                                  (arithmetic_operator)
+                                                  (arithmetic_number))))))))))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (command_substitution
+                                                (command_substitution_body
+                                                  (complete_commands
+                                                    (complete_command
+                                                      (list
+                                                        (and_or
+                                                          (pipeline
+                                                            (pipe_sequence
+                                                              (command
+                                                                (compound_command
+                                                                  (subshell
+                                                                    (compound_list
+                                                                      (term
+                                                                        (and_or
+                                                                          (pipeline
+                                                                            (pipe_sequence
+                                                                              (command
+                                                                                (simple_command
+                                                                                  (cmd_name
+                                                                                    (word
+                                                                                      (literal)))
+                                                                                  (cmd_suffix
+                                                                                    (word
+                                                                                      (backquote_substitution
+                                                                                        (backquote_substitution_body
+                                                                                          (complete_commands
+                                                                                            (complete_command
+                                                                                              (list
+                                                                                                (and_or
+                                                                                                  (pipeline
+                                                                                                    (pipe_sequence
+                                                                                                      (command
+                                                                                                        (simple_command
+                                                                                                          (cmd_name
+                                                                                                            (word
+                                                                                                              (literal)))
+                                                                                                          (cmd_suffix
+                                                                                                            (word
+                                                                                                              (literal))))))))))))))
+                                                                                    (word
+                                                                                      (literal))))))))
+                                                                        (separator
+                                                                          (separator_op))
+                                                                        (and_or
+                                                                          (pipeline
+                                                                            (pipe_sequence
+                                                                              (command
+                                                                                (simple_command
+                                                                                  (cmd_name
+                                                                                    (word
+                                                                                      (literal)))))))))))))))))))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))

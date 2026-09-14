@@ -222,6 +222,7 @@ enum TokenType {
   PARAMETER_HYPHEN_BEGIN,
   PARAMETER_QUESTION_BEGIN,
   ARITHMETIC_BLANK_BEGIN,
+  END_OF_INPUT,
   TOKEN_COUNT,
 };
 
@@ -4478,26 +4479,6 @@ static bool is_arithmetic_operator_start(int32_t character) {
   }
 }
 
-static bool is_arithmetic_operand_start(int32_t character) {
-  return (
-    is_name_start_character(character) ||
-    is_decimal_digit(character) ||
-    character ==
-    '(' ||
-    character ==
-    '$' ||
-    character ==
-    '`' ||
-    character ==
-    '+' ||
-    character ==
-    '-' ||
-    character ==
-    '!' ||
-    character == '~'
-  );
-}
-
 static bool
 scan_arithmetic_boundary(TSLexer *lexer, const bool *valid_symbols) {
   lexer->mark_end(lexer);
@@ -5545,9 +5526,6 @@ static enum ArithmeticValidation validate_arithmetic_content(
     }
 
     if (character == '`') {
-      if (scanner->backquote_depth > 0) {
-        return ARITHMETIC_VALIDATION_INCOMPLETE;
-      }
       lexer->advance(lexer, false);
       scan->embedded_closer = '`';
       scan->embedded = ts_calloc(1, sizeof(struct EmbeddedSkip));
@@ -6710,8 +6688,7 @@ scan_dispatch(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
     valid[ARITHMETIC_CLOSING_BOUNDARY];
   if (
     arithmetic_boundary &&
-    (is_arithmetic_operand_start(lexer->lookahead) ||
-      is_arithmetic_operator_start(lexer->lookahead) ||
+    (is_arithmetic_operator_start(lexer->lookahead) ||
       lexer->lookahead ==
       ')' ||
       arithmetic_whitespace(lexer->lookahead))
@@ -8514,6 +8491,11 @@ bool tree_sitter_sh_external_scanner_scan(
   }
   if (all_valid) {
     return false;
+  }
+  if (valid_symbols[END_OF_INPUT] && lexer_at_eof(lexer)) {
+    lexer->mark_end(lexer);
+    lexer->result_symbol = END_OF_INPUT;
+    return true;
   }
   if (
     valid_symbols[LEXICAL_END] && !((struct Scanner *)payload)->emission.active

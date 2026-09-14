@@ -263,6 +263,62 @@ test("quoting and native comments retain physical pairs that are not continuatio
   }
 });
 
+test("parameter word escapes cannot become continuation extras", () => {
+  for (const fixture of [
+    {
+      name: "unquoted default escaped closer",
+      initial: `echo \${#-}\n`,
+      source: `echo \${#-\\}}\n`,
+      insert: "\\}",
+      byte: 9,
+      escape: "escaped_character",
+      range: "0:9-0:11",
+    },
+    {
+      name: "quoted default escaped backslash",
+      initial: `echo "\${#-}"\n`,
+      source: `echo "\${#-\\\\}"\n`,
+      insert: "\\\\",
+      byte: 10,
+      escape: "double_quote_escape",
+      range: "0:10-0:12",
+    },
+    {
+      name: "quoted error escaped closer",
+      initial: `echo "\${#?}"\n`,
+      source: `echo "\${#?\\}}"\n`,
+      insert: "\\}",
+      byte: 10,
+      escape: "double_quote_escape",
+      range: "0:10-0:12",
+    },
+    {
+      name: "unquoted error escaped backslash",
+      initial: `echo \${#?}\n`,
+      source: `echo \${#?\\\\}\n`,
+      insert: "\\\\",
+      byte: 9,
+      escape: "escaped_character",
+      range: "0:9-0:11",
+    },
+  ]) {
+    const initial = writeSource(`${fixture.name}-initial`, fixture.initial);
+    const source = writeSource(fixture.name, fixture.source);
+    const output = parseValidCst(source);
+    assertNodeCount(output, "parameter_length_operator", 0);
+    assertNodeCount(output, "parameter_value_operator", 1);
+    assertNodeCount(output, "parameter_word", 1);
+    assertNodeCount(output, fixture.escape, 1);
+    assertCstRange(output, fixture.range, fixture.escape);
+    assert.deepEqual(continuationManifest(output), [], fixture.name);
+    assertIncrementalEqualsFresh(initial, source, fixture.name, {
+      byte: fixture.byte,
+      deleteBytes: 0,
+      insert: fixture.insert,
+    });
+  }
+});
+
 for (const [name, source] of [
   ["command and redirects", "VAR=value printf é🙂 12>>output && ( : )2>file\n"],
   ["case and function", "worker() { case ab in a|[[:alpha:]]) :;; esac; }\n"],

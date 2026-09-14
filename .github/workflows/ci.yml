@@ -40,7 +40,7 @@ jobs:
           test-rust: true
           rust-version: stable
       - name: Check Rust bindings
-        shell: sh
+        shell: bash
         run: |
           rustup component add clippy rustfmt --toolchain stable
           cargo +stable clippy --locked --all-targets -- -D warnings

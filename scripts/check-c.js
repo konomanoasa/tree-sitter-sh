@@ -51,7 +51,6 @@ const scannerConfigurations = {
       _fname_begin: "FNAME_TOKEN",
       _pre_newline_blank_begin: "PRE_NEWLINE_BLANK",
       _dollar_single_quote_escape_begin: "DOLLAR_SINGLE_QUOTE_ESCAPE",
-      "\\": "CONTINUATION",
     },
     reuseAllocator: true,
   },

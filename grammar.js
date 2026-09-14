@@ -720,7 +720,7 @@ export default grammar({
   name: "sh",
 
   extras: ($) => [
-    "\\",
+    $._continuation_source,
     $._removed_newline,
     $._source_begin,
     $._removed_source,
@@ -821,7 +821,7 @@ export default grammar({
     $._pattern_character_class_end_colon,
     $._lexical_piece,
     $._lexical_end,
-    "\\",
+    $._continuation,
     $._removed_newline,
     $._physical_prefix,
     $._literal_begin,
@@ -934,6 +934,7 @@ export default grammar({
     $._parameter_hyphen_begin,
     $._parameter_question_begin,
     $._arithmetic_blank_begin,
+    $._end_of_input,
   ],
 
   conflicts: ($) => [
@@ -960,20 +961,25 @@ export default grammar({
 
   rules: {
     program: ($) =>
-      choice(
-        seq(
-          optional(field("leading", $.linebreak)),
-          optional($._horizontal_layout),
-          field("commands", $.complete_commands),
-          optional(field("trailing", $.linebreak)),
-          optional($._free_trailing_layout),
+      seq(
+        choice(
+          seq(
+            optional(field("leading", $.linebreak)),
+            optional($._horizontal_layout),
+            field("commands", $.complete_commands),
+            optional(field("trailing", $.linebreak)),
+            optional($._free_trailing_layout),
+          ),
+          seq(
+            optional(field("leading", $.linebreak)),
+            optional($._horizontal_layout),
+            optional(trailingComment($)),
+          ),
         ),
-        seq(
-          optional(field("leading", $.linebreak)),
-          optional($._horizontal_layout),
-          optional(trailingComment($)),
-        ),
+        $._end_of_input,
       ),
+
+    _continuation_source: ($) => alias($._continuation, "\\"),
 
     _arithmetic_unary_operator_lexeme: ($) =>
       lexical($, $._arithmetic_unary_operator_begin),
