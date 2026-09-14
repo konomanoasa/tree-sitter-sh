@@ -720,6 +720,7 @@ export default grammar({
   name: "sh",
 
   extras: ($) => [
+    $._unmatchable,
     $._continuation_source,
     $._removed_newline,
     $._source_begin,
@@ -934,7 +935,6 @@ export default grammar({
     $._parameter_hyphen_begin,
     $._parameter_question_begin,
     $._arithmetic_blank_begin,
-    $._end_of_input,
   ],
 
   conflicts: ($) => [
@@ -961,23 +961,22 @@ export default grammar({
 
   rules: {
     program: ($) =>
-      seq(
-        choice(
-          seq(
-            optional(field("leading", $.linebreak)),
-            optional($._horizontal_layout),
-            field("commands", $.complete_commands),
-            optional(field("trailing", $.linebreak)),
-            optional($._free_trailing_layout),
-          ),
-          seq(
-            optional(field("leading", $.linebreak)),
-            optional($._horizontal_layout),
-            optional(trailingComment($)),
-          ),
+      choice(
+        seq(
+          optional(field("leading", $.linebreak)),
+          optional($._horizontal_layout),
+          field("commands", $.complete_commands),
+          optional(field("trailing", $.linebreak)),
+          optional($._free_trailing_layout),
         ),
-        $._end_of_input,
+        seq(
+          optional(field("leading", $.linebreak)),
+          optional($._horizontal_layout),
+          optional(trailingComment($)),
+        ),
       ),
+
+    _unmatchable: () => token(seq(/[\s\S]/, /[^\s\S]/)),
 
     _continuation_source: ($) => alias($._continuation, "\\"),
 

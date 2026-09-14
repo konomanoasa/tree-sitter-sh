@@ -222,7 +222,6 @@ enum TokenType {
   PARAMETER_HYPHEN_BEGIN,
   PARAMETER_QUESTION_BEGIN,
   ARITHMETIC_BLANK_BEGIN,
-  END_OF_INPUT,
   TOKEN_COUNT,
 };
 
@@ -8491,11 +8490,6 @@ bool tree_sitter_sh_external_scanner_scan(
   }
   if (all_valid) {
     return false;
-  }
-  if (valid_symbols[END_OF_INPUT] && lexer_at_eof(lexer)) {
-    lexer->mark_end(lexer);
-    lexer->result_symbol = END_OF_INPUT;
-    return true;
   }
   if (
     valid_symbols[LEXICAL_END] && !((struct Scanner *)payload)->emission.active
