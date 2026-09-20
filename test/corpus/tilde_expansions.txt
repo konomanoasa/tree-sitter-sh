@@ -445,7 +445,8 @@ a=~user\
                     (word
                       (tilde_expansion
                         (tilde_user
-                          (literal))))
+                          (literal))
+                        (line_continuation)))
                     (word
                       (literal))))))))))
     (newline_list)
@@ -462,7 +463,8 @@ a=~user\
                       (assignment_value
                         (tilde_expansion
                           (tilde_user
-                            (literal))))))
+                            (literal))
+                          (line_continuation)))))
                   (cmd_word
                     (word
                       (literal)))))))))))
@@ -672,7 +674,8 @@ encoded continuations end argument and assignment tilde users
                                             (word
                                               (tilde_expansion
                                                 (tilde_user
-                                                  (literal))))
+                                                  (literal))
+                                                (line_continuation)))
                                             (word
                                               (literal))))))))))))))))))))))
     (newline_list)
@@ -704,7 +707,8 @@ encoded continuations end argument and assignment tilde users
                                               (assignment_value
                                                 (tilde_expansion
                                                   (tilde_user
-                                                    (literal))))))
+                                                    (literal))
+                                                  (line_continuation)))))
                                           (cmd_word
                                             (word
                                               (literal)))))))))))))))))))))))

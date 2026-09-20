@@ -554,7 +554,7 @@ static struct Scanner *make_exact_fit_scanner(void) {
   return scanner;
 }
 
-static void test_disabled_and_all_valid_scans_preserve_state(void) {
+static void test_disabled_and_rejected_recovery_scans_preserve_state(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
 
@@ -574,13 +574,12 @@ static void test_disabled_and_all_valid_scans_preserve_state(void) {
     int32_t source[8];
     size_t length;
   } inputs[] = {
-    {{'e', 's', 'a', 'c', ';'}, 5},
-    {{'f', 'i', '\\', '\n', ';'}, 5},
-    {{'d', 'o', 'n', 'e', '\n'}, 5},
-    {{'t', 'h', 'e', 'n', ' '}, 5},
+    {{'e', 's', 'a', 'c', 'x', ';'}, 6},
+    {{'f', 'i', '\\', '\n', 'x', ';'}, 6},
+    {{'d', 'o', 'n', 'e', 'x', '\n'}, 6},
+    {{'t', 'h', 'e', 'n', 'x', ' '}, 6},
     {{'{', ' '}, 2},
-    {{'}', '\n'}, 2},
-    {{')'}, 1},
+    {{'}', 'x', '\n'}, 3},
     {{'`'}, 1},
     {{'E', 'O', 'F', '\n'}, 4},
     {{'w', 'o', 'r', 'd', ';'}, 5},
@@ -605,6 +604,191 @@ static void test_disabled_and_all_valid_scans_preserve_state(void) {
     assert_scanner_matches_snapshot(scanner, before, before_length);
   }
   tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+static void
+test_recovery_emits_newlines_without_reclassifying_continuations(void) {
+  const int32_t input[] = {'\n', '\\', '\n', '\\', '\n', '\n', 'x'};
+  const struct {
+    enum TokenType symbol;
+    size_t length;
+  } expected[] = {
+    {LOGICAL_NEWLINE_BEGIN, 0},
+    {PHYSICAL_CHARACTER, 1},
+    {SOURCE_BEGIN, 0},
+    {LINE_CONTINUATION, 1},
+    {REMOVED_NEWLINE, 1},
+    {LINE_CONTINUATION, 1},
+    {REMOVED_NEWLINE, 1},
+    {LOGICAL_NEWLINE_BEGIN, 0},
+    {PHYSICAL_CHARACTER, 1},
+  };
+  struct Scanner scanner = {0};
+  bool valid[TOKEN_COUNT];
+  for (size_t index = 0; index < TOKEN_COUNT; index += 1) {
+    valid[index] = true;
+  }
+  size_t offset = 0;
+  char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned state_length = 0;
+  for (
+    size_t index = 0; index < sizeof(expected) / sizeof(expected[0]); index += 1
+  ) {
+    struct MockLexer lexer;
+    init_mock_lexer(
+      &lexer,
+      input + offset,
+      sizeof(input) / sizeof(input[0]) - offset
+    );
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    assert(lexer.lexer.result_symbol == expected[index].symbol);
+    assert(lexer.mark == expected[index].length);
+    offset += lexer.mark;
+    state_length = snapshot_scanner(&scanner, state);
+    tree_sitter_sh_external_scanner_deserialize(&scanner, state, state_length);
+    assert_scanner_matches_snapshot(&scanner, state, state_length);
+  }
+  assert(offset == 6);
+  assert(!scanner.emission.active);
+  struct MockLexer lexer;
+  init_mock_lexer(&lexer, input + offset, 1);
+  assert(!tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+  assert_scanner_matches_snapshot(&scanner, state, state_length);
+  clear_scanner(&scanner);
+}
+
+static void test_recovery_emits_terminators_from_logical_source(void) {
+  const struct {
+    int32_t source[8];
+    size_t length;
+    enum TokenType begin;
+    enum TokenType piece;
+    size_t width;
+  } cases[] = {
+    {{'}', '\n'}, 2, RIGHT_BRACE, PHYSICAL_CHARACTER, 1},
+    {{')', 'x'}, 2, PUNCT_RIGHT_PARENTHESIS, PHYSICAL_CHARACTER, 1},
+    {{'t', 'h', 'e', 'n', ';'}, 5, THEN_KEYWORD, LEXICAL_PIECE, 4},
+    {{'e', 'l', 'i', 'f', '\n'}, 5, ELIF_KEYWORD, LEXICAL_PIECE, 4},
+    {{'e', 'l', 's', 'e', ' '}, 5, ELSE_KEYWORD, LEXICAL_PIECE, 4},
+    {{'f', 'i', ';'}, 3, FI_KEYWORD, LEXICAL_PIECE, 2},
+    {{'d', 'o', '\n'}, 3, DO_KEYWORD, LEXICAL_PIECE, 2},
+    {{'d', 'o', 'n', 'e', ';'}, 5, DONE_KEYWORD, LEXICAL_PIECE, 4},
+    {{'e', 's', 'a', 'c', '\n'}, 5, ESAC_KEYWORD, LEXICAL_PIECE, 4},
+  };
+  bool valid[TOKEN_COUNT];
+  for (size_t index = 0; index < TOKEN_COUNT; index += 1) {
+    valid[index] = true;
+  }
+  for (size_t index = 0; index < sizeof(cases) / sizeof(cases[0]); index += 1) {
+    struct Scanner scanner = {0};
+    struct MockLexer lexer;
+    init_mock_lexer(&lexer, cases[index].source, cases[index].length);
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    assert(lexer.lexer.result_symbol == cases[index].begin);
+    assert(lexer.mark == 0);
+    char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned length = snapshot_scanner(&scanner, state);
+    tree_sitter_sh_external_scanner_deserialize(&scanner, state, length);
+    init_mock_lexer(&lexer, cases[index].source, cases[index].length);
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    assert(lexer.lexer.result_symbol == cases[index].piece);
+    assert(lexer.mark == cases[index].width);
+    assert(!scanner.emission.active);
+    clear_scanner(&scanner);
+  }
+
+  const int32_t continued[] = {'f', '\\', '\n', 'i', ';'};
+  const struct {
+    enum TokenType symbol;
+    size_t width;
+  } expected[] = {
+    {FI_KEYWORD, 0},
+    {LEXICAL_PIECE, 1},
+    {LINE_CONTINUATION, 1},
+    {REMOVED_NEWLINE, 1},
+    {LEXICAL_PIECE, 1},
+  };
+  struct Scanner scanner = {0};
+  size_t offset = 0;
+  for (
+    size_t index = 0; index < sizeof(expected) / sizeof(expected[0]); index += 1
+  ) {
+    struct MockLexer lexer;
+    init_mock_lexer(
+      &lexer,
+      continued + offset,
+      sizeof(continued) / sizeof(continued[0]) - offset
+    );
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    assert(lexer.lexer.result_symbol == expected[index].symbol);
+    assert(lexer.mark == expected[index].width);
+    offset += lexer.mark;
+    char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned length = snapshot_scanner(&scanner, state);
+    tree_sitter_sh_external_scanner_deserialize(&scanner, state, length);
+  }
+  assert(offset == 4);
+  assert(!scanner.emission.active);
+  clear_scanner(&scanner);
+}
+
+static void
+test_parenthesis_recovery_defers_substitution_state_to_grammar(void) {
+  const enum TokenType ends[] = {
+    COMMAND_SUBSTITUTION_END,
+    ARITHMETIC_EXPANSION_END
+  };
+  for (size_t index = 0; index < sizeof(ends) / sizeof(ends[0]); index += 1) {
+    struct Scanner scanner = {0};
+    assert(scanner_source_ready(&scanner));
+    assert(source_context_push(&scanner, DQ_OPEN));
+    assert(source_context_push(&scanner, COMMAND_OPEN));
+    scanner.substitution_depth = 1;
+    bool valid[TOKEN_COUNT];
+    for (size_t token = 0; token < TOKEN_COUNT; token += 1) {
+      valid[token] = true;
+    }
+    const int32_t source[] = {')'};
+    const enum TokenType expected[] = {
+      PUNCT_RIGHT_PARENTHESIS,
+      PHYSICAL_CHARACTER
+    };
+    for (
+      size_t part = 0; part < sizeof(expected) / sizeof(expected[0]); part += 1
+    ) {
+      struct MockLexer lexer;
+      init_mock_lexer(&lexer, source, 1);
+      assert(
+        tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      assert(lexer.lexer.result_symbol == expected[part]);
+      assert(lexer.mark == part);
+      assert(scanner.context_count == 2);
+      assert(scanner.substitution_depth == 1);
+      char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+      unsigned length = snapshot_scanner(&scanner, state);
+      tree_sitter_sh_external_scanner_deserialize(&scanner, state, length);
+    }
+    struct MockLexer lexer;
+    init_mock_lexer(&lexer, NULL, 0);
+    assert(
+      !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+    );
+    assert(scanner.context_count == 2);
+    memset(valid, 0, sizeof(valid));
+    valid[ends[index]] = true;
+    init_mock_lexer(&lexer, NULL, 0);
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    assert(lexer.lexer.result_symbol == ends[index]);
+    assert(lexer.mark == 0);
+    assert(scanner.context_count == 1);
+    assert(scanner.contexts[0].opener == DQ_OPEN);
+    assert(
+      scanner.substitution_depth ==
+      (ends[index] == COMMAND_SUBSTITUTION_END ? 0 : 1)
+    );
+    clear_scanner(&scanner);
+  }
 }
 
 static void test_state_round_trip(void) {
@@ -1760,9 +1944,9 @@ test_logical_lexical_emission_keeps_individual_physical_pairs(void) {
   } steps[] = {
     {LITERAL_BEGIN, 0},
     {LEXICAL_PIECE, 2},
-    {CONTINUATION, 1},
+    {LINE_CONTINUATION, 1},
     {REMOVED_NEWLINE, 1},
-    {CONTINUATION, 1},
+    {LINE_CONTINUATION, 1},
     {REMOVED_NEWLINE, 1},
     {LEXICAL_PIECE, 1},
     {LEXICAL_END, 0},
@@ -1794,7 +1978,7 @@ static void test_pending_emission_rejects_disabled_and_stale_source(void) {
   struct Scanner scanner = {0};
   assert_source_step(&scanner, source, 5, LITERAL_BEGIN, 0);
   assert_source_step(&scanner, source, 5, LEXICAL_PIECE, 1);
-  assert_source_step(&scanner, source + 1, 4, CONTINUATION, 1);
+  assert_source_step(&scanner, source + 1, 4, LINE_CONTINUATION, 1);
   assert(scanner.emission.removed_newline);
   char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
   unsigned before_length = snapshot_scanner(&scanner, before);
@@ -1805,7 +1989,7 @@ static void test_pending_emission_rejects_disabled_and_stale_source(void) {
     enum TokenType valid;
   } rejected[] = {
     {source + 2, 3, LEXICAL_PIECE},
-    {source + 2, 3, CONTINUATION},
+    {source + 2, 3, LINE_CONTINUATION},
     {stale, 3, REMOVED_NEWLINE},
     {stale, 0, REMOVED_NEWLINE},
   };
@@ -1903,7 +2087,7 @@ static void test_source_callback_allocation_failures_are_transactional(void) {
   const enum TokenType symbols[] = {
     LITERAL_BEGIN,
     LEXICAL_PIECE,
-    CONTINUATION,
+    LINE_CONTINUATION,
     REMOVED_NEWLINE,
   };
   const size_t offsets[] = {0, 0, 2, 3};
@@ -2031,7 +2215,10 @@ int main(void) {
   test_embedded_readers_apply_source_views_before_comments_and_closers();
   test_here_document_readers_keep_the_owning_source_view();
   test_here_document_readers_stop_at_backquote_boundaries();
-  test_disabled_and_all_valid_scans_preserve_state();
+  test_disabled_and_rejected_recovery_scans_preserve_state();
+  test_recovery_emits_newlines_without_reclassifying_continuations();
+  test_recovery_emits_terminators_from_logical_source();
+  test_parenthesis_recovery_defers_substitution_state_to_grammar();
   test_state_round_trip();
   test_equal_source_contexts_preserve_each_policy_restore();
   test_source_context_counts_round_trip_and_reject_overflow();

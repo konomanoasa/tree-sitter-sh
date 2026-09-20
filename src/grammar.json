@@ -158,15 +158,6 @@
         ]
       }
     },
-    "_continuation_source": {
-      "type": "ALIAS",
-      "content": {
-        "type": "SYMBOL",
-        "name": "_continuation"
-      },
-      "named": false,
-      "value": "\\"
-    },
     "_arithmetic_unary_operator_lexeme": {
       "type": "SEQ",
       "members": [
@@ -2445,7 +2436,7 @@
           "members": [
             {
               "type": "SYMBOL",
-              "name": "_subshell_close"
+              "name": "_punct_right_parenthesis"
             },
             {
               "type": "REPEAT",
@@ -16205,7 +16196,7 @@
           "members": [
             {
               "type": "SYMBOL",
-              "name": "_command_substitution_close"
+              "name": "_punct_right_parenthesis"
             },
             {
               "type": "REPEAT",
@@ -16224,6 +16215,10 @@
               "value": ")"
             }
           ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_command_substitution_end"
         }
       ]
     },
@@ -16982,7 +16977,7 @@
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "_arithmetic_close_first"
+                  "name": "_punct_right_parenthesis"
                 },
                 {
                   "type": "REPEAT",
@@ -17007,7 +17002,7 @@
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "_arithmetic_close_second"
+                  "name": "_punct_right_parenthesis"
                 },
                 {
                   "type": "REPEAT",
@@ -17026,6 +17021,10 @@
                   "value": ")"
                 }
               ]
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_arithmetic_expansion_end"
             }
           ]
         },
@@ -17082,7 +17081,7 @@
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "_arithmetic_close_first"
+                  "name": "_punct_right_parenthesis"
                 },
                 {
                   "type": "REPEAT",
@@ -17107,7 +17106,7 @@
               "members": [
                 {
                   "type": "SYMBOL",
-                  "name": "_arithmetic_close_second"
+                  "name": "_punct_right_parenthesis"
                 },
                 {
                   "type": "REPEAT",
@@ -17126,6 +17125,10 @@
                   "value": ")"
                 }
               ]
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_arithmetic_expansion_end"
             }
           ]
         }
@@ -19890,7 +19893,7 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_continuation_source"
+      "name": "line_continuation"
     },
     {
       "type": "SYMBOL",
@@ -20254,10 +20257,6 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_subshell_close"
-    },
-    {
-      "type": "SYMBOL",
       "name": "_pattern_bracket_character_begin"
     },
     {
@@ -20318,7 +20317,7 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_command_substitution_close"
+      "name": "_command_substitution_end"
     },
     {
       "type": "SYMBOL",
@@ -20362,7 +20361,7 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_continuation"
+      "name": "line_continuation"
     },
     {
       "type": "SYMBOL",
@@ -20710,11 +20709,7 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_arithmetic_close_first"
-    },
-    {
-      "type": "SYMBOL",
-      "name": "_arithmetic_close_second"
+      "name": "_arithmetic_expansion_end"
     },
     {
       "type": "SYMBOL",

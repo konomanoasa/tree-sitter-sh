@@ -340,6 +340,7 @@ second
                     (word
                       (literal)))))))
           (and_if)
+          (line_continuation)
           (linebreak
             (newline_list
               (comment
@@ -382,6 +383,7 @@ after
                     (word
                       (literal))))))))))
     (newline_list
+      (line_continuation)
       (comment
         (comment_text)))
     (complete_command
@@ -418,6 +420,7 @@ second &\
 (program
   (linebreak
     (newline_list
+      (line_continuation)
       (comment
         (comment_text))))
   (complete_commands
@@ -432,6 +435,7 @@ second &\
                     (word
                       (literal)))))))))
       (separator_op))
+    (line_continuation)
     (newline_list
       (comment
         (comment_text)))
@@ -446,6 +450,7 @@ second &\
                     (word
                       (literal)))))))))
       (separator_op))
+    (line_continuation)
     (newline_list
       (comment
         (comment_text)))
@@ -460,6 +465,7 @@ second &\
                     (compound_list
                       (linebreak
                         (newline_list
+                          (line_continuation)
                           (comment
                             (comment_text))))
                       (term
@@ -498,6 +504,8 @@ echo
 (program
   (linebreak
     (newline_list
+      (line_continuation)
+      (line_continuation)
       (comment
         (comment_text))))
   (complete_commands
@@ -512,6 +520,7 @@ echo
                     (word
                       (literal)))))))))
       (separator_op))
+    (line_continuation)
     (newline_list
       (comment
         (comment_text)))
@@ -526,6 +535,8 @@ echo
                     (word
                       (literal)))))))))
       (separator_op))
+    (line_continuation)
+    (line_continuation)
     (newline_list
       (comment
         (comment_text)))
@@ -541,6 +552,8 @@ echo
                       (literal)))))))))))
   (linebreak
     (newline_list
+      (line_continuation)
+      (line_continuation)
       (comment
         (comment_text)))))
 
@@ -629,6 +642,7 @@ printf value \
                   (cmd_suffix
                     (word
                       (literal)))))))))))
+  (line_continuation)
   (comment
     (comment_text)))
 
@@ -687,7 +701,8 @@ OUT
                 (linebreak
                   (newline_list
                     (comment
-                      (comment_text)))))))
+                      (comment_text
+                        (line_continuation))))))))
           (here_document_end
             (here_document_end_text)))))))
 
@@ -749,7 +764,8 @@ world
                                                     (linebreak
                                                       (newline_list
                                                         (comment
-                                                          (comment_text)))))))))))))))))))))))))))))
+                                                          (comment_text
+                                                            (line_continuation))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -802,7 +818,8 @@ world
                                                       (linebreak
                                                         (newline_list
                                                           (comment
-                                                            (comment_text))))
+                                                            (comment_text
+                                                              (line_continuation)))))
                                                       (complete_commands
                                                         (complete_command
                                                           (list
@@ -868,7 +885,9 @@ world
                                                       (linebreak
                                                         (newline_list
                                                           (comment
-                                                            (comment_text))))))))))))))))))))))))))))))
+                                                            (comment_text
+                                                              (line_continuation)
+                                                              (line_continuation)))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -921,6 +940,7 @@ world
                                                       (linebreak
                                                         (newline_list
                                                           (comment
-                                                            (comment_text))))))))))))))))))))))))))))))
+                                                            (comment_text
+                                                              (line_continuation)))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))

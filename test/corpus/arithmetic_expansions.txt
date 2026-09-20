@@ -1408,7 +1408,8 @@ a continuation before the closers stays in the command-substitution reading
                                                                 (literal)))
                                                             (cmd_suffix
                                                               (word
-                                                                (literal))))))))))))))))))))))))))))))))
+                                                                (literal))))))))))
+                                              (line_continuation)))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -1516,6 +1517,9 @@ input ending inside arithmetic requires recovery
 x=$((1 +
 
 ---
+
+
+
 ==================
 arithmetic vertical tabs and form feeds separate operands and operators
 ==================

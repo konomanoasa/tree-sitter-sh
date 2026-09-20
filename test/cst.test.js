@@ -8,7 +8,7 @@ import {
   parseCst,
 } from "./support/cst.js";
 
-const slash = JSON.stringify("\\");
+const continuation = "line_continuation";
 
 test("CST projection preserves punctuation, fields, hierarchy and cardinality", () => {
   const source = [
@@ -33,11 +33,11 @@ test("CST projection preserves punctuation, fields, hierarchy and cardinality", 
   );
 });
 
-test("CST fingerprints preserve individual slash ranges and order without ownership", () => {
+test("CST fingerprints preserve individual continuation ranges and order without ownership", () => {
   const root = "0:0 - 2:3   program";
   const word = "0:0 - 2:3     word";
-  const first = `0:3 - 0:4       ${slash}`;
-  const second = `1:0 - 1:1       ${slash}`;
+  const first = `0:3 - 0:4       ${continuation}`;
+  const second = `1:0 - 1:1       ${continuation}`;
   const source = [root, word, first, second].join("\n");
   const expected = cstFingerprint(source);
   assert.equal(
@@ -117,13 +117,13 @@ test("lexical nodes expose only real one-byte continuation children", () => {
   const output = [
     "0:0 - 1:3   program",
     "0:0 - 1:3     literal",
-    `0:3 - 0:4       ${slash}`,
+    `0:3 - 0:4       ${continuation}`,
   ].join("\n");
   assertCstSourceContract(output, source);
   for (const changed of [
     output.replace("0:3 - 0:4", "0:3 - 1:0"),
     `0:2 - 0:3     "'"`,
-    `${output}\n0:3 - 0:4       ${slash}`,
+    `${output}\n0:3 - 0:4       ${continuation}`,
     `${output}\n0:0 - 0:3       literal`,
     `${output}\n0:4 - 1:0       "\\n"`,
     `${output}\n0:3 - 0:4         literal`,
@@ -137,7 +137,7 @@ test("source contracts use UTF-8 byte coordinates", () => {
     [
       "0:0 - 1:2   program",
       "0:0 - 1:2     literal",
-      `0:6 - 0:7       ${slash}`,
+      `0:6 - 0:7       ${continuation}`,
     ].join("\n"),
     "é🙂\\\né",
   );

@@ -722,4 +722,4 @@
           ])
       ])))
 
-"\\" @punctuation.special
+(line_continuation) @punctuation.special

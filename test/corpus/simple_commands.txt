@@ -647,7 +647,9 @@ NAME=value
                   name: (cmd_name
                     (word
                       (literal)))
+                  (line_continuation)
                   suffix: (cmd_suffix
+                    (line_continuation)
                     word: (word
                       (literal))))))))))
     separator: (newline_list)
@@ -664,6 +666,9 @@ NAME=value
                   suffix: (cmd_suffix
                     word: (word
                       (literal))
+                    (line_continuation)
+                    (line_continuation)
+                    (line_continuation)
                     word: (word
                       (literal))))))))))
     separator: (newline_list)
@@ -680,6 +685,8 @@ NAME=value
                         filename: (filename
                           word: (word
                             (literal))))))
+                  (line_continuation)
+                  (line_continuation)
                   word: (cmd_word
                     (word
                       (literal))))))))))
@@ -697,6 +704,8 @@ NAME=value
                         filename: (filename
                           word: (word
                             (literal)))))
+                    (line_continuation)
+                    (line_continuation)
                     assignment: (assignment_word
                       name: (variable_name)
                       value: (assignment_value
@@ -729,6 +738,7 @@ next
                     (word
                       (literal)))
                   suffix: (cmd_suffix
+                    (line_continuation)
                     word: (word
                       (literal))))))))))
     separator: (newline_list)

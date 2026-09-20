@@ -1318,6 +1318,7 @@ command`
                   suffix: (cmd_suffix
                     word: (word
                       (backquote_substitution
+                        (line_continuation)
                         body: (backquote_substitution_body
                           (complete_commands
                             command: (complete_command
@@ -1373,7 +1374,8 @@ echo `printf x\
                                               (literal)))
                                           (cmd_suffix
                                             (word
-                                              (literal)))))))))))))))))))))))
+                                              (literal))))))))))))
+                        (line_continuation))))))))))))
   (linebreak
     (newline_list)))
 
@@ -1509,7 +1511,8 @@ a word continuation ends before a nested backquote closer
                                                                 (simple_command
                                                                   (cmd_name
                                                                     (word
-                                                                      (literal)))))))))))))))))))))))))))))))))))
+                                                                      (literal))))))))))))
+                                                (line_continuation))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -1610,7 +1613,8 @@ encoded backquote continuations retain command layout ownership
                                             (word
                                               (literal)))))))))))
                           (linebreak
-                            (newline_list))))))))))))))
+                            (newline_list
+                              (line_continuation)))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -1655,6 +1659,7 @@ encoded continuations preserve I/O numbers before redirection operators
                                           (cmd_suffix
                                             (io_redirect
                                               (io_number)
+                                              (line_continuation)
                                               (io_file
                                                 (filename
                                                   (word
@@ -1719,6 +1724,7 @@ quoted ancestors remove continuations at inner command boundaries
                                                                     (cmd_suffix
                                                                       (word
                                                                         (escaped_character))
+                                                                      (line_continuation)
                                                                       (word
                                                                         (literal))))))))))))))))))))))))))))))))))))
   (linebreak

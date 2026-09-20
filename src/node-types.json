@@ -3398,16 +3398,17 @@
     "named": false
   },
   {
-    "type": "\\",
-    "named": false
-  },
-  {
     "type": "]",
     "named": false
   },
   {
     "type": "`",
     "named": false
+  },
+  {
+    "type": "line_continuation",
+    "named": true,
+    "extra": true
   },
   {
     "type": "numeric_parameter_source",

@@ -29,6 +29,43 @@ import {
   writeSource,
 } from "./support/parser.js";
 
+test("sh: repairing pipeline errors restores continued and nested command source", () => {
+  for (const [name, brokenText, repairedText] of [
+    [
+      "continued-pipeline",
+      "echo ready | | cat\\\nmore\necho after\n",
+      "echo ready | cat\\\nmore\necho after\n",
+    ],
+    [
+      "substitution-pipeline",
+      'echo "$(echo ready | | cat\necho inside)"\necho after\n',
+      'echo "$(echo ready | cat\necho inside)"\necho after\n',
+    ],
+    [
+      "heredoc-pipeline",
+      "cat <<END | | cat\nbody\nEND\necho after\n",
+      "cat <<END | cat\nbody\nEND\necho after\n",
+    ],
+  ]) {
+    const broken = writeSource(`${name}-broken`, brokenText);
+    const repaired = writeSource(`${name}-repaired`, repairedText);
+    const byte = brokenText.indexOf("| |") + 1;
+    for (const output of parseRecoveryAfterEdits(
+      repaired,
+      broken,
+      `${name}-insert-pipe`,
+      { byte, deleteBytes: 0, insert: " |" },
+    )) {
+      assert.equal(hasRecovery(output), true);
+    }
+    assertIncrementalEqualsFresh(broken, repaired, `${name}-remove-pipe`, {
+      byte,
+      deleteBytes: 2,
+      insert: "",
+    });
+  }
+});
+
 test("sh: heredoc lookahead terminates at source boundaries and preserves repairs", () => {
   const options = { processTimeout: 5_000 };
   for (const [name, source, status, owner] of [
@@ -153,7 +190,7 @@ test("sh: quoting a backquote changes comment endings before inner tokenization"
   assertNodeCount(output, "comment_text", 1);
   assertCstRange(output, "0:9-1:1", "comment");
   assertCstRange(output, "0:9-1:1", "comment_text");
-  assertCstRange(output, "0:11-0:12", JSON.stringify("\\"));
+  assertCstRange(output, "0:11-0:12", "line_continuation");
   assertIncrementalEqualsFresh(
     unquoted,
     quoted,
@@ -185,7 +222,7 @@ test("sh: heredoc read-time continuations retain comment structure after edits",
     assertNodeCount(output, "comment_text", 1);
     assertCstRange(output, `1:5-2:${tail.length}`, "comment");
     assertCstRange(output, `1:5-2:${tail.length}`, "comment_text");
-    assertCstRange(output, "1:12-1:13", JSON.stringify("\\"));
+    assertCstRange(output, "1:12-1:13", "line_continuation");
     assertCstRange(output, "4:0-5:0", "here_document_end");
     assertIncrementalEqualsFresh(
       joined,
@@ -228,7 +265,7 @@ test("sh: adjacent comment continuations retain raw prefixes across edits", () =
   assert.equal(continuationManifest(carriedOutput).length, 1);
   assertCstRange(carriedOutput, "0:10-2:5", "comment");
   assertCstRange(carriedOutput, "0:10-2:5", "comment_text");
-  assertCstRange(carriedOutput, "0:14-0:15", JSON.stringify("\\"));
+  assertCstRange(carriedOutput, "0:14-0:15", "line_continuation");
   const terminatedOutput = parseValidCst(terminated);
   assertOccurrenceCount(terminatedOutput, "name: cmd_name", 3);
   assertOccurrenceCount(terminatedOutput, "comment\n", 1);
@@ -236,7 +273,7 @@ test("sh: adjacent comment continuations retain raw prefixes across edits", () =
   assert.equal(continuationManifest(terminatedOutput).length, 1);
   assertCstRange(terminatedOutput, "0:10-1:2", "comment");
   assertCstRange(terminatedOutput, "0:10-1:2", "comment_text");
-  assertCstRange(terminatedOutput, "0:14-0:15", JSON.stringify("\\"));
+  assertCstRange(terminatedOutput, "0:14-0:15", "line_continuation");
   assertCstRange(terminatedOutput, "2:0-2:5", "name: cmd_name");
   const continuedOutput = parseValidCst(continued);
   assertOccurrenceCount(continuedOutput, "name: cmd_name", 2);
@@ -245,8 +282,8 @@ test("sh: adjacent comment continuations retain raw prefixes across edits", () =
   assert.equal(continuationManifest(continuedOutput).length, 2);
   assertCstRange(continuedOutput, "0:10-2:5", "comment");
   assertCstRange(continuedOutput, "0:10-2:5", "comment_text");
-  assertCstRange(continuedOutput, "0:14-0:15", JSON.stringify("\\"));
-  assertCstRange(continuedOutput, "1:3-1:4", JSON.stringify("\\"));
+  assertCstRange(continuedOutput, "0:14-0:15", "line_continuation");
+  assertCstRange(continuedOutput, "1:3-1:4", "line_continuation");
   assertIncrementalEqualsFresh(
     carried,
     terminated,
@@ -293,7 +330,7 @@ test("sh: heredoc expansions resume command lists through encoded continuations"
     assertOccurrenceCount(output, "name: cmd_name", 5);
     assert.equal(continuationManifest(output).length, 1);
     assertCstRange(output, "1:9-1:10", "name: cmd_name");
-    assertCstRange(output, `2:${count - 1}-2:${count}`, JSON.stringify("\\"));
+    assertCstRange(output, `2:${count - 1}-2:${count}`, "line_continuation");
     assertCstRange(output, "3:1-3:6", "name: cmd_name");
     assertCstRange(output, "5:0-6:0", "here_document_end");
     assertIncrementalEqualsFresh(initial, final, `insert-command-${count}`, {
@@ -332,7 +369,7 @@ test("sh: quoted backquote ancestors remove continuations before inner tokenizat
     assertCstRange(
       output,
       `0:${9 + count}-0:${10 + count}`,
-      JSON.stringify("\\"),
+      "line_continuation",
     );
     assertIncrementalEqualsFresh(
       unquoted,
@@ -368,7 +405,7 @@ test("sh: heredoc closing lines join before remaining backquote removal after ed
   const output = parseValidCst(continued);
   assertCstRange(output, "1:0-3:0", "here_document_end");
   assertCstRange(output, "1:0-2:3", "here_document_end_text");
-  assertCstRange(output, "1:2-1:3", JSON.stringify("\\"));
+  assertCstRange(output, "1:2-1:3", "line_continuation");
   assertNotContains(output, "quoted_here_document_body");
   assertIncrementalEqualsFresh(joined, continued, "split-quoted-ancestor-end", {
     byte: prefix.length + 2,
@@ -482,7 +519,7 @@ test("sh: heredoc quote edits restore ancestor continuation and escape ownership
   );
   const output = parseValidCst(unquoted);
   assertCstRange(output, "2:0-3:1", "here_document_text");
-  assertCstRange(output, "2:2-2:3", JSON.stringify("\\"));
+  assertCstRange(output, "2:2-2:3", "line_continuation");
   assertNotContains(output, "here_document_escape");
   assertIncrementalEqualsFresh(
     quoted,
@@ -503,7 +540,7 @@ test("sh: heredoc quote edits restore ancestor continuation and escape ownership
     `cat <<OUT\n${body.replace("\\".repeat(3), "\\".repeat(2))}`,
   );
   const shorterOutput = parseValidCst(shorter);
-  assertCstRange(shorterOutput, "2:1-2:2", JSON.stringify("\\"));
+  assertCstRange(shorterOutput, "2:1-2:2", "line_continuation");
   assertNotContains(shorterOutput, "here_document_escape");
   assertIncrementalEqualsFresh(
     unquoted,
@@ -538,7 +575,7 @@ test("sh: encoded backquote continuations preserve I/O number classification", (
     assertCstRange(
       output,
       `0:${prefix.length + 2}-0:${prefix.length + 3}`,
-      JSON.stringify("\\"),
+      "line_continuation",
     );
     assertIncrementalEqualsFresh(
       initial,
@@ -654,7 +691,7 @@ test("sh: named tilde prefixes end before backquote continuations after edits", 
     assertCstRange(
       output,
       `0:${prefix.length + 6}-0:${prefix.length + 7}`,
-      JSON.stringify("\\"),
+      "line_continuation",
     );
     assertIncrementalEqualsFresh(initial, final, `continue-tilde-${name}`, {
       byte: prefix.length + 5,
@@ -1552,7 +1589,7 @@ test("sh: word, pipeline, parameter, and arithmetic categories survive edits", (
   assertContains(missingOperandOutput, "command_substitution");
   assertContains(missingOperandOutput, "subshell");
   assertNotContains(missingOperandOutput, "arithmetic_expansion");
-  assertCstRange(missingOperandOutput, "0:9-0:10", JSON.stringify("\\"));
+  assertCstRange(missingOperandOutput, "0:9-0:10", "line_continuation");
   assert.equal(continuationManifest(missingOperandOutput).length, 1);
 
   for (const [name, text] of [
@@ -1770,7 +1807,7 @@ test("sh: arithmetic grouping, lvalues, and unary operators remain stable", () =
   const backquoteOutput = parseValidCst(backquoteFinal);
   const backquoteToken = '"\\`"';
   assertCstRange(backquoteOutput, "0:5-0:6", backquoteToken);
-  assertCstRange(backquoteOutput, "0:6-0:7", JSON.stringify("\\"));
+  assertCstRange(backquoteOutput, "0:6-0:7", "line_continuation");
   assertCstRange(backquoteOutput, "1:11-1:12", backquoteToken);
   assertNotContains(backquoteOutput, "ERROR");
   assertIncrementalEqualsFresh(
@@ -2179,7 +2216,7 @@ test("sh: tilde, assignment, and compound-tail classifications remain stable", (
     "0:5-0:10",
     "value: assignment_value",
   );
-  assertCstRange(assignmentBoundaryOutput, "0:10-0:11", JSON.stringify("\\"));
+  assertCstRange(assignmentBoundaryOutput, "0:10-0:11", "line_continuation");
   assertNotContains(assignmentBoundaryOutput, "ERROR");
   assertIncrementalEqualsFresh(
     assignmentBoundaryInitial,
@@ -2209,7 +2246,7 @@ test("sh: tilde, assignment, and compound-tail classifications remain stable", (
     1,
   );
   assertCstRange(assignmentNewlineOutput, "0:2-0:3", "value: assignment_value");
-  assertCstRange(assignmentNewlineOutput, "0:3-0:4", JSON.stringify("\\"));
+  assertCstRange(assignmentNewlineOutput, "0:3-0:4", "line_continuation");
   assertCstRange(assignmentNewlineOutput, "1:0-2:0", "trailing: linebreak");
   assertNotContains(assignmentNewlineOutput, "name: cmd_name");
   assertNotContains(assignmentNewlineOutput, "ERROR");
@@ -3325,7 +3362,7 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
   const delimiterBoundaryOutput = parseValidCst(delimiterBoundaryFinal);
   for (const [range, item] of [
     ["0:4-0:6", "operator: dless"],
-    ["0:6-0:7", JSON.stringify("\\")],
+    ["0:6-0:7", "line_continuation"],
     ["1:0-1:3", "end: here_end"],
     ["1:0-1:3", "word: word"],
     ["3:0-4:0", "end: here_document_end"],
@@ -3356,7 +3393,7 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
     "cat <<-AB\nA\\\n\tB\nAB\nafter\n",
   );
   const continuedTabOutput = parseValidCst(continuedTabFinal);
-  assertCstRange(continuedTabOutput, "1:1-1:2", JSON.stringify("\\"));
+  assertCstRange(continuedTabOutput, "1:1-1:2", "line_continuation");
   assertCstRange(continuedTabOutput, "3:0-4:0", "end: here_document_end");
   assertIncrementalEqualsFresh(
     continuedTabInitial,
@@ -3374,7 +3411,7 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
     lines("cat <<EOF", "$\\", "'text'", "EOF"),
   );
   const continuedDollarOutput = parseValidCst(continuedDollarFinal);
-  assertCstRange(continuedDollarOutput, "1:1-1:2", JSON.stringify("\\"));
+  assertCstRange(continuedDollarOutput, "1:1-1:2", "line_continuation");
   assertNotContains(continuedDollarOutput, "dollar_single_quoted");
   assertIncrementalEqualsFresh(
     continuedDollarInitial,
@@ -3858,7 +3895,7 @@ test("sh: line-continuation and comment contracts", () => {
   );
   const terminalPhysicalOutput = parseValidCst(terminalAssignmentPhysical);
   const terminalLogicalOutput = parseValidCst(terminalAssignmentLogical);
-  assertCstRange(terminalPhysicalOutput, "0:2-0:3", JSON.stringify("\\"));
+  assertCstRange(terminalPhysicalOutput, "0:2-0:3", "line_continuation");
   assert.equal(continuationManifest(terminalPhysicalOutput).length, 1);
   assertSameLogicalProjection(
     "terminal-assignment-continuation",
@@ -3898,11 +3935,11 @@ test("sh: line-continuation and comment contracts", () => {
   );
   const continuedCommentsOutput = parseValidCst(continuedComments);
   for (const [range, type] of [
-    ["0:0-0:1", JSON.stringify("\\")],
+    ["0:0-0:1", "line_continuation"],
     ["1:0-1:9", "comment"],
-    ["2:9-2:10", JSON.stringify("\\")],
+    ["2:9-2:10", "line_continuation"],
     ["3:0-3:10", "comment"],
-    ["5:10-5:11", JSON.stringify("\\")],
+    ["5:10-5:11", "line_continuation"],
     ["6:0-6:13", "comment: comment"],
   ]) {
     assertCstRange(continuedCommentsOutput, range, type);
@@ -4081,7 +4118,7 @@ test("sh: formal right-parenthesis ownership survives boundary continuations", (
     physicalOutput,
   );
   assertCstRange(physicalOutput, "0:0-1:1", "subshell");
-  assertCstRange(physicalOutput, "0:8-0:9", JSON.stringify("\\"));
+  assertCstRange(physicalOutput, "0:8-0:9", "line_continuation");
   assert.equal(continuationManifest(physicalOutput).length, 1);
   assertCstDirectChildRange(
     physicalOutput,
@@ -4114,8 +4151,8 @@ test("sh: formal right-parenthesis ownership survives boundary continuations", (
     repeatedLogicalOutput,
     repeatedPhysicalOutput,
   );
-  assertCstRange(repeatedPhysicalOutput, "0:8-0:9", JSON.stringify("\\"));
-  assertCstRange(repeatedPhysicalOutput, "1:1-1:2", JSON.stringify("\\"));
+  assertCstRange(repeatedPhysicalOutput, "0:8-0:9", "line_continuation");
+  assertCstRange(repeatedPhysicalOutput, "1:1-1:2", "line_continuation");
   assert.equal(continuationManifest(repeatedPhysicalOutput).length, 2);
   assertCstDirectChildRange(
     repeatedPhysicalOutput,
@@ -4148,12 +4185,12 @@ test("sh: command separators and continuation boundaries remain stable", () => {
   );
   const operatorOutput = parseValidCst(operatorBoundaries);
   for (const [range, item] of [
-    ["0:9-0:10", JSON.stringify("\\")],
-    ["2:9-2:10", JSON.stringify("\\")],
+    ["0:9-0:10", "line_continuation"],
+    ["2:9-2:10", "line_continuation"],
     ["3:2-3:4", "operator: or_if"],
-    ["4:9-4:10", JSON.stringify("\\")],
+    ["4:9-4:10", "line_continuation"],
     ["5:2-5:4", "operator: and_if"],
-    ["6:17-6:18", JSON.stringify("\\")],
+    ["6:17-6:18", "line_continuation"],
   ]) {
     assertCstRange(operatorOutput, range, item);
   }
@@ -4168,8 +4205,8 @@ test("sh: command separators and continuation boundaries remain stable", () => {
     lines("first\\", "\\", "  |next"),
   );
   const repeatedPipeOutput = parseValidCst(repeatedPipeFinal);
-  assertCstRange(repeatedPipeOutput, "0:5-0:6", JSON.stringify("\\"));
-  assertCstRange(repeatedPipeOutput, "1:0-1:1", JSON.stringify("\\"));
+  assertCstRange(repeatedPipeOutput, "0:5-0:6", "line_continuation");
+  assertCstRange(repeatedPipeOutput, "1:0-1:1", "line_continuation");
   assertNotContains(repeatedPipeOutput, "ERROR");
   assertIncrementalEqualsFresh(
     repeatedPipeInitial,
@@ -4203,7 +4240,7 @@ test("sh: command separators and continuation boundaries remain stable", () => {
   );
   assertCstRange(closedAndOrPhysicalOutput, "0:0-1:4", "brace_group");
   assertCstRange(closedAndOrPhysicalOutput, "0:4-0:6", "operator: and_if");
-  assertCstRange(closedAndOrPhysicalOutput, "0:7-0:8", JSON.stringify("\\"));
+  assertCstRange(closedAndOrPhysicalOutput, "0:7-0:8", "line_continuation");
   assert.equal(continuationManifest(closedAndOrPhysicalOutput).length, 1);
   for (const recovery of ["ERROR", "MISSING", "_recovery"]) {
     assertNotContains(closedAndOrPhysicalOutput, recovery);
@@ -4294,7 +4331,7 @@ test("sh: command separators and continuation boundaries remain stable", () => {
   );
   const forFormalOutput = parseValidCst(forFormalFinal);
   assertCstRange(forFormalOutput, "0:4-0:5", "name: name");
-  assertCstRange(forFormalOutput, "0:6-0:7", JSON.stringify("\\"));
+  assertCstRange(forFormalOutput, "0:6-0:7", "line_continuation");
   assertCstRange(forFormalOutput, "1:0-1:2", "in: in");
   assertNotContains(forFormalOutput, "ERROR");
   assertNotContains(forFormalOutput, "MISSING");
@@ -4321,8 +4358,8 @@ test("sh: command separators and continuation boundaries remain stable", () => {
   );
   const caseSubjectOutput = parseValidCst(caseSubjectFinal);
   assertCstRange(caseSubjectOutput, "0:5-0:6", "word: word");
-  assertCstRange(caseSubjectOutput, "0:7-0:8", JSON.stringify("\\"));
-  assertCstRange(caseSubjectOutput, "1:0-1:1", JSON.stringify("\\"));
+  assertCstRange(caseSubjectOutput, "0:7-0:8", "line_continuation");
+  assertCstRange(caseSubjectOutput, "1:0-1:1", "line_continuation");
   assertCstRange(caseSubjectOutput, "2:0-2:2", "in: in");
   assertNotContains(caseSubjectOutput, "ERROR");
   assertNotContains(caseSubjectOutput, "MISSING");
@@ -4396,7 +4433,7 @@ test("sh: command separators and continuation boundaries remain stable", () => {
   );
   const backquoteEndOutput = parseValidCst(backquoteEndFinal);
   assertCstRange(backquoteEndOutput, "0:5-1:1", "backquote_substitution");
-  assertCstRange(backquoteEndOutput, "0:14-0:15", JSON.stringify("\\"));
+  assertCstRange(backquoteEndOutput, "0:14-0:15", "line_continuation");
   assertCstRange(backquoteEndOutput, "1:0-1:1", '"\\`"');
   assertNotContains(backquoteEndOutput, "ERROR");
   assertIncrementalEqualsFresh(
@@ -4422,7 +4459,7 @@ test("sh: command separators and continuation boundaries remain stable", () => {
   );
   const substitutionEndOutput = parseValidCst(substitutionEndFinal);
   assertCstRange(substitutionEndOutput, "0:5-1:1", "command_substitution");
-  assertCstRange(substitutionEndOutput, "0:15-0:16", JSON.stringify("\\"));
+  assertCstRange(substitutionEndOutput, "0:15-0:16", "line_continuation");
   assertCstRange(substitutionEndOutput, "1:0-1:1", '")"');
   assertNotContains(substitutionEndOutput, "ERROR");
   assertIncrementalEqualsFresh(
@@ -4963,7 +5000,7 @@ test("sh: substitution, redirection, and token boundaries retain ownership", () 
   );
   const braceWordContinuationOutput = parseValidCst(braceWordContinuationFinal);
   assertCstRange(braceWordContinuationOutput, "0:0-0:3", "word");
-  assertCstRange(braceWordContinuationOutput, "0:3-0:4", JSON.stringify("\\"));
+  assertCstRange(braceWordContinuationOutput, "0:3-0:4", "line_continuation");
   assertCstDirectChildRange(
     braceWordContinuationOutput,
     "1:0-1:2",
@@ -6060,7 +6097,7 @@ test("sh: substitution newlines and continuations remain stable", () => {
     { byte: 5, deleteBytes: 0, insert: "\\\n" },
   )) {
     assertNotContains(output, "cmd_suffix");
-    assertCstRange(output, "0:5-0:6", JSON.stringify("\\"));
+    assertCstRange(output, "0:5-0:6", "line_continuation");
   }
 
   const eofInitial = writeSource("continuation-eof-initial", lines("first"));

@@ -6,6 +6,7 @@ import {
   assertNodeCount,
   assertSameLogicalProjection,
   continuationManifest,
+  parseRecoveryAfterEdits,
   parseValidCst,
   writeSource,
 } from "./support/parser.js";
@@ -316,6 +317,129 @@ test("parameter word escapes cannot become continuation extras", () => {
       deleteBytes: 0,
       insert: fixture.insert,
     });
+  }
+});
+
+test("continued shell constructs complete and disappear after recovery edits", () => {
+  const prefix = "#!/usr/bin/env sh\n\nbrew install btm\n\n";
+  const initial = writeSource("before-incomplete-construct", prefix);
+  for (const [name, incomplete, completion] of [
+    ["if", "i\\\nf\n", "true; then :; fi\n"],
+    ["while", "w\\\nhile\n", "true; do :; done\n"],
+    ["for", "f\\\nor item in one\n", "do :; done\n"],
+    ["case", "c\\\nase x in\nx)", " :;; esac\n"],
+    ["function", "f\\\n() {\n", ":;\n}\n"],
+    ["pipeline", "e\\\ncho inner |\n", "cat\n"],
+    ["parameter", "e\\\ncho ${value:-", "inner}\n"],
+    ["substitution", "e\\\ncho $(", "echo inner)\n"],
+  ]) {
+    const broken = writeSource(`${name}-incomplete`, prefix + incomplete);
+    const complete = writeSource(
+      `${name}-complete`,
+      prefix + incomplete + completion,
+    );
+    const insertion = {
+      byte: prefix.length,
+      deleteBytes: 0,
+      insert: incomplete,
+    };
+    parseRecoveryAfterEdits(initial, broken, `${name} insertion`, insertion);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      complete,
+      `${name} completion`,
+      insertion,
+      {
+        byte: prefix.length + incomplete.length,
+        deleteBytes: 0,
+        insert: completion,
+      },
+    )) {
+      assertNodeCount(output, "line_continuation", 1);
+      assertCstRange(output, "4:1-4:2", "line_continuation");
+    }
+    assertIncrementalEqualsFresh(complete, initial, `${name} removal`, {
+      byte: prefix.length,
+      deleteBytes: incomplete.length + completion.length,
+      insert: "",
+    });
+  }
+});
+
+test("nested commands recover through enclosing terminators after completion", () => {
+  const prefix = "echo before\n\n";
+  const body = "echo nested\n";
+  const incomplete = "if\n";
+  const completion = "true; then :; fi\n";
+  for (const [name, opener, closer, node] of [
+    ["brace", "{\n", "}\n", "brace_group"],
+    ["subshell", "(\n", ")\n", "subshell"],
+    ["function", "f() {\n", "}\n", "function_definition"],
+    ["then", "if\n", "then\n:; fi\n", "if_clause"],
+    ["elif", "if true; then\n", "elif true; then :; fi\n", "if_clause"],
+    ["else", "if true; then\n", "else\n:; fi\n", "if_clause"],
+    ["fi", "if true; then\n", "fi\n", "if_clause"],
+    ["do", "while\n", "do\n:; done\n", "while_clause"],
+    ["done", "while true; do\n", "done\n", "while_clause"],
+    ["esac", "case x in\nx)\n", ";;\nesac\n", "case_clause"],
+    ["substitution", "echo $(\n", ")\n", "command_substitution"],
+    ["quoted substitution", 'echo "$(\n', ')"\n', "command_substitution"],
+    ["nested subshell", 'echo "$( (\n', ') )"\n', "subshell"],
+    [
+      "arithmetic substitution",
+      "echo $((1 + $(\n",
+      ") ))\n",
+      "arithmetic_expansion",
+    ],
+    ["backquote", "echo `", "`\n", "backquote_substitution"],
+    ["here document", "cat <<END\n$(\n", ")\nEND\n", "here_document"],
+  ]) {
+    for (const continued of [false, true]) {
+      const ending = continued
+        ? `${closer.slice(0, 1)}\\\n${closer.slice(1)}`
+        : closer;
+      const start = prefix + opener + body;
+      const description = `${name}${continued ? " with continued terminator" : ""}`;
+      const initial = writeSource(`${description} initial`, start + ending);
+      const broken = writeSource(
+        `${description} incomplete`,
+        start + incomplete + ending,
+      );
+      const complete = writeSource(
+        `${description} complete`,
+        start + incomplete + completion + ending,
+      );
+      const insertion = {
+        byte: start.length,
+        deleteBytes: 0,
+        insert: incomplete,
+      };
+      parseRecoveryAfterEdits(initial, broken, description, insertion);
+      for (const output of assertIncrementalEqualsFresh(
+        initial,
+        complete,
+        description,
+        insertion,
+        {
+          byte: start.length + incomplete.length,
+          deleteBytes: 0,
+          insert: completion,
+        },
+      )) {
+        assertNodeCount(output, node, node === "if_clause" ? 2 : 1);
+        assertNodeCount(output, "line_continuation", continued ? 1 : 0);
+      }
+      assertIncrementalEqualsFresh(
+        complete,
+        initial,
+        `${description} removal`,
+        {
+          byte: start.length,
+          deleteBytes: incomplete.length + completion.length,
+          insert: "",
+        },
+      );
+    }
   }
 });
 

@@ -386,8 +386,9 @@ const closedArithmeticExpansion = ($, start, expression, closing) =>
     optional($._arithmetic_layout),
     field("expression", expression),
     closing,
-    physical($, $._arithmetic_close_first, ")"),
-    physical($, $._arithmetic_close_second, ")"),
+    physical($, $._punct_right_parenthesis, ")"),
+    physical($, $._punct_right_parenthesis, ")"),
+    $._arithmetic_expansion_end,
   );
 const linebreakLayout = ($) =>
   seq(optional($.linebreak), optional($._horizontal_layout));
@@ -456,7 +457,8 @@ const commandSubstitution = ($, start) =>
     start,
     $._command_substitution_body_begin,
     optional(field("body", $.command_substitution_body)),
-    physical($, $._command_substitution_close, ")"),
+    physical($, $._punct_right_parenthesis, ")"),
+    $._command_substitution_end,
   );
 const patternSpecialStart = ($, marker) =>
   seq(physical($, $._pattern_special_left_bracket, "["), marker);
@@ -721,7 +723,7 @@ export default grammar({
 
   extras: ($) => [
     $._unmatchable,
-    $._continuation_source,
+    $.line_continuation,
     $._removed_newline,
     $._source_begin,
     $._removed_source,
@@ -795,7 +797,6 @@ export default grammar({
     $._case_item_end,
     $._function_body_continuation_boundary,
     $._command_substitution_body_begin,
-    $._subshell_close,
     $._pattern_bracket_character_begin,
     $._parameter_pattern_bracket_character_begin,
     $._pattern_bracket_hyphen_begin,
@@ -811,7 +812,7 @@ export default grammar({
     $._assignment_separator_begin,
     $._redirect_separator_begin,
     $._pre_newline_blank_begin,
-    $._command_substitution_close,
+    $._command_substitution_end,
     $._separator_newline,
     $._layout_begin,
     $._term_boundary,
@@ -822,7 +823,7 @@ export default grammar({
     $._pattern_character_class_end_colon,
     $._lexical_piece,
     $._lexical_end,
-    $._continuation,
+    $.line_continuation,
     $._removed_newline,
     $._physical_prefix,
     $._literal_begin,
@@ -909,8 +910,7 @@ export default grammar({
     $._physical_character,
     $._logical_newline_begin,
     $._logical_blank_begin,
-    $._arithmetic_close_first,
-    $._arithmetic_close_second,
+    $._arithmetic_expansion_end,
     $._pattern_initial_right_bracket_begin,
     $._source_begin,
     $._removed_source,
@@ -977,8 +977,6 @@ export default grammar({
       ),
 
     _unmatchable: () => token(seq(/[\s\S]/, /[^\s\S]/)),
-
-    _continuation_source: ($) => alias($._continuation, "\\"),
 
     _arithmetic_unary_operator_lexeme: ($) =>
       lexical($, $._arithmetic_unary_operator_begin),
@@ -1307,7 +1305,7 @@ export default grammar({
         physical($, $._punct_left_parenthesis, "("),
         field("body", $.compound_list),
         optional($._closing_layout),
-        physical($, $._subshell_close, ")"),
+        physical($, $._punct_right_parenthesis, ")"),
       ),
     for_clause: ($) =>
       seq(

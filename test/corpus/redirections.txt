@@ -1522,6 +1522,7 @@ raw newlines end redirect attachment while escaped newlines preserve it
                                   name: (cmd_name
                                     (word
                                       (literal))))))))))))
+                (line_continuation)
                 redirects: (redirect_list
                   redirect: (io_redirect
                     number: (io_number)
@@ -1529,6 +1530,7 @@ raw newlines end redirect attachment while escaped newlines preserve it
                       filename: (filename
                         word: (word
                           (literal)))))
+                  (line_continuation)
                   redirect: (io_redirect
                     body: (io_file
                       filename: (filename
@@ -1594,6 +1596,7 @@ target
                   prefix: (cmd_prefix
                     redirect: (io_redirect
                       number: (io_number)
+                      (line_continuation)
                       body: (io_file
                         filename: (filename
                           word: (word
@@ -1604,6 +1607,7 @@ target
                   suffix: (cmd_suffix
                     redirect: (io_redirect
                       body: (io_file
+                        (line_continuation)
                         filename: (filename
                           word: (word
                             (literal))))))))))))))

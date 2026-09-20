@@ -490,6 +490,7 @@ for i in\
                     (name)
                     (in
                       (in_keyword))
+                    (line_continuation)
                     (wordlist
                       (word
                         (literal)))
@@ -538,6 +539,8 @@ word; do :; done
                     name: (name)
                     in: (in
                       (in_keyword))
+                    (line_continuation)
+                    (line_continuation)
                     words: (wordlist
                       word: (word
                         (literal)))
@@ -585,6 +588,7 @@ do :; done
                   (for_clause
                     (for_keyword)
                     (name)
+                    (line_continuation)
                     (in
                       (in_keyword))
                     (wordlist
@@ -617,6 +621,7 @@ do :; done
                   (for_clause
                     (for_keyword)
                     (name)
+                    (line_continuation)
                     (do_group
                       (do_keyword)
                       (compound_list
@@ -690,10 +695,12 @@ encoded continuations delimit adjacent words and the end of a for list
                                             (wordlist
                                               (word
                                                 (literal))
+                                              (line_continuation)
                                               (word
                                                 (tilde_expansion
                                                   (tilde_user
-                                                    (literal)))))
+                                                    (literal))
+                                                  (line_continuation))))
                                             (sequential_sep)
                                             (do_group
                                               (do_keyword)

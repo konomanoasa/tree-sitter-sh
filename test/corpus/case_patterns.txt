@@ -305,6 +305,7 @@ esac
                         patterns: (pattern_list
                           word: (word
                             (literal))
+                          (line_continuation)
                           word: (word
                             (literal)))
                         body: (compound_list
@@ -362,8 +363,12 @@ esac
                         patterns: (pattern_list
                           word: (word
                             (literal))
+                          (line_continuation)
+                          (line_continuation)
                           word: (word
                             (literal)))
+                        (line_continuation)
+                        (line_continuation)
                         body: (compound_list
                           body: (term
                             and_or: (and_or
@@ -416,6 +421,7 @@ case x in a\
                         (pattern_list
                           (word
                             (literal)))
+                        (line_continuation)
                         (compound_list
                           (term
                             (and_or
@@ -431,6 +437,8 @@ case x in a\
                         (pattern_list
                           (word
                             (literal)))
+                        (line_continuation)
+                        (line_continuation)
                         (compound_list
                           (term
                             (and_or
@@ -446,8 +454,10 @@ case x in a\
                         (pattern_list
                           (word
                             (literal))
+                          (line_continuation)
                           (word
                             (literal)))
+                        (line_continuation)
                         (compound_list
                           (term
                             (and_or

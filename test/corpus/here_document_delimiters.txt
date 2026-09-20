@@ -1539,6 +1539,7 @@ cat <<-EOF
         line_end: (here_document_line_end)
         document: (here_document
           end: (here_document_end
+            (line_continuation)
             (here_document_end_text)))))))
 
 ==================
@@ -1571,6 +1572,7 @@ after
                     redirect: (io_redirect
                       body: (io_here
                         operator: (dless)
+                        (line_continuation)
                         end: (here_end
                           word: (word
                             (literal)))))))))))))
@@ -1626,6 +1628,8 @@ after
                     redirect: (io_redirect
                       body: (io_here
                         operator: (dlessdash)
+                        (line_continuation)
+                        (line_continuation)
                         end: (here_end
                           word: (word
                             (literal)))))))))))))
@@ -1683,7 +1687,9 @@ after
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))))
+                            (literal))
+                          (line_continuation)
+                          (line_continuation))))))))))))
     (newline_list
       (here_document_sequence
         (here_document_line_end)
@@ -1757,6 +1763,8 @@ body
 echo after
 
 ---
+
+
 
 ==================
 here-document delimiter tildes remain literal outside embedded expansions

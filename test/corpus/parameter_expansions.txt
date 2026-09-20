@@ -1343,6 +1343,8 @@ echo "${}"
 
 ---
 
+
+
 ==================
 a backslash cannot be discarded before a parameter closer
 :error
@@ -1351,6 +1353,8 @@ a backslash cannot be discarded before a parameter closer
 echo ${name\}
 
 ---
+
+
 
 ==================
 escaped parameter words cannot be discarded as continuation layout

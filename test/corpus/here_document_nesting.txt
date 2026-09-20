@@ -934,6 +934,7 @@ END
                                             redirect: (io_redirect
                                               body: (io_here
                                                 operator: (dless)
+                                                (line_continuation)
                                                 end: (here_end
                                                   word: (word
                                                     (literal))))))))))))))
@@ -944,6 +945,7 @@ END
                                 document: (here_document
                                   body: (here_document_body
                                     (here_document_text)
+                                    (line_continuation)
                                     (parameter_expansion
                                       parameter: (variable_name)))
                                   end: (here_document_end
@@ -993,6 +995,7 @@ END
                                                                     redirect: (io_redirect
                                                                       body: (io_here
                                                                         operator: (dless)
+                                                                        (line_continuation)
                                                                         end: (here_end
                                                                           word: (word
                                                                             (literal))))))))))))))
@@ -1089,6 +1092,7 @@ OUT
                       line_end: (here_document_line_end)
                       document: (here_document
                         end: (here_document_end
+                          (line_continuation)
                           (here_document_end_text)))))))))
           end: (here_document_end
             (here_document_end_text)))))))
@@ -1161,7 +1165,8 @@ OUT
                       line_end: (here_document_line_end)
                       document: (here_document
                         body: (quoted_here_document_body
-                          (quoted_here_document_text))
+                          (quoted_here_document_text
+                            (line_continuation)))
                         end: (here_document_end
                           (here_document_end_text)))))))))
           end: (here_document_end

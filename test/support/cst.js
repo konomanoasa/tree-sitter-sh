@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-const continuationType = JSON.stringify("\\");
+const continuationType = "line_continuation";
 
 const lexicalTypes = new Set([
   "and_if",

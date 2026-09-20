@@ -12,7 +12,7 @@
 #define TREE_SITTER_SERIALIZATION_BUFFER_SIZE 1024
 #endif
 
-#define SCANNER_SERIALIZATION_VERSION 22
+#define SCANNER_SERIALIZATION_VERSION 23
 #define SCANNER_STATE_CAPACITY (TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 1)
 
 enum TokenType {
@@ -82,7 +82,6 @@ enum TokenType {
   CASE_ITEM_END,
   FUNCTION_BODY_CONTINUATION_BOUNDARY,
   COMMAND_SUBSTITUTION_BODY_BEGIN,
-  SUBSHELL_CLOSE,
   PATTERN_BRACKET_CHARACTER,
   PARAMETER_PATTERN_BRACKET_CHARACTER,
   PATTERN_BRACKET_HYPHEN,
@@ -98,7 +97,7 @@ enum TokenType {
   ASSIGNMENT_SEPARATOR_BEGIN,
   REDIRECT_SEPARATOR_BEGIN,
   PRE_NEWLINE_BLANK,
-  COMMAND_SUBSTITUTION_CLOSE,
+  COMMAND_SUBSTITUTION_END,
   SEPARATOR_NEWLINE,
   LAYOUT_BEGIN,
   TERM_BOUNDARY,
@@ -109,7 +108,7 @@ enum TokenType {
   PATTERN_CHARACTER_CLASS_END_COLON,
   LEXICAL_PIECE,
   LEXICAL_END,
-  CONTINUATION,
+  LINE_CONTINUATION,
   REMOVED_NEWLINE,
   PHYSICAL_PREFIX,
   LITERAL_BEGIN,
@@ -196,8 +195,7 @@ enum TokenType {
   PHYSICAL_CHARACTER,
   LOGICAL_NEWLINE_BEGIN,
   LOGICAL_BLANK_BEGIN,
-  ARITHMETIC_CLOSE_FIRST,
-  ARITHMETIC_CLOSE_SECOND,
+  ARITHMETIC_EXPANSION_END,
   PATTERN_INITIAL_RIGHT_BRACKET_BEGIN,
   SOURCE_BEGIN,
   REMOVED_SOURCE,
@@ -4110,10 +4108,7 @@ static bool scan_separator_operator_continuation(
       '\n' &&
       character !=
       '#' &&
-      !(character ==
-        ')' &&
-        (valid_symbols[COMMAND_SUBSTITUTION_CLOSE] ||
-          valid_symbols[SUBSHELL_CLOSE])) &&
+      !(character == ')' && valid_symbols[PUNCT_RIGHT_PARENTHESIS]) &&
       !((character == SOURCE_BACKQUOTE_BOUNDARY) &&
         valid_symbols[BACKQUOTE_END])
     ) {
@@ -7152,7 +7147,7 @@ source_context_commit(struct Scanner *scanner, enum TokenType symbol) {
   case DQ_CLOSE:
   case DOLLAR_SQ_CLOSE:
   case PARAMETER_CLOSE:
-  case ARITHMETIC_CLOSE_SECOND:
+  case ARITHMETIC_EXPANSION_END:
     return source_context_pop(scanner);
   case BACKQUOTE_END:
     if (
@@ -7165,7 +7160,7 @@ source_context_commit(struct Scanner *scanner, enum TokenType symbol) {
       return false;
     }
     return source_context_pop(scanner);
-  case COMMAND_SUBSTITUTION_CLOSE:
+  case COMMAND_SUBSTITUTION_END:
     if (scanner->substitution_depth == 0) {
       return false;
     }
@@ -7218,12 +7213,8 @@ static bool lexical_symbol_is_punctuation(enum TokenType symbol) {
   case PARAMETER_PATTERN_BRACKET_OPEN:
   case PATTERN_SPECIAL_LEFT_BRACKET:
   case PATTERN_CHARACTER_CLASS_END_COLON:
-  case COMMAND_SUBSTITUTION_CLOSE:
-  case SUBSHELL_CLOSE:
   case COMMENT_LINE_END:
   case LOGICAL_NEWLINE_BEGIN:
-  case ARITHMETIC_CLOSE_FIRST:
-  case ARITHMETIC_CLOSE_SECOND:
     return true;
   default:
     return symbol >= PUNCT_LEFT_PARENTHESIS && symbol <= PARAMETER_TILDE_START;
@@ -7374,7 +7365,7 @@ static bool emit_physical_source(
       accepted = source_feed(&cursor, '\n');
       lexer->advance(lexer, false);
       if (accepted && removal_has_slash(&cursor, 0)) {
-        symbol = CONTINUATION;
+        symbol = LINE_CONTINUATION;
         emission->removed_newline = true;
       }
     }
@@ -7699,10 +7690,6 @@ static const struct LexicalPunctuation LEXICAL_PUNCTUATION[] = {
   {'{', PARAMETER_OPEN},
   {'}', PARAMETER_CLOSE},
   {'(', COMMAND_OPEN},
-  {')', COMMAND_SUBSTITUTION_CLOSE},
-  {')', ARITHMETIC_CLOSE_FIRST},
-  {')', ARITHMETIC_CLOSE_SECOND},
-  {')', SUBSHELL_CLOSE},
   {'(', PUNCT_LEFT_PARENTHESIS},
   {')', PUNCT_RIGHT_PARENTHESIS},
   {';', PUNCT_SEMICOLON},
@@ -8367,7 +8354,26 @@ static bool classify_logical_source(
 }
 
 static bool
-scan_source(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
+classify_recovery_source(struct LogicalLexer *input, const bool *valid) {
+  if (input->lexer.lookahead == '}' && valid[RIGHT_BRACE]) {
+    return scan_delimited_character_token(&input->lexer, RIGHT_BRACE);
+  }
+  if (
+    is_lowercase_letter(input->lexer.lookahead) &&
+    scan_lowercase_dispatch(&input->lexer, valid)
+  ) {
+    return true;
+  }
+  logical_rewind(input);
+  return lexical_classify(input, valid);
+}
+
+static bool scan_source(
+  struct Scanner *scanner,
+  TSLexer *lexer,
+  const bool *valid,
+  bool recovering
+) {
   if (!scanner_source_ready(scanner)) {
     return false;
   }
@@ -8375,6 +8381,16 @@ scan_source(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
     return emit_physical_source(scanner, lexer, valid);
   }
   lexer->mark_end(lexer);
+  const enum TokenType ends[] = {
+    COMMAND_SUBSTITUTION_END,
+    ARITHMETIC_EXPANSION_END,
+  };
+  for (size_t index = 0; index < sizeof(ends) / sizeof(ends[0]); index += 1) {
+    if (valid[ends[index]]) {
+      lexer->result_symbol = (TSSymbol)ends[index];
+      return source_context_commit(scanner, ends[index]);
+    }
+  }
   if (scanner->active_count > 0) {
     enum TokenType body = scanner->active_documents[0].quoted
       ? QUOTED_HERE_DOCUMENT_BODY_START
@@ -8415,7 +8431,10 @@ scan_source(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
     };
     lexer->result_symbol = SOURCE_BEGIN;
     accepted = true;
-  } else if (classify_logical_source(scanner, &input, valid)) {
+  } else if (
+    recovering ? classify_recovery_source(&input, valid)
+               : classify_logical_source(scanner, &input, valid)
+  ) {
     enum TokenType symbol = (enum TokenType)input.lexer.result_symbol;
     lexer->result_symbol = (TSSymbol)symbol;
     accepted = true;
@@ -8489,7 +8508,27 @@ bool tree_sitter_sh_external_scanner_scan(
     all_valid = all_valid && valid_symbols[index];
   }
   if (all_valid) {
-    return false;
+    static const bool recovery_symbols[TOKEN_COUNT] = {
+      [RIGHT_BRACE] = true,
+      [THEN_KEYWORD] = true,
+      [ELIF_KEYWORD] = true,
+      [ELSE_KEYWORD] = true,
+      [FI_KEYWORD] = true,
+      [DO_KEYWORD] = true,
+      [DONE_KEYWORD] = true,
+      [ESAC_KEYWORD] = true,
+      [BACKQUOTE_END] = true,
+      [PUNCT_RIGHT_PARENTHESIS] = true,
+      [LOGICAL_NEWLINE_BEGIN] = true,
+      [LEXICAL_PIECE] = true,
+      [PHYSICAL_CHARACTER] = true,
+      [PHYSICAL_PREFIX] = true,
+      [LINE_CONTINUATION] = true,
+      [REMOVED_NEWLINE] = true,
+      [SOURCE_BEGIN] = true,
+      [REMOVED_SOURCE] = true,
+    };
+    valid_symbols = recovery_symbols;
   }
   if (
     valid_symbols[LEXICAL_END] && !((struct Scanner *)payload)->emission.active
@@ -8503,7 +8542,7 @@ bool tree_sitter_sh_external_scanner_scan(
     return false;
   }
   if (
-    !scan_source(&next, lexer, valid_symbols) ||
+    !scan_source(&next, lexer, valid_symbols, all_valid) ||
     lexer->result_symbol >=
     TOKEN_COUNT ||
     !valid_symbols[lexer->result_symbol] ||

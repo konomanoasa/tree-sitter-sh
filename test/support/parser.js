@@ -14,7 +14,7 @@ import {
 
 const grammarName = grammars[0].name;
 
-const contractsQuerySource = `"\\\\" @line.continuation
+const contractsQuerySource = `(line_continuation) @line.continuation
 
 (function_definition
   name: (fname) @function)

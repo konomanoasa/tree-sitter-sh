@@ -766,6 +766,7 @@ long_function
               command: (command
                 body: (function_definition
                   name: (fname)
+                  (line_continuation)
                   body: (function_body
                     body: (compound_command
                       (brace_group

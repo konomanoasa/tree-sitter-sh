@@ -726,7 +726,8 @@ echo $(printf x\
                                               (literal)))
                                           (cmd_suffix
                                             (word
-                                              (literal)))))))))))))))))))))))
+                                              (literal))))))))))))
+                        (line_continuation))))))))))))
   (linebreak
     (newline_list)))
 
@@ -766,7 +767,8 @@ x=$( a\
                                           (simple_command
                                             (cmd_name
                                               (word
-                                                (literal))))))))))))))))))))))))
+                                                (literal))))))))))))
+                          (line_continuation)))))))))))))
   (linebreak
     (newline_list)))
 
