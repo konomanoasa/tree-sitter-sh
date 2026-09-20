@@ -1074,12 +1074,12 @@ test("sh: malformed commands parse through EOF with native errors", () => {
       `malformed-${name}`,
       lines("before alpha", invalidCommand, "after omega"),
     );
-    const { status } = runParse({
+    const { recovery } = runParse({
       description: name,
       mode: "recovery",
       source,
     });
-    assert.equal(status, 1, `${name}: invalid command parsed as valid`);
+    assert.equal(recovery, true, `${name}: invalid command parsed as valid`);
   }
 });
 

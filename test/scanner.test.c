@@ -319,7 +319,7 @@ static void test_here_document_readers_stop_at_backquote_boundaries(void) {
     };
     assert(fixture.lookahead.lexer.lookahead == SOURCE_BACKQUOTE_BOUNDARY);
     size_t position = fixture.lookahead.position;
-    struct HereDocumentLineStart start;
+    struct CommandStart start;
     assert(
       read_here_document_line(
         NULL,
@@ -366,7 +366,7 @@ static void test_here_document_readers_keep_the_owning_source_view(void) {
       .quoted = fixtures[index].quoted,
       .strip_tabs = fixtures[index].tabs,
     };
-    struct HereDocumentLineStart start = {0};
+    struct CommandStart start = {0};
     assert(
       read_here_document_line(
         NULL,
@@ -407,7 +407,7 @@ static void test_here_document_readers_keep_the_owning_source_view(void) {
     .contexts = &context,
     .context_count = 1
   };
-  struct HereDocumentLineStart start;
+  struct CommandStart start;
   assert(
     read_here_document_line(
       &scanner,
@@ -574,15 +574,9 @@ static void test_disabled_and_rejected_recovery_scans_preserve_state(void) {
     int32_t source[8];
     size_t length;
   } inputs[] = {
-    {{'e', 's', 'a', 'c', 'x', ';'}, 6},
-    {{'f', 'i', '\\', '\n', 'x', ';'}, 6},
-    {{'d', 'o', 'n', 'e', 'x', '\n'}, 6},
-    {{'t', 'h', 'e', 'n', 'x', ' '}, 6},
-    {{'{', ' '}, 2},
-    {{'}', 'x', '\n'}, 3},
-    {{'`'}, 1},
-    {{'E', 'O', 'F', '\n'}, 4},
-    {{'w', 'o', 'r', 'd', ';'}, 5},
+    {{'2', '>', 'x'}, 3},
+    {{'|'}, 1},
+    {{'\\'}, 1},
     {{0}, 0},
   };
   for (
@@ -614,14 +608,14 @@ test_recovery_emits_newlines_without_reclassifying_continuations(void) {
     size_t length;
   } expected[] = {
     {LOGICAL_NEWLINE_BEGIN, 0},
-    {PHYSICAL_CHARACTER, 1},
+    {LOGICAL_NEWLINE_BEGIN_CHARACTER, 1},
     {SOURCE_BEGIN, 0},
     {LINE_CONTINUATION, 1},
     {REMOVED_NEWLINE, 1},
     {LINE_CONTINUATION, 1},
     {REMOVED_NEWLINE, 1},
     {LOGICAL_NEWLINE_BEGIN, 0},
-    {PHYSICAL_CHARACTER, 1},
+    {LOGICAL_NEWLINE_BEGIN_CHARACTER, 1},
   };
   struct Scanner scanner = {0};
   bool valid[TOKEN_COUNT];
@@ -652,12 +646,16 @@ test_recovery_emits_newlines_without_reclassifying_continuations(void) {
   assert(!scanner.emission.active);
   struct MockLexer lexer;
   init_mock_lexer(&lexer, input + offset, 1);
-  assert(!tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
-  assert_scanner_matches_snapshot(&scanner, state, state_length);
+  assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+  assert(lexer.lexer.result_symbol == WORD_INITIAL_LITERAL_BEGIN);
+  assert(lexer.mark == 0);
+  assert(scanner.emission.symbol == WORD_INITIAL_LITERAL_BEGIN_WHOLE);
+  assert(scanner.emission.remaining == 1);
   clear_scanner(&scanner);
 }
 
-static void test_recovery_emits_terminators_from_logical_source(void) {
+static void
+test_recovery_preserves_reserved_and_punctuation_token_identity(void) {
   const struct {
     int32_t source[8];
     size_t length;
@@ -665,15 +663,42 @@ static void test_recovery_emits_terminators_from_logical_source(void) {
     enum TokenType piece;
     size_t width;
   } cases[] = {
-    {{'}', '\n'}, 2, RIGHT_BRACE, PHYSICAL_CHARACTER, 1},
-    {{')', 'x'}, 2, PUNCT_RIGHT_PARENTHESIS, PHYSICAL_CHARACTER, 1},
-    {{'t', 'h', 'e', 'n', ';'}, 5, THEN_KEYWORD, LEXICAL_PIECE, 4},
-    {{'e', 'l', 'i', 'f', '\n'}, 5, ELIF_KEYWORD, LEXICAL_PIECE, 4},
-    {{'e', 'l', 's', 'e', ' '}, 5, ELSE_KEYWORD, LEXICAL_PIECE, 4},
-    {{'f', 'i', ';'}, 3, FI_KEYWORD, LEXICAL_PIECE, 2},
-    {{'d', 'o', '\n'}, 3, DO_KEYWORD, LEXICAL_PIECE, 2},
-    {{'d', 'o', 'n', 'e', ';'}, 5, DONE_KEYWORD, LEXICAL_PIECE, 4},
-    {{'e', 's', 'a', 'c', '\n'}, 5, ESAC_KEYWORD, LEXICAL_PIECE, 4},
+    {{'{', ' '}, 2, LEFT_BRACE, LEFT_BRACE_CHARACTER, 1},
+    {{'}', '\n'}, 2, RIGHT_BRACE, RIGHT_BRACE_CHARACTER, 1},
+    {{'!', ' '}, 2, PIPELINE_NEGATION, BANG_BEGIN_PIECE, 1},
+    {{'(', 'x'},
+      2,
+      PUNCT_LEFT_PARENTHESIS,
+      PUNCT_LEFT_PARENTHESIS_CHARACTER,
+      1},
+    {{')', 'x'},
+      2,
+      PUNCT_RIGHT_PARENTHESIS,
+      PUNCT_RIGHT_PARENTHESIS_CHARACTER,
+      1},
+    {{';', 'x'}, 2, PUNCT_SEMICOLON, PUNCT_SEMICOLON_CHARACTER, 1},
+    {{'&', 'x'}, 2, PUNCT_AMPERSAND, PUNCT_AMPERSAND_CHARACTER, 1},
+    {{'i', 'f', ' '}, 3, IF_KEYWORD, IF_KEYWORD_BEGIN_WHOLE, 2},
+    {{'t', 'h', 'e', 'n', ';'}, 5, THEN_KEYWORD, THEN_KEYWORD_BEGIN_WHOLE, 4},
+    {{'e', 'l', 'i', 'f', '\n'}, 5, ELIF_KEYWORD, ELIF_KEYWORD_BEGIN_WHOLE, 4},
+    {{'e', 'l', 's', 'e', ' '}, 5, ELSE_KEYWORD, ELSE_KEYWORD_BEGIN_WHOLE, 4},
+    {{'f', 'i', ';'}, 3, FI_KEYWORD, FI_KEYWORD_BEGIN_WHOLE, 2},
+    {{'f', 'o', 'r', ' '}, 4, FOR_KEYWORD, FOR_KEYWORD_BEGIN_WHOLE, 3},
+    {{'i', 'n', '\n'}, 3, IN_KEYWORD, IN_KEYWORD_BEGIN_WHOLE, 2},
+    {{'d', 'o', '\n'}, 3, DO_KEYWORD, DO_KEYWORD_BEGIN_WHOLE, 2},
+    {{'d', 'o', 'n', 'e', ';'}, 5, DONE_KEYWORD, DONE_KEYWORD_BEGIN_WHOLE, 4},
+    {{'c', 'a', 's', 'e', ' '}, 5, CASE_KEYWORD, CASE_KEYWORD_BEGIN_WHOLE, 4},
+    {{'e', 's', 'a', 'c', '\n'}, 5, ESAC_KEYWORD, ESAC_KEYWORD_BEGIN_WHOLE, 4},
+    {{'w', 'h', 'i', 'l', 'e', ' '},
+      6,
+      WHILE_KEYWORD,
+      WHILE_KEYWORD_BEGIN_WHOLE,
+      5},
+    {{'u', 'n', 't', 'i', 'l', ' '},
+      6,
+      UNTIL_KEYWORD,
+      UNTIL_KEYWORD_BEGIN_WHOLE,
+      5},
   };
   bool valid[TOKEN_COUNT];
   for (size_t index = 0; index < TOKEN_COUNT; index += 1) {
@@ -703,10 +728,10 @@ static void test_recovery_emits_terminators_from_logical_source(void) {
     size_t width;
   } expected[] = {
     {FI_KEYWORD, 0},
-    {LEXICAL_PIECE, 1},
+    {FI_KEYWORD_BEGIN_PIECE, 1},
     {LINE_CONTINUATION, 1},
     {REMOVED_NEWLINE, 1},
-    {LEXICAL_PIECE, 1},
+    {FI_KEYWORD_BEGIN_PIECE, 1},
   };
   struct Scanner scanner = {0};
   size_t offset = 0;
@@ -751,7 +776,7 @@ test_parenthesis_recovery_defers_substitution_state_to_grammar(void) {
     const int32_t source[] = {')'};
     const enum TokenType expected[] = {
       PUNCT_RIGHT_PARENTHESIS,
-      PHYSICAL_CHARACTER
+      PUNCT_RIGHT_PARENTHESIS_CHARACTER
     };
     for (
       size_t part = 0; part < sizeof(expected) / sizeof(expected[0]); part += 1
@@ -861,7 +886,6 @@ static void test_state_round_trip(void) {
   assert(restored->emission.active);
   assert(restored->emission.symbol == SINGLE_QUOTE_CONTENT_BEGIN);
   assert(restored->emission.remaining == 128);
-  assert(!restored->emission.punctuation);
   assert(!restored->emission.removed_newline);
   assert(restored->pending_count == 2);
   assert_document(&restored->pending_documents[0], "first", true, false);
@@ -1092,6 +1116,168 @@ static void test_here_document_line_start_only_emits_valid_tokens(void) {
       }
       clear_scanner(&scanner);
     }
+  }
+}
+
+static void assert_boundary_scan(
+  struct Scanner *scanner,
+  const char *source,
+  const bool *valid,
+  enum TokenType expected
+) {
+  int32_t input[64];
+  size_t length = strlen(source);
+  assert(length <= sizeof(input) / sizeof(input[0]));
+  for (size_t index = 0; index < length; index += 1) {
+    input[index] = (unsigned char)source[index];
+  }
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(scanner, before);
+  struct MockLexer lexer;
+  init_mock_lexer(&lexer, input, length);
+  bool accepted =
+    tree_sitter_sh_external_scanner_scan(scanner, &lexer.lexer, valid);
+  assert(accepted == (expected != TOKEN_COUNT));
+  if (accepted) {
+    assert(lexer.lexer.result_symbol == expected);
+    assert(lexer.mark == 0);
+  }
+  assert_scanner_matches_snapshot(scanner, before, before_length);
+}
+
+static void test_newline_boundaries_require_a_valid_enclosing_terminator(void) {
+  const struct {
+    const char *source;
+    enum TokenType closer;
+    bool closes;
+  } cases[] = {
+    {"\n)\n", PUNCT_RIGHT_PARENTHESIS, true},
+    {"\n}\n", RIGHT_BRACE, true},
+    {"\nthen\n", THEN_KEYWORD, true},
+    {"\nelif\n", ELIF_KEYWORD, true},
+    {"\nelse\n", ELSE_KEYWORD, true},
+    {"\nfi\n", FI_KEYWORD, true},
+    {"\ndo\n", DO_KEYWORD, true},
+    {"\ndone\n", DONE_KEYWORD, true},
+    {"\nesac\n", ESAC_KEYWORD, true},
+    {"\n;;\n", CASE_ITEM_END, true},
+    {"\n;&\n", CASE_ITEM_END, true},
+    {"\nf\\\ni\n", FI_KEYWORD, true},
+    {"\n;\\\n;\n", CASE_ITEM_END, true},
+    {"\n}word\n", RIGHT_BRACE, false},
+    {"\nfinally\n", FI_KEYWORD, false},
+    {"\n;\n", CASE_ITEM_END, false},
+    {"\n&\n", CASE_ITEM_END, false},
+    {"\n|\n", CASE_ITEM_END, false},
+    {"\n&&\n", CASE_ITEM_END, false},
+    {"\n||\n", CASE_ITEM_END, false},
+  };
+  for (unsigned active = 0; active < 2; active += 1) {
+    for (unsigned enabled = 0; enabled < 2; enabled += 1) {
+      for (
+        size_t index = 0; index < sizeof(cases) / sizeof(*cases); index += 1
+      ) {
+        struct Scanner scanner = {0};
+        assert(scanner_source_ready(&scanner));
+        if (active != 0) {
+          assert(append_pending_document(
+            &scanner,
+            make_document("END", false, false)
+          ));
+          assert(activate_startable_pending_documents(&scanner));
+          assert(source_context_push(&scanner, HERE_DOCUMENT_BODY_START));
+          assert(source_context_push(&scanner, COMMAND_OPEN));
+          scanner.substitution_depth = 1;
+        }
+        bool valid[TOKEN_COUNT] = {false};
+        valid[TERM_CONTINUATION] = true;
+        valid[TERM_BOUNDARY] = true;
+        valid[SEPARATOR_NEWLINE] = true;
+        valid[cases[index].closer] = enabled != 0;
+        bool closes = enabled != 0 && cases[index].closes;
+        enum TokenType expected = closes
+          ? active != 0 ? TOKEN_COUNT : TERM_BOUNDARY
+          : SEPARATOR_NEWLINE;
+        assert_boundary_scan(&scanner, cases[index].source, valid, expected);
+        clear_scanner(&scanner);
+      }
+    }
+  }
+}
+
+static void test_layout_boundaries_do_not_turn_invalid_source_into_end(void) {
+  const struct {
+    const char *source;
+    enum TokenType continuation;
+    enum TokenType closer;
+    enum TokenType expected;
+  } cases[] = {
+    {"\n", TERM_CONTINUATION, TOKEN_COUNT, TOKEN_COUNT},
+    {"\n\n", TERM_CONTINUATION, TOKEN_COUNT, TERM_BOUNDARY},
+    {" \n)\n", TERM_CONTINUATION, TOKEN_COUNT, TERM_CONTINUATION},
+    {" \n)\n", TERM_CONTINUATION, PUNCT_RIGHT_PARENTHESIS, TERM_BOUNDARY},
+    {" # note\n|\n", TERM_CONTINUATION, TOKEN_COUNT, TERM_CONTINUATION},
+    {";;\n", TERM_CONTINUATION, TOKEN_COUNT, TOKEN_COUNT},
+    {";&\n", TERM_CONTINUATION, TOKEN_COUNT, TOKEN_COUNT},
+    {";;\n", TERM_CONTINUATION, CASE_ITEM_END, CASE_ITEM_END},
+    {";&\n", TERM_CONTINUATION, CASE_ITEM_END, CASE_ITEM_END},
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(*cases); index += 1) {
+    struct Scanner scanner = {0};
+    assert(scanner_source_ready(&scanner));
+    bool valid[TOKEN_COUNT] = {false};
+    valid[cases[index].continuation] = true;
+    valid[TERM_BOUNDARY] = true;
+    valid[SEPARATOR_NEWLINE] = true;
+    if (cases[index].closer != TOKEN_COUNT) {
+      valid[cases[index].closer] = true;
+    }
+    assert_boundary_scan(
+      &scanner,
+      cases[index].source,
+      valid,
+      cases[index].expected
+    );
+    clear_scanner(&scanner);
+  }
+}
+
+static void test_document_newline_boundaries_preserve_document_ownership(void) {
+  const struct {
+    const char *source;
+    bool active;
+    enum TokenType continuation;
+    enum TokenType expected;
+  } cases[] = {
+    {"\necho next\n", false, TERM_CONTINUATION, TOKEN_COUNT},
+    {" \necho next\n", false, TERM_CONTINUATION, TOKEN_COUNT},
+    {"\nEND\necho next\n", true, TERM_CONTINUATION, TOKEN_COUNT},
+    {" \nEND\necho next\n", true, TERM_CONTINUATION, TOKEN_COUNT},
+  };
+  for (size_t index = 0; index < sizeof(cases) / sizeof(*cases); index += 1) {
+    struct Scanner scanner = {0};
+    assert(scanner_source_ready(&scanner));
+    assert(
+      append_pending_document(&scanner, make_document("END", false, false))
+    );
+    if (cases[index].active) {
+      assert(activate_startable_pending_documents(&scanner));
+      assert(source_context_push(&scanner, HERE_DOCUMENT_BODY_START));
+      assert(source_context_push(&scanner, COMMAND_OPEN));
+      scanner.substitution_depth = 1;
+    }
+    bool valid[TOKEN_COUNT] = {false};
+    valid[cases[index].continuation] = true;
+    valid[TERM_BOUNDARY] = true;
+    valid[SEPARATOR_NEWLINE] = true;
+    valid[PRE_NEWLINE_BLANK] = true;
+    assert_boundary_scan(
+      &scanner,
+      cases[index].source,
+      valid,
+      cases[index].expected
+    );
+    clear_scanner(&scanner);
   }
 }
 
@@ -1935,6 +2121,116 @@ static void assert_source_step(
 }
 
 static void
+test_separators_preserve_operator_identity_and_pending_documents(void) {
+  const struct {
+    const char *source;
+    enum TokenType expected;
+    enum TokenType piece;
+    size_t width;
+  } cases[] = {
+    {";", PUNCT_SEMICOLON, PUNCT_SEMICOLON_CHARACTER, 1},
+    {"; echo next\n", PUNCT_SEMICOLON, PUNCT_SEMICOLON_CHARACTER, 1},
+    {";\nfi\n", PUNCT_SEMICOLON, PUNCT_SEMICOLON_CHARACTER, 1},
+    {"; )\n", PUNCT_SEMICOLON, PUNCT_SEMICOLON_CHARACTER, 1},
+    {"&", PUNCT_AMPERSAND, PUNCT_AMPERSAND_CHARACTER, 1},
+    {"& # note\necho next\n", PUNCT_AMPERSAND, PUNCT_AMPERSAND_CHARACTER, 1},
+    {"& )\n", PUNCT_AMPERSAND, PUNCT_AMPERSAND_CHARACTER, 1},
+    {";;", DSEMI_BEGIN, DSEMI_BEGIN_PIECE, 2},
+    {";&", SEMI_AND_BEGIN, SEMI_AND_BEGIN_PIECE, 2},
+    {"&&", AND_IF_BEGIN, AND_IF_BEGIN_PIECE, 2},
+    {";\\\n;", DSEMI_BEGIN, DSEMI_BEGIN_PIECE, 4},
+    {";\\\n&", SEMI_AND_BEGIN, SEMI_AND_BEGIN_PIECE, 4},
+    {"&\\\n&", AND_IF_BEGIN, AND_IF_BEGIN_PIECE, 4},
+  };
+  for (unsigned document = 0; document < 3; document += 1) {
+    for (unsigned recovery = 0; recovery < 2; recovery += 1) {
+      for (
+        size_t index = 0; index < sizeof(cases) / sizeof(*cases); index += 1
+      ) {
+        struct Scanner scanner = {0};
+        assert(scanner_source_ready(&scanner));
+        if (document != 0) {
+          assert(append_pending_document(
+            &scanner,
+            make_document("END", false, false)
+          ));
+          if (document == 2) {
+            assert(activate_startable_pending_documents(&scanner));
+            assert(source_context_push(&scanner, HERE_DOCUMENT_BODY_START));
+            assert(source_context_push(&scanner, COMMAND_OPEN));
+            scanner.substitution_depth = 1;
+          }
+        }
+        int32_t input[32];
+        size_t length = strlen(cases[index].source);
+        assert(length <= sizeof(input) / sizeof(*input));
+        for (size_t offset = 0; offset < length; offset += 1) {
+          input[offset] = (unsigned char)cases[index].source[offset];
+        }
+        bool valid[TOKEN_COUNT];
+        for (size_t symbol = 0; symbol < TOKEN_COUNT; symbol += 1) {
+          valid[symbol] = recovery != 0;
+        }
+        valid[PUNCT_SEMICOLON] = true;
+        valid[PUNCT_AMPERSAND] = true;
+        char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+        unsigned before_length = snapshot_scanner(&scanner, before);
+        struct MockLexer lexer;
+        init_mock_lexer(&lexer, input, length);
+        bool accepted =
+          tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid);
+        assert(accepted == (recovery != 0 || cases[index].width == 1));
+        if (accepted) {
+          assert(lexer.lexer.result_symbol == cases[index].expected);
+          assert(lexer.mark == 0);
+          char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+          unsigned state_length = snapshot_scanner(&scanner, state);
+          tree_sitter_sh_external_scanner_deserialize(
+            &scanner,
+            state,
+            state_length
+          );
+          if (cases[index].width == 4) {
+            assert_source_step(&scanner, input, length, cases[index].piece, 1);
+            assert_source_step(
+              &scanner,
+              input + 1,
+              length - 1,
+              LINE_CONTINUATION,
+              1
+            );
+            assert_source_step(
+              &scanner,
+              input + 2,
+              length - 2,
+              REMOVED_NEWLINE,
+              1
+            );
+            assert_source_step(
+              &scanner,
+              input + 3,
+              length - 3,
+              cases[index].piece,
+              1
+            );
+          } else {
+            assert_source_step(
+              &scanner,
+              input,
+              length,
+              cases[index].piece,
+              cases[index].width
+            );
+          }
+        }
+        assert_scanner_matches_snapshot(&scanner, before, before_length);
+        clear_scanner(&scanner);
+      }
+    }
+  }
+}
+
+static void
 test_logical_lexical_emission_keeps_individual_physical_pairs(void) {
   const int32_t input[] = {'f', 'o', '\\', '\n', '\\', '\n', 'o', ' '};
   struct Scanner scanner = {0};
@@ -1942,14 +2238,13 @@ test_logical_lexical_emission_keeps_individual_physical_pairs(void) {
     enum TokenType symbol;
     size_t mark;
   } steps[] = {
-    {LITERAL_BEGIN, 0},
-    {LEXICAL_PIECE, 2},
+    {WORD_INITIAL_LITERAL_BEGIN, 0},
+    {WORD_INITIAL_LITERAL_BEGIN_PIECE, 2},
     {LINE_CONTINUATION, 1},
     {REMOVED_NEWLINE, 1},
     {LINE_CONTINUATION, 1},
     {REMOVED_NEWLINE, 1},
-    {LEXICAL_PIECE, 1},
-    {LEXICAL_END, 0},
+    {WORD_INITIAL_LITERAL_BEGIN_PIECE, 1},
   };
   size_t offset = 0;
   for (size_t index = 0; index < sizeof(steps) / sizeof(steps[0]); index += 1) {
@@ -1973,11 +2268,331 @@ test_logical_lexical_emission_keeps_individual_physical_pairs(void) {
   clear_scanner(&scanner);
 }
 
+static void
+test_word_entry_classifies_and_owns_source_in_normal_and_recovery_scans(void) {
+  const struct {
+    const char *source;
+    enum TokenType symbol;
+    enum TokenType piece;
+    size_t remaining;
+    size_t first_width;
+  } fixtures[] = {
+    {"echo ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      4,
+      4},
+    {"e\\\ncho ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_PIECE,
+      6,
+      1},
+    {"esacx;",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      5,
+      5},
+    {"fi\\\nx;",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_PIECE,
+      5,
+      2},
+    {"donex\n",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      5,
+      5},
+    {"thenx ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      5,
+      5},
+    {"elifx ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      5,
+      5},
+    {"elsex ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      5,
+      5},
+    {"dox ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      3,
+      3},
+    {"ifx ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      3,
+      3},
+    {"inx ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      3,
+      3},
+    {"forx ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      4,
+      4},
+    {"casex ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      5,
+      5},
+    {"whilex ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      6,
+      6},
+    {"untilx ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      6,
+      6},
+    {"{x ", WORD_INITIAL_LITERAL_BEGIN, WORD_INITIAL_LITERAL_BEGIN_WHOLE, 2, 2},
+    {"}x ", WORD_INITIAL_LITERAL_BEGIN, WORD_INITIAL_LITERAL_BEGIN_WHOLE, 2, 2},
+    {"}\\\nx ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_PIECE,
+      4,
+      1},
+    {"!x ", WORD_INITIAL_LITERAL_BEGIN, WORD_INITIAL_LITERAL_BEGIN_WHOLE, 2, 2},
+    {"'x' ", WORD_INITIAL_SQ_OPEN, WORD_INITIAL_SQ_OPEN_CHARACTER, 1, 1},
+    {"\"x\" ", WORD_INITIAL_DQ_OPEN, WORD_INITIAL_DQ_OPEN_CHARACTER, 1, 1},
+    {"${x} ",
+      WORD_INITIAL_DOLLAR_EXPANSION_START,
+      WORD_INITIAL_DOLLAR_EXPANSION_START_CHARACTER,
+      1,
+      1},
+    {"$'x' ",
+      WORD_INITIAL_DOLLAR_SQ_DOLLAR,
+      WORD_INITIAL_DOLLAR_SQ_DOLLAR_CHARACTER,
+      1,
+      1},
+    {"`x` ",
+      WORD_INITIAL_BACKQUOTE_START,
+      WORD_INITIAL_BACKQUOTE_START_CHARACTER,
+      1,
+      1},
+    {"\\x ",
+      WORD_INITIAL_ESCAPED_CHARACTER_BEGIN,
+      WORD_INITIAL_ESCAPED_CHARACTER_BEGIN_PIECE,
+      2,
+      1},
+    {"* ",
+      WORD_INITIAL_PATTERN_STAR_BEGIN,
+      WORD_INITIAL_PATTERN_STAR_BEGIN_PIECE,
+      1,
+      1},
+    {"? ",
+      WORD_INITIAL_PATTERN_QUESTION_BEGIN,
+      WORD_INITIAL_PATTERN_QUESTION_BEGIN_PIECE,
+      1,
+      1},
+    {"[ab] ",
+      WORD_INITIAL_PATTERN_BRACKET_OPEN,
+      WORD_INITIAL_PATTERN_BRACKET_OPEN_CHARACTER,
+      1,
+      1},
+    {"[ab ",
+      WORD_INITIAL_FALLBACK_LITERAL_BEGIN,
+      WORD_INITIAL_FALLBACK_LITERAL_BEGIN_PIECE,
+      3,
+      3},
+  };
+  for (size_t recovery = 0; recovery < 2; recovery += 1) {
+    for (
+      size_t index = 0; index < sizeof(fixtures) / sizeof(fixtures[0]);
+      index += 1
+    ) {
+      int32_t input[16];
+      size_t length = strlen(fixtures[index].source);
+      assert(length <= sizeof(input) / sizeof(input[0]));
+      for (size_t character = 0; character < length; character += 1) {
+        input[character] = (unsigned char)fixtures[index].source[character];
+      }
+      struct Scanner scanner = {0};
+      bool valid[TOKEN_COUNT] = {false};
+      for (size_t symbol = 0; symbol < TOKEN_COUNT; symbol += 1) {
+        valid[symbol] = recovery !=
+          0 ||
+          (symbol >=
+            WORD_INITIAL_LITERAL_BEGIN &&
+            symbol <= WORD_INITIAL_BACKQUOTE_START);
+      }
+      valid[WORD_INITIAL_LITERAL_BEGIN_WHOLE] = true;
+      struct MockLexer lexer;
+      init_mock_lexer(&lexer, input, length);
+      assert(
+        tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      assert(lexer.lexer.result_symbol == fixtures[index].symbol);
+      assert(lexer.mark == 0);
+      assert(scanner.emission.active);
+      assert(scanner.emission.remaining == fixtures[index].remaining);
+      assert(scanner.context_count == 0);
+      char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+      unsigned state_length = snapshot_scanner(&scanner, state);
+      tree_sitter_sh_external_scanner_deserialize(
+        &scanner,
+        state,
+        state_length
+      );
+      assert_scanner_matches_snapshot(&scanner, state, state_length);
+
+      bool disabled[TOKEN_COUNT] = {false};
+      disabled[fixtures[index].symbol] = true;
+      init_mock_lexer(&lexer, input, length);
+      assert(
+        !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, disabled)
+      );
+      assert_scanner_matches_snapshot(&scanner, state, state_length);
+
+      enum TokenType piece = fixtures[index].piece;
+      valid[piece] = true;
+      init_mock_lexer(&lexer, input, length);
+      assert(
+        tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      assert(lexer.lexer.result_symbol == piece);
+      assert(lexer.mark == fixtures[index].first_width);
+      assert(
+        scanner.emission.remaining == fixtures[index].remaining - lexer.mark
+      );
+      state_length = snapshot_scanner(&scanner, state);
+      tree_sitter_sh_external_scanner_deserialize(
+        &scanner,
+        state,
+        state_length
+      );
+      assert_scanner_matches_snapshot(&scanner, state, state_length);
+      clear_scanner(&scanner);
+    }
+  }
+}
+
+static void
+test_whole_source_requires_its_classification_and_nonempty_range(void) {
+  const struct {
+    const char *source;
+    enum TokenType begin;
+    enum TokenType whole;
+    enum TokenType piece;
+    size_t width;
+  } fixtures[] = {
+    {"echo ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      WORD_INITIAL_LITERAL_BEGIN_PIECE,
+      4},
+    {"word\\\n next",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_WHOLE,
+      WORD_INITIAL_LITERAL_BEGIN_PIECE,
+      4},
+    {"fi;", FI_KEYWORD, FI_KEYWORD_BEGIN_WHOLE, FI_KEYWORD_BEGIN_PIECE, 2},
+    {"fi\\\n;", FI_KEYWORD, FI_KEYWORD_BEGIN_WHOLE, FI_KEYWORD_BEGIN_PIECE, 2},
+  };
+  for (
+    size_t index = 0; index < sizeof(fixtures) / sizeof(*fixtures); index += 1
+  ) {
+    const size_t length = strlen(fixtures[index].source);
+    int32_t source[16];
+    assert(length <= sizeof(source) / sizeof(*source));
+    for (size_t offset = 0; offset < length; offset += 1) {
+      source[offset] = (unsigned char)fixtures[index].source[offset];
+    }
+    struct Scanner scanner = {0};
+    bool valid[TOKEN_COUNT] = {false};
+    valid[fixtures[index].whole] = true;
+    struct MockLexer lexer;
+    init_mock_lexer(&lexer, source, length);
+    assert(
+      !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+    );
+    assert(!scanner.emission.active);
+    valid[fixtures[index].begin] = true;
+    init_mock_lexer(&lexer, source, 0);
+    assert(
+      !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+    );
+    init_mock_lexer(&lexer, source, length);
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    assert(lexer.lexer.result_symbol == fixtures[index].begin);
+    assert(lexer.mark == 0);
+    assert(scanner.emission.symbol == fixtures[index].whole);
+    assert(scanner.emission.remaining == fixtures[index].width);
+    char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned state_length = snapshot_scanner(&scanner, state);
+    tree_sitter_sh_external_scanner_deserialize(&scanner, state, state_length);
+    assert_scanner_matches_snapshot(&scanner, state, state_length);
+
+    valid[fixtures[index].whole] = false;
+    valid[fixtures[index].piece] = true;
+    init_mock_lexer(&lexer, source, length);
+    assert(
+      !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+    );
+    assert_scanner_matches_snapshot(&scanner, state, state_length);
+    valid[fixtures[index].whole] = true;
+    init_mock_lexer(&lexer, source, fixtures[index].width - 1);
+    assert(
+      !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+    );
+    assert_scanner_matches_snapshot(&scanner, state, state_length);
+    init_mock_lexer(&lexer, source, length);
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    assert(lexer.lexer.result_symbol == fixtures[index].whole);
+    assert(lexer.mark == fixtures[index].width);
+    assert(!scanner.emission.active);
+    assert(scanner.context_count == 0);
+    clear_scanner(&scanner);
+  }
+}
+
+static void test_tilde_word_entry_uses_the_grammar_owned_lexical_context(void) {
+  const int32_t source[] = {'~', 'h', 'o', 'm', 'e', ' '};
+  const struct {
+    bool tilde;
+    bool recovery;
+    enum TokenType symbol;
+    enum TokenType emission;
+    size_t remaining;
+  } fixtures[] = {
+    {false, false, WORD_INITIAL_LITERAL_BEGIN, WORD_INITIAL_LITERAL_BEGIN, 5},
+    {true, false, WORD_TILDE_START, WORD_TILDE_START, 1},
+    {true, true, WORD_TILDE_START, WORD_TILDE_START, 1},
+  };
+  for (
+    size_t index = 0; index < sizeof(fixtures) / sizeof(fixtures[0]); index += 1
+  ) {
+    struct Scanner scanner = {0};
+    bool valid[TOKEN_COUNT] = {false};
+    for (size_t symbol = 0; symbol < TOKEN_COUNT; symbol += 1) {
+      valid[symbol] = fixtures[index].recovery;
+    }
+    valid[WORD_INITIAL_LITERAL_BEGIN] = true;
+    valid[WORD_TILDE_START] = fixtures[index].tilde;
+    struct MockLexer lexer;
+    init_mock_lexer(&lexer, source, sizeof(source) / sizeof(source[0]));
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    assert(lexer.lexer.result_symbol == fixtures[index].symbol);
+    assert(lexer.mark == 0);
+    assert(scanner.emission.symbol == fixtures[index].emission);
+    assert(scanner.emission.remaining == fixtures[index].remaining);
+    assert(scanner.context_count == 0);
+    clear_scanner(&scanner);
+  }
+}
+
 static void test_pending_emission_rejects_disabled_and_stale_source(void) {
   const int32_t source[] = {'x', '\\', '\n', 'y', ' '};
   struct Scanner scanner = {0};
   assert_source_step(&scanner, source, 5, LITERAL_BEGIN, 0);
-  assert_source_step(&scanner, source, 5, LEXICAL_PIECE, 1);
+  assert_source_step(&scanner, source, 5, LITERAL_BEGIN_PIECE, 1);
   assert_source_step(&scanner, source + 1, 4, LINE_CONTINUATION, 1);
   assert(scanner.emission.removed_newline);
   char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
@@ -1988,7 +2603,7 @@ static void test_pending_emission_rejects_disabled_and_stale_source(void) {
     size_t length;
     enum TokenType valid;
   } rejected[] = {
-    {source + 2, 3, LEXICAL_PIECE},
+    {source + 2, 3, LITERAL_BEGIN_PIECE},
     {source + 2, 3, LINE_CONTINUATION},
     {stale, 3, REMOVED_NEWLINE},
     {stale, 0, REMOVED_NEWLINE},
@@ -2006,27 +2621,195 @@ static void test_pending_emission_rejects_disabled_and_stale_source(void) {
     assert_scanner_matches_snapshot(&scanner, before, before_length);
   }
   assert_source_step(&scanner, source + 2, 3, REMOVED_NEWLINE, 1);
-  assert_source_step(&scanner, source + 3, 2, LEXICAL_PIECE, 1);
-  assert_source_step(&scanner, source + 4, 1, LEXICAL_END, 0);
+  assert_source_step(&scanner, source + 3, 2, LITERAL_BEGIN_PIECE, 1);
+  assert(!scanner.emission.active);
+  clear_scanner(&scanner);
+}
+
+static void test_lexical_source_rejects_another_begin_after_restore(void) {
+  const struct {
+    const char *source;
+    enum TokenType begin;
+    enum TokenType piece;
+    enum TokenType other;
+    size_t width;
+    size_t contexts;
+  } fixtures[] = {
+    {"fi ",
+      FI_KEYWORD,
+      FI_KEYWORD_BEGIN_PIECE,
+      LOGICAL_BLANK_BEGIN_PIECE,
+      2,
+      0},
+    {")file",
+      PUNCT_RIGHT_PARENTHESIS,
+      PUNCT_RIGHT_PARENTHESIS_CHARACTER,
+      PUNCT_GREATER_CHARACTER,
+      1,
+      0},
+    {"echo ",
+      WORD_INITIAL_LITERAL_BEGIN,
+      WORD_INITIAL_LITERAL_BEGIN_PIECE,
+      LITERAL_BEGIN_PIECE,
+      4,
+      0},
+    {"value ",
+      ASSIGNMENT_LITERAL_BEGIN,
+      ASSIGNMENT_LITERAL_BEGIN_PIECE,
+      PARAMETER_LITERAL_BEGIN_PIECE,
+      5,
+      0},
+    {"'x'",
+      WORD_INITIAL_SQ_OPEN,
+      WORD_INITIAL_SQ_OPEN_CHARACTER,
+      SQ_CLOSE_CHARACTER,
+      1,
+      1},
+  };
+  for (unsigned recovery = 0; recovery < 2; recovery += 1) {
+    for (
+      size_t index = 0; index < sizeof(fixtures) / sizeof(*fixtures); index += 1
+    ) {
+      int32_t source[8];
+      size_t length = strlen(fixtures[index].source);
+      assert(length <= sizeof(source) / sizeof(*source));
+      for (size_t offset = 0; offset < length; offset += 1) {
+        source[offset] = (unsigned char)fixtures[index].source[offset];
+      }
+      struct Scanner scanner = {0};
+      assert_source_step(&scanner, source, length, fixtures[index].begin, 0);
+      assert(scanner.emission.symbol == fixtures[index].begin);
+      char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+      unsigned state_length = snapshot_scanner(&scanner, state);
+      bool valid[TOKEN_COUNT] = {false};
+      valid[fixtures[index].other] = true;
+      struct MockLexer lexer;
+      init_mock_lexer(&lexer, source, length);
+      assert(
+        !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      assert_scanner_matches_snapshot(&scanner, state, state_length);
+      for (size_t token = 0; token < TOKEN_COUNT; token += 1) {
+        valid[token] = recovery != 0;
+      }
+      valid[fixtures[index].piece] = true;
+      init_mock_lexer(&lexer, source, length);
+      assert(
+        tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      assert(lexer.lexer.result_symbol == fixtures[index].piece);
+      assert(lexer.mark == fixtures[index].width);
+      assert(!scanner.emission.active);
+      assert(scanner.context_count == fixtures[index].contexts);
+      clear_scanner(&scanner);
+    }
+  }
+}
+
+static void test_physical_prefix_and_character_keep_the_same_begin(void) {
+  const int32_t source[] = {'\\', '$', 'x'};
+  struct Scanner scanner = {0};
+  assert(scanner_source_ready(&scanner));
+  assert(source_context_push(&scanner, BACKQUOTE_START));
+  assert_source_step(
+    &scanner,
+    source,
+    3,
+    WORD_INITIAL_DOLLAR_EXPANSION_START,
+    0
+  );
+  assert(scanner.emission.remaining == 2);
+  const struct {
+    enum TokenType source;
+    enum TokenType other;
+  } pieces[] = {
+    {WORD_INITIAL_DOLLAR_EXPANSION_START_PREFIX,
+      WORD_INITIAL_DOLLAR_SQ_DOLLAR_PREFIX},
+    {WORD_INITIAL_DOLLAR_EXPANSION_START_CHARACTER,
+      WORD_INITIAL_DOLLAR_SQ_DOLLAR_CHARACTER},
+  };
+  for (size_t index = 0; index < sizeof(pieces) / sizeof(*pieces); index += 1) {
+    char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned state_length = snapshot_scanner(&scanner, state);
+    bool valid[TOKEN_COUNT] = {false};
+    valid[pieces[index].other] = true;
+    struct MockLexer lexer;
+    init_mock_lexer(&lexer, source + index, 3 - index);
+    assert(
+      !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+    );
+    assert_scanner_matches_snapshot(&scanner, state, state_length);
+    assert_source_step(
+      &scanner,
+      source + index,
+      3 - index,
+      pieces[index].source,
+      1
+    );
+    assert(scanner.context_count == 1);
+    assert(scanner.contexts[0].opener == BACKQUOTE_START);
+  }
+  assert(!scanner.emission.active);
+  clear_scanner(&scanner);
+}
+
+static void test_saved_source_requires_a_begin_token(void) {
+  const int32_t source[] = {'e', 'c', 'h', 'o', ' '};
+  const enum TokenType owners[] = {
+    HERE_END_COMMIT,
+    WORD_INITIAL_LITERAL_BEGIN_PIECE,
+    PUNCT_RIGHT_PARENTHESIS_PREFIX,
+  };
+  struct Scanner scanner = {0};
+  assert_source_step(&scanner, source, 5, WORD_INITIAL_LITERAL_BEGIN, 0);
+  for (size_t index = 0; index < sizeof(owners) / sizeof(*owners); index += 1) {
+    scanner.emission.symbol = owners[index];
+    char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned state_length = snapshot_scanner(&scanner, state);
+    struct Scanner restored = {0};
+    tree_sitter_sh_external_scanner_deserialize(&restored, state, state_length);
+    assert(!restored.emission.active);
+    assert(restored.source.stage_count == 0);
+    assert(restored.context_count == 0);
+    clear_scanner(&restored);
+  }
   clear_scanner(&scanner);
 }
 
 static void test_quote_context_commits_after_physical_punctuation(void) {
   const int32_t source[] = {'\'', 'a', '\\', '\n', 'b', '\'', ' '};
   struct Scanner scanner = {0};
-  assert_source_step(&scanner, source, 7, SQ_OPEN, 0);
+  assert_source_step(&scanner, source, 7, WORD_INITIAL_SQ_OPEN, 0);
   assert(scanner.context_count == 0);
-  assert_source_step(&scanner, source, 7, PHYSICAL_CHARACTER, 1);
+  assert_source_step(&scanner, source, 7, WORD_INITIAL_SQ_OPEN_CHARACTER, 1);
   assert(scanner.context_count == 1);
   assert(scanner.source.stages[0].disabled);
   assert_source_step(&scanner, source + 1, 6, SINGLE_QUOTE_CONTENT_BEGIN, 0);
-  assert_source_step(&scanner, source + 1, 6, LEXICAL_PIECE, 1);
-  assert_source_step(&scanner, source + 2, 5, LEXICAL_PIECE, 1);
-  assert_source_step(&scanner, source + 3, 4, LEXICAL_PIECE, 2);
-  assert_source_step(&scanner, source + 5, 2, LEXICAL_END, 0);
+  assert_source_step(
+    &scanner,
+    source + 1,
+    6,
+    SINGLE_QUOTE_CONTENT_BEGIN_PIECE,
+    1
+  );
+  assert_source_step(
+    &scanner,
+    source + 2,
+    5,
+    SINGLE_QUOTE_CONTENT_BEGIN_PIECE,
+    1
+  );
+  assert_source_step(
+    &scanner,
+    source + 3,
+    4,
+    SINGLE_QUOTE_CONTENT_BEGIN_PIECE,
+    2
+  );
+  assert(!scanner.emission.active);
   assert_source_step(&scanner, source + 5, 2, SQ_CLOSE, 0);
   assert(scanner.context_count == 1);
-  assert_source_step(&scanner, source + 5, 2, PHYSICAL_CHARACTER, 1);
+  assert_source_step(&scanner, source + 5, 2, SQ_CLOSE_CHARACTER, 1);
   assert(scanner.context_count == 0);
   assert(!scanner.source.stages[0].disabled);
   clear_scanner(&scanner);
@@ -2041,7 +2824,7 @@ static void test_source_context_growth_at_capacity_preserves_state(void) {
   char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
   unsigned length = snapshot_scanner(&scanner, before);
   bool valid[TOKEN_COUNT] = {false};
-  valid[PHYSICAL_CHARACTER] = true;
+  valid[BACKQUOTE_START_CHARACTER] = true;
   struct MockLexer lexer;
   init_mock_lexer(&lexer, source, 2);
   assert(!tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
@@ -2085,8 +2868,8 @@ static void test_source_callback_allocation_failures_are_transactional(void) {
   assert(reuse_live_allocations == 0);
   const int32_t source[] = {'f', 'o', '\\', '\n', 'o', ' '};
   const enum TokenType symbols[] = {
-    LITERAL_BEGIN,
-    LEXICAL_PIECE,
+    WORD_INITIAL_LITERAL_BEGIN,
+    WORD_INITIAL_LITERAL_BEGIN_PIECE,
     LINE_CONTINUATION,
     REMOVED_NEWLINE,
   };
@@ -2140,7 +2923,7 @@ test_reserved_word_allocation_failures_do_not_fall_back_to_word(void) {
   const int32_t source[] = {'i', 'f', ' '};
   bool valid[TOKEN_COUNT] = {false};
   valid[IF_KEYWORD] = true;
-  valid[WORD_BEGIN] = true;
+  valid[WORD_INITIAL_LITERAL_BEGIN] = true;
   size_t allocation_count = 0;
   for (size_t failure = 0; failure <= allocation_count; failure += 1) {
     struct Scanner scanner = {0};
@@ -2207,6 +2990,52 @@ static void test_comment_boundary_allocation_failures_terminate(void) {
     assert(reuse_live_allocations == 0);
   }
 }
+
+static void
+test_document_boundary_allocation_failures_do_not_close_the_term(void) {
+  const int32_t source[] =
+    {' ', '\n', 'w', 'o', 'r', 'd', '\n', 'E', 'N', 'D', '\n'};
+  bool valid[TOKEN_COUNT] = {false};
+  valid[TERM_CONTINUATION] = true;
+  valid[TERM_BOUNDARY] = true;
+  valid[PRE_NEWLINE_BLANK] = true;
+  struct Scanner scanner = {0};
+  assert(scanner_source_ready(&scanner));
+  assert(append_pending_document(&scanner, make_document("END", false, false)));
+  assert(activate_startable_pending_documents(&scanner));
+  assert(source_context_push(&scanner, HERE_DOCUMENT_BODY_START));
+  assert(source_context_push(&scanner, COMMAND_OPEN));
+  scanner.substitution_depth = 1;
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(&scanner, before);
+  struct MockLexer lexer;
+  init_mock_lexer(&lexer, source, sizeof(source) / sizeof(source[0]));
+  size_t first_allocation = reuse_allocation_calls;
+  assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+  size_t allocation_count = reuse_allocation_calls - first_allocation;
+  assert(allocation_count > 0);
+  assert(lexer.lexer.result_symbol == TERM_CONTINUATION);
+  assert(lexer.mark == 0);
+  assert_scanner_matches_snapshot(&scanner, before, before_length);
+  clear_scanner(&scanner);
+  for (size_t failure = 1; failure <= allocation_count; failure += 1) {
+    tree_sitter_sh_external_scanner_deserialize(
+      &scanner,
+      before,
+      before_length
+    );
+    reuse_fail_allocation_call = reuse_allocation_calls + failure;
+    init_mock_lexer(&lexer, source, sizeof(source) / sizeof(source[0]));
+    assert(
+      !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+    );
+    assert(reuse_allocation_calls >= reuse_fail_allocation_call);
+    reuse_fail_allocation_call = 0;
+    assert_scanner_matches_snapshot(&scanner, before, before_length);
+    clear_scanner(&scanner);
+    assert(reuse_live_allocations == 0);
+  }
+}
 #endif
 
 int main(void) {
@@ -2217,13 +3046,16 @@ int main(void) {
   test_here_document_readers_stop_at_backquote_boundaries();
   test_disabled_and_rejected_recovery_scans_preserve_state();
   test_recovery_emits_newlines_without_reclassifying_continuations();
-  test_recovery_emits_terminators_from_logical_source();
+  test_recovery_preserves_reserved_and_punctuation_token_identity();
   test_parenthesis_recovery_defers_substitution_state_to_grammar();
   test_state_round_trip();
   test_equal_source_contexts_preserve_each_policy_restore();
   test_source_context_counts_round_trip_and_reject_overflow();
   test_here_document_line_layout_keeps_following_source_owners();
   test_here_document_line_start_only_emits_valid_tokens();
+  test_newline_boundaries_require_a_valid_enclosing_terminator();
+  test_layout_boundaries_do_not_turn_invalid_source_into_end();
+  test_document_newline_boundaries_preserve_document_ownership();
   test_old_state_is_rejected();
   test_exact_fit_state_round_trip();
   test_pending_document_rejects_oversized_state();
@@ -2240,7 +3072,14 @@ int main(void) {
   test_dollar_single_quote_delimiter_bytes();
   test_delimiter_scan_resource_rollback();
   test_logical_lexical_emission_keeps_individual_physical_pairs();
+  test_word_entry_classifies_and_owns_source_in_normal_and_recovery_scans();
+  test_whole_source_requires_its_classification_and_nonempty_range();
+  test_separators_preserve_operator_identity_and_pending_documents();
+  test_tilde_word_entry_uses_the_grammar_owned_lexical_context();
   test_pending_emission_rejects_disabled_and_stale_source();
+  test_lexical_source_rejects_another_begin_after_restore();
+  test_physical_prefix_and_character_keep_the_same_begin();
+  test_saved_source_requires_a_begin_token();
   test_quote_context_commits_after_physical_punctuation();
   test_source_context_growth_at_capacity_preserves_state();
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
@@ -2251,6 +3090,7 @@ int main(void) {
   test_source_callback_allocation_failures_are_transactional();
   test_reserved_word_allocation_failures_do_not_fall_back_to_word();
   test_comment_boundary_allocation_failures_terminate();
+  test_document_boundary_allocation_failures_do_not_close_the_term();
   test_reuse_allocator_contract();
 #endif
   return 0;

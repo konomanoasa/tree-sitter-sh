@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { nodeIdentity, sourceByteOffset } from "./support/cst.js";
 import {
   applyEdits,
   assertContains,
@@ -28,6 +29,190 @@ import {
   runQuery,
   writeSource,
 } from "./support/parser.js";
+
+test("sh: lexical source keeps its token kind through errors and repairs", () => {
+  for (const [name, initial, removed, stray] of [
+    [
+      "greater-than-before-parenthesis",
+      ": > file\necho after\n",
+      " file",
+      ") file",
+    ],
+    ["less-than-before-parenthesis", ": <file\necho after\n", "file", ")file"],
+    ["missing-then-and-body", "if :; then :; fi\necho after\n", "then :; ", ""],
+    ["missing-do-and-body", "while :; do :; done\necho after\n", "do :; ", ""],
+    ["empty-if-condition", "if :; then :; fi\necho after\n", ":; ", ""],
+    [
+      "empty-if-body",
+      "if :; then echo body; fi\necho after\n",
+      "echo body; ",
+      "",
+    ],
+    ["empty-while-condition", "while :; do :; done\necho after\n", ":; ", ""],
+    ["empty-for-body", "for x in a; do :; done\necho after\n", ":; ", ""],
+    ["redirect-before-ampersand", "cat > file & echo after\n", "file ", ""],
+    [
+      "continued-redirect-before-semicolon",
+      "cat >\\\nfile; echo after\n",
+      "file",
+      "",
+    ],
+    [
+      "continued-redirect-before-ampersand",
+      "cat > \\\nfile & echo after\n",
+      "file ",
+      "",
+    ],
+    [
+      "continued-fi-after-missing-body",
+      "if :; then :; f\\\ni\necho after\n",
+      "then :; ",
+      "",
+    ],
+    [
+      "quoted-substitution-missing-body",
+      'echo "$(if :; then :; fi)"\necho after\n',
+      "then :; ",
+      "",
+    ],
+    [
+      "quoted-substitution-stray-semicolon",
+      'echo "$(echo inner)"\necho after\n',
+      "echo inner",
+      "; echo inner",
+    ],
+    [
+      "heredoc-substitution-missing-body",
+      "cat <<END\n$(while :; do :; done)\nEND\necho after\n",
+      "do :; ",
+      "",
+    ],
+  ]) {
+    const offset = initial.indexOf(removed);
+    const initialSource = writeSource(`${name}-initial`, initial);
+    const brokenText =
+      initial.slice(0, offset) + stray + initial.slice(offset + removed.length);
+    const broken = writeSource(`${name}-broken`, brokenText);
+    const insertion = {
+      byte: offset,
+      deleteBytes: removed.length,
+      insert: stray,
+    };
+    for (const output of parseRecoveryAfterEdits(
+      initialSource,
+      broken,
+      name,
+      insertion,
+    )) {
+      assert.equal(hasRecovery(output), true, name);
+      for (const entry of parseCst(output)) {
+        const { type } = nodeIdentity(entry);
+        if (type !== '">"' && type !== '"<"') continue;
+        const [start, end] = entry.range
+          .split("-")
+          .map((point) => sourceByteOffset(brokenText, point));
+        if (start === end) continue;
+        assert.equal(
+          brokenText.slice(start, end),
+          JSON.parse(type),
+          `${name}: ${entry.line}`,
+        );
+      }
+    }
+    const final = `${initial.slice(0, offset)} ${initial.slice(offset)}`;
+    assertIncrementalEqualsFresh(
+      initialSource,
+      writeSource(`${name}-repaired`, final),
+      `repair-${name}`,
+      insertion,
+      { byte: offset, deleteBytes: stray.length, insert: ` ${removed}` },
+    );
+  }
+});
+
+test("sh: compound operator errors preserve repairs across quoted source contexts", () => {
+  for (const [name, prefix, suffix] of [
+    ["command", 'echo "$(\n', ')"\necho after\n'],
+    ["backquote", 'echo "`\n', '`"\necho after\n'],
+    ["heredoc", 'cat <<END\n$(echo "$(\n', ')")\nEND\necho after\n'],
+  ]) {
+    for (const operator of ["&&", ";;", ";&", "&\\\n&", ";\\\n;", ";\\\n&"]) {
+      const initialText = `${prefix}:\n${suffix}`;
+      const initial = writeSource(`${name}-operator-initial`, initialText);
+      const stray = `${operator}\n`;
+      const broken = writeSource(
+        `${name}-operator-broken`,
+        `${prefix}${stray}:\n${suffix}`,
+      );
+      const insertion = { byte: prefix.length, deleteBytes: 0, insert: stray };
+      for (const output of parseRecoveryAfterEdits(
+        initial,
+        broken,
+        `${name}-${operator}`,
+        insertion,
+      )) {
+        assert.equal(hasRecovery(output), true);
+      }
+      const repaired = writeSource(
+        `${name}-operator-repaired`,
+        `${prefix} :\n${suffix}`,
+      );
+      assertIncrementalEqualsFresh(
+        initial,
+        repaired,
+        `repair-${name}-${operator}`,
+        insertion,
+        {
+          byte: prefix.length,
+          deleteBytes: stray.length,
+          insert: " ",
+        },
+      );
+    }
+  }
+});
+
+test("sh: missing case in keywords preserve selector ownership after repair", () => {
+  for (const [name, selector, prefix, suffix] of [
+    ["literal", "word", "", ""],
+    ["quoted", '"$value"', "", ""],
+    ["continued", "wo\\\nrd", "", ""],
+    ["substitution", "$(echo word)", "{\n", "}\n"],
+    ["nested", `\${value:-word}`, 'echo "$(\n', ')"\n'],
+  ]) {
+    const header = `${prefix}case ${selector} `;
+    const tail = `one) :;; esac\n${suffix}echo after\n`;
+    const initial = writeSource(`case-${name}-initial`, `${header}in ${tail}`);
+    const broken = writeSource(`case-${name}-missing-in`, `${header}${tail}`);
+    const removal = { byte: header.length, deleteBytes: 3, insert: "" };
+    for (const output of parseRecoveryAfterEdits(
+      initial,
+      broken,
+      `case-${name}-remove-in`,
+      removal,
+    )) {
+      assert.equal(hasRecovery(output), true);
+    }
+    const repaired = writeSource(
+      `case-${name}-repaired`,
+      `${header}in  ${tail}`,
+    );
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      repaired,
+      `case-${name}-repair-in`,
+      removal,
+      {
+        byte: header.length,
+        deleteBytes: 0,
+        insert: "in  ",
+      },
+    )) {
+      assertNodeCount(output, "case_clause", 1);
+      assertNodeCount(output, "in_keyword", 1);
+    }
+  }
+});
 
 test("sh: repairing pipeline errors restores continued and nested command source", () => {
   for (const [name, brokenText, repairedText] of [
@@ -788,12 +973,12 @@ test("sh: repairing missing operands and compound bodies matches a fresh parse",
       `missing-${name}-operand`,
       `${prefix}${lines(broken)}${suffix}`,
     );
-    const { status } = runParse({
+    const { recovery } = runParse({
       description: `${name}: malformed command`,
       mode: "recovery",
       source: initial,
     });
-    assert.equal(status, 1, `${name}: invalid command parsed as valid`);
+    assert.equal(recovery, true, `${name}: invalid command parsed as valid`);
     const final = writeSource(
       `restored-${name}-operand`,
       `${prefix}${lines(restored)}${suffix}`,
@@ -4078,9 +4263,41 @@ test("sh: line-continuation and comment contracts", () => {
   );
 });
 
-test("sh: commands regain their public structure after a stray separator", () => {
-  for (const [name, initial, final, offset, replacement] of [
+test("sh: commands regain their public structure after command boundary errors", () => {
+  for (const [name, initial, final, offset, replacement, stray = ";"] of [
     ["simple-command", "a; b\n", "a; c\n", 3, "c"],
+    [
+      "redirection-target-before-semicolon",
+      "cat >x; echo after\n",
+      "cat >y; echo after\n",
+      5,
+      "y",
+      "",
+    ],
+    [
+      "redirection-target-before-ampersand",
+      "cat >x & echo after\n",
+      "cat >y & echo after\n",
+      5,
+      "y",
+      "",
+    ],
+    [
+      "arithmetic-operand-before-semicolon",
+      "echo $((1 + (2))); echo after\n",
+      "echo $((1 + (3))); echo after\n",
+      13,
+      "3",
+      "",
+    ],
+    [
+      "for-header-before-subshell",
+      "for x in a; do :; done\n(echo after)\necho tail\n",
+      "for x in a;  do :; done\n(echo after)\necho tail\n",
+      12,
+      " d",
+      "",
+    ],
     ["function", "f() { a; b; }\n", "f() { a; c; }\n", 9, "c"],
     ["if-clause", "if a; then b; c; fi\n", "if a; then b; d; fi\n", 14, "d"],
     [
@@ -4090,14 +4307,157 @@ test("sh: commands regain their public structure after a stray separator", () =>
       16,
       "c",
     ],
+    ["newline", "a\nb\nc\n", "a\nd\nc\n", 2, "d", ")"],
+    ["terminated-line", "a;\nb\nc\n", "a;\nd\nc\n", 3, "d", ";;"],
+    [
+      "comment-and-blank-line",
+      "a \n# boundary\n\nb\nc\n",
+      "a \n# boundary\n\nd\nc\n",
+      15,
+      "d",
+      "|",
+    ],
+    ["continued-layout", "a\n\\\nb\nc\n", "a\n\\\nd\nc\n", 4, "d", "&"],
+    [
+      "continued-word-after-stray",
+      "a; b; ec\\\nho tail\n",
+      "a; d; ec\\\nho tail\n",
+      3,
+      "d",
+      ")",
+    ],
+    [
+      "single-quoted-word-after-stray",
+      "a; b; 'echo' tail\n",
+      "a; d; 'echo' tail\n",
+      3,
+      "d",
+      ")",
+    ],
+    [
+      "double-quoted-word-after-stray",
+      'a; b; "$command" tail\n',
+      'a; d; "$command" tail\n',
+      3,
+      "d",
+      ")",
+    ],
+    [
+      "parameter-word-after-stray",
+      `a; b; \${command} tail\n`,
+      `a; d; \${command} tail\n`,
+      3,
+      "d",
+      ")",
+    ],
+    [
+      "heredoc-substitution",
+      "cat <<END\n$(a\nb\nc)\nEND\nafter\n",
+      "cat <<END\n$(a\nd\nc)\nEND\nafter\n",
+      14,
+      "d",
+      ";;",
+    ],
   ]) {
+    const before = writeSource(`${name}-before-stray-separator`, initial);
+    const insertion = { byte: offset, deleteBytes: 1, insert: stray };
+    const broken = writeSource(
+      `${name}-with-stray-separator`,
+      initial.slice(0, offset) + stray + initial.slice(offset + 1),
+    );
+    for (const output of parseRecoveryAfterEdits(
+      before,
+      broken,
+      `insert-${name}-stray-separator`,
+      insertion,
+    )) {
+      assert.equal(hasRecovery(output), true, `${name}\n${output}`);
+    }
     assertIncrementalEqualsFresh(
-      writeSource(`${name}-before-stray-separator`, initial),
+      before,
       writeSource(`${name}-after-stray-separator`, final),
       `restore-${name}-after-stray-separator`,
-      { byte: offset, deleteBytes: 1, insert: ";" },
-      { byte: offset, deleteBytes: 1, insert: replacement },
+      insertion,
+      { byte: offset, deleteBytes: stray.length, insert: replacement },
     );
+  }
+});
+
+test("sh: restoring missing compound keywords preserves command source", () => {
+  for (const [
+    name,
+    initial,
+    final,
+    keyword,
+    owner,
+    commands = 3,
+    keywords = 1,
+  ] of [
+    [
+      "if-closer",
+      "if true; then echo inside; fi\necho after\n",
+      "if true; then echo inside; fi \necho after\n",
+      "fi",
+      "if_clause",
+    ],
+    [
+      "loop-closer",
+      "while true; do echo inside; done\necho after\n",
+      "while true; do echo inside; done \necho after\n",
+      "done",
+      "while_clause",
+    ],
+    [
+      "for-header-do",
+      "for x in a; do\necho inside; done\necho after\n",
+      "for x in a; do \necho inside; done\necho after\n",
+      "do",
+      "for_clause",
+      2,
+    ],
+    [
+      "if-header-then",
+      "if true; then\necho inside; fi\necho after\n",
+      "if true; then \necho inside; fi\necho after\n",
+      "then",
+      "if_clause",
+    ],
+    [
+      "elif-header-then",
+      "if false; then :; elif true; then\necho inside; fi\necho after\n",
+      "if false; then :; elif true; then \necho inside; fi\necho after\n",
+      "then",
+      "else_part",
+      5,
+      2,
+    ],
+  ]) {
+    const offset = initial.indexOf(`${keyword}\n`);
+    const removal = { byte: offset, deleteBytes: keyword.length, insert: "" };
+    const complete = writeSource(`${name}-complete`, initial);
+    const incomplete = writeSource(
+      `${name}-incomplete`,
+      initial.slice(0, offset) + initial.slice(offset + keyword.length),
+    );
+    for (const output of parseRecoveryAfterEdits(
+      complete,
+      incomplete,
+      `remove-${name}`,
+      removal,
+    )) {
+      assert.equal(hasRecovery(output), true);
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      complete,
+      writeSource(`${name}-restored`, final),
+      `restore-${name}`,
+      removal,
+      { byte: offset, deleteBytes: 0, insert: `${keyword} ` },
+    )) {
+      assertNodeCount(output, owner, 1);
+      assertNodeCount(output, "simple_command", commands);
+      assertNodeCount(output, `${keyword}_keyword`, keywords);
+    }
   }
 });
 

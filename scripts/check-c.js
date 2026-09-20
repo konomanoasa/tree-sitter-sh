@@ -11,46 +11,20 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
+import lexicalTokens from "../src/lexical-tokens.json" with { type: "json" };
 import { grammars, packageName, root } from "./tree-sitter.js";
 
 const scannerConfigurations = {
   sh: {
     externalCount: "TOKEN_COUNT",
     enumerators: {
-      _io_number_begin: "FILE_DESCRIPTOR",
-      _bang_begin: "PIPELINE_NEGATION",
-      _if_keyword_begin: "IF_KEYWORD",
-      _then_keyword_begin: "THEN_KEYWORD",
-      _elif_keyword_begin: "ELIF_KEYWORD",
-      _else_keyword_begin: "ELSE_KEYWORD",
-      _fi_keyword_begin: "FI_KEYWORD",
-      _for_keyword_begin: "FOR_KEYWORD",
-      _in_keyword_begin: "IN_KEYWORD",
-      _do_keyword_begin: "DO_KEYWORD",
-      _done_keyword_begin: "DONE_KEYWORD",
-      _case_keyword_begin: "CASE_KEYWORD",
-      _esac_keyword_begin: "ESAC_KEYWORD",
-      _while_keyword_begin: "WHILE_KEYWORD",
-      _until_keyword_begin: "UNTIL_KEYWORD",
+      ...Object.fromEntries(
+        Object.values(lexicalTokens)
+          .flat()
+          .map(({ begin, scanner }) => [begin, scanner]),
+      ),
       _dless_commit: "DLESS",
       _dlessdash_commit: "DLESSDASH",
-      _here_document_line_end_begin: "HERE_DOCUMENT_LINE_END",
-      _here_document_end_line_end_begin: "HERE_DOCUMENT_END_LINE_END",
-      _quoted_here_document_end_text_begin: "QUOTED_HERE_DOCUMENT_END_TEXT",
-      _quoted_here_document_text_begin: "QUOTED_HERE_DOCUMENT_TEXT",
-      _here_document_end_leading_tabs_begin: "HERE_DOCUMENT_END_LEADING_TABS",
-      _newline_begin: "NEWLINE",
-      _comment_text_begin: "COMMENT_START",
-      _comment_line_end_begin: "COMMENT_LINE_END",
-      _braced_positional_parameter_begin: "BRACED_POSITIONAL_PARAMETER_START",
-      _pattern_bracket_character_begin: "PATTERN_BRACKET_CHARACTER",
-      _parameter_pattern_bracket_character_begin:
-        "PARAMETER_PATTERN_BRACKET_CHARACTER",
-      _pattern_bracket_hyphen_begin: "PATTERN_BRACKET_HYPHEN",
-      _assignment_name_begin: "ASSIGNMENT_NAME_TOKEN",
-      _fname_begin: "FNAME_TOKEN",
-      _pre_newline_blank_begin: "PRE_NEWLINE_BLANK",
-      _dollar_single_quote_escape_begin: "DOLLAR_SINGLE_QUOTE_ESCAPE",
     },
     reuseAllocator: true,
   },
@@ -177,7 +151,10 @@ function scannerVariants() {
       includeDirectory,
       source: join(includeDirectory, "scanner.c"),
       headers: grammar.externalFiles
-        .filter((file) => file.endsWith(".h"))
+        .filter(
+          (file) =>
+            file.endsWith(".h") && basename(file) !== "lexical-tokens.h",
+        )
         .map((file) => join(root, file)),
     };
   });

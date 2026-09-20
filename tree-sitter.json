@@ -8,7 +8,13 @@
       "path": ".",
       "file-types": ["sh"],
       "injection-regex": "^(sh|shell)$",
-      "external-files": ["src/arithmetic.h", "src/input.h", "src/source.h"],
+      "external-files": [
+        "src/arithmetic.h",
+        "src/input.h",
+        "src/source.h",
+        "src/lexical-tokens.json",
+        "src/lexical-tokens.h"
+      ],
       "highlights": "queries/highlights.scm"
     }
   ],

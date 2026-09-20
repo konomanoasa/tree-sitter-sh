@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import lexicalTokens from "../src/lexical-tokens.json" with { type: "json" };
 
 const root = resolve(import.meta.dirname, "..");
 const packageName = JSON.parse(readFileSync(join(root, "package.json"), "utf8"))
@@ -163,6 +164,32 @@ function runChecked(runner, arguments_, options = { stdio: "inherit" }) {
   return resultStatus(runner.run(arguments_, options));
 }
 
+function lexicalTokenHeader() {
+  const groups = [
+    ...Object.entries(lexicalTokens),
+    ["whole", lexicalTokens.lexical.filter(({ whole }) => whole)],
+  ];
+  const macros = groups.map(([kind, entries]) => {
+    const suffixes =
+      kind === "lexical"
+        ? ["piece"]
+        : kind === "whole"
+          ? ["whole"]
+          : ["prefix", "character"];
+    const rows = entries.map(({ begin, scanner }) => {
+      const symbols = [
+        scanner,
+        ...suffixes.map((suffix) =>
+          `${begin.slice(1)}_${suffix}`.toUpperCase(),
+        ),
+      ];
+      return `  X(${symbols.join(", ")})`;
+    });
+    return `#define SH_${kind.toUpperCase()}_SOURCE_TOKENS(X) \\\n${rows.join(" \\\n")}`;
+  });
+  return `/* Generated from lexical-tokens.json by npm run generate. */\n\n#ifndef TREE_SITTER_SH_LEXICAL_TOKENS_H_\n#define TREE_SITTER_SH_LEXICAL_TOKENS_H_\n\n${macros.join("\n\n")}\n\n#endif\n`;
+}
+
 function generateParsers(outputRoot = root) {
   for (const grammar of grammars) {
     const output = join(outputRoot, grammar.path, "src");
@@ -184,6 +211,7 @@ function generateParsers(outputRoot = root) {
     if (status !== 0) {
       return status;
     }
+    writeFileSync(join(output, "lexical-tokens.h"), lexicalTokenHeader());
   }
   return 0;
 }

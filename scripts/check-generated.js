@@ -15,6 +15,7 @@ const prerequisiteScripts = [];
 
 const generatedPaths = [
   "grammar.json",
+  "lexical-tokens.h",
   "node-types.json",
   "parser.c",
   join("tree_sitter", "alloc.h"),
