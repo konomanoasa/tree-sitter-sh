@@ -228,9 +228,36 @@ static inline bool source_feed_stage(
   struct SourceCursor *cursor,
   size_t index,
   struct SourceCharacter character
+);
+
+static inline bool
+source_flush_pending(struct SourceCursor *cursor, size_t index) {
+  for (; index < cursor->stage_count; index += 1) {
+    struct SourceStage *stage = &cursor->stages[index];
+    if (stage->has_pending) {
+      struct SourceCharacter pending = stage->pending;
+      stage->has_pending = false;
+      if (!source_feed_stage(cursor, index + 1, pending)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+static inline bool source_feed_stage(
+  struct SourceCursor *cursor,
+  size_t index,
+  struct SourceCharacter character
 ) {
-  if (index == cursor->stage_count || character.boundary_stage != SIZE_MAX) {
+  if (index == cursor->stage_count) {
     return source_append_logical(cursor, character);
+  }
+  if (character.boundary_stage != SIZE_MAX) {
+    /* The boundary ends the enclosed source, so later stages cannot pair a
+     * pending backslash with anything inside it. */
+    return source_flush_pending(cursor, index) &&
+      source_append_logical(cursor, character);
   }
   struct SourceStage *stage = &cursor->stages[index];
   if (stage->disabled) {
@@ -337,16 +364,9 @@ static inline bool source_finish(struct SourceCursor *cursor) {
   if (cursor->ended) {
     return true;
   }
-  for (size_t index = 0; index < cursor->stage_count; index += 1) {
-    struct SourceStage *stage = &cursor->stages[index];
-    if (stage->has_pending) {
-      struct SourceCharacter pending = stage->pending;
-      stage->has_pending = false;
-      if (!source_feed_stage(cursor, index + 1, pending)) {
-        cursor->failed = true;
-        return false;
-      }
-    }
+  if (!source_flush_pending(cursor, 0)) {
+    cursor->failed = true;
+    return false;
   }
   cursor->ended = true;
   return true;

@@ -123,25 +123,29 @@ static bool arithmetic_whitespace(int32_t character) {
     character == '\f';
 }
 
-static bool dynamic_arithmetic_name_start(int32_t character) {
+static bool is_decimal_digit(int32_t character) {
+  return character >= '0' && character <= '9';
+}
+
+static bool is_hexadecimal_digit(int32_t character) {
+  return is_decimal_digit(character) ||
+    (character >= 'A' && character <= 'F') ||
+    (character >= 'a' && character <= 'f');
+}
+
+static bool is_name_start_character(int32_t character) {
   return (character >= 'A' && character <= 'Z') ||
     (character >= 'a' && character <= 'z') ||
     character == '_';
 }
 
-static bool dynamic_arithmetic_digit(int32_t character) {
-  return character >= '0' && character <= '9';
-}
-
-static bool dynamic_arithmetic_hex(int32_t character) {
-  return dynamic_arithmetic_digit(character) ||
-    (character >= 'a' && character <= 'f') ||
-    (character >= 'A' && character <= 'F');
+static bool is_name_character(int32_t character) {
+  return is_name_start_character(character) || is_decimal_digit(character);
 }
 
 static int dynamic_arithmetic_lex(uint8_t state, int32_t character) {
-  bool name = dynamic_arithmetic_name_start(character);
-  bool digit = dynamic_arithmetic_digit(character);
+  bool name = is_name_start_character(character);
+  bool digit = is_decimal_digit(character);
   switch (state) {
   case DYNAMIC_LEX_START:
     if (arithmetic_whitespace(character)) {
@@ -212,10 +216,10 @@ static int dynamic_arithmetic_lex(uint8_t state, int32_t character) {
     }
     return name ? DYNAMIC_LEX_INVALID : DYNAMIC_LEX_STOP;
   case DYNAMIC_LEX_HEX_PREFIX:
-    return dynamic_arithmetic_hex(character) ? DYNAMIC_LEX_HEX
-                                             : DYNAMIC_LEX_INVALID;
+    return is_hexadecimal_digit(character) ? DYNAMIC_LEX_HEX
+                                           : DYNAMIC_LEX_INVALID;
   case DYNAMIC_LEX_HEX:
-    if (dynamic_arithmetic_hex(character)) {
+    if (is_hexadecimal_digit(character)) {
       return DYNAMIC_LEX_HEX;
     }
     return name || digit ? DYNAMIC_LEX_INVALID : DYNAMIC_LEX_STOP;

@@ -451,7 +451,7 @@ static const struct ReservedWord *find_reserved_word(const char *word) {
   return NULL;
 }
 
-static void backquote_stages(bool quoted, struct SourceStage stages[static 3]) {
+static void backquote_stages(bool quoted, struct SourceStage *stages) {
   stages[0] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
   stages[0].disabled = !quoted;
   stages[1] = source_stage(SOURCE_BACKQUOTE_DECODE);
@@ -461,7 +461,7 @@ static void backquote_stages(bool quoted, struct SourceStage stages[static 3]) {
 
 static void here_document_body_stages(
   const struct HereDocument *document,
-  struct SourceStage stages[static 4]
+  struct SourceStage *stages
 ) {
   stages[0] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
   stages[0].disabled = true;
@@ -876,24 +876,8 @@ static bool append_quoted_escape(struct ByteBuffer *buffer, int32_t character) {
   }
 }
 
-static bool is_decimal_digit(int32_t character) {
-  return character >= '0' && character <= '9';
-}
-
 static bool is_horizontal_blank(int32_t character) {
   return character == ' ' || character == '\t';
-}
-
-static bool is_name_start_character(int32_t character) {
-  return (
-    (character >= 'A' && character <= 'Z') ||
-    (character >= 'a' && character <= 'z') ||
-    character == '_'
-  );
-}
-
-static bool is_name_character(int32_t character) {
-  return is_name_start_character(character) || is_decimal_digit(character);
 }
 
 static bool is_one_of(int32_t character, const char *set) {
@@ -931,7 +915,8 @@ static bool accept_character(TSLexer *lexer, enum TokenType symbol) {
   return true;
 }
 
-static bool count_escape_run(TSLexer *lexer, size_t *escape_count) {
+/* An odd run escapes the next character unless the enclosed source ends. */
+static bool skip_escape_run(TSLexer *lexer, bool *continuation) {
   size_t count = 0;
   while (lexer->lookahead == '\\') {
     if (count == SIZE_MAX) {
@@ -940,7 +925,10 @@ static bool count_escape_run(TSLexer *lexer, size_t *escape_count) {
     count += 1;
     lexer->advance(lexer, false);
   }
-  *escape_count = count;
+  *continuation = count == 1 && lexer->lookahead == '\n';
+  if ((count & 1) != 0 && lexer->lookahead != SOURCE_BACKQUOTE_BOUNDARY) {
+    lexer->advance(lexer, false);
+  }
   return true;
 }
 
@@ -2247,14 +2235,6 @@ static void track_delimiter_command_character(
   }
 }
 
-static bool is_hexadecimal_digit(int32_t character) {
-  return (
-    (character >= '0' && character <= '9') ||
-    (character >= 'A' && character <= 'F') ||
-    (character >= 'a' && character <= 'f')
-  );
-}
-
 static uint8_t hexadecimal_value(int32_t character) {
   if (character >= '0' && character <= '9') {
     return (uint8_t)(character - '0');
@@ -3278,25 +3258,28 @@ static enum DelimiterReadResult read_here_document_delimiter(
     }
 
     if (character == '\\') {
-
       lexer->advance(lexer, false);
       if (lexer_at_eof(lexer)) {
         valid = false;
-      } else {
-        has_word_content = true;
-        mark_delimiter_quoted(
-          &quoted,
-          collecting_nested_delimiter,
-          &nested_delimiter_quoted
-        );
-        track_delimiter_command_character(
-          command_word,
-          at_nested_delimiter_base,
-          character
-        );
-        valid = append_codepoint(&delimiter, lexer->lookahead);
-        lexer->advance(lexer, false);
+        continue;
       }
+      has_word_content = true;
+      track_delimiter_command_character(
+        command_word,
+        at_nested_delimiter_base,
+        character
+      );
+      if (lexer->lookahead == SOURCE_BACKQUOTE_BOUNDARY) {
+        valid = append_byte(&delimiter, '\\');
+        continue;
+      }
+      mark_delimiter_quoted(
+        &quoted,
+        collecting_nested_delimiter,
+        &nested_delimiter_quoted
+      );
+      valid = append_codepoint(&delimiter, lexer->lookahead);
+      lexer->advance(lexer, false);
       continue;
     }
 
@@ -4788,13 +4771,10 @@ static enum ArithmeticValidation resume_embedded_construct(
 
     if (frame->closer == '"' || quoted_parameter) {
       if (character == '\\') {
-        size_t run;
-        if (!count_escape_run(lexer, &run)) {
+        bool continuation;
+        if (!skip_escape_run(lexer, &continuation)) {
           result = ARITHMETIC_VALIDATION_INCOMPLETE;
           break;
-        }
-        if ((run & 1) != 0) {
-          lexer->advance(lexer, false);
         }
         continue;
       }
@@ -4826,16 +4806,12 @@ static enum ArithmeticValidation resume_embedded_construct(
     }
 
     if (character == '\\') {
-      size_t run;
-      if (!count_escape_run(lexer, &run)) {
+      bool continuation;
+      if (!skip_escape_run(lexer, &continuation)) {
         result = ARITHMETIC_VALIDATION_INCOMPLETE;
         break;
       }
-      bool continuation = run == 1 && lexer->lookahead == '\n';
-      if ((run & 1) != 0) {
-        lexer->advance(lexer, false);
-      }
-      if (run != 0 && !continuation) {
+      if (!continuation) {
         embedded_note_word(skip, in_command);
       }
       continue;
@@ -7358,7 +7334,12 @@ static bool lexical_escape(TSLexer *lexer, enum TokenType symbol) {
   }
   lexer->advance(lexer, false);
   int32_t character = lexer->lookahead;
-  if (lexer_at_eof(lexer) || character == '\n') {
+  if (
+    lexer_at_eof(lexer) ||
+    character ==
+    '\n' ||
+    character == SOURCE_BACKQUOTE_BOUNDARY
+  ) {
     return false;
   }
   bool accepted = symbol ==
@@ -7644,14 +7625,11 @@ static bool lexical_classify(struct LogicalLexer *input, const bool *valid) {
 
 static bool pattern_structured_start(struct LogicalLexer *input) {
   int32_t character = input->lexer.lookahead;
+  if (character == '\\') {
+    return logical_peek(input) != SOURCE_BACKQUOTE_BOUNDARY;
+  }
   if (character != '$') {
-    return character ==
-      '\\' ||
-      character ==
-      '\'' ||
-      character ==
-      '"' ||
-      character == '`';
+    return character == '\'' || character == '"' || character == '`';
   }
   int32_t follower = logical_peek(input);
   return is_parameter_start_character(follower) ||

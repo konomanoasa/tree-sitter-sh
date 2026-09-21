@@ -12,7 +12,7 @@ POSIX.1-2024 Shell Command Language.
 npm install tree-sitter-sh
 ```
 
-## Grammars
+## Grammar
 
 | Grammar | Description | Rust constant |
 | --- | --- | --- |
