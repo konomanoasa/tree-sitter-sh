@@ -1,6 +1,7 @@
 #ifndef TREE_SITTER_SH_ARITHMETIC_H_
 #define TREE_SITTER_SH_ARITHMETIC_H_
 
+#include "source.h"
 #include "tree_sitter/alloc.h"
 
 #include <stdbool.h>
@@ -109,31 +110,6 @@ struct DynamicArithmeticGraph {
   size_t pending_capacity;
   bool valid;
 };
-
-static void *dynamic_arithmetic_grow(
-  void *buffer,
-  size_t *capacity,
-  size_t length,
-  size_t width
-) {
-  if (length <= *capacity) {
-    return buffer;
-  }
-  size_t maximum = SIZE_MAX / width;
-  if (length > maximum) {
-    return NULL;
-  }
-  size_t next = *capacity == 0 ? 16 : *capacity;
-  while (next < length) {
-    next = next > maximum / 2 ? maximum : next * 2;
-  }
-  void *grown = ts_realloc(buffer, next * width);
-  if (grown == NULL) {
-    return NULL;
-  }
-  *capacity = next;
-  return grown;
-}
 
 static bool arithmetic_whitespace(int32_t character) {
   return character ==
@@ -369,7 +345,7 @@ static bool dynamic_arithmetic_vertex(
     if (graph->vertex_count == SIZE_MAX) {
       return false;
     }
-    struct DynamicArithmeticVertex *vertices = dynamic_arithmetic_grow(
+    struct DynamicArithmeticVertex *vertices = source_grow(
       graph->vertices,
       &graph->vertex_capacity,
       graph->vertex_count + 1,
@@ -400,7 +376,7 @@ static bool dynamic_arithmetic_edge(
   ) {
     return false;
   }
-  struct DynamicArithmeticEdge *edges = dynamic_arithmetic_grow(
+  struct DynamicArithmeticEdge *edges = source_grow(
     graph->edges,
     &graph->edge_capacity,
     graph->edge_count + 1,
@@ -434,7 +410,7 @@ static bool dynamic_arithmetic_enqueue(
   if (graph->pending_count == SIZE_MAX) {
     return false;
   }
-  struct DynamicArithmeticLexItem *pending = dynamic_arithmetic_grow(
+  struct DynamicArithmeticLexItem *pending = source_grow(
     graph->pending,
     &graph->pending_capacity,
     graph->pending_count + 1,
@@ -477,7 +453,7 @@ static bool dynamic_arithmetic_emit(
     if (graph->endpoint_count == SIZE_MAX) {
       return false;
     }
-    size_t *endpoints = dynamic_arithmetic_grow(
+    size_t *endpoints = source_grow(
       graph->endpoints,
       &graph->endpoint_capacity,
       graph->endpoint_count + 1,
@@ -669,7 +645,7 @@ static bool dynamic_arithmetic_project_enqueue(
   if (projection->count == SIZE_MAX) {
     return false;
   }
-  size_t *pending = dynamic_arithmetic_grow(
+  size_t *pending = source_grow(
     projection->pending,
     &projection->capacity,
     projection->count + 1,
@@ -954,7 +930,7 @@ static bool dynamic_arithmetic_add_item(
   if (chart->item_count == SIZE_MAX) {
     return false;
   }
-  struct DynamicArithmeticItem *items = dynamic_arithmetic_grow(
+  struct DynamicArithmeticItem *items = source_grow(
     chart->items,
     &chart->item_capacity,
     chart->item_count + 1,
@@ -964,7 +940,7 @@ static bool dynamic_arithmetic_add_item(
     return false;
   }
   chart->items = items;
-  size_t *pending = dynamic_arithmetic_grow(
+  size_t *pending = source_grow(
     chart->pending,
     &chart->pending_capacity,
     chart->pending_count + 1,
@@ -1059,7 +1035,7 @@ static bool dynamic_arithmetic_complete(
   if (chart->completion_count == SIZE_MAX) {
     return false;
   }
-  struct DynamicArithmeticCompletion *completions = dynamic_arithmetic_grow(
+  struct DynamicArithmeticCompletion *completions = source_grow(
     chart->completions,
     &chart->completion_capacity,
     chart->completion_count + 1,

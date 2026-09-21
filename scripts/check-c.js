@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import {
   accessSync,
   constants,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -14,25 +15,31 @@ import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
 import lexicalTokens from "../src/lexical-tokens.json" with { type: "json" };
 import { grammars, packageName, root } from "./tree-sitter.js";
 
-const scannerConfigurations = {
-  sh: {
-    externalCount: "TOKEN_COUNT",
-    enumerators: {
-      ...Object.fromEntries(
-        Object.values(lexicalTokens)
-          .flat()
-          .map(({ begin, scanner }) => [begin, scanner]),
-      ),
-      _dless_commit: "DLESS",
-      _dlessdash_commit: "DLESSDASH",
-    },
-    reuseAllocator: true,
-  },
+const enumerators = {
+  ...Object.fromEntries(
+    Object.values(lexicalTokens)
+      .flat()
+      .map(({ begin, scanner }) => [begin, scanner]),
+  ),
+  _dless_commit: "DLESS",
+  _dlessdash_commit: "DLESSDASH",
 };
 
 const warningArguments = ["-Wall", "-Wextra", "-Werror", "-pedantic"];
 const scannerContract = join(root, "test", "scanner.test.c");
 const contracts = [scannerContract, join(root, "test", "source.test.c")];
+
+const variants = grammars.map((grammar) => {
+  const includeDirectory = join(root, grammar.path, "src");
+  return {
+    name: grammar.name,
+    includeDirectory,
+    source: join(includeDirectory, "scanner.c"),
+    headers: grammar.externalFiles
+      .filter((file) => file.endsWith(".h") && file !== "src/lexical-tokens.h")
+      .map((file) => join(root, file)),
+  };
+});
 
 function run(
   command,
@@ -106,10 +113,7 @@ function versionMajor(command) {
 
 function llvmCommands() {
   if (process.platform === "darwin") {
-    const prefix = run("brew", ["--prefix", "llvm"], {
-      stdio: "pipe",
-    }).stdout.trim();
-    const directory = join(prefix, "bin");
+    const directory = "/opt/homebrew/opt/llvm/bin";
     return {
       clang: findExecutable(join(directory, "clang"), []),
       clangd: findExecutable(join(directory, "clangd"), []),
@@ -135,40 +139,17 @@ function llvmCommands() {
   };
 }
 
-function scannerVariants() {
-  return grammars.map((grammar) => {
-    const configuration = scannerConfigurations[grammar.name];
-    if (configuration === undefined)
-      throw new Error(`Unsupported scanner grammar ${grammar.name}.`);
-    if (typeof configuration.reuseAllocator !== "boolean")
-      throw new Error(
-        `Scanner grammar ${grammar.name} must declare reuseAllocator.`,
-      );
-    const includeDirectory = join(root, grammar.path, "src");
-    return {
-      ...configuration,
-      name: grammar.name,
-      includeDirectory,
-      source: join(includeDirectory, "scanner.c"),
-      headers: grammar.externalFiles
-        .filter(
-          (file) =>
-            file.endsWith(".h") && basename(file) !== "lexical-tokens.h",
-        )
-        .map((file) => join(root, file)),
-    };
-  });
-}
-
 function checkExternalTokenOrder(clang, compilerArguments, variant, directory) {
   const grammar = JSON.parse(
     readFileSync(join(variant.includeDirectory, "grammar.json"), "utf8"),
   );
   const assertions = grammar.externals.map((external, index) => {
-    const name = external.type === "SYMBOL" ? external.name : external.value;
+    const token =
+      external.type === "IMMEDIATE_TOKEN" ? external.content : external;
+    const name = token.type === "SYMBOL" ? token.name : token.value;
     const enumerator =
-      variant.enumerators?.[name] ??
-      (external.type === "SYMBOL"
+      enumerators[name] ??
+      (token.type === "SYMBOL"
         ? name.replace(/^_/, "").toUpperCase()
         : undefined);
     if (enumerator === undefined) {
@@ -179,7 +160,7 @@ function checkExternalTokenOrder(clang, compilerArguments, variant, directory) {
     return `typedef char external_${index}[${enumerator} == ${index} ? 1 : -1];`;
   });
   assertions.push(
-    `typedef char external_count[(${variant.externalCount}) == ${grammar.externals.length} ? 1 : -1];`,
+    `typedef char external_count[TOKEN_COUNT == ${grammar.externals.length} ? 1 : -1];`,
   );
   const source = join(directory, `scanner-indices-${variant.name}.c`);
   writeFileSync(
@@ -189,13 +170,45 @@ function checkExternalTokenOrder(clang, compilerArguments, variant, directory) {
   run(clang, [...compilerArguments, "-fsyntax-only", source]);
 }
 
-function checkDiagnostics(clangd, sources) {
-  for (const source of sources) {
-    process.stdout.write(`clangd: ${source}\n`);
-    // --check also probes editor features at every token in large files.
-    run(clangd, ["--log=error", "--tweaks=", `--check=${source}`], {
-      timeout: 180_000,
-    });
+function checkDiagnostics(clang, clangd, directory) {
+  for (const variant of variants) {
+    const databaseDirectory = join(directory, variant.name);
+    mkdirSync(databaseDirectory);
+    const sources = [variant.source, ...variant.headers, ...contracts];
+    const commands = sources.map((source) => ({
+      arguments: [
+        clang,
+        "-std=c17",
+        source.endsWith(".h") ? "-xc-header" : "-xc",
+        "-I",
+        variant.includeDirectory,
+        ...warningArguments,
+        // Clangd checks headers and included helpers without all their callers.
+        "-Wno-unused-function",
+        "-fsyntax-only",
+        source,
+      ],
+      directory: root,
+      file: source,
+    }));
+    writeFileSync(
+      join(databaseDirectory, "compile_commands.json"),
+      `${JSON.stringify(commands)}\n`,
+    );
+    for (const source of sources) {
+      process.stdout.write(`clangd: ${variant.name}: ${source}\n`);
+      run(
+        clangd,
+        [
+          "--enable-config=false",
+          "--log=error",
+          "--tweaks=",
+          `--compile-commands-dir=${databaseDirectory}`,
+          `--check=${source}`,
+        ],
+        { timeout: 180_000 },
+      );
+    }
   }
 }
 
@@ -232,7 +245,6 @@ function main(arguments_) {
   ) {
     throw new Error("Usage: node scripts/check-c.js [--write | --sanitize]");
   }
-  const variants = scannerVariants();
   const sources = [
     ...new Set([
       ...variants.flatMap((variant) => variant.headers),
@@ -261,7 +273,7 @@ function main(arguments_) {
       : [];
   const directory = mkdtempSync(join(tmpdir(), `${packageName}-scanner-`));
   try {
-    checkDiagnostics(clangd, sources);
+    checkDiagnostics(clang, clangd, directory);
     run(clangFormat, ["--dry-run", "--Werror", ...sources]);
     for (const standard of ["c99", "c17"]) {
       for (const variant of variants) {
@@ -274,10 +286,7 @@ function main(arguments_) {
         ];
         checkExternalTokenOrder(clang, compilerArguments, variant, directory);
         for (const contract of contracts) {
-          const modes =
-            contract === scannerContract && variant.reuseAllocator
-              ? [false, true]
-              : [false];
+          const modes = contract === scannerContract ? [false, true] : [false];
           for (const reuse of modes) {
             const suffix = process.platform === "win32" ? ".exe" : "";
             const contractName = basename(contract, ".test.c");
@@ -285,7 +294,6 @@ function main(arguments_) {
             const binary = join(directory, `scanner-${name}${suffix}`);
             run(clang, [
               ...compilerArguments,
-              ...(variant.contractArguments ?? []),
               ...(reuse ? ["-DTREE_SITTER_REUSE_ALLOCATOR"] : []),
               contract,
               "-o",
@@ -297,7 +305,7 @@ function main(arguments_) {
             );
           }
         }
-        if (standard === "c17" && variant.reuseAllocator)
+        if (standard === "c17")
           checkAllocatorSymbols(clang, variant, directory);
       }
     }

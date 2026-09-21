@@ -415,7 +415,6 @@ static inline bool source_checkpoint(
   return true;
 }
 
-/* Replay never moves the native reader or changes its token mark. */
 static inline bool source_snapshot_at(
   const struct SourceCursor *cursor,
   size_t raw_position,

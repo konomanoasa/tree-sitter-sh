@@ -2,28 +2,16 @@
 name = "tree-sitter-sh"
 version = "0.15.0"
 edition = "2024"
-description = "Tree-sitter grammar for POSIX sh."
-readme = "README.md"
-repository = "https://github.com/konomanoasa/tree-sitter-sh"
-license = "MIT"
-keywords = ["incremental", "parsing", "sh", "tree-sitter"]
-categories = ["parser-implementations", "parsing", "text-editors"]
 build = "bindings/rust/build.rs"
-include = [
-  "/LICENSE",
-  "/README.md",
-  "/bindings/rust/*.rs",
-  "/grammar.js",
-  "/queries/*.scm",
-  "/src/*.c",
-  "/src/*.h",
-  "/src/*.json",
-  "/src/tree_sitter/*.h",
-  "/tree-sitter.json",
-]
+links = "tree-sitter-sh"
+publish = false
 
 [lib]
 path = "bindings/rust/lib.rs"
+
+[[test]]
+name = "bindings"
+path = "test/bindings.test.rs"
 
 [dependencies]
 tree-sitter-language = "0.1.8"
@@ -32,4 +20,4 @@ tree-sitter-language = "0.1.8"
 tree-sitter = "0.27.0"
 
 [build-dependencies]
-cc = "1.4.6"
+cc = "1.4"

@@ -134,6 +134,7 @@ init_mock_lexer(struct MockLexer *mock, const int32_t *input, size_t length) {
     .lexer =
       {
         .lookahead = length == 0 ? 0 : input[0],
+        .result_symbol = UINT16_MAX,
         .advance = mock_advance,
         .mark_end = mock_mark_end,
         .get_column = mock_get_column,
@@ -2841,7 +2842,11 @@ static void test_embedded_here_document_read_failures_terminate(void) {
     struct SourceFixture fixture;
     init_source_fixture(&fixture, "body\nEND\ntail", &stage, 1);
     struct EmbeddedSkip skip = {0};
-    assert(embedded_append_pending(&skip, make_document("END", false, false)));
+    assert(append_document(
+      &skip.pending,
+      &skip.pending_count,
+      make_document("END", false, false)
+    ));
     size_t first_allocation = reuse_allocation_calls;
     if (failure > 0)
       reuse_fail_allocation_call = first_allocation + failure;

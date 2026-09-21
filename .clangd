@@ -6,14 +6,11 @@ CompileFlags:
     - -Wextra
     - -Werror
     - -pedantic
-    # Clangd skips included function bodies, so missed calls must not exhaust
-    # its error limit. Strict compiler checks still reject unused functions.
-    - -Wno-error=unused-function
+    - -Wno-unused-function
 
 ---
 If:
-  PathMatch: src/.*\.h
+  PathMatch: .*\.h
 CompileFlags:
   Add:
-    # Standalone headers cannot see calls from their includers.
-    - -Wno-unused-function
+    - -xc-header

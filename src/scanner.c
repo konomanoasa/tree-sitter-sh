@@ -451,6 +451,28 @@ static const struct ReservedWord *find_reserved_word(const char *word) {
   return NULL;
 }
 
+static void backquote_stages(bool quoted, struct SourceStage stages[static 3]) {
+  stages[0] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
+  stages[0].disabled = !quoted;
+  stages[1] = source_stage(SOURCE_BACKQUOTE_DECODE);
+  stages[1].quoted = quoted;
+  stages[2] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
+}
+
+static void here_document_body_stages(
+  const struct HereDocument *document,
+  struct SourceStage stages[static 4]
+) {
+  stages[0] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
+  stages[0].disabled = true;
+  stages[1] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
+  stages[1].disabled = document->quoted;
+  stages[2] = source_stage(SOURCE_STRIP_LEADING_TABS);
+  stages[2].disabled = !document->strip_tabs;
+  stages[3] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
+  stages[3].disabled = true;
+}
+
 static void clear_document(struct HereDocument *document) {
   ts_free(document->delimiter);
   document->delimiter = NULL;
@@ -500,10 +522,6 @@ static void clear_scanner(struct Scanner *scanner) {
   scanner->backquote_depth = 0;
   scanner->substitution_depth = 0;
   scanner->body_backquote_depth = 0;
-}
-
-static void trim_backquote_depth(struct Scanner *scanner, size_t depth) {
-  scanner->backquote_depth = depth;
 }
 
 static size_t enclosing_substitution_depth(const struct Scanner *scanner) {
@@ -689,7 +707,7 @@ static void restore_suspended_documents(struct Scanner *scanner) {
 }
 
 static void finish_active_document(struct Scanner *scanner) {
-  trim_backquote_depth(scanner, scanner->body_backquote_depth);
+  scanner->backquote_depth = scanner->body_backquote_depth;
   clear_document(&scanner->active_documents[0]);
   scanner->active_count -= 1;
 
@@ -878,24 +896,16 @@ static bool is_name_character(int32_t character) {
   return is_name_start_character(character) || is_decimal_digit(character);
 }
 
+static bool is_one_of(int32_t character, const char *set) {
+  return character >
+    0 &&
+    character <
+    128 &&
+    strchr(set, (int)character) != NULL;
+}
+
 static bool is_special_parameter_character(int32_t character) {
-  return (
-    character ==
-    '0' ||
-    character ==
-    '*' ||
-    character ==
-    '@' ||
-    character ==
-    '#' ||
-    character ==
-    '?' ||
-    character ==
-    '$' ||
-    character ==
-    '!' ||
-    character == '-'
-  );
+  return is_one_of(character, "0*@#?$!-");
 }
 
 static bool is_parameter_start_character(int32_t character) {
@@ -911,26 +921,18 @@ static bool is_lowercase_letter(int32_t character) {
 }
 
 static bool is_control_operator_start(int32_t character) {
-  return (
-    character ==
-    '&' ||
-    character ==
-    '(' ||
-    character ==
-    ')' ||
-    character ==
-    ';' ||
-    character ==
-    '<' ||
-    character ==
-    '>' ||
-    character == '|'
-  );
+  return is_one_of(character, "&();<>|");
 }
 
-static bool
-count_escape_run(TSLexer *lexer, size_t initial, size_t *escape_count) {
-  size_t count = initial;
+static bool accept_character(TSLexer *lexer, enum TokenType symbol) {
+  lexer->advance(lexer, false);
+  lexer->mark_end(lexer);
+  lexer->result_symbol = (TSSymbol)symbol;
+  return true;
+}
+
+static bool count_escape_run(TSLexer *lexer, size_t *escape_count) {
+  size_t count = 0;
   while (lexer->lookahead == '\\') {
     if (count == SIZE_MAX) {
       return false;
@@ -986,46 +988,29 @@ static bool comment_reaches_end(const TSLexer *lexer) {
 }
 
 static bool is_token_delimiter_character(int32_t character) {
-  return (
-    character ==
-    ' ' ||
-    character ==
-    '\t' ||
+  return is_horizontal_blank(character) ||
     character ==
     '\n' ||
     is_control_operator_start(character) ||
-    character == SOURCE_BACKQUOTE_BOUNDARY
-  );
+    character == SOURCE_BACKQUOTE_BOUNDARY;
 }
 
 static bool is_token_delimiter(const TSLexer *lexer) {
   return lexer_at_eof(lexer) || is_token_delimiter_character(lexer->lookahead);
 }
 
-static bool
-is_bracket_scan_boundary(const TSLexer *lexer, bool parameter_pattern) {
-  if (!parameter_pattern) {
+static bool pattern_boundary(const TSLexer *lexer, bool parameter) {
+  if (!parameter) {
     return is_token_delimiter(lexer);
   }
-
-  return (
-    lexer_at_eof(lexer) ||
+  return lexer_at_eof(lexer) ||
     lexer->lookahead ==
     '}' ||
-    (lexer->lookahead == SOURCE_BACKQUOTE_BOUNDARY)
-  );
+    lexer->lookahead == SOURCE_BACKQUOTE_BOUNDARY;
 }
 
 static bool is_quote_or_expansion_start(int32_t character) {
-  return (
-    character ==
-    '\'' ||
-    character ==
-    '"' ||
-    character ==
-    '$' ||
-    character == '`'
-  );
+  return is_one_of(character, "'\"$`");
 }
 
 struct ValidationToken {
@@ -1077,6 +1062,9 @@ enum PatternMode {
   PATTERN_PARAMETER_TILDE,
 };
 
+// Tree-sitter reserves -1 for undecodable bytes.
+#define LOOKAHEAD_END INT32_MIN
+
 struct LookaheadCharacter {
   int32_t value;
   size_t substitution;
@@ -1123,21 +1111,13 @@ static void lookahead_fail(struct LookaheadLexer *lookahead) {
   }
 }
 
-static void *grow_element_buffer(
-  void *data,
-  size_t *capacity,
-  size_t length,
-  size_t element_size,
-  size_t initial_capacity
-);
-
 static void lookahead_seek(struct LookaheadLexer *lookahead, size_t position) {
   lookahead->position = position;
   if (lookahead->failed) {
     return;
   }
   int32_t character = lookahead->characters[position].value;
-  lookahead->lexer.lookahead = character < 0 ? 0 : character;
+  lookahead->lexer.lookahead = character == LOOKAHEAD_END ? 0 : character;
 }
 
 static bool lookahead_append(struct LookaheadLexer *lookahead, size_t view) {
@@ -1146,12 +1126,11 @@ static bool lookahead_append(struct LookaheadLexer *lookahead, size_t view) {
     lookahead_fail(lookahead);
     return false;
   }
-  struct LookaheadCharacter *characters = grow_element_buffer(
+  struct LookaheadCharacter *characters = source_grow(
     lookahead->characters,
     &lookahead->capacity,
-    lookahead->length,
-    sizeof(struct LookaheadCharacter),
-    64
+    lookahead->length + 1,
+    sizeof(struct LookaheadCharacter)
   );
   if (characters == NULL) {
     lookahead_fail(lookahead);
@@ -1159,7 +1138,8 @@ static bool lookahead_append(struct LookaheadLexer *lookahead, size_t view) {
   }
   lookahead->characters = characters;
   lookahead->characters[lookahead->length++] = (struct LookaheadCharacter){
-    .value = lexer_at_eof(&input->lexer) ? -1 : input->lexer.lookahead,
+    .value =
+      lexer_at_eof(&input->lexer) ? LOOKAHEAD_END : input->lexer.lookahead,
     .substitution = SIZE_MAX,
     .view = view,
     .logical_position = input->result == SOURCE_CHARACTER
@@ -1226,7 +1206,7 @@ static bool lookahead_eof(const TSLexer *lexer) {
   return lookahead->failed ||
     (lookahead->length == 0
         ? lexer_at_eof(lookahead->source)
-        : lookahead->characters[lookahead->position].value < 0);
+        : lookahead->characters[lookahead->position].value == LOOKAHEAD_END);
 }
 
 static bool lookahead_is_pending(const TSLexer *lexer) {
@@ -1328,12 +1308,11 @@ static bool lookahead_set_stages_at(
     lookahead_fail(lookahead);
     return false;
   }
-  struct LookaheadView *views = grow_element_buffer(
+  struct LookaheadView *views = source_grow(
     lookahead->views,
     &lookahead->view_capacity,
-    lookahead->view_count,
-    sizeof(*views),
-    8
+    lookahead->view_count + 1,
+    sizeof(*views)
   );
   if (views == NULL) {
     logical_clear(input);
@@ -1413,13 +1392,8 @@ static bool lookahead_backquote_begin(
     .stage_count = count,
     .local_disabled = input->cursor.initial[count - 1].disabled,
   };
-  struct SourceStage stages[] = {
-    source_stage(SOURCE_REMOVE_CONTINUATIONS),
-    source_stage(SOURCE_BACKQUOTE_DECODE),
-    source_stage(SOURCE_REMOVE_CONTINUATIONS),
-  };
-  stages[0].disabled = !quoted;
-  stages[1].quoted = quoted;
+  struct SourceStage stages[3];
+  backquote_stages(quoted, stages);
   return lookahead_set_stages(lexer, count - 1, stages, 3);
 }
 
@@ -1476,12 +1450,11 @@ lookup_ambiguous_substitution(const struct Scanner *scanner, TSLexer *lexer) {
       return substitution;
     }
   }
-  struct AmbiguousSubstitution *substitutions = grow_element_buffer(
+  struct AmbiguousSubstitution *substitutions = source_grow(
     lookahead->substitutions,
     &lookahead->substitution_capacity,
-    lookahead->substitution_count,
-    sizeof(struct AmbiguousSubstitution),
-    8
+    lookahead->substitution_count + 1,
+    sizeof(struct AmbiguousSubstitution)
   );
   if (substitutions == NULL) {
     lookahead_fail(lookahead);
@@ -1584,7 +1557,7 @@ static enum BracketEscape skip_bracket_escape(TSLexer *lexer) {
 
 static bool
 is_bracket_literal_boundary(const TSLexer *lexer, enum PatternMode mode) {
-  return is_bracket_scan_boundary(
+  return pattern_boundary(
            lexer,
            mode == PATTERN_PARAMETER || mode == PATTERN_PARAMETER_TILDE
          ) ||
@@ -1728,41 +1701,17 @@ static bool scan_pattern_bracket_character(
 ) {
   int32_t character = lexer->lookahead;
   if (
-    lexer_at_eof(lexer) ||
-    character ==
-    '[' ||
-    character ==
-    ']' ||
-    character ==
-    '-' ||
-    character ==
-    '!' ||
-    character ==
-    '*' ||
-    character ==
-    '?' ||
-    character ==
-    ':' ||
-    character ==
-    '.' ||
-    character ==
-    '=' ||
-    character ==
-    '\\' ||
+    is_one_of(character, "[]-!*?:.=\\") ||
     is_quote_or_expansion_start(character) ||
-    is_bracket_scan_boundary(lexer, parameter_pattern)
+    pattern_boundary(lexer, parameter_pattern)
   ) {
     return false;
   }
-
-  lexer->advance(lexer, false);
-  lexer->mark_end(lexer);
   if (character == '\n' && scanner->active_count > 0) {
     reset_here_document_delimiter_scan(scanner);
     scanner->at_here_document_line_start = true;
   }
-  lexer->result_symbol = (TSSymbol)symbol;
-  return true;
+  return accept_character(lexer, symbol);
 }
 
 enum DelimiterQuote {
@@ -1864,8 +1813,7 @@ struct DelimiterGroupBuffer {
   bool failed;
 };
 
-// Delimiter scans and embedded skips share case tracking. EXPECT_PATTERN
-// distinguishes an esac closer from an ordinary word later in the pattern.
+// EXPECT_PATTERN distinguishes a closing esac from a later pattern word.
 enum CaseTrackerState {
   CASE_TRACKER_EXPECT_WORD,
   CASE_TRACKER_EXPECT_IN,
@@ -2016,37 +1964,12 @@ static enum CaseTrackerNote case_tracker_note_word(
   return CASE_TRACKER_NOTE_WORD;
 }
 
-static void *grow_element_buffer(
-  void *data,
-  size_t *capacity,
-  size_t length,
-  size_t element_size,
-  size_t initial_capacity
-) {
-  if (length < *capacity) {
-    return data;
-  }
-
-  size_t next_capacity = *capacity == 0 ? initial_capacity : *capacity * 2;
-  if (next_capacity < *capacity || next_capacity > SIZE_MAX / element_size) {
-    return NULL;
-  }
-
-  void *resized = ts_realloc(data, next_capacity * element_size);
-  if (resized == NULL) {
-    return NULL;
-  }
-  *capacity = next_capacity;
-  return resized;
-}
-
 static bool append_case_tracker(struct CaseTrackerBuffer *cases, size_t depth) {
-  struct CaseTracker *data = grow_element_buffer(
+  struct CaseTracker *data = source_grow(
     cases->data,
     &cases->capacity,
-    cases->length,
-    sizeof(struct CaseTracker),
-    8
+    cases->length + 1,
+    sizeof(struct CaseTracker)
   );
   if (data == NULL) {
     cases->failed = true;
@@ -2081,12 +2004,11 @@ static bool push_delimiter_group(
     groups->failed = true;
     return false;
   }
-  struct DelimiterGroupFrame *data = grow_element_buffer(
+  struct DelimiterGroupFrame *data = source_grow(
     groups->data,
     &groups->capacity,
-    groups->length,
-    sizeof(struct DelimiterGroupFrame),
-    16
+    groups->length + 1,
+    sizeof(struct DelimiterGroupFrame)
   );
   if (data == NULL) {
     groups->failed = true;
@@ -2392,9 +2314,6 @@ static bool control_escape_byte(int32_t character, uint8_t *value) {
 }
 
 static bool
-scan_dollar_single_quote_backslashes(TSLexer *lexer, size_t *folded);
-
-static bool
 scan_dollar_single_quote_escape(TSLexer *lexer, struct ByteBuffer *delimiter) {
   int32_t character = lexer->lookahead;
   if (lexer_at_eof(lexer)) {
@@ -2433,12 +2352,11 @@ scan_dollar_single_quote_escape(TSLexer *lexer, struct ByteBuffer *delimiter) {
     }
 
     if (lexer->lookahead == '\\') {
-      size_t folded;
-      if (
-        !scan_dollar_single_quote_backslashes(lexer, &folded) || folded != 2
-      ) {
+      lexer->advance(lexer, false);
+      if (lexer->lookahead != '\\') {
         return false;
       }
+      lexer->advance(lexer, false);
       uint8_t value;
       return control_escape_byte('\\', &value) && append_byte(delimiter, value);
     }
@@ -2563,16 +2481,8 @@ static bool here_document_source_view(
       }
     }
   }
-  struct SourceStage stages[] = {
-    source_stage(SOURCE_REMOVE_CONTINUATIONS),
-    source_stage(SOURCE_REMOVE_CONTINUATIONS),
-    source_stage(SOURCE_STRIP_LEADING_TABS),
-    source_stage(SOURCE_REMOVE_CONTINUATIONS),
-  };
-  stages[0].disabled = true;
-  stages[1].disabled = document->quoted;
-  stages[2].disabled = !document->strip_tabs;
-  stages[3].disabled = true;
+  struct SourceStage stages[4];
+  here_document_body_stages(document, stages);
   return logical_fork(
     view,
     input,
@@ -2763,16 +2673,6 @@ static bool scan_nested_here_document_sequence(
         return false;
       }
     }
-  }
-  return true;
-}
-
-static bool
-scan_dollar_single_quote_backslashes(TSLexer *lexer, size_t *folded) {
-  *folded = 0;
-  while (lexer->lookahead == '\\' && *folded < 2) {
-    *folded += 1;
-    lexer->advance(lexer, false);
   }
   return true;
 }
@@ -3648,15 +3548,7 @@ static bool scan_here_end_commit(TSLexer *lexer) {
 
 static bool
 scan_delimited_character_token(TSLexer *lexer, enum TokenType symbol) {
-  lexer->advance(lexer, false);
-  lexer->mark_end(lexer);
-
-  if (!is_token_delimiter(lexer)) {
-    return false;
-  }
-
-  lexer->result_symbol = (TSSymbol)symbol;
-  return true;
+  return accept_character(lexer, symbol) && is_token_delimiter(lexer);
 }
 
 static bool classify_reserved_word(
@@ -3713,23 +3605,25 @@ static bool word_source_can_continue(const bool *valid_symbols) {
     valid_symbols[PARAMETER_FALLBACK_CHARACTER_BEGIN];
 }
 
+static bool scan_reserved_word(TSLexer *lexer, const bool *valid_symbols) {
+  char word[6];
+  TSSymbol symbol;
+  if (
+    !read_reserved_word(lexer, word, valid_symbols) ||
+    !classify_reserved_word(word, valid_symbols, &symbol)
+  ) {
+    return false;
+  }
+  lexer->result_symbol = symbol;
+  return true;
+}
+
 static bool scan_lowercase_dispatch(TSLexer *lexer, const bool *valid_symbols) {
   if (word_source_can_continue(valid_symbols)) {
     return false;
   }
-  char word[6];
   lexer->mark_end(lexer);
-  if (!read_reserved_word(lexer, word, valid_symbols)) {
-    return false;
-  }
-
-  TSSymbol symbol;
-  if (classify_reserved_word(word, valid_symbols, &symbol)) {
-    lexer->result_symbol = symbol;
-    return true;
-  }
-
-  return false;
+  return scan_reserved_word(lexer, valid_symbols);
 }
 
 static bool scan_horizontal_blanks(TSLexer *lexer);
@@ -3960,6 +3854,14 @@ scan_command_continuation_operator(TSLexer *lexer, const bool *valid_symbols) {
   return true;
 }
 
+static bool scan_pipe_boundary(TSLexer *lexer, const bool *valid_symbols) {
+  if (valid_symbols[PATTERN_CONTINUATION]) {
+    lexer->result_symbol = PATTERN_CONTINUATION;
+    return true;
+  }
+  return scan_command_continuation_operator(lexer, valid_symbols);
+}
+
 static bool is_word_element_start(const TSLexer *lexer) {
   int32_t character = lexer->lookahead;
   if (lexer_at_eof(lexer) || (character == SOURCE_BACKQUOTE_BOUNDARY)) {
@@ -3997,28 +3899,19 @@ static bool classify_word_separator(
   bool mark_blank_run
 );
 
-static bool scan_element_boundary_core(
+static bool scan_element_boundary(
   struct Scanner *scanner,
   TSLexer *lexer,
   const bool *valid_symbols
 ) {
+  lexer->mark_end(lexer);
   bool crossed_layout = scan_horizontal_blanks(lexer);
   int32_t character = lexer->lookahead;
   if (character == '|') {
-    if (valid_symbols[PATTERN_CONTINUATION]) {
-      lexer->result_symbol = PATTERN_CONTINUATION;
-      return true;
-    }
-    return scan_command_continuation_operator(lexer, valid_symbols);
+    return scan_pipe_boundary(lexer, valid_symbols);
   }
   if (character == '&') {
-    lexer->advance(lexer, false);
-    if (lexer->lookahead == '&') {
-      lexer->advance(lexer, false);
-      lexer->result_symbol = AND_OR_CONTINUATION;
-      return valid_symbols[AND_OR_CONTINUATION];
-    }
-    return false;
+    return scan_command_continuation_operator(lexer, valid_symbols);
   }
   if (character == ';') {
     if (scan_case_item_terminator(lexer)) {
@@ -4128,15 +4021,6 @@ static bool scan_element_boundary_core(
     return classify_word_separator(lexer, valid_symbols, true);
   }
   return classify_shell_boundary(lexer, valid_symbols, crossed_layout);
-}
-
-static bool scan_element_boundary(
-  struct Scanner *scanner,
-  TSLexer *lexer,
-  const bool *valid_symbols
-) {
-  lexer->mark_end(lexer);
-  return scan_element_boundary_core(scanner, lexer, valid_symbols);
 }
 
 static bool classify_word_separator(
@@ -4288,15 +4172,7 @@ static bool classify_shell_boundary(
 ) {
   int32_t character = lexer->lookahead;
   if (character == '|') {
-    if (valid_symbols[PATTERN_CONTINUATION]) {
-      lexer->result_symbol = PATTERN_CONTINUATION;
-      return true;
-    }
-    if (
-      valid_symbols[PIPE_CONTINUATION] || valid_symbols[AND_OR_CONTINUATION]
-    ) {
-      return scan_command_continuation_operator(lexer, valid_symbols);
-    }
+    return scan_pipe_boundary(lexer, valid_symbols);
   }
 
   if (character == '&' && valid_symbols[AND_OR_CONTINUATION]) {
@@ -4333,22 +4209,9 @@ static bool classify_shell_boundary(
     return true;
   }
 
-  if (is_lowercase_letter(character)) {
-    if (crossed_layout) {
-      return false;
-    }
-
-    char word[6];
-    if (read_reserved_word(lexer, word, valid_symbols)) {
-      TSSymbol reserved_symbol;
-      if (classify_reserved_word(word, valid_symbols, &reserved_symbol)) {
-        lexer->result_symbol = reserved_symbol;
-        return true;
-      }
-    }
-  }
-
-  return false;
+  return is_lowercase_letter(character) &&
+    !crossed_layout &&
+    scan_reserved_word(lexer, valid_symbols);
 }
 
 static bool scan_shell_boundary(TSLexer *lexer, const bool *valid_symbols) {
@@ -4471,8 +4334,6 @@ classify_arithmetic_operator(int32_t first, int32_t second, int32_t third) {
     if (second == '=') {
       return ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
     }
-    // C token recognition reads an adjacent repeated sign as one increment or
-    // decrement token, which POSIX arithmetic does not provide.
     return second == first ? ARITHMETIC_OPERATOR_CATEGORY_COUNT
                            : ARITHMETIC_OPERATOR_CATEGORY_ADDITIVE;
   case '*':
@@ -4503,25 +4364,7 @@ static bool arithmetic_operator_boundary_is_valid(const bool *valid_symbols) {
 }
 
 static bool is_arithmetic_operator_start(int32_t character) {
-  switch (character) {
-  case '=':
-  case '!':
-  case '|':
-  case '&':
-  case '^':
-  case '<':
-  case '>':
-  case '+':
-  case '-':
-  case '*':
-  case '/':
-  case '%':
-  case '?':
-  case ':':
-    return true;
-  default:
-    return false;
-  }
+  return is_one_of(character, "=!|&^<>+-*/%?:");
 }
 
 static bool
@@ -4553,8 +4396,8 @@ scan_arithmetic_boundary(TSLexer *lexer, const bool *valid_symbols) {
   return false;
 }
 
-// Resolve the arithmetic readings before parsing; racing them lets an edited
-// tree reuse a flat subtree where a fresh parse selects the structured one.
+// Parser ambiguity can reuse a flat subtree where a fresh parse selects the
+// structured one.
 
 enum ValidationTokenKind {
   VALIDATION_TOKEN_NUMBER,
@@ -4576,12 +4419,11 @@ static bool append_validation_token(
   uint8_t kind,
   uint8_t category
 ) {
-  struct ValidationToken *data = grow_element_buffer(
+  struct ValidationToken *data = source_grow(
     tokens->data,
     &tokens->capacity,
-    tokens->length,
-    sizeof(struct ValidationToken),
-    64
+    tokens->length + 1,
+    sizeof(struct ValidationToken)
   );
   if (data == NULL) {
     return false;
@@ -4622,12 +4464,11 @@ append_arithmetic_source(struct ArithmeticScan *scan, int32_t character) {
       scan->source_length -= 2;
     }
   }
-  int32_t *source = grow_element_buffer(
+  int32_t *source = source_grow(
     scan->source,
     &scan->source_capacity,
-    scan->source_length,
-    sizeof(int32_t),
-    64
+    scan->source_length + 1,
+    sizeof(int32_t)
   );
   if (source == NULL) {
     return false;
@@ -4675,17 +4516,13 @@ struct EmbeddedSkip {
   struct CaseTrackerBuffer cases;
   struct HereDocument *pending;
   size_t pending_count;
-  size_t pending_capacity;
   bool started;
 };
 
 static void clear_embedded_skip(struct EmbeddedSkip *skip) {
   ts_free(skip->frames);
   ts_free(skip->cases.data);
-  for (size_t index = 0; index < skip->pending_count; index += 1) {
-    clear_document(&skip->pending[index]);
-  }
-  ts_free(skip->pending);
+  clear_document_array(&skip->pending, &skip->pending_count);
   *skip = (struct EmbeddedSkip){0};
 }
 
@@ -4705,12 +4542,11 @@ static bool embedded_push_frame(
   enum EmbeddedFrameKind kind,
   bool double_quoted
 ) {
-  struct EmbeddedFrame *frames = grow_element_buffer(
+  struct EmbeddedFrame *frames = source_grow(
     skip->frames,
     &skip->frame_capacity,
-    skip->frame_count,
-    sizeof(struct EmbeddedFrame),
-    16
+    skip->frame_count + 1,
+    sizeof(struct EmbeddedFrame)
   );
   if (frames == NULL) {
     return false;
@@ -4783,26 +4619,6 @@ static enum ArithmeticValidation embedded_push_dollar_group(
     : ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
 }
 
-static bool embedded_append_pending(
-  struct EmbeddedSkip *skip,
-  struct HereDocument document
-) {
-  struct HereDocument *pending = grow_element_buffer(
-    skip->pending,
-    &skip->pending_capacity,
-    skip->pending_count,
-    sizeof(struct HereDocument),
-    4
-  );
-  if (pending == NULL) {
-    return false;
-  }
-  skip->pending = pending;
-  skip->pending[skip->pending_count] = document;
-  skip->pending_count += 1;
-  return true;
-}
-
 static enum ArithmeticValidation read_embedded_here_document_delimiter(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -4872,10 +4688,6 @@ static enum ArithmeticValidation skip_embedded_here_document_bodies(
   }
   skip->pending_count = retained;
   return result;
-}
-
-static bool read_embedded_escape_run(TSLexer *lexer, size_t *run) {
-  return count_escape_run(lexer, 0, run);
 }
 
 static enum ArithmeticValidation resume_embedded_construct(
@@ -4977,7 +4789,7 @@ static enum ArithmeticValidation resume_embedded_construct(
     if (frame->closer == '"' || quoted_parameter) {
       if (character == '\\') {
         size_t run;
-        if (!read_embedded_escape_run(lexer, &run)) {
+        if (!count_escape_run(lexer, &run)) {
           result = ARITHMETIC_VALIDATION_INCOMPLETE;
           break;
         }
@@ -5015,7 +4827,7 @@ static enum ArithmeticValidation resume_embedded_construct(
 
     if (character == '\\') {
       size_t run;
-      if (!read_embedded_escape_run(lexer, &run)) {
+      if (!count_escape_run(lexer, &run)) {
         result = ARITHMETIC_VALIDATION_INCOMPLETE;
         break;
       }
@@ -5113,7 +4925,7 @@ static enum ArithmeticValidation resume_embedded_construct(
         break;
       }
       document.declaration_depth = skip->frame_count;
-      if (!embedded_append_pending(skip, document)) {
+      if (!append_document(&skip->pending, &skip->pending_count, document)) {
         clear_document(&document);
         result = ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
         break;
@@ -5235,18 +5047,6 @@ static enum ArithmeticValidation resume_embedded_construct(
   return result;
 }
 
-static enum ArithmeticValidation skip_embedded_construct_core(
-  const struct Scanner *scanner,
-  TSLexer *lexer,
-  char initial_closer
-) {
-  struct EmbeddedSkip skip = {0};
-  enum ArithmeticValidation result =
-    resume_embedded_construct(scanner, lexer, initial_closer, false, &skip);
-  clear_embedded_skip(&skip);
-  return result;
-}
-
 static enum ArithmeticValidation skip_embedded_construct(
   const struct Scanner *scanner,
   TSLexer *lexer,
@@ -5255,7 +5055,11 @@ static enum ArithmeticValidation skip_embedded_construct(
   if (initial_closer == ')' && lexer->lookahead == '(') {
     return skip_ambiguous_substitution(scanner, lexer);
   }
-  return skip_embedded_construct_core(scanner, lexer, initial_closer);
+  struct EmbeddedSkip skip = {0};
+  enum ArithmeticValidation result =
+    resume_embedded_construct(scanner, lexer, initial_closer, false, &skip);
+  clear_embedded_skip(&skip);
+  return result;
 }
 
 static bool
@@ -5318,115 +5122,67 @@ validate_number_source(TSLexer *lexer, struct ArithmeticScan *scan) {
   return true;
 }
 
+static size_t
+arithmetic_operator_length(int32_t first, int32_t second, int32_t third) {
+  switch (first) {
+  case '<':
+  case '>':
+    if (second == first) {
+      return third == '=' ? 3 : 2;
+    }
+    return second == '=' ? 2 : 1;
+  case '|':
+  case '&':
+  case '+':
+  case '-':
+    return second == '=' || second == first ? 2 : 1;
+  case '=':
+  case '!':
+  case '^':
+  case '*':
+  case '/':
+  case '%':
+    return second == '=' ? 2 : 1;
+  default:
+    return 1;
+  }
+}
+
 static bool validate_operator_source(
   TSLexer *lexer,
   struct ArithmeticScan *scan,
   int32_t first
 ) {
-  struct ValidationTokenBuffer *tokens = &scan->tokens;
+  struct LookaheadLexer *lookahead = (struct LookaheadLexer *)lexer;
   if (!append_arithmetic_source(scan, first)) {
     return false;
   }
-  uint8_t category;
   int32_t second = lexer->lookahead;
-
-  switch (first) {
-  case '=':
-    category = ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
-    if (second == '=') {
-      category = ARITHMETIC_OPERATOR_CATEGORY_EQUALITY;
-      if (!advance_arithmetic_source(lexer, scan)) {
-        return false;
-      }
+  size_t position = lookahead->position;
+  lexer->advance(lexer, false);
+  int32_t third = lexer->lookahead;
+  lookahead_seek(lookahead, position);
+  enum ArithmeticOperatorCategory classified =
+    classify_arithmetic_operator(first, second, third);
+  uint8_t category = classified != ARITHMETIC_OPERATOR_CATEGORY_COUNT
+    ? (uint8_t)classified
+    : first == '~' ? VALIDATION_OPERATOR_TILDE
+    : first == '!' ? VALIDATION_OPERATOR_BANG
+                   : VALIDATION_OPERATOR_REPEATED_SIGN;
+  for (
+    size_t length = arithmetic_operator_length(first, second, third);
+    length > 1;
+    length -= 1
+  ) {
+    if (!advance_arithmetic_source(lexer, scan)) {
+      return false;
     }
-    break;
-  case '!':
-    category = VALIDATION_OPERATOR_BANG;
-    if (second == '=') {
-      category = ARITHMETIC_OPERATOR_CATEGORY_EQUALITY;
-      if (!advance_arithmetic_source(lexer, scan)) {
-        return false;
-      }
-    }
-    break;
-  case '|':
-  case '&':
-  case '^':
-    category = first == '|'
-      ? ARITHMETIC_OPERATOR_CATEGORY_BITWISE_OR
-      : (first == '&' ? ARITHMETIC_OPERATOR_CATEGORY_BITWISE_AND
-                      : ARITHMETIC_OPERATOR_CATEGORY_BITWISE_XOR);
-    if (second == '=') {
-      category = ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
-      if (!advance_arithmetic_source(lexer, scan)) {
-        return false;
-      }
-    } else if (second == first && first != '^') {
-      category = first == '|' ? ARITHMETIC_OPERATOR_CATEGORY_LOGICAL_OR
-                              : ARITHMETIC_OPERATOR_CATEGORY_LOGICAL_AND;
-      if (!advance_arithmetic_source(lexer, scan)) {
-        return false;
-      }
-    }
-    break;
-  case '<':
-  case '>':
-    category = ARITHMETIC_OPERATOR_CATEGORY_RELATIONAL;
-    if (second == first) {
-      if (!advance_arithmetic_source(lexer, scan)) {
-        return false;
-      }
-      category = ARITHMETIC_OPERATOR_CATEGORY_SHIFT;
-      if (lexer->lookahead == '=') {
-        category = ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
-        if (!advance_arithmetic_source(lexer, scan)) {
-          return false;
-        }
-      }
-    } else if (second == '=') {
-      if (!advance_arithmetic_source(lexer, scan)) {
-        return false;
-      }
-    }
-    break;
-  case '+':
-  case '-':
-    category = ARITHMETIC_OPERATOR_CATEGORY_ADDITIVE;
-    if (second == '=') {
-      category = ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
-      if (!advance_arithmetic_source(lexer, scan)) {
-        return false;
-      }
-    } else if (second == first) {
-      category = VALIDATION_OPERATOR_REPEATED_SIGN;
-      if (!advance_arithmetic_source(lexer, scan)) {
-        return false;
-      }
-    }
-    break;
-  case '*':
-  case '/':
-  case '%':
-    category = ARITHMETIC_OPERATOR_CATEGORY_MULTIPLICATIVE;
-    if (second == '=') {
-      category = ARITHMETIC_OPERATOR_CATEGORY_ASSIGNMENT;
-      if (!advance_arithmetic_source(lexer, scan)) {
-        return false;
-      }
-    }
-    break;
-  case '?':
-    category = ARITHMETIC_OPERATOR_CATEGORY_QUESTION;
-    break;
-  case ':':
-    category = ARITHMETIC_OPERATOR_CATEGORY_COLON;
-    break;
-  default:
-    category = VALIDATION_OPERATOR_TILDE;
-    break;
   }
-
-  return append_validation_token(tokens, VALIDATION_TOKEN_OPERATOR, category);
+  return append_validation_token(
+    &scan->tokens,
+    VALIDATION_TOKEN_OPERATOR,
+    category
+  );
 }
 
 static enum ArithmeticValidation validate_arithmetic_content(
@@ -5694,12 +5450,11 @@ validate_structured_expression(const struct StructuredValidation *validation) {
         continue;
       }
       if (token->kind == VALIDATION_TOKEN_LEFT_PARENTHESIS) {
-        uint8_t *grown = grow_element_buffer(
+        uint8_t *grown = source_grow(
           contexts,
           &context_capacity,
-          context_count,
-          sizeof(uint8_t),
-          16
+          context_count + 1,
+          sizeof(uint8_t)
         );
         if (grown == NULL) {
           ts_free(contexts);
@@ -5757,12 +5512,11 @@ validate_structured_expression(const struct StructuredValidation *validation) {
       continue;
     }
     if (token->category == ARITHMETIC_OPERATOR_CATEGORY_QUESTION) {
-      uint8_t *grown = grow_element_buffer(
+      uint8_t *grown = source_grow(
         contexts,
         &context_capacity,
-        context_count,
-        sizeof(uint8_t),
-        16
+        context_count + 1,
+        sizeof(uint8_t)
       );
       if (grown == NULL) {
         ts_free(contexts);
@@ -6145,18 +5899,12 @@ static bool write_state_byte(struct StateWriter *writer, uint8_t byte) {
 }
 
 static bool write_state_size(struct StateWriter *writer, size_t value) {
-  do {
-    uint8_t byte = (uint8_t)(value & 0x7f);
-    value >>= 7;
-    if (value != 0) {
-      byte |= 0x80;
-    }
-    if (!write_state_byte(writer, byte)) {
-      return false;
-    }
-  } while (value != 0);
-
-  return true;
+  return source_write_unsigned(
+    (uint8_t *)writer->data,
+    writer->capacity,
+    &writer->length,
+    value
+  );
 }
 
 static uint8_t document_flags(const struct HereDocument *document) {
@@ -6346,29 +6094,20 @@ static bool read_byte(struct SerializedScannerState *state, uint8_t *byte) {
 }
 
 static bool read_size(struct SerializedScannerState *state, size_t *value) {
-  size_t result = 0;
-  size_t factor = 1;
-
-  while (true) {
-    uint8_t byte;
-    if (!read_byte(state, &byte)) {
-      return false;
-    }
-
-    size_t digit = byte & 0x7f;
-    if (digit > (SIZE_MAX - result) / factor) {
-      return false;
-    }
-    result += digit * factor;
-    if ((byte & 0x80) == 0) {
-      *value = result;
-      return true;
-    }
-    if (factor > SIZE_MAX / 128) {
-      return false;
-    }
-    factor *= 128;
+  uint64_t decoded;
+  if (
+    !source_read_unsigned(
+      (const uint8_t *)state->data,
+      state->length,
+      &state->offset,
+      &decoded
+    ) ||
+    decoded > SIZE_MAX
+  ) {
+    return false;
   }
+  *value = (size_t)decoded;
+  return true;
 }
 
 static bool read_document_body(
@@ -6848,19 +6587,14 @@ scan_dispatch(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
     return scan_dollar_expansion_start(lexer);
   }
   if (lexer->lookahead == ':' && valid[PATTERN_CHARACTER_CLASS_END_COLON]) {
-    lexer->advance(lexer, false);
-    lexer->mark_end(lexer);
-    lexer->result_symbol = PATTERN_CHARACTER_CLASS_END_COLON;
-    return lexer->lookahead == ']';
+    return accept_character(lexer, PATTERN_CHARACTER_CLASS_END_COLON) &&
+      lexer->lookahead == ']';
   }
   if (lexer->lookahead == '[' && valid[PATTERN_SPECIAL_LEFT_BRACKET]) {
     return scan_pattern_special_left_bracket(lexer);
   }
   if (valid[PATTERN_BRACKET_HYPHEN] && lexer->lookahead == '-') {
-    lexer->advance(lexer, false);
-    lexer->mark_end(lexer);
-    lexer->result_symbol = PATTERN_BRACKET_HYPHEN;
-    return true;
+    return accept_character(lexer, PATTERN_BRACKET_HYPHEN);
   }
   if (
     valid[PARAMETER_PATTERN_BRACKET_CHARACTER] &&
@@ -7041,14 +6775,6 @@ static bool scan_with_lookahead(
   return accepted;
 }
 
-static bool recognize_scanner_token(
-  struct Scanner *scanner,
-  TSLexer *lexer,
-  const bool *valid_symbols
-) {
-  return scan_with_lookahead(scanner, lexer, valid_symbols);
-}
-
 static bool scanner_source_ready(struct Scanner *scanner) {
   if (scanner->source.stage_count > 0) {
     return true;
@@ -7116,10 +6842,10 @@ source_context_push(struct Scanner *scanner, enum TokenType opener) {
       return false;
     }
     scanner->source.stages = stages;
-    stages[count - 1].disabled = opener == BACKQUOTE_START;
-    stages[count] = source_stage(SOURCE_BACKQUOTE_DECODE);
-    stages[count].quoted = opener == DOUBLE_QUOTED_BACKQUOTE_START;
-    stages[count + 1] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
+    backquote_stages(
+      opener == DOUBLE_QUOTED_BACKQUOTE_START,
+      stages + count - 1
+    );
     scanner->source.stage_count += 2;
     scanner->backquote_depth += 1;
   } else if (
@@ -7136,13 +6862,10 @@ source_context_push(struct Scanner *scanner, enum TokenType opener) {
       return false;
     }
     scanner->source.stages = stages;
-    stages[count - 1].disabled = true;
-    stages[count] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
-    stages[count].disabled = scanner->active_documents[0].quoted;
-    stages[count + 1] = source_stage(SOURCE_STRIP_LEADING_TABS);
-    stages[count + 1].disabled = !scanner->active_documents[0].strip_tabs;
-    stages[count + 2] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
-    stages[count + 2].disabled = true;
+    here_document_body_stages(
+      &scanner->active_documents[0],
+      stages + count - 1
+    );
     scanner->source.stage_count += 3;
   } else if (opener == SQ_OPEN || opener == DOLLAR_SQ_OPEN) {
     local->disabled = true;
@@ -7221,12 +6944,6 @@ source_context_commit(struct Scanner *scanner, enum TokenType symbol) {
     scanner->substitution_depth -= 1;
     return source_context_pop(scanner);
   case HERE_DOCUMENT_LINE_END:
-    if (!activate_startable_pending_documents(scanner)) {
-      return false;
-    }
-    reset_here_document_delimiter_scan(scanner);
-    scanner->at_here_document_line_start = true;
-    return true;
   case NEWLINE:
   case COMMENT_LINE_END:
   case LOGICAL_NEWLINE_BEGIN:
@@ -7236,6 +6953,13 @@ source_context_commit(struct Scanner *scanner, enum TokenType symbol) {
       scanner->contexts[scanner->context_count - 1].opener ==
       COMMENT_START &&
       !source_context_pop(scanner)
+    ) {
+      return false;
+    }
+    if (
+      symbol ==
+      HERE_DOCUMENT_LINE_END &&
+      !activate_startable_pending_documents(scanner)
     ) {
       return false;
     }
@@ -7542,15 +7266,20 @@ static const struct LexicalOperator LEXICAL_OPERATORS[] = {
   {"%", ARITHMETIC_MULTIPLICATIVE_OPERATOR_BEGIN},
 };
 
+enum {
+  LEXICAL_OPERATOR_COUNT = sizeof(LEXICAL_OPERATORS) /
+  sizeof(LEXICAL_OPERATORS[0])
+};
+
 static bool lexical_operator(TSLexer *lexer, const bool *valid) {
-  bool candidates[sizeof(LEXICAL_OPERATORS) / sizeof(LEXICAL_OPERATORS[0])];
-  for (size_t index = 0; index < sizeof(candidates); index += 1) {
+  bool candidates[LEXICAL_OPERATOR_COUNT];
+  for (size_t index = 0; index < LEXICAL_OPERATOR_COUNT; index += 1) {
     candidates[index] = valid[LEXICAL_OPERATORS[index].symbol];
   }
   enum TokenType symbol = TOKEN_COUNT;
   for (size_t length = 0;; length += 1) {
     bool matched = false;
-    for (size_t index = 0; index < sizeof(candidates); index += 1) {
+    for (size_t index = 0; index < LEXICAL_OPERATOR_COUNT; index += 1) {
       const struct LexicalOperator *candidate = &LEXICAL_OPERATORS[index];
       if (candidates[index]) {
         candidates[index] = candidate->spelling[length] !=
@@ -7563,7 +7292,7 @@ static bool lexical_operator(TSLexer *lexer, const bool *valid) {
       break;
     }
     lexer->advance(lexer, false);
-    for (size_t index = 0; index < sizeof(candidates); index += 1) {
+    for (size_t index = 0; index < LEXICAL_OPERATOR_COUNT; index += 1) {
       if (
         candidates[index] &&
         LEXICAL_OPERATORS[index].spelling[length + 1] == '\0'
@@ -7794,16 +7523,11 @@ static bool lexical_punctuation(TSLexer *lexer, const bool *valid) {
     }
   }
   if (lexer->lookahead == '$' && valid[DOLLAR_SQ_DOLLAR]) {
-    lexer->advance(lexer, false);
-    lexer->mark_end(lexer);
-    lexer->result_symbol = DOLLAR_SQ_DOLLAR;
-    return lexer->lookahead == '\'';
+    return accept_character(lexer, DOLLAR_SQ_DOLLAR) &&
+      lexer->lookahead == '\'';
   }
   if (valid[NUMERIC_PARAMETER_DIGIT] && is_decimal_digit(lexer->lookahead)) {
-    lexer->advance(lexer, false);
-    lexer->mark_end(lexer);
-    lexer->result_symbol = NUMERIC_PARAMETER_DIGIT;
-    return true;
+    return accept_character(lexer, NUMERIC_PARAMETER_DIGIT);
   }
   return false;
 }
@@ -7881,10 +7605,7 @@ static bool lexical_classify(struct LogicalLexer *input, const bool *valid) {
       valid[characters[index].symbol] &&
       lexer->lookahead == characters[index].character
     ) {
-      lexer->advance(lexer, false);
-      lexer->mark_end(lexer);
-      lexer->result_symbol = (TSSymbol)characters[index].symbol;
-      return true;
+      return accept_character(lexer, characters[index].symbol);
     }
   }
   if (
@@ -7895,14 +7616,13 @@ static bool lexical_classify(struct LogicalLexer *input, const bool *valid) {
       '1' &&
       lexer->lookahead <= '9')
   ) {
-    enum TokenType symbol = valid[SPECIAL_PARAMETER_BEGIN] &&
-        is_special_parameter_character(lexer->lookahead)
-      ? SPECIAL_PARAMETER_BEGIN
-      : UNBRACED_POSITIONAL_PARAMETER_BEGIN;
-    lexer->advance(lexer, false);
-    lexer->mark_end(lexer);
-    lexer->result_symbol = (TSSymbol)symbol;
-    return true;
+    return accept_character(
+      lexer,
+      valid[SPECIAL_PARAMETER_BEGIN] &&
+          is_special_parameter_character(lexer->lookahead)
+        ? SPECIAL_PARAMETER_BEGIN
+        : UNBRACED_POSITIONAL_PARAMETER_BEGIN
+    );
   }
   const enum TokenType texts[] = {
     SINGLE_QUOTE_CONTENT_BEGIN,
@@ -7920,18 +7640,6 @@ static bool lexical_classify(struct LogicalLexer *input, const bool *valid) {
     }
   }
   return false;
-}
-
-static bool pattern_boundary(const TSLexer *lexer, bool parameter) {
-  int32_t character = lexer->lookahead;
-  return lexer_at_eof(lexer) ||
-    character ==
-    SOURCE_BACKQUOTE_BOUNDARY ||
-    (parameter ? character == '}'
-               : is_horizontal_blank(character) ||
-          character ==
-          '\n' ||
-          is_control_operator_start(character));
 }
 
 static bool pattern_structured_start(struct LogicalLexer *input) {
@@ -7990,13 +7698,6 @@ static bool lexical_pattern_probe(
   lookahead_clear(&lookahead);
   logical_restore_position(input, &position);
   return accepted;
-}
-
-static bool pattern_emit_character(TSLexer *lexer, enum TokenType symbol) {
-  lexer->advance(lexer, false);
-  lexer->mark_end(lexer);
-  lexer->result_symbol = (TSSymbol)symbol;
-  return true;
 }
 
 static bool
@@ -8184,7 +7885,7 @@ static bool lexical_pattern_classify(
       : context == ASSIGNMENT_FALLBACK_LITERAL_BEGIN
       ? ASSIGNMENT_FALLBACK_CHARACTER_BEGIN
       : WORD_FALLBACK_CHARACTER_BEGIN;
-    return valid[cell] && pattern_emit_character(lexer, cell);
+    return valid[cell] && accept_character(lexer, cell);
   }
   const enum TokenType contents[] = {
     PARAMETER_PATTERN_CLASS_CONTENT_BEGIN,
@@ -8218,7 +7919,7 @@ static bool lexical_pattern_classify(
       return false;
     }
     if (complete) {
-      return pattern_emit_character(
+      return accept_character(
         lexer,
         valid[PARAMETER_PATTERN_BRACKET_OPEN] ? PARAMETER_PATTERN_BRACKET_OPEN
                                               : WORD_PATTERN_BRACKET_OPEN
@@ -8248,7 +7949,7 @@ static bool lexical_pattern_classify(
         return false;
       }
     }
-    return pattern_emit_character(lexer, member);
+    return accept_character(lexer, member);
   }
   if (
     character ==
@@ -8336,8 +8037,7 @@ static bool classify_logical_source(
   if (!scanner_copy(scanner, &control)) {
     return false;
   }
-  bool control_recognized =
-    recognize_scanner_token(&control, &input->lexer, valid);
+  bool control_recognized = scan_with_lookahead(&control, &input->lexer, valid);
   if (control_recognized) {
     if (
       input->lexer.result_symbol >=
@@ -8374,24 +8074,9 @@ static bool classify_logical_source(
     }
   }
   if (valid[COMMENT_START] && input->lexer.lookahead == '#') {
-    struct SourceStage local = source_stage(SOURCE_REMOVE_CONTINUATIONS);
-    local.disabled = true;
-    if (!logical_replace_view(
-          input,
-          input->cursor.stage_count - 1,
-          &local,
-          1
-        )) {
+    if (!advance_to_comment_end(&input->lexer, NULL)) {
       return false;
     }
-    do {
-      input->lexer.advance(&input->lexer, false);
-    } while (
-      !logical_eof(&input->lexer) &&
-      input->lexer.lookahead !=
-      '\n' &&
-      input->lexer.lookahead != SOURCE_BACKQUOTE_BOUNDARY
-    );
     input->lexer.mark_end(&input->lexer);
     input->lexer.result_symbol = COMMENT_START;
     return true;

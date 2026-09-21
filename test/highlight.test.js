@@ -9,7 +9,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { createTreeSitter, grammars, root } from "../scripts/tree-sitter.js";
+import {
+  createTreeSitter,
+  grammars,
+  packageName,
+  root,
+} from "../scripts/tree-sitter.js";
 
 function decodeEntities(text) {
   return text
@@ -29,7 +34,7 @@ function renderedCaptures(html, source) {
   const captures = [];
   let text = "";
   for (const part of content.matchAll(
-    /<span class='([^']*)'>|<\/span>|([^<]+)/g,
+    /<span class='([^']*)'>|<[/]span>|([^<]+)/g,
   )) {
     if (part[1] !== undefined) stack.push(part[1].replaceAll(" ", "."));
     else if (part[0] === "</span>") assert.notEqual(stack.pop(), undefined);
@@ -120,7 +125,7 @@ function assertCaptures(source, actual, ranges) {
     expected.fill(capture, start, end);
     previousEnd = end;
   }
-  // HTML emits line breaks outside spans; compare colors on source characters.
+  // HTML emits line breaks outside spans.
   for (const [index, byte] of bytes.entries()) {
     if (byte !== 10)
       assert.equal(
@@ -157,7 +162,7 @@ let highlight;
 let directory;
 let runner;
 before(() => {
-  directory = mkdtempSync(join(tmpdir(), "tree-sitter-sh-highlight-"));
+  directory = mkdtempSync(join(tmpdir(), `${packageName}-highlight-`));
   runner = createTreeSitter();
   highlight = createHighlighter({
     directory,
@@ -176,7 +181,6 @@ after(() => {
 
 function assertCommand(arguments_) {
   const result = runner.run(arguments_, {
-    // Bound query compilation too; a parser-only timeout cannot interrupt it.
     timeout: 60_000,
   });
   assert.ifError(result.error);

@@ -222,6 +222,46 @@
         }
       ]
     },
+    "_if_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_if_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_if_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "if_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_if_keyword_lexeme"
+          },
+          "named": true,
+          "value": "if_keyword"
+        }
+      ]
+    },
     "_then_keyword_lexeme": {
       "type": "SEQ",
       "members": [
@@ -235,6 +275,46 @@
             "type": "SYMBOL",
             "name": "_then_keyword_begin_piece"
           }
+        }
+      ]
+    },
+    "_then_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_then_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_then_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "then_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_then_keyword_lexeme"
+          },
+          "named": true,
+          "value": "then_keyword"
         }
       ]
     },
@@ -254,6 +334,46 @@
         }
       ]
     },
+    "_elif_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_elif_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_elif_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "elif_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_elif_keyword_lexeme"
+          },
+          "named": true,
+          "value": "elif_keyword"
+        }
+      ]
+    },
     "_else_keyword_lexeme": {
       "type": "SEQ",
       "members": [
@@ -267,6 +387,46 @@
             "type": "SYMBOL",
             "name": "_else_keyword_begin_piece"
           }
+        }
+      ]
+    },
+    "_else_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_else_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_else_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "else_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_else_keyword_lexeme"
+          },
+          "named": true,
+          "value": "else_keyword"
         }
       ]
     },
@@ -286,6 +446,46 @@
         }
       ]
     },
+    "_fi_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_fi_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_fi_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "fi_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_fi_keyword_lexeme"
+          },
+          "named": true,
+          "value": "fi_keyword"
+        }
+      ]
+    },
     "_for_keyword_lexeme": {
       "type": "SEQ",
       "members": [
@@ -299,6 +499,46 @@
             "type": "SYMBOL",
             "name": "_for_keyword_begin_piece"
           }
+        }
+      ]
+    },
+    "_for_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_for_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_for_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "for_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_for_keyword_lexeme"
+          },
+          "named": true,
+          "value": "for_keyword"
         }
       ]
     },
@@ -318,6 +558,46 @@
         }
       ]
     },
+    "_in_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_in_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_in_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "in_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_in_keyword_lexeme"
+          },
+          "named": true,
+          "value": "in_keyword"
+        }
+      ]
+    },
     "_do_keyword_lexeme": {
       "type": "SEQ",
       "members": [
@@ -331,6 +611,46 @@
             "type": "SYMBOL",
             "name": "_do_keyword_begin_piece"
           }
+        }
+      ]
+    },
+    "_do_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_do_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_do_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "do_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_do_keyword_lexeme"
+          },
+          "named": true,
+          "value": "do_keyword"
         }
       ]
     },
@@ -350,6 +670,46 @@
         }
       ]
     },
+    "_done_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_done_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_done_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "done_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_done_keyword_lexeme"
+          },
+          "named": true,
+          "value": "done_keyword"
+        }
+      ]
+    },
     "_case_keyword_lexeme": {
       "type": "SEQ",
       "members": [
@@ -363,6 +723,46 @@
             "type": "SYMBOL",
             "name": "_case_keyword_begin_piece"
           }
+        }
+      ]
+    },
+    "_case_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_case_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_case_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "case_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_case_keyword_lexeme"
+          },
+          "named": true,
+          "value": "case_keyword"
         }
       ]
     },
@@ -382,6 +782,46 @@
         }
       ]
     },
+    "_esac_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_esac_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_esac_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "esac_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_esac_keyword_lexeme"
+          },
+          "named": true,
+          "value": "esac_keyword"
+        }
+      ]
+    },
     "_while_keyword_lexeme": {
       "type": "SEQ",
       "members": [
@@ -398,6 +838,46 @@
         }
       ]
     },
+    "_while_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_while_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_while_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "while_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_while_keyword_lexeme"
+          },
+          "named": true,
+          "value": "while_keyword"
+        }
+      ]
+    },
     "_until_keyword_lexeme": {
       "type": "SEQ",
       "members": [
@@ -411,6 +891,46 @@
             "type": "SYMBOL",
             "name": "_until_keyword_begin_piece"
           }
+        }
+      ]
+    },
+    "_until_keyword_source": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_until_keyword_begin"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_until_keyword_begin_whole"
+              },
+              "named": true,
+              "value": "until_keyword"
+            }
+          ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_until_keyword_lexeme"
+          },
+          "named": true,
+          "value": "until_keyword"
         }
       ]
     },
@@ -1676,526 +2196,6 @@
             "type": "SYMBOL",
             "name": "_bang_begin_piece"
           }
-        }
-      ]
-    },
-    "_if_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_if_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_if_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "if_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_if_keyword_lexeme"
-          },
-          "named": true,
-          "value": "if_keyword"
-        }
-      ]
-    },
-    "_then_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_then_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_then_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "then_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_then_keyword_lexeme"
-          },
-          "named": true,
-          "value": "then_keyword"
-        }
-      ]
-    },
-    "_elif_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_elif_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_elif_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "elif_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_elif_keyword_lexeme"
-          },
-          "named": true,
-          "value": "elif_keyword"
-        }
-      ]
-    },
-    "_else_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_else_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_else_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "else_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_else_keyword_lexeme"
-          },
-          "named": true,
-          "value": "else_keyword"
-        }
-      ]
-    },
-    "_fi_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_fi_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_fi_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "fi_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_fi_keyword_lexeme"
-          },
-          "named": true,
-          "value": "fi_keyword"
-        }
-      ]
-    },
-    "_for_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_for_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_for_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "for_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_for_keyword_lexeme"
-          },
-          "named": true,
-          "value": "for_keyword"
-        }
-      ]
-    },
-    "_in_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_in_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_in_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "in_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_in_keyword_lexeme"
-          },
-          "named": true,
-          "value": "in_keyword"
-        }
-      ]
-    },
-    "_do_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_do_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_do_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "do_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_do_keyword_lexeme"
-          },
-          "named": true,
-          "value": "do_keyword"
-        }
-      ]
-    },
-    "_done_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_done_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_done_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "done_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_done_keyword_lexeme"
-          },
-          "named": true,
-          "value": "done_keyword"
-        }
-      ]
-    },
-    "_case_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_case_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_case_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "case_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_case_keyword_lexeme"
-          },
-          "named": true,
-          "value": "case_keyword"
-        }
-      ]
-    },
-    "_esac_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_esac_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_esac_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "esac_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_esac_keyword_lexeme"
-          },
-          "named": true,
-          "value": "esac_keyword"
-        }
-      ]
-    },
-    "_while_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_while_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_while_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "while_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_while_keyword_lexeme"
-          },
-          "named": true,
-          "value": "while_keyword"
-        }
-      ]
-    },
-    "_until_keyword_source": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_until_keyword_begin"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            },
-            {
-              "type": "ALIAS",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_until_keyword_begin_whole"
-              },
-              "named": true,
-              "value": "until_keyword"
-            }
-          ]
-        },
-        {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_until_keyword_lexeme"
-          },
-          "named": true,
-          "value": "until_keyword"
         }
       ]
     },
@@ -4730,7 +4730,7 @@
         ]
       }
     },
-    "_assignment_non_delimiter_part": {
+    "_assignment_word_part": {
       "type": "CHOICE",
       "members": [
         {
@@ -4763,10 +4763,6 @@
           "name": "_word_structured_part"
         }
       ]
-    },
-    "_assignment_word_part": {
-      "type": "SYMBOL",
-      "name": "_assignment_non_delimiter_part"
     },
     "_assignment_literal": {
       "type": "PREC_RIGHT",
@@ -5005,24 +5001,24 @@
       "type": "REPEAT1",
       "content": {
         "type": "SYMBOL",
-        "name": "_word_non_slash_part"
+        "name": "_word_part"
       }
     },
     "_assignment_tilde_user": {
       "type": "REPEAT1",
       "content": {
         "type": "SYMBOL",
-        "name": "_assignment_non_delimiter_part"
+        "name": "_assignment_word_part"
       }
     },
     "_parameter_tilde_user": {
       "type": "REPEAT1",
       "content": {
         "type": "SYMBOL",
-        "name": "_parameter_non_slash_part"
+        "name": "_parameter_pattern_part"
       }
     },
-    "_word_non_slash_part": {
+    "_word_part": {
       "type": "CHOICE",
       "members": [
         {
@@ -5050,10 +5046,6 @@
           "name": "_word_structured_part"
         }
       ]
-    },
-    "_word_part": {
-      "type": "SYMBOL",
-      "name": "_word_non_slash_part"
     },
     "_word_structured_part": {
       "type": "CHOICE",
@@ -5109,13 +5101,8 @@
           "value": "pattern_bracket_source"
         },
         {
-          "type": "ALIAS",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_word_initial_literal"
-          },
-          "named": true,
-          "value": "literal"
+          "type": "SYMBOL",
+          "name": "_word_initial_literal"
         },
         {
           "type": "ALIAS",
@@ -5216,22 +5203,6 @@
           "type": "SEQ",
           "members": [
             {
-              "type": "SYMBOL",
-              "name": "_word_initial_literal_begin"
-            },
-            {
-              "type": "REPEAT1",
-              "content": {
-                "type": "SYMBOL",
-                "name": "_word_initial_literal_begin_piece"
-              }
-            }
-          ]
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
               "type": "CHOICE",
               "members": [
                 {
@@ -5244,10 +5215,40 @@
               ]
             },
             {
-              "type": "SYMBOL",
-              "name": "_word_initial_literal_begin_whole"
+              "type": "ALIAS",
+              "content": {
+                "type": "SYMBOL",
+                "name": "_word_initial_literal_begin_whole"
+              },
+              "named": true,
+              "value": "literal"
             }
           ]
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_word_initial_literal_lexeme"
+          },
+          "named": true,
+          "value": "literal"
+        }
+      ]
+    },
+    "_word_initial_literal_lexeme": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_word_initial_literal_begin"
+        },
+        {
+          "type": "REPEAT1",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_word_initial_literal_begin_piece"
+          }
         }
       ]
     },
@@ -16710,7 +16711,7 @@
       "named": true,
       "value": "tilde_expansion"
     },
-    "_parameter_non_slash_part": {
+    "_parameter_pattern_part": {
       "type": "CHOICE",
       "members": [
         {
@@ -16748,10 +16749,6 @@
           "name": "_word_structured_part"
         }
       ]
-    },
-    "_parameter_pattern_part": {
-      "type": "SYMBOL",
-      "name": "_parameter_non_slash_part"
     },
     "_parameter_pattern_literal": {
       "type": "PREC_RIGHT",
@@ -16810,7 +16807,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "_command_or_arithmetic_substitution_start"
+          "name": "_command_substitution_start"
         },
         {
           "type": "SYMBOL",
@@ -16854,10 +16851,6 @@
           "name": "_command_open_physical"
         }
       ]
-    },
-    "_command_or_arithmetic_substitution_start": {
-      "type": "SYMBOL",
-      "name": "_command_substitution_start"
     },
     "command_substitution_body": {
       "type": "PREC_LEFT",
@@ -17344,7 +17337,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "_command_or_arithmetic_substitution_start"
+          "name": "_command_substitution_start"
         },
         {
           "type": "SYMBOL",
@@ -17361,7 +17354,7 @@
       "members": [
         {
           "type": "SYMBOL",
-          "name": "_command_or_arithmetic_substitution_start"
+          "name": "_command_substitution_start"
         },
         {
           "type": "SYMBOL",

@@ -76,16 +76,50 @@ const lexical = ($, begin) =>
 const wholeLexical = ($, begin, decorate = (source) => source) =>
   seq(optional(begin), decorate(sourceToken($, begin, "lexical", "whole")));
 
-const keywordSource = ($, name) =>
+// Alias the token directly so inserted MISSING tokens stay visible.
+const wholeSource = ($, begin, lexeme, visible) =>
   choice(
-    wholeLexical($, $[`_${name}_keyword_begin`], (source) =>
-      alias(source, $[`${name}_keyword`]),
-    ),
-    alias($[`_${name}_keyword_lexeme`], $[`${name}_keyword`]),
+    wholeLexical($, begin, (source) => alias(source, visible)),
+    alias(lexeme, visible),
   );
 
-// Each delimiter reduces to one hidden node instead of two stack entries, so
-// error recovery can still reach the enclosing command.
+const KEYWORDS = [
+  "if",
+  "then",
+  "elif",
+  "else",
+  "fi",
+  "for",
+  "in",
+  "do",
+  "done",
+  "case",
+  "esac",
+  "while",
+  "until",
+];
+
+const keywordRules = () =>
+  Object.fromEntries(
+    KEYWORDS.flatMap((name) => [
+      [
+        `_${name}_keyword_lexeme`,
+        ($) => lexical($, $[`_${name}_keyword_begin`]),
+      ],
+      [
+        `_${name}_keyword_source`,
+        ($) =>
+          wholeSource(
+            $,
+            $[`_${name}_keyword_begin`],
+            $[`_${name}_keyword_lexeme`],
+            $[`${name}_keyword`],
+          ),
+      ],
+    ]),
+  );
+
+// Reduce each delimiter to one stack entry so recovery can reach the command.
 const PHYSICAL_RULES = {
   _punct_left_parenthesis: "(",
   _punct_right_parenthesis: ")",
@@ -488,7 +522,7 @@ const parenthesizedArithmetic = ($, expression) =>
 const arithmeticExpansionStart = (
   $,
   marker,
-  start = $._command_or_arithmetic_substitution_start,
+  start = $._command_substitution_start,
 ) => seq(start, marker, physical($, $._punct_left_parenthesis, "("));
 const closedArithmeticExpansion = ($, start, expression, closing) =>
   seq(
@@ -569,6 +603,8 @@ const dollarSingleQuoted = ($, dollar) =>
     repeat(choice($.dollar_single_quote_text, $.dollar_single_quote_escape)),
     physical($, $._dollar_sq_close, "'"),
   );
+const hereDocumentEndSource = ($, begin, text) =>
+  seq(begin, repeat(choice($._here_document_end_leading_tabs, text)));
 const backquoteSubstitution = ($, start) =>
   seq(
     backquoteDelimiter($, start),
@@ -743,8 +779,7 @@ const conditionalThenBranch = ($, header, tail) =>
     tail,
   );
 
-// Only the consequence owns closing layout; a competing owner before fi
-// lets elif reduce its empty alternative before reaching else.
+// Layout before fi lets elif reduce its empty alternative before else.
 const ifClause = ($) =>
   conditionalThenBranch(
     $,
@@ -1159,31 +1194,7 @@ export default grammar({
 
     _or_if_lexeme: ($) => lexical($, $._or_if_begin),
 
-    _if_keyword_lexeme: ($) => lexical($, $._if_keyword_begin),
-
-    _then_keyword_lexeme: ($) => lexical($, $._then_keyword_begin),
-
-    _elif_keyword_lexeme: ($) => lexical($, $._elif_keyword_begin),
-
-    _else_keyword_lexeme: ($) => lexical($, $._else_keyword_begin),
-
-    _fi_keyword_lexeme: ($) => lexical($, $._fi_keyword_begin),
-
-    _for_keyword_lexeme: ($) => lexical($, $._for_keyword_begin),
-
-    _in_keyword_lexeme: ($) => lexical($, $._in_keyword_begin),
-
-    _do_keyword_lexeme: ($) => lexical($, $._do_keyword_begin),
-
-    _done_keyword_lexeme: ($) => lexical($, $._done_keyword_begin),
-
-    _case_keyword_lexeme: ($) => lexical($, $._case_keyword_begin),
-
-    _esac_keyword_lexeme: ($) => lexical($, $._esac_keyword_begin),
-
-    _while_keyword_lexeme: ($) => lexical($, $._while_keyword_begin),
-
-    _until_keyword_lexeme: ($) => lexical($, $._until_keyword_begin),
+    ...keywordRules(),
 
     _dsemi_lexeme: ($) => lexical($, $._dsemi_begin),
 
@@ -1407,19 +1418,6 @@ export default grammar({
     _and_if: ($) => alias($._and_if_lexeme, $.and_if),
     _or_if: ($) => alias($._or_if_lexeme, $.or_if),
     bang: ($) => lexical($, $._bang_begin),
-    _if_keyword_source: ($) => keywordSource($, "if"),
-    _then_keyword_source: ($) => keywordSource($, "then"),
-    _elif_keyword_source: ($) => keywordSource($, "elif"),
-    _else_keyword_source: ($) => keywordSource($, "else"),
-    _fi_keyword_source: ($) => keywordSource($, "fi"),
-    _for_keyword_source: ($) => keywordSource($, "for"),
-    _in_keyword_source: ($) => keywordSource($, "in"),
-    _do_keyword_source: ($) => keywordSource($, "do"),
-    _done_keyword_source: ($) => keywordSource($, "done"),
-    _case_keyword_source: ($) => keywordSource($, "case"),
-    _esac_keyword_source: ($) => keywordSource($, "esac"),
-    _while_keyword_source: ($) => keywordSource($, "while"),
-    _until_keyword_source: ($) => keywordSource($, "until"),
     function_definition: ($) =>
       seq(
         $._function_definition_header,
@@ -1429,8 +1427,6 @@ export default grammar({
         field("body", $.function_body),
       ),
 
-    // The header reduces before the body so its pieces do not stay on the
-    // stack while the body is parsed.
     _function_definition_header: ($) =>
       seq(
         field("name", $.fname),
@@ -1724,26 +1720,18 @@ export default grammar({
     here_document_end: ($) =>
       seq(
         choice(
-          seq(
+          hereDocumentEndSource(
+            $,
             $._quoted_here_document_end_begin,
-            repeat(
-              choice(
-                $._here_document_end_leading_tabs,
-                alias(
-                  $._quoted_here_document_end_text_lexeme,
-                  $.here_document_end_text,
-                ),
-              ),
+            alias(
+              $._quoted_here_document_end_text_lexeme,
+              $.here_document_end_text,
             ),
           ),
-          seq(
+          hereDocumentEndSource(
+            $,
             $._here_document_end_begin,
-            repeat(
-              choice(
-                $._here_document_end_leading_tabs,
-                $.here_document_end_text,
-              ),
-            ),
+            $.here_document_end_text,
           ),
         ),
         optional($._here_document_end_line_end),
@@ -1800,7 +1788,7 @@ export default grammar({
         ),
       ),
 
-    _assignment_non_delimiter_part: ($) =>
+    _assignment_word_part: ($) =>
       choice(
         $._assignment_bracket_fallback,
         $.pattern_bracket_source,
@@ -1809,7 +1797,6 @@ export default grammar({
         $.pattern_question_source,
         $._word_structured_part,
       ),
-    _assignment_word_part: ($) => $._assignment_non_delimiter_part,
 
     _assignment_literal: ($) => prec.right(assignmentPlainChunk($)),
 
@@ -1838,10 +1825,10 @@ export default grammar({
         $._word_tilde_end,
       ),
 
-    tilde_user: ($) => repeat1($._word_non_slash_part),
-    _assignment_tilde_user: ($) => repeat1($._assignment_non_delimiter_part),
-    _parameter_tilde_user: ($) => repeat1($._parameter_non_slash_part),
-    _word_non_slash_part: ($) =>
+    tilde_user: ($) => repeat1($._word_part),
+    _assignment_tilde_user: ($) => repeat1($._assignment_word_part),
+    _parameter_tilde_user: ($) => repeat1($._parameter_pattern_part),
+    _word_part: ($) =>
       choice(
         $._word_bracket_fallback,
         $.pattern_bracket_source,
@@ -1851,14 +1838,13 @@ export default grammar({
         $._word_structured_part,
       ),
 
-    _word_part: ($) => $._word_non_slash_part,
     _word_structured_part: ($) => choice(...structuredSourceParts($)),
 
     _word_initial_part: ($) =>
       choice(
         $._word_initial_bracket_fallback,
         alias($._word_initial_pattern_bracket, $.pattern_bracket_source),
-        alias($._word_initial_literal, $.literal),
+        $._word_initial_literal,
         alias($._word_initial_pattern_star, $.pattern_star_source),
         alias($._word_initial_pattern_question, $.pattern_question_source),
         alias($._word_initial_escaped_character, $.escaped_character),
@@ -1871,10 +1857,14 @@ export default grammar({
         alias($._word_initial_backquote_substitution, $.backquote_substitution),
       ),
     _word_initial_literal: ($) =>
-      choice(
-        lexical($, $._word_initial_literal_begin),
-        wholeLexical($, $._word_initial_literal_begin),
+      wholeSource(
+        $,
+        $._word_initial_literal_begin,
+        $._word_initial_literal_lexeme,
+        $.literal,
       ),
+    _word_initial_literal_lexeme: ($) =>
+      lexical($, $._word_initial_literal_begin),
     _word_initial_pattern_star: ($) =>
       lexical($, $._word_initial_pattern_star_begin),
     _word_initial_pattern_question: ($) =>
@@ -2256,7 +2246,7 @@ export default grammar({
 
     _parameter_tilde_source: ($) =>
       alias($._parameter_tilde_expansion, $.tilde_expansion),
-    _parameter_non_slash_part: ($) =>
+    _parameter_pattern_part: ($) =>
       choice(
         $._parameter_bracket_fallback,
         alias(
@@ -2268,8 +2258,6 @@ export default grammar({
         $.pattern_question_source,
         $._word_structured_part,
       ),
-    _parameter_pattern_part: ($) => $._parameter_non_slash_part,
-
     _parameter_pattern_literal: ($) => prec.right(parameterPlainChunk($)),
 
     _double_quoted_parameter_text: ($) =>
@@ -2278,12 +2266,10 @@ export default grammar({
     _double_quoted_parameter_escape: ($) =>
       lexical($, $._double_quoted_parameter_escape_begin),
     command_substitution: ($) =>
-      commandSubstitution($, $._command_or_arithmetic_substitution_start),
+      commandSubstitution($, $._command_substitution_start),
 
     _command_substitution_start: ($) =>
       dollarExpansionStart($, $._command_open, "("),
-    _command_or_arithmetic_substitution_start: ($) =>
-      $._command_substitution_start,
     command_substitution_body: ($) =>
       prec.left(substitutionCommandsBody($, $._closing_layout)),
 

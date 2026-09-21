@@ -87,7 +87,7 @@ function resultStatus(result) {
   return result.status ?? 1;
 }
 
-function createTreeSitter(environment = {}) {
+function createTreeSitter() {
   const temporaryDirectory = mkdtempSync(join(tmpdir(), `${packageName}-`));
   const cacheDirectory = join(root, "node_modules", ".cache", packageName);
   const configDirectory = join(temporaryDirectory, "config");
@@ -134,14 +134,13 @@ function createTreeSitter(environment = {}) {
       if (closed) {
         throw new Error("Tree-sitter runner is closed.");
       }
-      const { env = {}, ...spawnOptions } = options;
       return spawnSync(treeSitterExecutable(), arguments_, {
         cwd: root,
         encoding: "utf8",
         maxBuffer: 256 * 1024 * 1024,
         windowsHide: true,
         killSignal: "SIGKILL",
-        ...spawnOptions,
+        ...options,
         env: {
           ...process.env,
           APPDATA: configDirectory,
@@ -152,8 +151,6 @@ function createTreeSitter(environment = {}) {
           TREE_SITTER_SEED: process.env.TREE_SITTER_SEED ?? "1",
           XDG_CACHE_HOME: cacheDirectory,
           XDG_CONFIG_HOME: configDirectory,
-          ...environment,
-          ...env,
         },
       });
     },
@@ -280,7 +277,6 @@ function fuzzParsers(runner, arguments_) {
         ["fuzz", "--lib-path", library, "--lang-name", name, ...arguments_],
         {
           encoding: "utf8",
-          env: { NO_COLOR: "1" },
           maxBuffer: 16 * 1024 * 1024,
           timeout: 600_000,
           killSignal: "SIGKILL",

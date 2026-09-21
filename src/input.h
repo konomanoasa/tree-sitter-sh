@@ -273,7 +273,6 @@ static inline bool logical_replace_view(
         suffix,
         suffix_count
       )) {
-    source_cursor_clear(&next.cursor);
     return false;
   }
   next.mark = input->mark;

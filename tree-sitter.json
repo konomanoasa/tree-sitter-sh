@@ -8,25 +8,20 @@
       "path": ".",
       "file-types": ["sh"],
       "injection-regex": "^(sh|shell)$",
+      "highlights": "queries/highlights.scm",
       "external-files": [
         "src/arithmetic.h",
         "src/input.h",
-        "src/source.h",
+        "src/lexical-tokens.h",
         "src/lexical-tokens.json",
-        "src/lexical-tokens.h"
-      ],
-      "highlights": "queries/highlights.scm"
+        "src/source.h"
+      ]
     }
   ],
   "metadata": {
     "version": "0.15.0",
     "license": "MIT",
     "description": "Tree-sitter grammar for POSIX sh.",
-    "authors": [
-      {
-        "name": "konomanoasa"
-      }
-    ],
     "links": {
       "repository": "https://github.com/konomanoasa/tree-sitter-sh"
     }
