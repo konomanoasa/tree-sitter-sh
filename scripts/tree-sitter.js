@@ -213,6 +213,25 @@ function generateParsers(outputRoot = root) {
   return 0;
 }
 
+function buildParsers(runner) {
+  const directory = join(root, "build");
+  mkdirSync(directory, { recursive: true });
+  for (const { name, path } of grammars) {
+    const library = join(
+      directory,
+      `${name}.${process.platform === "win32" ? "dll" : "so"}`,
+    );
+    const status = runChecked(runner, [
+      "build",
+      join(root, path),
+      "--output",
+      library,
+    ]);
+    if (status !== 0) return status;
+  }
+  return 0;
+}
+
 function testCorpus(arguments_) {
   if (
     arguments_.some(
@@ -314,6 +333,12 @@ function main(arguments_) {
 
   const runner = createTreeSitter();
   try {
+    if (command === "build-all") {
+      if (rest.length !== 0) {
+        throw new Error("Usage: node scripts/tree-sitter.js build-all");
+      }
+      return buildParsers(runner);
+    }
     if (command === "fuzz-all") return fuzzParsers(runner, rest);
     return runChecked(runner, arguments_);
   } finally {

@@ -12,13 +12,20 @@ POSIX.1-2024 Shell Command Language.
 npm install tree-sitter-sh
 ```
 
+## Grammars
+
+| Grammar | Description | Rust constant |
+| --- | --- | --- |
+| `sh` | POSIX.1-2024 Shell Command Language | `LANGUAGE` |
+
 ## Development
 
 Development requires Node.js 24.2.0 or later.
 
 ```sh
 npm install
-npm run parse -- script.sh
+npm run build
+npm test
 ```
 
 ## Specification
