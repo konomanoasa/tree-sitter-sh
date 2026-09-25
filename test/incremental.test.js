@@ -6,6 +6,7 @@ import {
   assertContains,
   assertCstDirectChildRange,
   assertCstRange,
+  assertFreshOutputsEqual,
   assertIncrementalEqualsFresh,
   assertLineContinuationManifest,
   assertNodeCount,
@@ -127,6 +128,173 @@ test("sh: lexical source keeps its token kind through errors and repairs", () =>
       insertion,
       { byte: offset, deleteBytes: stray.length, insert: ` ${removed}` },
     );
+  }
+});
+
+test("sh: missing redirect filenames preserve operators and following commands through repairs", () => {
+  for (const [name, source, operator, operatorType] of [
+    ["output-ampersand", "cat > file & echo after\n", "&", '"&"'],
+    ["input-semicolon", "cat < file ; echo after\n", ";", '";"'],
+    ["continued-semicolon", "cat >\\\nfile; echo after\n", ";", '";"'],
+    ["continued-ampersand", "cat > \\\nfile & echo after\n", "&", '"&"'],
+    ["append-pipeline", "cat >> file | echo after\n", "|", '"|"'],
+    ["read-write-and", "cat <> file && echo after\n", "&&", "and_if"],
+    ["clobber-or", "cat >| file || echo after\n", "||", "or_if"],
+    ["duplicate-input", "cat <& file ; echo after\n", ";", '";"'],
+    ["duplicate-output", "cat >& file & echo after\n", "&", '"&"'],
+    ["continued-and", "cat > file &\\\n& echo after\n", "&\\\n&", "and_if"],
+    ["continued-or", "cat > file |\\\n| echo after\n", "|\\\n|", "or_if"],
+    [
+      "command-substitution",
+      'echo "$(cat < file && echo after)"\n',
+      "&&",
+      "and_if",
+    ],
+    [
+      "heredoc-substitution",
+      "cat <<END\n$(cat >> file || echo after)\nEND\n",
+      "||",
+      "or_if",
+    ],
+    ["backquote-substitution", "echo `cat > file | echo after`\n", "|", '"|"'],
+  ]) {
+    const initialText = `echo before\n${source}echo final\n`;
+    const byte = initialText.indexOf("file");
+    const edit = { byte, deleteBytes: 4, insert: "" };
+    const brokenText = initialText.slice(0, byte) + initialText.slice(byte + 4);
+    const initial = writeSource(`${name}-initial`, initialText);
+    const broken = writeSource(`${name}-broken`, brokenText);
+    const expected = [
+      ...["before", "after", "final"].map((word) => [
+        brokenText.indexOf(`echo ${word}`),
+        4,
+        "cmd_name",
+      ]),
+      [
+        brokenText.indexOf(`${operator} echo after`),
+        operator.length,
+        operatorType,
+      ],
+    ];
+    for (const output of parseRecoveryAfterEdits(initial, broken, name, edit)) {
+      assert.equal(hasRecovery(output), true, name);
+      const entries = parseCst(output).map((entry) => {
+        const [start, end] = entry.range
+          .split("-")
+          .map((point) => sourceByteOffset(brokenText, point));
+        return { type: nodeIdentity(entry).type, start, end };
+      });
+      for (const [start, length, type] of expected) {
+        assert.ok(start >= 0, `${name}: missing expected source`);
+        const end = start + length;
+        assert.ok(
+          entries.some(
+            (entry) =>
+              entry.type === type && entry.start === start && entry.end === end,
+          ),
+          `${name}: expected ${type} at ${start}-${end}`,
+        );
+        assert.equal(
+          entries.some(
+            (entry) =>
+              entry.type === "ERROR" &&
+              entry.start <= start &&
+              entry.end >= end,
+          ),
+          false,
+          `${name}: ${type} remains inside ERROR`,
+        );
+      }
+    }
+    assertIncrementalEqualsFresh(initial, initial, `repair-${name}`, edit, {
+      byte,
+      deleteBytes: 0,
+      insert: "file",
+    });
+  }
+});
+
+test("sh: parameter errors preserve closing quotes and following commands through repairs", () => {
+  for (const [name, initialText, removed, replacement] of [
+    ["quoted-value", `echo "\${v:-word}"\necho after\n`, ":-", " @"],
+    ["quoted-brace", `echo "\${v:-"}"}"\necho after\n`, ":-", " @"],
+    ["escaped-brace", `echo "\${v:-\\}}"\necho after\n`, ":-", " @"],
+    [
+      "nested-parameter",
+      `echo "\${v:-"\${x:-word}"}"\necho after\n`,
+      "x:-",
+      "x @",
+    ],
+    [
+      "pattern-operand",
+      `echo "\${v#"\${x:-word}"}"\necho after\n`,
+      "x:-",
+      "x @",
+    ],
+    ["invalid-name", `echo "\${v:-"word"}"\necho after\n`, "v", "!v"],
+    ["junk-before-operator", `echo "\${v:-word}"\necho after\n`, "v", "v @"],
+    [
+      "command-substitution",
+      `echo "$(echo "\${v:-"}"}")"\necho after\n`,
+      ":-",
+      " @",
+    ],
+    [
+      "heredoc-substitution",
+      `cat <<END\n$(echo "\${v:-"}"}")\nEND\necho after\n`,
+      ":-",
+      " @",
+    ],
+    [
+      "continued-value-operator",
+      `echo "\${v:\\\n-word}"\necho after\n`,
+      ":\\\n-",
+      " @",
+    ],
+    [
+      "continued-pattern-operator",
+      `echo "\${v#\\\n#word}"\necho after\n`,
+      "#\\\n#",
+      " @",
+    ],
+  ]) {
+    const byte = initialText.indexOf(removed);
+    const edit = { byte, deleteBytes: removed.length, insert: replacement };
+    const brokenText =
+      initialText.slice(0, byte) +
+      replacement +
+      initialText.slice(byte + removed.length);
+    const initial = writeSource(`${name}-initial`, initialText);
+    const broken = writeSource(`${name}-broken`, brokenText);
+    const row = brokenText.split("\n").length - 2;
+    for (const output of parseRecoveryAfterEdits(initial, broken, name, edit)) {
+      assert.equal(hasRecovery(output), true, name);
+      const ancestors = [];
+      let command = false;
+      for (const entry of parseCst(output)) {
+        while (ancestors.at(-1)?.depth >= entry.depth) ancestors.pop();
+        if (
+          entry.range === `${row}:0-${row}:4` &&
+          nodeIdentity(entry).type === "cmd_name"
+        ) {
+          command = true;
+          assert.equal(
+            ancestors.some(
+              (ancestor) => nodeIdentity(ancestor).type === "ERROR",
+            ),
+            false,
+            `${name}: following command remains inside ERROR`,
+          );
+        }
+        ancestors.push(entry);
+      }
+      assert.equal(command, true, `${name}: following command was swallowed`);
+    }
+    assertIncrementalEqualsFresh(initial, initial, `repair-${name}`, edit, {
+      byte,
+      deleteBytes: replacement.length,
+      insert: removed,
+    });
   }
 });
 
@@ -6627,6 +6795,15 @@ test("sh: fixed-seed generated histories converge at every valid final source", 
       mode: "recovery",
       source: final,
     });
+    assertFreshOutputsEqual(
+      history.context,
+      fresh,
+      runParse({
+        description: `${history.context}, repeated fresh parse`,
+        mode: "recovery",
+        source: final,
+      }),
+    );
     const incremental = runParse({
       description: history.context,
       mode: "recovery",
@@ -6729,18 +6906,13 @@ test("sh: repairing a function header preserves a following backquote assignment
     "repaired-function-before-backquote-assignment",
     "\nworker() {\n  :\n}\nresult=`printf nested`\n",
   );
-  const fresh = runParse({ source, description: "original function header" });
-  const incremental = runParse({
+  for (const output of assertIncrementalEqualsFresh(
     source,
-    description: "repaired function header",
-    edits: [
-      { byte: 9, deleteBytes: 3, insert: "Wl35" },
-      { byte: 9, deleteBytes: 4, insert: " {\n" },
-    ],
-  });
-  assert.equal(
-    cstFingerprint(incremental.output),
-    cstFingerprint(fresh.output),
-  );
-  assertOccurrenceCount(incremental.output, "assignment_word", 1);
+    source,
+    "repaired function header",
+    { byte: 9, deleteBytes: 3, insert: "Wl35" },
+    { byte: 9, deleteBytes: 4, insert: " {\n" },
+  )) {
+    assertOccurrenceCount(output, "assignment_word", 1);
+  }
 });

@@ -203,11 +203,13 @@
     },
     {
       "begin": "_parameter_value_operator_begin",
-      "scanner": "PARAMETER_VALUE_OPERATOR_BEGIN"
+      "scanner": "PARAMETER_VALUE_OPERATOR_BEGIN",
+      "whole": true
     },
     {
       "begin": "_parameter_pattern_operator_begin",
-      "scanner": "PARAMETER_PATTERN_OPERATOR_BEGIN"
+      "scanner": "PARAMETER_PATTERN_OPERATOR_BEGIN",
+      "whole": true
     },
     {
       "begin": "_arithmetic_number_begin",

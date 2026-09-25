@@ -366,6 +366,61 @@ test("continued shell constructs complete and disappear after recovery edits", (
   }
 });
 
+test("continued closing keywords retain their leaves after body and header repairs", () => {
+  for (const [context, opener, closer] of [
+    ["top level", "", ""],
+    ["quoted substitution", 'echo "$(\n', ')"\n'],
+    ["here document substitution", "cat <<EOF\n$(\n", ")\nEOF\n"],
+  ]) {
+    for (const [name, header, removed, ending] of [
+      ["if body", "if true; then\n", ":\n", "f\\\ni\n"],
+      ["while body", "while true; do\n", ":\n", "do\\\nne\n"],
+      ["until body", "until false; do\n", ":\n", "d\\\none\n"],
+      ["for body", "for x; do\n", ":\n", "don\\\ne\n"],
+      ["then header", "if true; ", "then :; ", "f\\\ni\n"],
+      ["do header", "while true; ", "do :; ", "do\\\nne\n"],
+    ]) {
+      const description = `${context} ${name}`;
+      const prefix = `echo BEFORE\n${opener}${header}`;
+      const suffix = `${ending}echo AFTER_ONE\necho AFTER_TWO\n${closer}`;
+      const source = prefix + removed + suffix;
+      const initial = writeSource(`${description} complete`, source);
+      const broken = writeSource(`${description} incomplete`, prefix + suffix);
+      const deletion = {
+        byte: prefix.length,
+        deleteBytes: removed.length,
+        insert: "",
+      };
+      const restoration = {
+        byte: prefix.length,
+        deleteBytes: 0,
+        insert: removed,
+      };
+      const slash = source.indexOf("\\\n");
+      const expected = [`${point(source, slash)}-${point(source, slash + 1)}`];
+      assert.deepEqual(continuationManifest(parseValidCst(initial)), expected);
+      parseRecoveryAfterEdits(initial, broken, description, deletion);
+      for (const output of [
+        ...assertIncrementalEqualsFresh(
+          initial,
+          initial,
+          `${description} round trip`,
+          deletion,
+          restoration,
+        ),
+        ...assertIncrementalEqualsFresh(
+          broken,
+          initial,
+          `${description} cold repair`,
+          restoration,
+        ),
+      ]) {
+        assert.deepEqual(continuationManifest(output), expected, description);
+      }
+    }
+  }
+});
+
 test("nested commands recover through enclosing terminators after completion", () => {
   const prefix = "echo before\n\n";
   const body = "echo nested\n";

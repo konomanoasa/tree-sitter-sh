@@ -389,6 +389,15 @@ function assertCstOutputsEqual(name, left, right) {
   );
 }
 
+function assertFreshOutputsEqual(name, left, right) {
+  assert.equal(left.status, right.status, `${name}: parse statuses differ`);
+  assert.deepEqual(
+    parseCst(left.output),
+    parseCst(right.output),
+    `${name}: fresh CST is not deterministic`,
+  );
+}
+
 function assertRepeatedColdParse(
   mode,
   source,
@@ -407,16 +416,7 @@ function assertRepeatedColdParse(
     source,
     timeout,
   });
-  if (mode === "resource") {
-    assert.equal(first.status, second.status, `${name}: parse statuses differ`);
-    assert.deepEqual(
-      parseCst(first.output),
-      parseCst(second.output),
-      `${name}: resource recovery is not deterministic`,
-    );
-  } else {
-    assertCstOutputsEqual(`${name} repeated cold parses`, first, second);
-  }
+  assertFreshOutputsEqual(name, first, second);
 }
 
 function compareIncrementalAndFresh(
@@ -427,8 +427,8 @@ function compareIncrementalAndFresh(
   ...edits
 ) {
   assert.ok(
-    !fs.readFileSync(initialSource).equals(fs.readFileSync(finalSource)),
-    `${name}: incremental inputs are identical`,
+    edits.length > 0,
+    `${name}: incremental parse requires an edit history`,
   );
   assert.ok(
     applyEdits(fs.readFileSync(initialSource), edits).equals(
@@ -449,7 +449,7 @@ function compareIncrementalAndFresh(
     mode,
     source: finalSource,
   });
-  if (mode === "valid") {
+  if (fresh.status === 0 && !fresh.recovery) {
     assertCstOutputsEqual(
       `${name} incremental and fresh parses`,
       incremental,
@@ -567,6 +567,7 @@ export {
   assertCstDirectChildRange,
   assertCstRange,
   assertCstSourceContract,
+  assertFreshOutputsEqual,
   assertIncrementalEqualsFresh,
   assertLineContinuationManifest,
   assertNodeCount,

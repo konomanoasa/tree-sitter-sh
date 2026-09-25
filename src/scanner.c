@@ -6953,7 +6953,8 @@ static bool begin_lexical_emission(
   struct Scanner *scanner,
   const struct LogicalLexer *input,
   enum TokenType symbol,
-  const bool *valid
+  const bool *valid,
+  bool recovering
 ) {
   if (input->mark == 0) {
     return false;
@@ -6980,7 +6981,7 @@ static bool begin_lexical_emission(
         break;
       }
     }
-    if (!fragmented)
+    if (!fragmented || recovering)
       scanner->emission.symbol = whole;
   }
   symbol = word_initial_source_symbol(symbol);
@@ -7328,6 +7329,18 @@ static bool lexical_number(TSLexer *lexer) {
   return true;
 }
 
+static bool
+quoted_escape_character(int32_t character, bool double_quoted, bool parameter) {
+  return character ==
+    '\\' ||
+    character ==
+    '$' ||
+    character ==
+    '`' ||
+    (double_quoted && character == '"') ||
+    (parameter && character == '}');
+}
+
 static bool lexical_escape(TSLexer *lexer, enum TokenType symbol) {
   if (lexer->lookahead != '\\') {
     return false;
@@ -7342,24 +7355,13 @@ static bool lexical_escape(TSLexer *lexer, enum TokenType symbol) {
   ) {
     return false;
   }
-  bool accepted = symbol ==
-    ESCAPED_CHARACTER_BEGIN ||
-    character ==
-    '\\' ||
-    character ==
-    '$' ||
-    character == '`';
+  bool parameter = symbol == DOUBLE_QUOTED_PARAMETER_ESCAPE_BEGIN;
+  bool quoted = symbol == DOUBLE_QUOTE_ESCAPE_BEGIN || parameter;
   if (
-    symbol ==
-    DOUBLE_QUOTE_ESCAPE_BEGIN ||
-    symbol == DOUBLE_QUOTED_PARAMETER_ESCAPE_BEGIN
+    symbol !=
+    ESCAPED_CHARACTER_BEGIN &&
+    !quoted_escape_character(character, quoted, parameter)
   ) {
-    accepted = accepted || character == '"';
-  }
-  if (symbol == DOUBLE_QUOTED_PARAMETER_ESCAPE_BEGIN) {
-    accepted = accepted || character == '}';
-  }
-  if (!accepted) {
     return false;
   }
   lexer->advance(lexer, false);
@@ -7371,9 +7373,8 @@ static bool lexical_escape(TSLexer *lexer, enum TokenType symbol) {
 static bool lexical_text(struct LogicalLexer *input, enum TokenType symbol) {
   TSLexer *lexer = &input->lexer;
   bool consumed = false;
-  bool quoted = symbol ==
-    DOUBLE_QUOTE_TEXT_BEGIN ||
-    symbol == DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN;
+  bool parameter = symbol == DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN;
+  bool quoted = symbol == DOUBLE_QUOTE_TEXT_BEGIN || parameter;
   while (!lexer_at_eof(lexer)) {
     int32_t character = lexer->lookahead;
     if (character == SOURCE_BACKQUOTE_BOUNDARY) {
@@ -7402,7 +7403,7 @@ static bool lexical_text(struct LogicalLexer *input, enum TokenType symbol) {
         (quoted && character == '"') ||
         character ==
         '`' ||
-        (symbol == DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN && character == '}') ||
+        (parameter && character == '}') ||
         (symbol == HERE_DOCUMENT_TEXT_BEGIN && character == '\n')
       ) {
         break;
@@ -7413,20 +7414,12 @@ static bool lexical_text(struct LogicalLexer *input, enum TokenType symbol) {
           break;
         }
       }
-      if (character == '\\') {
-        int32_t next = logical_peek(input);
-        if (
-          next ==
-          '$' ||
-          next ==
-          '`' ||
-          next ==
-          '\\' ||
-          (quoted && next == '"') ||
-          (symbol == DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN && next == '}')
-        ) {
-          break;
-        }
+      if (
+        character ==
+        '\\' &&
+        quoted_escape_character(logical_peek(input), quoted, parameter)
+      ) {
+        break;
       }
     }
     lexer->advance(lexer, false);
@@ -8119,11 +8112,118 @@ static bool classify_word_start(
   return false;
 }
 
+static bool recovery_quote_context(const struct Scanner *scanner) {
+  for (size_t index = scanner->context_count; index > 0; index -= 1) {
+    enum TokenType opener = scanner->contexts[index - 1].opener;
+    if (opener == PARAMETER_OPEN) {
+      continue;
+    }
+    return opener ==
+      DQ_OPEN ||
+      (index == scanner->context_count && opener == SQ_OPEN);
+  }
+  return false;
+}
+
+static void
+select_recovery_symbols(const struct Scanner *scanner, bool *valid) {
+  static const bool base_symbols[TOKEN_COUNT] = {
+    [LEFT_BRACE] = true,
+    [PIPELINE_NEGATION] = true,
+    [IF_KEYWORD] = true,
+    [FOR_KEYWORD] = true,
+    [IN_KEYWORD] = true,
+    [CASE_KEYWORD] = true,
+    [WHILE_KEYWORD] = true,
+    [UNTIL_KEYWORD] = true,
+    [RIGHT_BRACE] = true,
+    [THEN_KEYWORD] = true,
+    [ELIF_KEYWORD] = true,
+    [ELSE_KEYWORD] = true,
+    [FI_KEYWORD] = true,
+    [DO_KEYWORD] = true,
+    [DONE_KEYWORD] = true,
+    [ESAC_KEYWORD] = true,
+    [BACKQUOTE_END] = true,
+    [PUNCT_LEFT_PARENTHESIS] = true,
+    [PUNCT_RIGHT_PARENTHESIS] = true,
+    [PUNCT_SEMICOLON] = true,
+    [PUNCT_AMPERSAND] = true,
+    [PUNCT_PIPE] = true,
+    [OR_IF_BEGIN] = true,
+    [AND_IF_BEGIN] = true,
+    [DSEMI_BEGIN] = true,
+    [SEMI_AND_BEGIN] = true,
+    [LOGICAL_NEWLINE_BEGIN] = true,
+#define LEXICAL_RECOVERY_SYMBOL(begin, piece) [piece] = true,
+    SH_LEXICAL_SOURCE_TOKENS(LEXICAL_RECOVERY_SYMBOL)
+#undef LEXICAL_RECOVERY_SYMBOL
+#define PHYSICAL_RECOVERY_SYMBOL(begin, prefix, character) \
+  [prefix] = true, [character] = true,
+      SH_PHYSICAL_SOURCE_TOKENS(PHYSICAL_RECOVERY_SYMBOL)
+#undef PHYSICAL_RECOVERY_SYMBOL
+#define WHOLE_RECOVERY_SYMBOL(begin, whole) [whole] = true,
+        SH_WHOLE_SOURCE_TOKENS(WHOLE_RECOVERY_SYMBOL)
+#undef WHOLE_RECOVERY_SYMBOL
+          [LINE_CONTINUATION] = true,
+    [REMOVED_NEWLINE] = true,
+    [SOURCE_BEGIN] = true,
+    [REMOVED_SOURCE] = true,
+    [WORD_INITIAL_LITERAL_BEGIN] = true,
+    [WORD_INITIAL_FALLBACK_LITERAL_BEGIN] = true,
+    [WORD_INITIAL_PATTERN_BRACKET_OPEN] = true,
+    [WORD_INITIAL_PATTERN_STAR_BEGIN] = true,
+    [WORD_INITIAL_PATTERN_QUESTION_BEGIN] = true,
+    [WORD_INITIAL_ESCAPED_CHARACTER_BEGIN] = true,
+    [WORD_INITIAL_SQ_OPEN] = true,
+    [WORD_INITIAL_DQ_OPEN] = true,
+    [WORD_INITIAL_DOLLAR_SQ_DOLLAR] = true,
+    [WORD_INITIAL_DOLLAR_EXPANSION_START] = true,
+    [WORD_INITIAL_BACKQUOTE_START] = true,
+    [WORD_TILDE_START] = true,
+  };
+  memcpy(valid, base_symbols, sizeof(base_symbols));
+  if (scanner->emission.active || !recovery_quote_context(scanner)) {
+    return;
+  }
+  for (size_t index = 0; index < TOKEN_COUNT; index += 1) {
+    if (LEXICAL_SOURCES[index].kind != LEXICAL_SOURCE_NONE) {
+      valid[index] = false;
+    }
+  }
+  enum TokenType opener = scanner->contexts[scanner->context_count - 1].opener;
+  if (opener == SQ_OPEN) {
+    valid[SQ_CLOSE] = true;
+    valid[SINGLE_QUOTE_CONTENT_BEGIN] = true;
+    return;
+  }
+  valid[DOLLAR_EXPANSION_START] = true;
+  valid[DOUBLE_QUOTED_BACKQUOTE_START] = true;
+  if (opener == DQ_OPEN) {
+    valid[DQ_CLOSE] = true;
+    valid[DOUBLE_QUOTE_TEXT_BEGIN] = true;
+    valid[DOUBLE_QUOTE_ESCAPE_BEGIN] = true;
+    return;
+  }
+  valid[PARAMETER_CLOSE] = true;
+  valid[VARIABLE_NAME_BEGIN] = true;
+  valid[SPECIAL_PARAMETER_BEGIN] = true;
+  valid[SPECIAL_PARAMETER_HASH_BEGIN] = true;
+  valid[PARAMETER_VALUE_OPERATOR_BEGIN] = true;
+  valid[PARAMETER_PATTERN_OPERATOR_BEGIN] = true;
+  valid[DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN] = true;
+  valid[DOUBLE_QUOTED_PARAMETER_ESCAPE_BEGIN] = true;
+  valid[DQ_OPEN] = true;
+}
+
 static bool classify_recovery_source(
   struct Scanner *scanner,
   struct LogicalLexer *input,
   const bool *valid
 ) {
+  if (recovery_quote_context(scanner)) {
+    return classify_logical_source(scanner, input, valid);
+  }
   const struct LexicalPunctuation reserved_punctuation[] = {
     {'{', LEFT_BRACE},
     {'}', RIGHT_BRACE},
@@ -8243,7 +8343,8 @@ static bool scan_source(
       TOKEN_COUNT &&
       LEXICAL_SOURCES[symbol].kind != LEXICAL_SOURCE_NONE
     ) {
-      accepted = begin_lexical_emission(scanner, &input, symbol, valid);
+      accepted =
+        begin_lexical_emission(scanner, &input, symbol, valid, recovering);
     }
   }
   accepted = accepted && !native.failed && !input.cursor.failed;
@@ -8260,75 +8361,24 @@ bool tree_sitter_sh_external_scanner_scan(
   if (payload == NULL) {
     return false;
   }
-  bool all_valid = true;
+  bool recovering = true;
   for (size_t index = 0; index < TOKEN_COUNT; index += 1) {
     if (!valid_symbols[index]) {
-      all_valid = false;
+      recovering = false;
       break;
     }
   }
-  if (all_valid) {
-    static const bool recovery_symbols[TOKEN_COUNT] = {
-      [LEFT_BRACE] = true,
-      [PIPELINE_NEGATION] = true,
-      [IF_KEYWORD] = true,
-      [FOR_KEYWORD] = true,
-      [IN_KEYWORD] = true,
-      [CASE_KEYWORD] = true,
-      [WHILE_KEYWORD] = true,
-      [UNTIL_KEYWORD] = true,
-      [RIGHT_BRACE] = true,
-      [THEN_KEYWORD] = true,
-      [ELIF_KEYWORD] = true,
-      [ELSE_KEYWORD] = true,
-      [FI_KEYWORD] = true,
-      [DO_KEYWORD] = true,
-      [DONE_KEYWORD] = true,
-      [ESAC_KEYWORD] = true,
-      [BACKQUOTE_END] = true,
-      [PUNCT_LEFT_PARENTHESIS] = true,
-      [PUNCT_RIGHT_PARENTHESIS] = true,
-      [PUNCT_SEMICOLON] = true,
-      [PUNCT_AMPERSAND] = true,
-      [AND_IF_BEGIN] = true,
-      [DSEMI_BEGIN] = true,
-      [SEMI_AND_BEGIN] = true,
-      [LOGICAL_NEWLINE_BEGIN] = true,
-#define LEXICAL_RECOVERY_SYMBOL(begin, piece) [piece] = true,
-      SH_LEXICAL_SOURCE_TOKENS(LEXICAL_RECOVERY_SYMBOL)
-#undef LEXICAL_RECOVERY_SYMBOL
-#define PHYSICAL_RECOVERY_SYMBOL(begin, prefix, character) \
-  [prefix] = true, [character] = true,
-        SH_PHYSICAL_SOURCE_TOKENS(PHYSICAL_RECOVERY_SYMBOL)
-#undef PHYSICAL_RECOVERY_SYMBOL
-#define WHOLE_RECOVERY_SYMBOL(begin, whole) [whole] = true,
-          SH_WHOLE_SOURCE_TOKENS(WHOLE_RECOVERY_SYMBOL)
-#undef WHOLE_RECOVERY_SYMBOL
-            [LINE_CONTINUATION] = true,
-      [REMOVED_NEWLINE] = true,
-      [SOURCE_BEGIN] = true,
-      [REMOVED_SOURCE] = true,
-      [WORD_INITIAL_LITERAL_BEGIN] = true,
-      [WORD_INITIAL_FALLBACK_LITERAL_BEGIN] = true,
-      [WORD_INITIAL_PATTERN_BRACKET_OPEN] = true,
-      [WORD_INITIAL_PATTERN_STAR_BEGIN] = true,
-      [WORD_INITIAL_PATTERN_QUESTION_BEGIN] = true,
-      [WORD_INITIAL_ESCAPED_CHARACTER_BEGIN] = true,
-      [WORD_INITIAL_SQ_OPEN] = true,
-      [WORD_INITIAL_DQ_OPEN] = true,
-      [WORD_INITIAL_DOLLAR_SQ_DOLLAR] = true,
-      [WORD_INITIAL_DOLLAR_EXPANSION_START] = true,
-      [WORD_INITIAL_BACKQUOTE_START] = true,
-      [WORD_TILDE_START] = true,
-    };
-    valid_symbols = recovery_symbols;
+  bool contextual_symbols[TOKEN_COUNT];
+  if (recovering) {
+    select_recovery_symbols(payload, contextual_symbols);
+    valid_symbols = contextual_symbols;
   }
   struct Scanner next;
   if (!scanner_copy(payload, &next)) {
     return false;
   }
   if (
-    !scan_source(&next, lexer, valid_symbols, all_valid) ||
+    !scan_source(&next, lexer, valid_symbols, recovering) ||
     lexer->result_symbol >=
     TOKEN_COUNT ||
     !valid_symbols[lexer->result_symbol] ||

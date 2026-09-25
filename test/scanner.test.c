@@ -576,7 +576,7 @@ static void test_disabled_and_rejected_recovery_scans_preserve_state(void) {
     size_t length;
   } inputs[] = {
     {{'2', '>', 'x'}, 3},
-    {{'|'}, 1},
+    {{'>'}, 1},
     {{'\\'}, 1},
     {{0}, 0},
   };
@@ -679,6 +679,9 @@ test_recovery_preserves_reserved_and_punctuation_token_identity(void) {
       1},
     {{';', 'x'}, 2, PUNCT_SEMICOLON, PUNCT_SEMICOLON_CHARACTER, 1},
     {{'&', 'x'}, 2, PUNCT_AMPERSAND, PUNCT_AMPERSAND_CHARACTER, 1},
+    {{'|', 'x'}, 2, PUNCT_PIPE, PUNCT_PIPE_CHARACTER, 1},
+    {{'&', '&', 'x'}, 3, AND_IF_BEGIN, AND_IF_BEGIN_PIECE, 2},
+    {{'|', '|', 'x'}, 3, OR_IF_BEGIN, OR_IF_BEGIN_PIECE, 2},
     {{'i', 'f', ' '}, 3, IF_KEYWORD, IF_KEYWORD_BEGIN_WHOLE, 2},
     {{'t', 'h', 'e', 'n', ';'}, 5, THEN_KEYWORD, THEN_KEYWORD_BEGIN_WHOLE, 4},
     {{'e', 'l', 'i', 'f', '\n'}, 5, ELIF_KEYWORD, ELIF_KEYWORD_BEGIN_WHOLE, 4},
@@ -727,35 +730,49 @@ test_recovery_preserves_reserved_and_punctuation_token_identity(void) {
   const struct {
     enum TokenType symbol;
     size_t width;
-  } expected[] = {
-    {FI_KEYWORD, 0},
-    {FI_KEYWORD_BEGIN_PIECE, 1},
-    {LINE_CONTINUATION, 1},
-    {REMOVED_NEWLINE, 1},
-    {FI_KEYWORD_BEGIN_PIECE, 1},
+  } expected[][5] = {
+    {
+      {FI_KEYWORD, 0},
+      {FI_KEYWORD_BEGIN_PIECE, 1},
+      {LINE_CONTINUATION, 1},
+      {REMOVED_NEWLINE, 1},
+      {FI_KEYWORD_BEGIN_PIECE, 1},
+    },
+    {{FI_KEYWORD, 0}, {FI_KEYWORD_BEGIN_WHOLE, 4}},
   };
-  struct Scanner scanner = {0};
-  size_t offset = 0;
-  for (
-    size_t index = 0; index < sizeof(expected) / sizeof(expected[0]); index += 1
-  ) {
-    struct MockLexer lexer;
-    init_mock_lexer(
-      &lexer,
-      continued + offset,
-      sizeof(continued) / sizeof(continued[0]) - offset
-    );
-    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
-    assert(lexer.lexer.result_symbol == expected[index].symbol);
-    assert(lexer.mark == expected[index].width);
-    offset += lexer.mark;
-    char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
-    unsigned length = snapshot_scanner(&scanner, state);
-    tree_sitter_sh_external_scanner_deserialize(&scanner, state, length);
+  const size_t counts[] = {5, 2};
+  for (size_t recovery = 0; recovery < 2; recovery += 1) {
+    for (size_t token = 0; token < TOKEN_COUNT; token += 1) {
+      valid[token] = recovery != 0;
+    }
+    valid[FI_KEYWORD] = true;
+    valid[FI_KEYWORD_BEGIN_WHOLE] = true;
+    valid[FI_KEYWORD_BEGIN_PIECE] = true;
+    valid[LINE_CONTINUATION] = true;
+    valid[REMOVED_NEWLINE] = true;
+    struct Scanner scanner = {0};
+    size_t offset = 0;
+    for (size_t index = 0; index < counts[recovery]; index += 1) {
+      struct MockLexer lexer;
+      init_mock_lexer(
+        &lexer,
+        continued + offset,
+        sizeof(continued) / sizeof(continued[0]) - offset
+      );
+      assert(
+        tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      assert(lexer.lexer.result_symbol == expected[recovery][index].symbol);
+      assert(lexer.mark == expected[recovery][index].width);
+      offset += lexer.mark;
+      char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+      unsigned length = snapshot_scanner(&scanner, state);
+      tree_sitter_sh_external_scanner_deserialize(&scanner, state, length);
+    }
+    assert(offset == 4);
+    assert(!scanner.emission.active);
+    clear_scanner(&scanner);
   }
-  assert(offset == 4);
-  assert(!scanner.emission.active);
-  clear_scanner(&scanner);
 }
 
 static void
@@ -2452,14 +2469,19 @@ test_word_entry_classifies_and_owns_source_in_normal_and_recovery_scans(void) {
       );
       assert_scanner_matches_snapshot(&scanner, state, state_length);
 
-      enum TokenType piece = fixtures[index].piece;
+      bool recovery_literal =
+        recovery != 0 && fixtures[index].symbol == WORD_INITIAL_LITERAL_BEGIN;
+      enum TokenType piece = recovery_literal ? WORD_INITIAL_LITERAL_BEGIN_WHOLE
+                                              : fixtures[index].piece;
+      size_t first_width = recovery_literal ? fixtures[index].remaining
+                                            : fixtures[index].first_width;
       valid[piece] = true;
       init_mock_lexer(&lexer, input, length);
       assert(
         tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
       );
       assert(lexer.lexer.result_symbol == piece);
-      assert(lexer.mark == fixtures[index].first_width);
+      assert(lexer.mark == first_width);
       assert(
         scanner.emission.remaining == fixtures[index].remaining - lexer.mark
       );
@@ -2496,6 +2518,16 @@ test_whole_source_requires_its_classification_and_nonempty_range(void) {
       4},
     {"fi;", FI_KEYWORD, FI_KEYWORD_BEGIN_WHOLE, FI_KEYWORD_BEGIN_PIECE, 2},
     {"fi\\\n;", FI_KEYWORD, FI_KEYWORD_BEGIN_WHOLE, FI_KEYWORD_BEGIN_PIECE, 2},
+    {":-word",
+      PARAMETER_VALUE_OPERATOR_BEGIN,
+      PARAMETER_VALUE_OPERATOR_BEGIN_WHOLE,
+      PARAMETER_VALUE_OPERATOR_BEGIN_PIECE,
+      2},
+    {"%%word",
+      PARAMETER_PATTERN_OPERATOR_BEGIN,
+      PARAMETER_PATTERN_OPERATOR_BEGIN_WHOLE,
+      PARAMETER_PATTERN_OPERATOR_BEGIN_PIECE,
+      2},
   };
   for (
     size_t index = 0; index < sizeof(fixtures) / sizeof(*fixtures); index += 1

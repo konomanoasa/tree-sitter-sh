@@ -189,6 +189,8 @@ const structuredSourceParts = ($) => [
   $.arithmetic_expansion,
   $.backquote_substitution,
 ];
+const patternSpecialValue = ($, character) =>
+  repeat1(field("value", choice(character, ...structuredSourceParts($))));
 const hiddenPhysical = ($, begin) => physicalSource($, begin);
 const fallbackLiteralParts = ($, character) =>
   choice(
@@ -247,30 +249,22 @@ const fallbackRules = (kind) => {
       field("operator", $.pattern_bracket_range_operator_source),
       field("end", endpoint($)),
     );
-  const special = ($, marker, body) =>
-    prec.dynamic(
+  const special = ($, marker, body) => {
+    const delimiter = physical(
+      $,
+      $[`_fallback_${marker}`],
+      marker === "colon" ? ":" : marker === "dot" ? "." : "=",
+    );
+    return prec.dynamic(
       PATTERN_PRECEDENCE.specialElement,
       seq(
         physical($, $._fallback_special_bracket_open, "["),
-        physical(
-          $,
-          $[`_fallback_${marker}`],
-          marker === "colon" ? ":" : marker === "dot" ? "." : "=",
-        ),
+        delimiter,
         body,
-        prec(
-          1,
-          seq(
-            physical(
-              $,
-              $[`_fallback_${marker}`],
-              marker === "colon" ? ":" : marker === "dot" ? "." : "=",
-            ),
-            physical($, $._fallback_bracket_close, "]"),
-          ),
-        ),
+        prec(1, seq(delimiter, physical($, $._fallback_bracket_close, "]"))),
       ),
     );
+  };
   return {
     [`${prefix}_first`]: ($) =>
       fallbackFirstLiteral($, $[`${prefix}_literal_begin`], cell($)),
@@ -360,17 +354,12 @@ const fallbackRules = (kind) => {
       special(
         $,
         "dot",
-        repeat1(
-          field(
-            "value",
-            choice(
-              classified(
-                $,
-                "collating_character",
-                "pattern_collating_symbol_character_source",
-              ),
-              ...structuredSourceParts($),
-            ),
+        patternSpecialValue(
+          $,
+          classified(
+            $,
+            "collating_character",
+            "pattern_collating_symbol_character_source",
           ),
         ),
       ),
@@ -379,17 +368,12 @@ const fallbackRules = (kind) => {
       special(
         $,
         "equals",
-        repeat1(
-          field(
-            "value",
-            choice(
-              classified(
-                $,
-                "equivalence_character",
-                "pattern_equivalence_class_character_source",
-              ),
-              ...structuredSourceParts($),
-            ),
+        patternSpecialValue(
+          $,
+          classified(
+            $,
+            "equivalence_character",
+            "pattern_equivalence_class_character_source",
           ),
         ),
       ),
@@ -549,16 +533,9 @@ const arithmeticExpansion = ($, start, dynamicStart) =>
       arithmeticClosingLayout($),
     ),
   );
-const linebreakLayout = ($) =>
-  seq(optional($.linebreak), optional($._horizontal_layout));
 
 const separatorOperatorLayout = ($, operator) =>
   seq(operator, optional(field("linebreak", $.linebreak)));
-const reservedWordLinebreak = ($) =>
-  choice(
-    seq($.linebreak, optional($._horizontal_layout)),
-    $._horizontal_layout,
-  );
 
 const newlineListElements = ($) => [
   $.here_document_sequence,
@@ -642,10 +619,9 @@ const dollarExpansionStart = (
   start = $._dollar_expansion_start,
 ) => seq(dollarExpansionPrefix($, start), physical($, token, spelling));
 const backquoteDelimiter = ($, token) => physical($, token, "`");
-const commandSubstitution = ($, start) =>
+const commandSubstitution = ($, prefix) =>
   seq(
-    start,
-    $._command_substitution_body_begin,
+    prefix,
     optional(field("body", $.command_substitution_body)),
     physical($, $._punct_right_parenthesis, ")"),
     $._command_substitution_end,
@@ -659,9 +635,7 @@ const patternSpecialClassSource = ($, marker, characterSource) =>
     PATTERN_PRECEDENCE.specialElement,
     seq(
       patternSpecialStart($, marker),
-      repeat1(
-        field("value", choice(characterSource, ...structuredSourceParts($))),
-      ),
+      patternSpecialValue($, characterSource),
       patternSpecialEnd($, marker),
     ),
   );
@@ -698,8 +672,9 @@ const patternCharacterClassSource = ($, content) =>
 
 const parameterExpansion = (
   $,
-  bracedExpansion,
+  word,
   start = $._dollar_expansion_start,
+  prefix = "",
 ) =>
   prec(
     1,
@@ -708,10 +683,7 @@ const parameterExpansion = (
         dollarExpansionPrefix($, start),
         field("parameter", $._unbraced_parameter),
       ),
-      seq(
-        dollarExpansionStart($, $._parameter_open, "{", start),
-        bracedExpansion,
-      ),
+      bracedParameterExpansion($, word, prefix),
     ),
   );
 
@@ -721,33 +693,71 @@ const bracedParameterSource = ($, classifiedParameter) =>
     $._unclassified_numeric_parameter_source,
   );
 
-const bracedParameterExpansion = ($, tail) =>
-  choice(
-    seq(bracedParameterSource($, $._braced_parameter), tail),
-    prec.dynamic(2, seq(field("parameter", $._special_parameter_hash), tail)),
-    prec.dynamic(
-      3,
-      seq(
-        field("operator", $._parameter_length_operator),
-        bracedParameterSource($, $._length_parameter),
-        physical($, $._parameter_close, "}"),
-      ),
-    ),
+const parameterHeaderRules = () =>
+  Object.fromEntries(
+    ["", "_word_initial"].flatMap((prefix) => {
+      const name = `${prefix}_braced_parameter`;
+      return [
+        [
+          `${name}_header`,
+          ($) =>
+            seq(
+              $[`${name}_start`],
+              choice(
+                bracedParameterSource($, $._braced_parameter),
+                prec.dynamic(2, field("parameter", $._special_parameter_hash)),
+              ),
+            ),
+        ],
+        [
+          `${name}_value_header`,
+          ($) =>
+            seq(
+              $[`${name}_header`],
+              field("operator", $._parameter_value_operator),
+            ),
+        ],
+        [
+          `${name}_pattern_header`,
+          ($) =>
+            seq(
+              $[`${name}_header`],
+              field("operator", $._parameter_pattern_operator),
+            ),
+        ],
+        [
+          `${name}_length_header`,
+          ($) =>
+            seq(
+              $[`${name}_start`],
+              field("operator", $._parameter_length_operator),
+              bracedParameterSource($, $._length_parameter),
+            ),
+        ],
+      ];
+    }),
   );
 
-const parameterOperatorTail = ($, word) =>
-  choice(
+const bracedParameterExpansion = ($, word, prefix) => {
+  const name = `${prefix}_braced_parameter`;
+  return choice(
+    seq($[`${name}_header`], physical($, $._parameter_close, "}")),
     seq(
-      field("operator", $._parameter_value_operator),
+      $[`${name}_value_header`],
       optional(field("word", word)),
       physical($, $._parameter_close, "}"),
     ),
     seq(
-      field("operator", $._parameter_pattern_operator),
+      $[`${name}_pattern_header`],
       optional(field("pattern", $.parameter_pattern)),
       physical($, $._parameter_close, "}"),
     ),
+    prec.dynamic(
+      3,
+      seq($[`${name}_length_header`], physical($, $._parameter_close, "}")),
+    ),
   );
+};
 
 const parameterPatternSource = ($) =>
   choice(
@@ -791,12 +801,7 @@ const ifClause = ($) =>
   );
 
 const loopClause = ($, keyword) =>
-  seq(
-    keyword,
-    compoundListField($, "condition"),
-    optional($._closing_layout),
-    field("body", $.do_group),
-  );
+  seq(keyword, $._loop_condition, field("body", $.do_group));
 
 const separatedForHeader = ($) =>
   seq(
@@ -821,7 +826,7 @@ const forHeaderTail = ($) =>
     $._horizontal_layout,
     separatedForHeader($),
     seq(
-      reservedWordLinebreak($),
+      $._linebreak_layout,
       field("in", $.in),
       optional(seq($._horizontal_layout, field("words", $.wordlist))),
       separatedForHeader($),
@@ -1304,10 +1309,11 @@ export default grammar({
         field("pipeline", $.pipeline),
         repeat(
           seq(
-            $._and_or_continuation,
-            optional($._horizontal_layout),
+            optional(
+              seq($._and_or_continuation, optional($._horizontal_layout)),
+            ),
             field("operator", choice($._and_if, $._or_if)),
-            linebreakLayout($),
+            optional($._linebreak_layout),
             field("pipeline", $.pipeline),
           ),
         ),
@@ -1326,10 +1332,9 @@ export default grammar({
         field("command", $.command),
         repeat(
           seq(
-            $._pipe_continuation,
-            optional($._horizontal_layout),
+            optional(seq($._pipe_continuation, optional($._horizontal_layout))),
             physical($, $._punct_pipe, "|"),
-            linebreakLayout($),
+            optional($._linebreak_layout),
             field("command", $.command),
           ),
         ),
@@ -1517,6 +1522,9 @@ export default grammar({
         ),
       ),
 
+    _loop_condition: ($) =>
+      seq(compoundListField($, "condition"), optional($._closing_layout)),
+
     while_clause: ($) => loopClause($, $._while_keyword_source),
 
     until_clause: ($) => loopClause($, $._until_keyword_source),
@@ -1527,9 +1535,9 @@ export default grammar({
     case_clause: ($) =>
       seq(
         $._case_selector_header,
-        reservedWordLinebreak($),
+        $._linebreak_layout,
         field("in", $.in),
-        linebreakLayout($),
+        optional($._linebreak_layout),
         caseClauseItems($),
       ),
 
@@ -1541,12 +1549,17 @@ export default grammar({
 
     case_list: ($) => repeat1(field("item", $.case_item)),
 
-    case_item_ns: ($) =>
+    _case_item_header: ($) =>
       seq(
         field("patterns", $.pattern_list),
         $._pattern_end,
         optional($._horizontal_layout),
         physical($, $._punct_right_parenthesis, ")"),
+      ),
+
+    case_item_ns: ($) =>
+      seq(
+        $._case_item_header,
         choice(
           seq(optional($.linebreak), optional($._horizontal_layout)),
           prec.dynamic(
@@ -1558,17 +1571,14 @@ export default grammar({
 
     case_item: ($) =>
       seq(
-        field("patterns", $.pattern_list),
-        $._pattern_end,
-        optional($._horizontal_layout),
-        physical($, $._punct_right_parenthesis, ")"),
+        $._case_item_header,
         choice(
-          linebreakLayout($),
+          optional($._linebreak_layout),
           prec.dynamic(10, field("body", $.compound_list)),
         ),
         seq($._case_item_end, optional($._horizontal_layout)),
         field("terminator", choice($._dsemi, $._semi_and)),
-        optional(reservedWordLinebreak($)),
+        optional($._linebreak_layout),
       ),
 
     pattern_list: ($) =>
@@ -1651,7 +1661,7 @@ export default grammar({
       field("body", choice($.io_file, $.io_here)),
 
     io_number: ($) => lexical($, $._io_number_begin),
-    io_file: ($) =>
+    _io_file_prefix: ($) =>
       seq(
         choice(
           physical($, $._punct_less, "<", "operator"),
@@ -1662,8 +1672,9 @@ export default grammar({
           ),
         ),
         optional($._horizontal_layout),
-        field("filename", $.filename),
       ),
+
+    io_file: ($) => seq($._io_file_prefix, field("filename", $.filename)),
 
     filename: ($) => field("word", $.word),
 
@@ -1703,18 +1714,22 @@ export default grammar({
         repeat1(field("document", $.here_document)),
         $._here_document_sequence_end,
       ),
+    _here_document_prefix: ($) =>
+      seq(
+        $._here_document_body_start,
+        optional(field("body", $.here_document_body)),
+      ),
+
+    _quoted_here_document_prefix: ($) =>
+      seq(
+        $._quoted_here_document_body_start,
+        optional(field("body", $.quoted_here_document_body)),
+      ),
+
     here_document: ($) =>
       choice(
-        seq(
-          $._here_document_body_start,
-          optional(field("body", $.here_document_body)),
-          field("end", $.here_document_end),
-        ),
-        seq(
-          $._quoted_here_document_body_start,
-          optional(field("body", $.quoted_here_document_body)),
-          field("end", $.here_document_end),
-        ),
+        seq($._here_document_prefix, field("end", $.here_document_end)),
+        seq($._quoted_here_document_prefix, field("end", $.here_document_end)),
       ),
 
     here_document_end: ($) =>
@@ -1896,11 +1911,19 @@ export default grammar({
       doubleQuoted($, $._word_initial_dq_open),
     _word_initial_dollar_single_quoted: ($) =>
       dollarSingleQuoted($, $._word_initial_dollar_sq_dollar),
+    _word_initial_braced_parameter_start: ($) =>
+      dollarExpansionStart(
+        $,
+        $._parameter_open,
+        "{",
+        $._word_initial_dollar_expansion_start,
+      ),
     _word_initial_parameter_expansion: ($) =>
       parameterExpansion(
         $,
-        $._braced_parameter_expansion,
+        $.parameter_word,
         $._word_initial_dollar_expansion_start,
+        "_word_initial",
       ),
     _word_initial_command_start: ($) =>
       dollarExpansionStart(
@@ -1909,8 +1932,10 @@ export default grammar({
         "(",
         $._word_initial_dollar_expansion_start,
       ),
+    _word_initial_command_substitution_prefix: ($) =>
+      seq($._word_initial_command_start, $._command_substitution_body_begin),
     _word_initial_command_substitution: ($) =>
-      commandSubstitution($, $._word_initial_command_start),
+      commandSubstitution($, $._word_initial_command_substitution_prefix),
     _word_initial_arithmetic_start: ($) =>
       arithmeticExpansionStart(
         $,
@@ -2147,35 +2172,13 @@ export default grammar({
     dollar_single_quote_escape: ($) =>
       lexical($, $._dollar_single_quote_escape_begin),
 
-    parameter_expansion: ($) =>
-      parameterExpansion($, $._braced_parameter_expansion),
+    _braced_parameter_start: ($) =>
+      dollarExpansionStart($, $._parameter_open, "{"),
+    ...parameterHeaderRules(),
+    parameter_expansion: ($) => parameterExpansion($, $.parameter_word),
 
     _double_quoted_parameter_expansion: ($) =>
-      parameterExpansion($, $._double_quoted_braced_parameter_expansion),
-
-    _braced_parameter_expansion: ($) =>
-      bracedParameterExpansion($, $._parameter_expansion_tail),
-
-    _double_quoted_braced_parameter_expansion: ($) =>
-      bracedParameterExpansion($, $._double_quoted_parameter_expansion_tail),
-
-    _parameter_expansion_tail: ($) =>
-      choice(
-        physical($, $._parameter_close, "}"),
-        $._parameter_operator_expansion_tail,
-      ),
-
-    _parameter_operator_expansion_tail: ($) =>
-      parameterOperatorTail($, $.parameter_word),
-
-    _double_quoted_parameter_expansion_tail: ($) =>
-      choice(
-        physical($, $._parameter_close, "}"),
-        $._double_quoted_parameter_operator_expansion_tail,
-      ),
-
-    _double_quoted_parameter_operator_expansion_tail: ($) =>
-      parameterOperatorTail(
+      parameterExpansion(
         $,
         alias($._double_quoted_parameter_word, $.parameter_word),
       ),
@@ -2221,9 +2224,19 @@ export default grammar({
     _parameter_length_operator: ($) =>
       alias($._special_parameter_hash_lexeme, $.parameter_length_operator),
     _parameter_value_operator: ($) =>
-      alias($._parameter_value_operator_lexeme, $.parameter_value_operator),
+      wholeSource(
+        $,
+        $._parameter_value_operator_begin,
+        $._parameter_value_operator_lexeme,
+        $.parameter_value_operator,
+      ),
     _parameter_pattern_operator: ($) =>
-      alias($._parameter_pattern_operator_lexeme, $.parameter_pattern_operator),
+      wholeSource(
+        $,
+        $._parameter_pattern_operator_begin,
+        $._parameter_pattern_operator_lexeme,
+        $.parameter_pattern_operator,
+      ),
     parameter_word: ($) => parameterPatternSource($),
 
     _double_quoted_parameter_word: ($) =>
@@ -2265,8 +2278,10 @@ export default grammar({
 
     _double_quoted_parameter_escape: ($) =>
       lexical($, $._double_quoted_parameter_escape_begin),
+    _command_substitution_prefix: ($) =>
+      seq($._command_substitution_start, $._command_substitution_body_begin),
     command_substitution: ($) =>
-      commandSubstitution($, $._command_substitution_start),
+      commandSubstitution($, $._command_substitution_prefix),
 
     _command_substitution_start: ($) =>
       dollarExpansionStart($, $._command_open, "("),
@@ -2466,6 +2481,12 @@ export default grammar({
       ledNewlineList($, $.here_document_sequence),
 
     linebreak: ($) => $.newline_list,
+
+    _linebreak_layout: ($) =>
+      choice(
+        seq($.linebreak, optional($._horizontal_layout)),
+        $._horizontal_layout,
+      ),
 
     _horizontal_layout: ($) => seq(optional($._layout_begin), $._blank),
     _closing_layout: ($) => $._blank,
