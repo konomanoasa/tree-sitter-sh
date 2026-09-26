@@ -851,8 +851,6 @@ static void test_state_round_trip(void) {
     .active = true,
   };
 
-  scanner->expecting_delimiter = true;
-  scanner->delimiter_strips_tabs = true;
   scanner->sequence_end_pending = true;
   scanner->at_here_document_line_start = true;
   scanner->backquote_depth = 7;
@@ -887,8 +885,6 @@ static void test_state_round_trip(void) {
 
   tree_sitter_sh_external_scanner_deserialize(restored, serialized, length);
 
-  assert(restored->expecting_delimiter);
-  assert(restored->delimiter_strips_tabs);
   assert(restored->sequence_end_pending);
   assert(restored->at_here_document_line_start);
   assert(restored->backquote_depth == 7);
@@ -1310,10 +1306,10 @@ static void test_old_state_is_rejected(void) {
   unsigned length = snapshot_scanner(scanner, serialized);
   serialized[0] = SCANNER_SERIALIZATION_VERSION - 1;
 
-  restored->expecting_delimiter = true;
+  restored->assignment_tilde_allowed = true;
   restored->backquote_depth = 9;
   tree_sitter_sh_external_scanner_deserialize(restored, serialized, length);
-  assert(!restored->expecting_delimiter);
+  assert(!restored->assignment_tilde_allowed);
   assert(restored->backquote_depth == 0);
   assert(restored->pending_count == 0);
 
@@ -1666,7 +1662,6 @@ static void assert_text_delimiter_fixture(
     characters[index] = (unsigned char)input[index];
   }
 
-  scanner->expecting_delimiter = true;
   assert(scan_delimiter_fixture(scanner, characters, length));
   assert(scanner->pending_count == 1);
   assert_document(
@@ -1847,7 +1842,6 @@ static void test_dollar_single_quote_escape_units(void) {
 static void test_dollar_single_quote_delimiter_bytes(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
-  scanner->expecting_delimiter = true;
 
   const int32_t control_input[] = {
     '$',
@@ -1867,7 +1861,6 @@ static void test_dollar_single_quote_delimiter_bytes(void) {
   assert_document_bytes(&scanner->pending_documents[0], del, sizeof(del), true);
   clear_scanner(scanner);
 
-  scanner->expecting_delimiter = true;
   const int32_t utf8_input[] = {
     '$',
     '\'',
@@ -1896,7 +1889,6 @@ static void test_dollar_single_quote_delimiter_bytes(void) {
   );
   clear_scanner(scanner);
 
-  scanner->expecting_delimiter = true;
   const int32_t invalid_input[] = {
     '$',
     '\'',
@@ -1921,7 +1913,6 @@ static void test_dollar_single_quote_delimiter_bytes(void) {
   );
   clear_scanner(scanner);
 
-  scanner->expecting_delimiter = true;
   const int32_t unspecified_control_input[] = {
     '$',
     '\'',
@@ -1959,7 +1950,6 @@ static void test_dollar_single_quote_delimiter_bytes(void) {
 static void test_delimiter_scan_resource_rollback(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
-  scanner->expecting_delimiter = true;
 
   char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
   unsigned before_length = snapshot_scanner(scanner, before);
@@ -1989,14 +1979,11 @@ static void test_delimiter_allocation_failures_preserve_state(void) {
   }
   input[sizeof(delimiter) - 1] = '\n';
   bool valid_symbols[TOKEN_COUNT] = {false};
-  valid_symbols[HERE_END_BEGIN] = true;
+  valid_symbols[HERE_END_STRIP_BEGIN] = true;
   size_t allocation_count = 0;
   for (size_t failure = 0; failure <= allocation_count; failure += 1) {
     assert(reuse_live_allocations == 0);
-    struct Scanner scanner = {
-      .expecting_delimiter = true,
-      .delimiter_strips_tabs = true,
-    };
+    struct Scanner scanner = {0};
     char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
     unsigned length = snapshot_scanner(&scanner, before);
     struct MockLexer mock;
@@ -2014,7 +2001,7 @@ static void test_delimiter_allocation_failures_preserve_state(void) {
       allocation_count = reuse_allocation_calls - calls;
       assert(allocation_count > 0);
       assert(accepted);
-      assert(mock.lexer.result_symbol == HERE_END_BEGIN);
+      assert(mock.lexer.result_symbol == HERE_END_STRIP_BEGIN);
       assert(scanner.pending_count == 1);
       assert_document(&scanner.pending_documents[0], delimiter, false, true);
     } else {
@@ -2083,8 +2070,6 @@ static void test_reuse_allocator_realloc_failure_rolls_back(void) {
   assert(reuse_live_allocations == 0);
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
-  scanner->expecting_delimiter = true;
-  scanner->delimiter_strips_tabs = true;
 
   char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
   unsigned before_length = snapshot_scanner(scanner, before);

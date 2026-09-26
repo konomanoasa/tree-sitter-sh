@@ -21,8 +21,6 @@ const enumerators = {
       .flat()
       .map(({ begin, scanner }) => [begin, scanner]),
   ),
-  _dless_commit: "DLESS",
-  _dlessdash_commit: "DLESSDASH",
 };
 
 const warningArguments = ["-Wall", "-Wextra", "-Werror", "-pedantic"];

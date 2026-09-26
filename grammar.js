@@ -385,6 +385,14 @@ const wordPatternSpecialSources = ($) => [
   $.pattern_equivalence_class_source,
 ];
 
+// Bracket members and range endpoints outside the special [...] forms.
+const patternBracketPlainAtoms = ($, character) => [
+  character,
+  $._pattern_operator_bracket_character,
+  $.pattern_bracket_hyphen_source,
+  ...structuredSourceParts($),
+];
+
 const parameterPatternCollatingSymbolSource = ($) =>
   alias(
     $._parameter_pattern_collating_symbol_source,
@@ -552,14 +560,18 @@ const boundaryLineComment = ($, comment) =>
 const trailingComment = ($) =>
   seq($._trailing_comment_boundary, optional($._horizontal_layout), $.comment);
 
+// Expansions whose parameter words inherit a double-quoted context.
+const quotedExpansionParts = ($) => [
+  alias($._double_quoted_parameter_expansion, $.parameter_expansion),
+  $.command_substitution,
+  $.arithmetic_expansion,
+  alias($._double_quoted_backquote_substitution, $.backquote_substitution),
+];
 const doubleQuotedPart = ($) =>
   choice(
     $.double_quote_text,
     $.double_quote_escape,
-    alias($._double_quoted_parameter_expansion, $.parameter_expansion),
-    $.command_substitution,
-    $.arithmetic_expansion,
-    alias($._double_quoted_backquote_substitution, $.backquote_substitution),
+    ...quotedExpansionParts($),
   );
 const singleQuoted = ($, opener) =>
   seq(
@@ -579,6 +591,19 @@ const dollarSingleQuoted = ($, dollar) =>
     physical($, $._dollar_sq_open, "'"),
     repeat(choice($.dollar_single_quote_text, $.dollar_single_quote_escape)),
     physical($, $._dollar_sq_close, "'"),
+  );
+// The begin token tells the scanner whether <<- strips leading tabs.
+const hereDocumentRedirect = ($, operator, end) =>
+  seq(
+    field("operator", operator),
+    optional($._horizontal_layout),
+    field("end", end),
+  );
+const hereEnd = ($, begin) =>
+  seq(
+    begin,
+    field("word", alias($._here_end_source_word, $.word)),
+    $._here_end_commit,
   );
 const hereDocumentEndSource = ($, begin, text) =>
   seq(begin, repeat(choice($._here_document_end_leading_tabs, text)));
@@ -940,9 +965,8 @@ export default grammar({
       $._esac_keyword_begin,
       $._while_keyword_begin,
       $._until_keyword_begin,
-      $._dless_commit,
-      $._dlessdash_commit,
       $._here_end_begin,
+      $._here_end_strip_begin,
       $._here_end_commit,
       $._here_document_line_end_begin,
       $._here_document_body_start,
@@ -1175,17 +1199,15 @@ export default grammar({
 
   rules: {
     program: ($) =>
-      choice(
-        seq(
-          optional(field("leading", $.linebreak)),
-          optional($._horizontal_layout),
-          field("commands", $.complete_commands),
-          optional(field("trailing", $.linebreak)),
-          optional($._free_trailing_layout),
-        ),
-        seq(
-          optional(field("leading", $.linebreak)),
-          optional($._horizontal_layout),
+      seq(
+        optional(field("leading", $.linebreak)),
+        optional($._horizontal_layout),
+        choice(
+          seq(
+            field("commands", $.complete_commands),
+            optional(field("trailing", $.linebreak)),
+            optional($._free_trailing_layout),
+          ),
           optional(trailingComment($)),
         ),
       ),
@@ -1684,25 +1706,20 @@ export default grammar({
     lessgreat: ($) => lexical($, $._lessgreat_begin),
     clobber: ($) => lexical($, $._clobber_begin),
     io_here: ($) =>
-      seq(
-        field("operator", choice($._dless, $._dlessdash)),
-        optional($._horizontal_layout),
-        field("end", $.here_end),
+      choice(
+        hereDocumentRedirect(
+          $,
+          alias($._dless_operator_lexeme, $.dless),
+          $.here_end,
+        ),
+        hereDocumentRedirect(
+          $,
+          alias($._dlessdash_operator_lexeme, $.dlessdash),
+          alias($._here_end_strip, $.here_end),
+        ),
       ),
-
-    _dless: ($) =>
-      seq(alias($._dless_operator_lexeme, $.dless), $._dless_commit),
-    _dlessdash: ($) =>
-      seq(
-        alias($._dlessdash_operator_lexeme, $.dlessdash),
-        $._dlessdash_commit,
-      ),
-    here_end: ($) =>
-      seq(
-        $._here_end_begin,
-        field("word", alias($._here_end_source_word, $.word)),
-        $._here_end_commit,
-      ),
+    here_end: ($) => hereEnd($, $._here_end_begin),
+    _here_end_strip: ($) => hereEnd($, $._here_end_strip_begin),
 
     _here_end_source_word: ($) =>
       seq($._word_initial_part, repeat($._word_part)),
@@ -2025,10 +2042,7 @@ export default grammar({
       choice(
         ...wordPatternSpecialSources($),
         $.pattern_bracket_range_source,
-        $.pattern_bracket_character_source,
-        $._pattern_operator_bracket_character,
-        $.pattern_bracket_hyphen_source,
-        ...structuredSourceParts($),
+        ...patternBracketPlainAtoms($, $.pattern_bracket_character_source),
       ),
 
     _parameter_pattern_bracket_member: ($) =>
@@ -2038,13 +2052,13 @@ export default grammar({
           $._parameter_pattern_bracket_range,
           $.pattern_bracket_range_source,
         ),
-        alias(
-          $._parameter_pattern_bracket_character,
-          $.pattern_bracket_character_source,
+        ...patternBracketPlainAtoms(
+          $,
+          alias(
+            $._parameter_pattern_bracket_character,
+            $.pattern_bracket_character_source,
+          ),
         ),
-        $._pattern_operator_bracket_character,
-        $.pattern_bracket_hyphen_source,
-        ...structuredSourceParts($),
       ),
 
     pattern_bracket_range_source: ($) =>
@@ -2064,23 +2078,20 @@ export default grammar({
 
     _pattern_bracket_range_endpoint: ($) =>
       choice(
-        $.pattern_bracket_character_source,
-        $._pattern_operator_bracket_character,
+        ...patternBracketPlainAtoms($, $.pattern_bracket_character_source),
         $.pattern_collating_symbol_source,
-        $.pattern_bracket_hyphen_source,
-        ...structuredSourceParts($),
       ),
 
     _parameter_pattern_bracket_range_endpoint: ($) =>
       choice(
-        alias(
-          $._parameter_pattern_bracket_character,
-          $.pattern_bracket_character_source,
+        ...patternBracketPlainAtoms(
+          $,
+          alias(
+            $._parameter_pattern_bracket_character,
+            $.pattern_bracket_character_source,
+          ),
         ),
-        $._pattern_operator_bracket_character,
         parameterPatternCollatingSymbolSource($),
-        $.pattern_bracket_hyphen_source,
-        ...structuredSourceParts($),
       ),
 
     pattern_bracket_character_source: ($) =>
@@ -2247,13 +2258,7 @@ export default grammar({
         alias($._double_quoted_parameter_text, $.double_quote_text),
         alias($._double_quoted_parameter_escape, $.double_quote_escape),
         $.double_quoted,
-        alias($._double_quoted_parameter_expansion, $.parameter_expansion),
-        $.command_substitution,
-        $.arithmetic_expansion,
-        alias(
-          $._double_quoted_backquote_substitution,
-          $.backquote_substitution,
-        ),
+        ...quotedExpansionParts($),
       ),
     parameter_pattern: ($) => prec.right(1, parameterPatternSource($)),
 
@@ -2335,13 +2340,7 @@ export default grammar({
 
     _arithmetic_runtime_fragment: ($) =>
       choice(
-        alias($._double_quoted_parameter_expansion, $.parameter_expansion),
-        $.command_substitution,
-        $.arithmetic_expansion,
-        alias(
-          $._double_quoted_backquote_substitution,
-          $.backquote_substitution,
-        ),
+        ...quotedExpansionParts($),
         $.parenthesized_arithmetic_dynamic_source,
       ),
 
@@ -2426,13 +2425,7 @@ export default grammar({
       choice(
         $.arithmetic_number,
         $.arithmetic_variable,
-        alias($._double_quoted_parameter_expansion, $.parameter_expansion),
-        $.command_substitution,
-        $.arithmetic_expansion,
-        alias(
-          $._double_quoted_backquote_substitution,
-          $.backquote_substitution,
-        ),
+        ...quotedExpansionParts($),
         $.parenthesized_arithmetic,
       ),
 

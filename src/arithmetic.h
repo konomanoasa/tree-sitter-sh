@@ -866,6 +866,66 @@ static size_t dynamic_arithmetic_hash_key(
   return (size_t)(hash ^ (hash >> 31));
 }
 
+static size_t dynamic_arithmetic_item_key(
+  const struct DynamicArithmeticChart *chart,
+  size_t index
+) {
+  const struct DynamicArithmeticItem *item = &chart->items[index];
+  return dynamic_arithmetic_hash_key(
+    item->vertex,
+    item->origin,
+    item->rule,
+    item->dot
+  );
+}
+
+static size_t dynamic_arithmetic_completion_key(
+  const struct DynamicArithmeticChart *chart,
+  size_t index
+) {
+  const struct DynamicArithmeticCompletion *completion =
+    &chart->completions[index];
+  return dynamic_arithmetic_hash_key(
+    completion->vertex,
+    completion->origin,
+    completion->symbol,
+    0
+  );
+}
+
+/* Open addressing over indices offset by one so that zero marks an empty slot.
+ */
+static bool dynamic_arithmetic_rehash(
+  size_t **hash,
+  size_t *capacity,
+  size_t count,
+  size_t (*key)(const struct DynamicArithmeticChart *, size_t),
+  const struct DynamicArithmeticChart *chart
+) {
+  if (count < *capacity / 2) {
+    return true;
+  }
+  size_t next = *capacity == 0 ? 256 : *capacity * 2;
+  if (next < *capacity || next > SIZE_MAX / sizeof(size_t)) {
+    return false;
+  }
+  size_t *grown = ts_calloc(next, sizeof(*grown));
+  if (grown == NULL) {
+    return false;
+  }
+  for (size_t index = 0; index < count; index += 1) {
+    size_t slot = key(chart, index) & (next - 1);
+    while (grown[slot] != 0) {
+      slot = (slot + 1) & (next - 1);
+    }
+    grown[slot] = index + 1;
+  }
+  ts_free(*hash);
+  *hash = grown;
+  *capacity = next;
+  return true;
+}
+
 static bool dynamic_arithmetic_add_item(
   struct DynamicArithmeticChart *chart,
   size_t vertex,
@@ -873,35 +933,14 @@ static bool dynamic_arithmetic_add_item(
   uint8_t rule,
   uint8_t dot
 ) {
-  if (chart->item_count >= chart->hash_capacity / 2) {
-    size_t capacity =
-      chart->hash_capacity == 0 ? 256 : chart->hash_capacity * 2;
-    if (
-      capacity < chart->hash_capacity || capacity > SIZE_MAX / sizeof(size_t)
-    ) {
-      return false;
-    }
-    size_t *hash = ts_calloc(capacity, sizeof(*hash));
-    if (hash == NULL) {
-      return false;
-    }
-    for (size_t index = 0; index < chart->item_count; index += 1) {
-      struct DynamicArithmeticItem item = chart->items[index];
-      size_t slot = dynamic_arithmetic_hash_key(
-                      item.vertex,
-                      item.origin,
-                      item.rule,
-                      item.dot
-                    ) &
-        (capacity - 1);
-      while (hash[slot] != 0) {
-        slot = (slot + 1) & (capacity - 1);
-      }
-      hash[slot] = index + 1;
-    }
-    ts_free(chart->hash);
-    chart->hash = hash;
-    chart->hash_capacity = capacity;
+  if (!dynamic_arithmetic_rehash(
+        &chart->hash,
+        &chart->hash_capacity,
+        chart->item_count,
+        dynamic_arithmetic_item_key,
+        chart
+      )) {
+    return false;
   }
   const struct DynamicArithmeticRule *production =
     &dynamic_arithmetic_rules[rule];
@@ -984,40 +1023,14 @@ static bool dynamic_arithmetic_complete(
 ) {
   uint8_t symbol = dynamic_arithmetic_rules[item.rule].left;
   size_t head = item.origin * DYNAMIC_ARITHMETIC_SYMBOL_COUNT + symbol;
-  if (chart->completion_count >= chart->completion_hash_capacity / 2) {
-    size_t capacity = chart->completion_hash_capacity == 0
-      ? 256
-      : chart->completion_hash_capacity * 2;
-    if (
-      capacity <
-      chart->completion_hash_capacity ||
-      capacity >
-      SIZE_MAX /
-      sizeof(size_t)
-    ) {
-      return false;
-    }
-    size_t *hash = ts_calloc(capacity, sizeof(*hash));
-    if (hash == NULL) {
-      return false;
-    }
-    for (size_t index = 0; index < chart->completion_count; index += 1) {
-      struct DynamicArithmeticCompletion completion = chart->completions[index];
-      size_t slot = dynamic_arithmetic_hash_key(
-                      completion.vertex,
-                      completion.origin,
-                      completion.symbol,
-                      0
-                    ) &
-        (capacity - 1);
-      while (hash[slot] != 0) {
-        slot = (slot + 1) & (capacity - 1);
-      }
-      hash[slot] = index + 1;
-    }
-    ts_free(chart->completion_hash);
-    chart->completion_hash = hash;
-    chart->completion_hash_capacity = capacity;
+  if (!dynamic_arithmetic_rehash(
+        &chart->completion_hash,
+        &chart->completion_hash_capacity,
+        chart->completion_count,
+        dynamic_arithmetic_completion_key,
+        chart
+      )) {
+    return false;
   }
   size_t slot =
     dynamic_arithmetic_hash_key(item.vertex, item.origin, symbol, 0) &
