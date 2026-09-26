@@ -3117,7 +3117,6 @@ delimiter_comment(struct DelimiterReader *reader, size_t command_depth) {
   reader->valid = reader->valid && flush_nested_here_documents(reader);
 }
 
-/* Word content outside a nested delimiter also feeds the command tracker. */
 static void delimiter_note_word_character(
   struct DelimiterReader *reader,
   struct CommandWord *command_word,
@@ -4320,8 +4319,7 @@ static bool classify_layout_run(
   return false;
 }
 
-/* Classifies the operator spelled by up to three characters and reports its
- * length; COUNT marks spellings outside the binary and assignment grammar. */
+/* COUNT marks operators outside the binary and assignment grammar. */
 static enum ArithmeticOperatorCategory classify_arithmetic_operator(
   int32_t first,
   int32_t second,

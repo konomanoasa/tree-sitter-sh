@@ -355,4 +355,11 @@ if (import.meta.main) {
   }
 }
 
-export { createTreeSitter, generateParsers, grammars, packageName, root };
+export {
+  copyFiles,
+  createTreeSitter,
+  generateParsers,
+  grammars,
+  packageName,
+  root,
+};

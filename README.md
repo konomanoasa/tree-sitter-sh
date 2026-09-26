@@ -1,6 +1,7 @@
 # tree-sitter-sh
 
 [![CI](https://github.com/konomanoasa/tree-sitter-sh/actions/workflows/ci.yaml/badge.svg)](https://github.com/konomanoasa/tree-sitter-sh/actions/workflows/ci.yaml)
+[![crates.io](https://img.shields.io/crates/v/tree-sitter-sh)](https://crates.io/crates/tree-sitter-sh)
 [![npm](https://img.shields.io/npm/v/tree-sitter-sh)](https://www.npmjs.com/package/tree-sitter-sh)
 
 [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for the
@@ -12,15 +13,9 @@ POSIX.1-2024 Shell Command Language.
 npm install tree-sitter-sh
 ```
 
-## Grammar
-
-| Grammar | Description | Rust constant |
-| --- | --- | --- |
-| `sh` | POSIX.1-2024 Shell Command Language | `LANGUAGE` |
-
 ## Development
 
-Development requires Node.js 24.2.0 or later.
+Development uses Node.js 24 or later.
 
 ```sh
 npm install

@@ -22,6 +22,7 @@ const enumerators = {
       .map(({ begin, scanner }) => [begin, scanner]),
   ),
 };
+const tokenCount = "TOKEN_COUNT";
 
 const warningArguments = ["-Wall", "-Wextra", "-Werror", "-pedantic"];
 const scannerContract = join(root, "test", "scanner.test.c");
@@ -29,13 +30,19 @@ const contracts = [scannerContract, join(root, "test", "source.test.c")];
 
 const variants = grammars.map((grammar) => {
   const includeDirectory = join(root, grammar.path, "src");
+  const source = join(includeDirectory, "scanner.c");
+  const headers = grammar.externalFiles
+    .filter((file) => file.endsWith(".h") && file !== "src/lexical-tokens.h")
+    .map((file) => join(root, file));
   return {
     name: grammar.name,
     includeDirectory,
-    source: join(includeDirectory, "scanner.c"),
-    headers: grammar.externalFiles
-      .filter((file) => file.endsWith(".h") && file !== "src/lexical-tokens.h")
-      .map((file) => join(root, file)),
+    source,
+    headers,
+    contractArguments: [],
+    reuseAllocator: [source, ...headers].some((file) =>
+      readFileSync(file, "utf8").includes('"tree_sitter/alloc.h"'),
+    ),
   };
 });
 
@@ -158,7 +165,7 @@ function checkExternalTokenOrder(clang, compilerArguments, variant, directory) {
     return `typedef char external_${index}[${enumerator} == ${index} ? 1 : -1];`;
   });
   assertions.push(
-    `typedef char external_count[TOKEN_COUNT == ${grammar.externals.length} ? 1 : -1];`,
+    `typedef char external_count[${tokenCount} == ${grammar.externals.length} ? 1 : -1];`,
   );
   const source = join(directory, `scanner-indices-${variant.name}.c`);
   writeFileSync(
@@ -183,6 +190,7 @@ function checkDiagnostics(clang, clangd, directory) {
         ...warningArguments,
         // Clangd checks headers and included helpers without all their callers.
         "-Wno-unused-function",
+        ...(source === variant.source ? [] : variant.contractArguments),
         "-fsyntax-only",
         source,
       ],
@@ -284,7 +292,10 @@ function main(arguments_) {
         ];
         checkExternalTokenOrder(clang, compilerArguments, variant, directory);
         for (const contract of contracts) {
-          const modes = contract === scannerContract ? [false, true] : [false];
+          const modes =
+            contract === scannerContract && variant.reuseAllocator
+              ? [false, true]
+              : [false];
           for (const reuse of modes) {
             const suffix = process.platform === "win32" ? ".exe" : "";
             const contractName = basename(contract, ".test.c");
@@ -292,6 +303,7 @@ function main(arguments_) {
             const binary = join(directory, `scanner-${name}${suffix}`);
             run(clang, [
               ...compilerArguments,
+              ...variant.contractArguments,
               ...(reuse ? ["-DTREE_SITTER_REUSE_ALLOCATOR"] : []),
               contract,
               "-o",
@@ -303,7 +315,7 @@ function main(arguments_) {
             );
           }
         }
-        if (standard === "c17")
+        if (standard === "c17" && variant.reuseAllocator)
           checkAllocatorSymbols(clang, variant, directory);
       }
     }

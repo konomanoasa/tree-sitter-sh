@@ -385,7 +385,6 @@ const wordPatternSpecialSources = ($) => [
   $.pattern_equivalence_class_source,
 ];
 
-// Bracket members and range endpoints outside the special [...] forms.
 const patternBracketPlainAtoms = ($, character) => [
   character,
   $._pattern_operator_bracket_character,
@@ -592,13 +591,13 @@ const dollarSingleQuoted = ($, dollar) =>
     repeat(choice($.dollar_single_quote_text, $.dollar_single_quote_escape)),
     physical($, $._dollar_sq_close, "'"),
   );
-// The begin token tells the scanner whether <<- strips leading tabs.
 const hereDocumentRedirect = ($, operator, end) =>
   seq(
     field("operator", operator),
     optional($._horizontal_layout),
     field("end", end),
   );
+// The begin token tells the scanner whether <<- strips leading tabs.
 const hereEnd = ($, begin) =>
   seq(
     begin,
