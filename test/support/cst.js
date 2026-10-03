@@ -6,6 +6,7 @@ const lexicalTypes = new Set([
   "and_if",
   "arithmetic_number",
   "arithmetic_operator",
+  "arithmetic_source_fragment",
   "arithmetic_variable",
   "bang",
   "clobber",

@@ -500,9 +500,14 @@ test("nested commands recover through enclosing terminators after completion", (
 
 for (const [name, source] of [
   ["command and redirects", "VAR=value printf é🙂 12>>output && ( : )2>file\n"],
+  ["bracket ranges", "printf [a-b--] [a-c-e-g] [a-[:alpha:]] [a-[.x.]]\n"],
   ["case and function", "worker() { case ab in a|[[:alpha:]]) :;; esac; }\n"],
   ["nested expansions", `: "ab\${value:-cd}$(printf ef)$((name <<= 2))gh"\n`],
   ["arithmetic precedence", ": $((value = 0x12 + 3 * 4 < 9 ? 5 : 6))\n"],
+  [
+    "arithmetic source fragments",
+    `: $((0x\${hex} + \${prefix}08 + \${name}123abc))\n`,
+  ],
   ["backquote command", "echo `printf ab`\n"],
   ["heredoc lines", `cat <<-END\n\tab\${value}cd\n\tEND\n`],
 ]) {

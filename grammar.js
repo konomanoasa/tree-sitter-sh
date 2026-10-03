@@ -66,7 +66,6 @@ const arithmeticBinaryLevelSymbols = ($, suffix) =>
 
 const PATTERN_PRECEDENCE = {
   expression: 2,
-  range: 3,
   specialElement: 4,
 };
 
@@ -191,194 +190,21 @@ const structuredSourceParts = ($) => [
 ];
 const patternSpecialValue = ($, character) =>
   repeat1(field("value", choice(character, ...structuredSourceParts($))));
-const hiddenPhysical = ($, begin) => physicalSource($, begin);
-const fallbackLiteralParts = ($, character) =>
-  choice(
-    character,
-    hiddenPhysical($, $._fallback_bracket_open),
-    hiddenPhysical($, $._fallback_special_bracket_open),
-    hiddenPhysical($, $._fallback_bracket_close),
-    hiddenPhysical($, $._fallback_colon),
-    hiddenPhysical($, $._fallback_dot),
-    hiddenPhysical($, $._fallback_equals),
-    lexical($, $._pattern_negation_begin),
-    lexical($, $._pattern_bracket_hyphen_begin),
-  );
-const fallbackLiteral = ($, chunk) =>
-  prec.dynamic(-1, repeat1(fallbackLiteralParts($, chunk)));
-const fallbackFirstLiteral = ($, first, chunk) =>
-  prec.dynamic(
-    -1,
-    seq(lexical($, first), repeat(fallbackLiteralParts($, chunk))),
-  );
-const bracketFallback = ($, first, suffix, end) =>
-  seq(alias(first, $.literal), repeat(suffix), end);
-const fallbackRules = (kind) => {
-  const prefix = `_${kind}_fallback`;
-  const symbol = ($, suffix) => $[`${prefix}_${suffix}`];
-  const cell = ($) => lexical($, $[`${prefix}_character_begin`]);
-  const hidden = ($, suffix) => hiddenPhysical($, $[`_fallback_${suffix}`]);
-  const character = ($) =>
-    choice(
-      cell($),
-      hidden($, "bracket_open"),
-      hidden($, "colon"),
-      hidden($, "dot"),
-      hidden($, "equals"),
-      lexical($, $._pattern_negation_begin),
-    );
-  const ordinary = ($) =>
-    choice(
-      character($),
-      hidden($, "special_bracket_open"),
-      lexical($, $._pattern_bracket_hyphen_begin),
-      lexical($, $._pattern_star_begin),
-      lexical($, $._pattern_question_begin),
-    );
-  const classified = ($, suffix, name) => alias(symbol($, suffix), $[name]);
-  const endpoint = ($) =>
-    choice(
-      classified($, "character", "pattern_bracket_character_source"),
-      classified($, "collating", "pattern_collating_symbol_source"),
-      $.pattern_bracket_hyphen_source,
-      ...structuredSourceParts($),
-    );
-  const range = ($, start = endpoint($)) =>
-    seq(
-      field("start", start),
-      field("operator", $.pattern_bracket_range_operator_source),
-      field("end", endpoint($)),
-    );
-  const special = ($, marker, body) => {
-    const delimiter = physical(
-      $,
-      $[`_fallback_${marker}`],
-      marker === "colon" ? ":" : marker === "dot" ? "." : "=",
-    );
-    return prec.dynamic(
-      PATTERN_PRECEDENCE.specialElement,
-      seq(
-        physical($, $._fallback_special_bracket_open, "["),
-        delimiter,
-        body,
-        prec(1, seq(delimiter, physical($, $._fallback_bracket_close, "]"))),
-      ),
-    );
-  };
-  return {
-    [`${prefix}_first`]: ($) =>
-      fallbackFirstLiteral($, $[`${prefix}_literal_begin`], cell($)),
-    [`${prefix}_literal`]: ($) => fallbackLiteral($, cell($)),
-    [`${prefix}_suffix`]: ($) =>
-      seq(
-        choice(
-          classified($, "bracket", "pattern_bracket_source"),
-          $.pattern_star_source,
-          $.pattern_question_source,
-          ...structuredSourceParts($),
-        ),
-        optional(classified($, "literal", "literal")),
-      ),
-    [`${prefix}_character`]: ($) =>
+// The first literal holds an incomplete `[` that the scanner tracks to the end.
+const bracketFallback = ($, first, literal, bracket, end) =>
+  seq(
+    alias(first, $.literal),
+    repeat(
       choice(
-        character($),
-        lexical($, $._pattern_star_begin),
-        lexical($, $._pattern_question_begin),
+        literal,
+        bracket,
+        $.pattern_star_source,
+        $.pattern_question_source,
+        $._word_structured_part,
       ),
-    [`${prefix}_initial`]: ($) => hidden($, "bracket_close"),
-    [`${prefix}_range`]: ($) =>
-      prec.dynamic(PATTERN_PRECEDENCE.range, range($)),
-    [`${prefix}_initial_range`]: ($) =>
-      prec.dynamic(
-        PATTERN_PRECEDENCE.range,
-        range($, classified($, "initial", "pattern_bracket_character_source")),
-      ),
-    [`${prefix}_member`]: ($) =>
-      choice(
-        classified($, "class", "pattern_character_class_source"),
-        classified($, "collating", "pattern_collating_symbol_source"),
-        classified($, "equivalence", "pattern_equivalence_class_source"),
-        classified($, "range", "pattern_bracket_range_source"),
-        classified($, "character", "pattern_bracket_character_source"),
-        $.pattern_bracket_hyphen_source,
-        ...structuredSourceParts($),
-      ),
-    [`${prefix}_members`]: ($) =>
-      prec.right(
-        choice(
-          seq(
-            field(
-              "member",
-              choice(
-                classified($, "initial", "pattern_bracket_character_source"),
-                classified($, "initial_range", "pattern_bracket_range_source"),
-              ),
-            ),
-            repeat(field("member", symbol($, "member"))),
-          ),
-          repeat1(field("member", symbol($, "member"))),
-        ),
-      ),
-    [`${prefix}_bracket`]: ($) =>
-      prec.dynamic(
-        PATTERN_PRECEDENCE.expression,
-        seq(
-          physical(
-            $,
-            choice($._fallback_bracket_open, $._fallback_special_bracket_open),
-            "[",
-          ),
-          optional(
-            field("negation", prec(1, $.pattern_bracket_negation_source)),
-          ),
-          field(
-            "members",
-            classified($, "members", "pattern_bracket_members_source"),
-          ),
-          physical($, $._fallback_bracket_close, "]"),
-        ),
-      ),
-    [`${prefix}_class_text`]: ($) => prec.right(repeat1(ordinary($))),
-    [`${prefix}_class`]: ($) =>
-      special(
-        $,
-        "colon",
-        patternCharacterClassBody(
-          $,
-          classified($, "class_text", "pattern_character_class_content_source"),
-        ),
-      ),
-    [`${prefix}_collating_character`]: ($) =>
-      choice(ordinary($), hidden($, "bracket_close")),
-    [`${prefix}_collating`]: ($) =>
-      special(
-        $,
-        "dot",
-        patternSpecialValue(
-          $,
-          classified(
-            $,
-            "collating_character",
-            "pattern_collating_symbol_character_source",
-          ),
-        ),
-      ),
-    [`${prefix}_equivalence_character`]: ($) => ordinary($),
-    [`${prefix}_equivalence`]: ($) =>
-      special(
-        $,
-        "equals",
-        patternSpecialValue(
-          $,
-          classified(
-            $,
-            "equivalence_character",
-            "pattern_equivalence_class_character_source",
-          ),
-        ),
-      ),
-  };
-};
+    ),
+    end,
+  );
 const wordPatternSpecialSources = ($) => [
   $.pattern_character_class_source,
   $.pattern_collating_symbol_source,
@@ -604,8 +430,7 @@ const hereEnd = ($, begin) =>
     field("word", alias($._here_end_source_word, $.word)),
     $._here_end_commit,
   );
-const hereDocumentEndSource = ($, begin, text) =>
-  seq(begin, repeat(choice($._here_document_end_leading_tabs, text)));
+const hereDocumentEndSource = (begin, text) => seq(begin, repeat(text));
 const backquoteSubstitution = ($, start) =>
   seq(
     backquoteDelimiter($, start),
@@ -729,7 +554,7 @@ const parameterHeaderRules = () =>
               $[`${name}_start`],
               choice(
                 bracedParameterSource($, $._braced_parameter),
-                prec.dynamic(2, field("parameter", $._special_parameter_hash)),
+                field("parameter", $._special_parameter_hash),
               ),
             ),
         ],
@@ -754,7 +579,7 @@ const parameterHeaderRules = () =>
           ($) =>
             seq(
               $[`${name}_start`],
-              field("operator", $._parameter_length_operator),
+              field("operator", $.parameter_length_operator),
               bracedParameterSource($, $._length_parameter),
             ),
         ],
@@ -776,10 +601,7 @@ const bracedParameterExpansion = ($, word, prefix) => {
       optional(field("pattern", $.parameter_pattern)),
       physical($, $._parameter_close, "}"),
     ),
-    prec.dynamic(
-      3,
-      seq($[`${name}_length_header`], physical($, $._parameter_close, "}")),
-    ),
+    seq($[`${name}_length_header`], physical($, $._parameter_close, "}")),
   );
 };
 
@@ -917,13 +739,10 @@ const patternBracketList = ($, member, initialRange) =>
   );
 
 const patternBracketRange = ($, endpoint, start = endpoint) =>
-  prec.dynamic(
-    PATTERN_PRECEDENCE.range,
-    seq(
-      field("start", start),
-      field("operator", $.pattern_bracket_range_operator_source),
-      field("end", endpoint),
-    ),
+  seq(
+    field("start", start),
+    field("operator", $.pattern_bracket_range_operator_source),
+    field("end", endpoint),
   );
 
 const patternInitialBracketRange = ($, endpoint) =>
@@ -974,7 +793,6 @@ export default grammar({
       $._quoted_here_document_end_text_begin,
       $._quoted_here_document_text_begin,
       $._here_document_end_begin,
-      $._here_document_end_leading_tabs_begin,
       $._here_document_end_commit,
       $._here_document_sequence_end,
       $._here_document_content_line_start,
@@ -1015,6 +833,7 @@ export default grammar({
       $._pattern_bracket_character_begin,
       $._parameter_pattern_bracket_character_begin,
       $._pattern_bracket_hyphen_begin,
+      $._pattern_bracket_range_operator_begin,
       $._word_tilde_end,
       $._assignment_tilde_end,
       $._assignment_name_begin,
@@ -1027,7 +846,6 @@ export default grammar({
       $._pre_newline_blank_begin,
       $._command_substitution_end,
       $._separator_newline,
-      $._layout_begin,
       $._term_boundary,
       $._word_pattern_bracket_open,
       $._parameter_pattern_bracket_open,
@@ -1127,17 +945,9 @@ export default grammar({
       $._word_fallback_literal_begin,
       $._assignment_fallback_literal_begin,
       $._parameter_fallback_literal_begin,
-      $._fallback_bracket_open,
       $._word_bracket_fallback_end,
       $._assignment_bracket_fallback_end,
       $._parameter_bracket_fallback_end,
-      $._fallback_bracket_close,
-      $._fallback_colon,
-      $._fallback_dot,
-      $._fallback_equals,
-      $._word_fallback_character_begin,
-      $._assignment_fallback_character_begin,
-      $._parameter_fallback_character_begin,
       $._word_initial_literal_begin,
       $._word_initial_fallback_literal_begin,
       $._word_initial_pattern_bracket_open,
@@ -1149,11 +959,12 @@ export default grammar({
       $._word_initial_dollar_sq_dollar,
       $._word_initial_dollar_expansion_start,
       $._word_initial_backquote_start,
-      $._fallback_special_bracket_open,
       $._here_document_line_layout_begin,
       $._parameter_hyphen_begin,
       $._parameter_question_begin,
       $._arithmetic_blank_begin,
+      $._parameter_length_operator_begin,
+      $._arithmetic_source_fragment_begin,
       ...sourceExternals($),
     ];
     const names = new Set();
@@ -1172,28 +983,14 @@ export default grammar({
   },
 
   conflicts: ($) => [
-    [$._word_initial_fallback_first],
     [$.list],
     [$.term],
     [$.compound_list],
     [$.complete_commands],
     [$._sequential_newline_separator, $.linebreak],
     [$.case_list],
-    [$._pattern_bracket_member, $._pattern_bracket_range_endpoint],
-    [
-      $._parameter_pattern_bracket_member,
-      $._parameter_pattern_bracket_range_endpoint,
-    ],
-    [$.pattern_bracket_range_operator_source, $.pattern_bracket_hyphen_source],
     [$._parenthesized_arithmetic_lvalue, $._arithmetic_primary_expression],
     [$.complete_command],
-    [$._special_parameter_hash, $._parameter_length_operator],
-    ...["word", "assignment", "parameter"].flatMap((kind) => [
-      [$[`_${kind}_fallback_first`]],
-      [$[`_${kind}_fallback_literal`]],
-      [$[`_${kind}_fallback_suffix`]],
-      [$[`_${kind}_fallback_range`], $[`_${kind}_fallback_member`]],
-    ]),
   ],
 
   rules: {
@@ -1752,7 +1549,6 @@ export default grammar({
       seq(
         choice(
           hereDocumentEndSource(
-            $,
             $._quoted_here_document_end_begin,
             alias(
               $._quoted_here_document_end_text_lexeme,
@@ -1760,7 +1556,6 @@ export default grammar({
             ),
           ),
           hereDocumentEndSource(
-            $,
             $._here_document_end_begin,
             $.here_document_end_text,
           ),
@@ -1779,10 +1574,7 @@ export default grammar({
         choice(
           $.here_document_text,
           $.here_document_escape,
-          $.parameter_expansion,
-          $.command_substitution,
-          $.arithmetic_expansion,
-          $.backquote_substitution,
+          ...quotedExpansionParts($),
           $._newline,
         ),
       ),
@@ -1908,17 +1700,14 @@ export default grammar({
         $.pattern_bracket_members_source,
         $._word_initial_pattern_bracket_open,
       ),
-    _word_initial_fallback_first: ($) =>
-      fallbackFirstLiteral(
-        $,
-        $._word_initial_fallback_literal_begin,
-        lexical($, $._word_fallback_character_begin),
-      ),
+    _word_initial_fallback_literal: ($) =>
+      lexical($, $._word_initial_fallback_literal_begin),
     _word_initial_bracket_fallback: ($) =>
       bracketFallback(
         $,
-        $._word_initial_fallback_first,
-        $._word_fallback_suffix,
+        $._word_initial_fallback_literal,
+        $.literal,
+        $.pattern_bracket_source,
         $._word_bracket_fallback_end,
       ),
     _word_initial_single_quoted: ($) =>
@@ -1975,29 +1764,37 @@ export default grammar({
 
     literal: ($) => lexical($, $._literal_begin),
 
-    ...fallbackRules("word"),
-    ...fallbackRules("assignment"),
-    ...fallbackRules("parameter"),
     ...physicalRules(),
+    _word_fallback_literal: ($) => lexical($, $._word_fallback_literal_begin),
     _word_bracket_fallback: ($) =>
       bracketFallback(
         $,
-        $._word_fallback_first,
-        $._word_fallback_suffix,
+        $._word_fallback_literal,
+        $.literal,
+        $.pattern_bracket_source,
         $._word_bracket_fallback_end,
       ),
+    _assignment_fallback_literal: ($) =>
+      lexical($, $._assignment_fallback_literal_begin),
     _assignment_bracket_fallback: ($) =>
       bracketFallback(
         $,
-        $._assignment_fallback_first,
-        $._assignment_fallback_suffix,
+        $._assignment_fallback_literal,
+        alias($._assignment_literal, $.literal),
+        $.pattern_bracket_source,
         $._assignment_bracket_fallback_end,
       ),
+    _parameter_fallback_literal: ($) =>
+      lexical($, $._parameter_fallback_literal_begin),
     _parameter_bracket_fallback: ($) =>
       bracketFallback(
         $,
-        $._parameter_fallback_first,
-        $._parameter_fallback_suffix,
+        $._parameter_fallback_literal,
+        alias($._parameter_pattern_literal, $.literal),
+        alias(
+          $._parameter_pattern_bracket_expression,
+          $.pattern_bracket_source,
+        ),
         $._parameter_bracket_fallback_end,
       ),
 
@@ -2104,7 +1901,7 @@ export default grammar({
       ),
 
     pattern_bracket_range_operator_source: ($) =>
-      lexical($, $._pattern_bracket_hyphen_begin),
+      lexical($, $._pattern_bracket_range_operator_begin),
     pattern_bracket_hyphen_source: ($) =>
       lexical($, $._pattern_bracket_hyphen_begin),
     pattern_character_class_source: ($) =>
@@ -2231,8 +2028,8 @@ export default grammar({
         ),
       ),
 
-    _parameter_length_operator: ($) =>
-      alias($._special_parameter_hash_lexeme, $.parameter_length_operator),
+    parameter_length_operator: ($) =>
+      lexical($, $._parameter_length_operator_begin),
     _parameter_value_operator: ($) =>
       wholeSource(
         $,
@@ -2333,6 +2130,7 @@ export default grammar({
       choice(
         $.arithmetic_number,
         $.arithmetic_variable,
+        $.arithmetic_source_fragment,
         $._arithmetic_source_operator,
         $.parenthesized_arithmetic_source,
       ),
@@ -2433,6 +2231,8 @@ export default grammar({
 
     arithmetic_number: ($) => lexical($, $._arithmetic_number_begin),
     arithmetic_variable: ($) => lexical($, $._arithmetic_variable_begin),
+    arithmetic_source_fragment: ($) =>
+      lexical($, $._arithmetic_source_fragment_begin),
     _arithmetic_assignment_operator_segment: ($) =>
       arithmeticOperatorSegment(
         $,
@@ -2480,7 +2280,7 @@ export default grammar({
         $._horizontal_layout,
       ),
 
-    _horizontal_layout: ($) => seq(optional($._layout_begin), $._blank),
+    _horizontal_layout: ($) => $._blank,
     _closing_layout: ($) => $._blank,
     _word_separator: ($) => wordSeparator($, $._word_separator_begin),
 
@@ -2500,9 +2300,6 @@ export default grammar({
     _pre_newline_blank: ($) => lexical($, $._pre_newline_blank_begin),
 
     here_document_line_end: ($) => lexical($, $._here_document_line_end_begin),
-
-    _here_document_end_leading_tabs: ($) =>
-      lexical($, $._here_document_end_leading_tabs_begin),
 
     _comment_line: ($) =>
       seq(boundaryLineComment($, $.comment), $._comment_line_end),

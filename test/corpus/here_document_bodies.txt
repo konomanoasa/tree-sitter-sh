@@ -1025,3 +1025,181 @@ $IN
                                                                 (line_continuation))))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+unquoted body parameter words keep single quotes and tildes literal
+==================
+
+cat <<EOF
+${name:-it's} ${name:-~} ${name:-'}'}
+EOF
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (parameter_expansion
+              parameter: (variable_name)
+              operator: (parameter_value_operator)
+              word: (parameter_word
+                (double_quote_text)))
+            (here_document_text)
+            (parameter_expansion
+              parameter: (variable_name)
+              operator: (parameter_value_operator)
+              word: (parameter_word
+                (double_quote_text)))
+            (here_document_text)
+            (parameter_expansion
+              parameter: (variable_name)
+              operator: (parameter_value_operator)
+              word: (parameter_word
+                (double_quote_text)))
+            (here_document_text))
+          end: (here_document_end
+            (here_document_end_text)))))))
+
+==================
+unquoted body parameter words keep double quotes, escapes and patterns special
+==================
+
+cat <<EOF
+${name:-"a } b"} ${name:-a\}b} ${name#'a'}
+EOF
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (parameter_expansion
+              parameter: (variable_name)
+              operator: (parameter_value_operator)
+              word: (parameter_word
+                (double_quoted
+                  (double_quote_text))))
+            (here_document_text)
+            (parameter_expansion
+              parameter: (variable_name)
+              operator: (parameter_value_operator)
+              word: (parameter_word
+                (double_quote_text)
+                (double_quote_escape)
+                (double_quote_text)))
+            (here_document_text)
+            (parameter_expansion
+              parameter: (variable_name)
+              operator: (parameter_pattern_operator)
+              pattern: (parameter_pattern
+                (single_quoted
+                  (single_quote_content)))))
+          end: (here_document_end
+            (here_document_end_text)))))))
+
+==================
+unquoted body backquotes remove the backslash before a double quote
+==================
+
+cat <<EOF
+`printf %s \"a  b\"`
+EOF
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (backquote_substitution
+              body: (backquote_substitution_body
+                (complete_commands
+                  command: (complete_command
+                    body: (list
+                      and_or: (and_or
+                        pipeline: (pipeline
+                          sequence: (pipe_sequence
+                            command: (command
+                              body: (simple_command
+                                name: (cmd_name
+                                  (word
+                                    (literal)))
+                                suffix: (cmd_suffix
+                                  word: (word
+                                    (literal))
+                                  word: (word
+                                    (double_quoted
+                                      (double_quote_text)))))))))))))))
+          end: (here_document_end
+            (here_document_end_text)))))))

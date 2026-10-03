@@ -2007,3 +2007,154 @@ echo after
                       (literal)))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+an unquoted delimiter reads a doubled dollar before a brace as one parameter
+==================
+
+cat <<E$${
+$x
+E$${
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal)
+                            (parameter_expansion
+                              parameter: (special_parameter))
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (parameter_expansion
+              parameter: (variable_name)))
+          end: (here_document_end
+            (here_document_end_text)))))))
+
+==================
+a double-quoted delimiter reads a doubled dollar before a parenthesis as one parameter
+==================
+
+cat <<"$$("
+$x
+$$(
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (double_quoted
+                              (parameter_expansion
+                                parameter: (special_parameter))
+                              (double_quote_text)))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (quoted_here_document_body
+            (quoted_here_document_text))
+          end: (here_document_end
+            (here_document_end_text)))))))
+
+==================
+a delimiter backquote may close directly after a nested here-document delimiter
+==================
+
+cat <<E`cat <<F`
+$x
+E`cat <<F`
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    redirect: (io_redirect
+                      body: (io_here
+                        operator: (dless)
+                        end: (here_end
+                          word: (word
+                            (literal)
+                            (backquote_substitution
+                              body: (backquote_substitution_body
+                                (complete_commands
+                                  command: (complete_command
+                                    body: (list
+                                      and_or: (and_or
+                                        pipeline: (pipeline
+                                          sequence: (pipe_sequence
+                                            command: (command
+                                              body: (simple_command
+                                                name: (cmd_name
+                                                  (word
+                                                    (literal)))
+                                                suffix: (cmd_suffix
+                                                  redirect: (io_redirect
+                                                    body: (io_here
+                                                      operator: (dless)
+                                                      end: (here_end
+                                                        word: (word
+                                                          (literal)))))))))))))))))))))))))))))
+  trailing: (linebreak
+    (newline_list
+      (here_document_sequence
+        line_end: (here_document_line_end)
+        document: (here_document
+          body: (here_document_body
+            (parameter_expansion
+              parameter: (variable_name)))
+          end: (here_document_end
+            (here_document_end_text)))))))

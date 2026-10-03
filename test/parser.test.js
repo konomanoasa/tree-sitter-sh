@@ -542,6 +542,32 @@ test("sh: lexical leaves retain complete source without internal token children"
   }
 });
 
+test("sh: stripped here-document tabs stay outside nested command tokens", () => {
+  const source = writeSource(
+    "here-document-stripped-tab-tokens",
+    lines(
+      "cat <<-E",
+      "$(a &&",
+      "\tb= c",
+      "\tif d; then e; fi",
+      "\tf g",
+      "\th() { :; }",
+      ")",
+      "\tE",
+    ),
+  );
+  const output = parseValidCst(source);
+  for (const [range, leaf] of [
+    ["2:1-2:2", "variable_name `b`"],
+    ["3:1-3:3", "if_keyword `if`"],
+    ["4:1-4:2", "literal `f`"],
+    ["5:1-5:2", "fname `h`"],
+    ["7:1-7:2", "here_document_end_text `E`"],
+  ]) {
+    assertCstRange(output, range, leaf);
+  }
+});
+
 test("sh: backquote escape units retain their enclosing source classification", () => {
   for (const [name, contents, type, range] of [
     ["quoted-text", ': `: "\\\\q"`\n', "double_quote_text", "0:6-0:9"],
@@ -631,6 +657,8 @@ test("sh: fixed arithmetic errors select a subshell despite runtime fragments", 
     ["adjacent-fixed-operands", "1 2 $x", 1],
     ["invalid-octal-before-fragment", "08 $x", 1],
     ["uncompleted-hexadecimal-before-blank", "0x $x", 1],
+    ["invalid-hexadecimal-before-fragment", "0xg$x", 1],
+    ["invalid-numeric-name-before-fragment", "123abc$x", 1],
     ["invalid-fixed-operand-operator", "1 + * $x", 1],
     ["invalid-operator-between-fragments", "$x + * $y", 1],
     ["missing-final-operand", "1 + $x *", 1],
@@ -657,8 +685,56 @@ test("sh: fixed arithmetic errors select a subshell despite runtime fragments", 
 });
 
 test("sh: runtime fragments can complete arithmetic lexemes and productions", () => {
-  for (const [name, expression, completion, completed] of [
-    ["hexadecimal-prefix", `0x\${x}`, "F", "0xF"],
+  for (const [name, expression, completion, completed, lexemes = []] of [
+    [
+      "hexadecimal-prefix",
+      `0x\${x}`,
+      "F",
+      "0xF",
+      [["0x", "arithmetic_source_fragment"]],
+    ],
+    [
+      "uppercase-hexadecimal-prefix",
+      `0X\${x}`,
+      "F",
+      "0XF",
+      [["0X", "arithmetic_source_fragment"]],
+    ],
+    [
+      "octal-suffix-completed-as-decimal",
+      `\${x}08`,
+      "1",
+      "108",
+      [["08", "arithmetic_source_fragment"]],
+    ],
+    [
+      "numeric-suffix-completed-as-name",
+      `\${x}123abc`,
+      "value",
+      "value123abc",
+      [["123abc", "arithmetic_source_fragment"]],
+    ],
+    [
+      "nonhexadecimal-suffix-completed-as-name",
+      `\${x}0xg`,
+      "value",
+      "value0xg",
+      [["0xg", "arithmetic_source_fragment"]],
+    ],
+    [
+      "parenthesized-hexadecimal-prefix",
+      `(0x\${x}) * 2`,
+      "F",
+      "(0xF) * 2",
+      [["0x", "arithmetic_source_fragment"]],
+    ],
+    [
+      "name-prefix",
+      `foo\${x}`,
+      "bar",
+      "foobar",
+      [["foo", "arithmetic_variable"]],
+    ],
     ["octal-prefix", `0\${x}`, "7", "07"],
     ["empty-numeric-fragment", `1\${x}2`, "", "12"],
     ["numeric-suffix-and-operator", `1\${x} 2`, "+", "1+ 2"],
@@ -690,6 +766,24 @@ test("sh: runtime fragments can complete arithmetic lexemes and productions", ()
         `0:5-0:${contents.length - 1}`,
         "arithmetic_expansion",
       );
+      assertOccurrenceCount(
+        output,
+        "arithmetic_source_fragment",
+        variant === "runtime"
+          ? lexemes.filter(([, type]) => type === "arithmetic_source_fragment")
+              .length
+          : 0,
+      );
+      if (variant === "runtime") {
+        for (const [spelling, type] of lexemes) {
+          const start = contents.indexOf(spelling, 8);
+          assertCstRange(
+            output,
+            `0:${start}-0:${start + spelling.length}`,
+            type,
+          );
+        }
+      }
     }
   }
 });
@@ -1000,6 +1094,67 @@ test("sh: pattern bracket ranges require one start and one end", () => {
   for (const field of ["start", "end"]) {
     assert.equal(range.fields[field].required, true, field);
     assert.equal(range.fields[field].multiple, false, field);
+  }
+});
+
+test("sh: bracket ranges consume source endpoints from left to right", () => {
+  for (const [name, pattern, ranges] of [
+    ["shared-endpoint", "[a-c-e]", [[1, 4]]],
+    [
+      "separate-ranges",
+      "[a-c-e-g]",
+      [
+        [1, 4],
+        [5, 8],
+      ],
+    ],
+    ["trailing-hyphens", "[a-b--]", [[1, 4]]],
+    [
+      "hyphen-start-after-range",
+      "[a-b--c]",
+      [
+        [1, 4],
+        [4, 7],
+      ],
+    ],
+    ["repeated-hyphens", "[-----]", [[1, 4]]],
+    ["repeated-endpoints", "[a-a-a]", [[1, 4]]],
+    ["trailing-hyphen", "[a-]", []],
+    ["class-after-hyphen", "[a-[:alpha:]]", []],
+    ["class-before-hyphen", "[[:alpha:]-z]", []],
+    ["equivalence-after-hyphen", "[a-[=x=]]", []],
+    ["collating-endpoint", "[a-[.ch.]-z]", [[1, 9]]],
+    ["quoted-endpoints", "['a'-'c'-e]", [[1, 8]]],
+    ["expanded-endpoint", `[a-\${x}-e]`, [[1, 7]]],
+    ["initial-right-bracket", "[]-a-c]", [[1, 4]]],
+    ["left-bracket-endpoint", "[a-[]", [[1, 4]]],
+    ["escaped-right-bracket", "[a-\\]-e]", [[1, 5]]],
+  ]) {
+    for (const [context, prefix, suffix] of [
+      ["word", "printf ", "\n"],
+      ["assignment", "value=", "\n"],
+      ["parameter", ': "${v#', '}"\n'],
+      ["case", "case v in ", ") :;; esac\n"],
+    ]) {
+      const source = writeSource(
+        `range-${name}-${context}`,
+        prefix + pattern + suffix,
+      );
+      const output = parseValidCst(source);
+      assertOccurrenceCount(output, "pattern_bracket_source", 1);
+      assertOccurrenceCount(
+        output,
+        "pattern_bracket_range_source",
+        ranges.length,
+      );
+      for (const [start, end] of ranges) {
+        assertCstRange(
+          output,
+          `0:${prefix.length + start}-0:${prefix.length + end}`,
+          "pattern_bracket_range_source",
+        );
+      }
+    }
   }
 });
 

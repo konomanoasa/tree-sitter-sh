@@ -2271,6 +2271,82 @@ test("sh: arithmetic vertical tabs and form feeds retain expression structure", 
   }
 });
 
+test("sh: arithmetic source fragments retain classification after completion and repair", () => {
+  for (const [
+    name,
+    expression,
+    byte,
+    replaced,
+    replacement,
+    completed,
+    type,
+  ] of [
+    [
+      "hexadecimal-prefix",
+      `0x\${digits}`,
+      10,
+      `\${digits}`,
+      "F",
+      "0xF",
+      "arithmetic_number",
+    ],
+    [
+      "octal-suffix",
+      `\${prefix}08`,
+      8,
+      `\${prefix}`,
+      "1",
+      "108",
+      "arithmetic_number",
+    ],
+    [
+      "numeric-name-suffix",
+      `\${prefix}123abc`,
+      8,
+      `\${prefix}`,
+      "a",
+      "a123abc",
+      "arithmetic_variable",
+    ],
+  ]) {
+    const initialText = `echo $((${expression}))\n`;
+    const initial = writeSource(`${name}-fragment`, initialText);
+    const final = writeSource(`${name}-completed`, `echo $((${completed}))\n`);
+    for (const output of assertIncrementalEqualsFresh(initial, final, name, {
+      byte,
+      deleteBytes: replaced.length,
+      insert: replacement,
+    })) {
+      assertOccurrenceCount(output, "arithmetic_source_fragment", 0);
+      assertCstRange(output, `0:8-0:${8 + completed.length}`, type);
+    }
+    for (const output of assertIncrementalEqualsFresh(final, initial, name, {
+      byte,
+      deleteBytes: replacement.length,
+      insert: replaced,
+    })) {
+      assertOccurrenceCount(output, "arithmetic_source_fragment", 1);
+      assertOccurrenceCount(output, "arithmetic_dynamic_expression", 1);
+    }
+    const closer = initialText.indexOf("}");
+    const deletion = { byte: closer, deleteBytes: 1, insert: "" };
+    const broken = writeSource(
+      `${name}-missing-parameter-closer`,
+      initialText.slice(0, closer) + initialText.slice(closer + 1),
+    );
+    parseRecoveryAfterEdits(initial, broken, name, deletion);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      initial,
+      `${name} repair`,
+      deletion,
+      { byte: closer, deleteBytes: 0, insert: "}" },
+    )) {
+      assertOccurrenceCount(output, "arithmetic_source_fragment", 1);
+    }
+  }
+});
+
 test("sh: arithmetic raw newlines stay layout in every reading", () => {
   const structuredNewline = writeSource(
     "arithmetic-structured-newline",
@@ -2655,6 +2731,80 @@ test("sh: expansion dollars stay expansions after recovery edits", () => {
     { byte: 10, deleteBytes: 0, insert: `\${x:-y}` },
     { byte: 9, deleteBytes: 0, insert: "a=" },
   );
+});
+
+test("sh: bracket range ownership follows endpoint and hyphen edits", () => {
+  for (const [name, before, after, edits, undo] of [
+    ["extend-chain", "[a-c-e]", "[a-c-e-g]", [[6, 0, "-g"]], [[6, 2, ""]]],
+    ["complete-range", "[a-]", "[a-z]", [[3, 0, "z"]], [[3, 1, ""]]],
+    ["hyphen-endpoint", "[a-b--]", "[a-b--c]", [[6, 0, "c"]], [[6, 1, ""]]],
+    ["shift-endpoint", "[a-c-e]", "[a--c-e]", [[3, 0, "-"]], [[3, 1, ""]]],
+    [
+      "class-to-collating",
+      "[a-[:x:]]",
+      "[a-[.x.]]",
+      [
+        [4, 1, "."],
+        [6, 1, "."],
+      ],
+      [
+        [4, 1, ":"],
+        [6, 1, ":"],
+      ],
+    ],
+    [
+      "equivalence-to-collating",
+      "[a-[=x=]]",
+      "[a-[.x.]]",
+      [
+        [4, 1, "."],
+        [6, 1, "."],
+      ],
+      [
+        [4, 1, "="],
+        [6, 1, "="],
+      ],
+    ],
+  ]) {
+    for (const [context, prefix, suffix] of [
+      ["word", "printf ", "\n"],
+      ["parameter", ': "${v#', '}"\n'],
+    ]) {
+      const initial = writeSource(
+        `${name}-${context}-initial`,
+        prefix + before + suffix,
+      );
+      const final = writeSource(
+        `${name}-${context}-final`,
+        prefix + after + suffix,
+      );
+      const withPrefix = ([byte, deleteBytes, insert]) => ({
+        byte: prefix.length + byte,
+        deleteBytes,
+        insert,
+      });
+      assertIncrementalEqualsFresh(
+        initial,
+        final,
+        `${name}-${context}`,
+        ...edits.map(withPrefix),
+      );
+      assertIncrementalEqualsFresh(
+        final,
+        initial,
+        `undo-${name}-${context}`,
+        ...undo.map(withPrefix),
+      );
+    }
+  }
+
+  const initial = writeSource("range-unclosed-quote", 'printf [a-"z]\n');
+  const final = writeSource("range-repaired-quote", 'printf [a-"z"]\n');
+  assertIncrementalEqualsFresh(initial, final, "repair-range-endpoint-quote", {
+    byte: 12,
+    deleteBytes: 0,
+    insert: '"',
+  });
 });
 
 test("sh: bracket fallback remains stable across complete and incomplete edits", () => {
@@ -3328,16 +3478,16 @@ test("sh: here-document expansions require their closers and recover after repai
       "double_quoted",
     ],
     [
-      "single-quote",
-      "${value:-'text",
-      `\${value:-'text'}`,
+      "pattern-single-quote",
+      "${value#'text",
+      `\${value#'text'}`,
       "'}",
       "single_quoted",
     ],
     [
-      "dollar-single-quote",
-      "${value:-$'text",
-      `\${value:-$'text'}`,
+      "pattern-dollar-single-quote",
+      "${value#$'text",
+      `\${value#$'text'}`,
       "'}",
       "dollar_single_quoted",
     ],

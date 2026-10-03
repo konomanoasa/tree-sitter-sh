@@ -15,7 +15,7 @@ npm install tree-sitter-sh
 
 ## Development
 
-Development uses Node.js 24 or later.
+Development uses Node.js 24.21.0 or later.
 
 ```sh
 npm install

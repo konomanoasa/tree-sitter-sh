@@ -426,6 +426,10 @@
           "named": true
         },
         {
+          "type": "arithmetic_source_fragment",
+          "named": true
+        },
+        {
           "type": "arithmetic_variable",
           "named": true
         },
@@ -519,6 +523,11 @@
   },
   {
     "type": "arithmetic_operator",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "arithmetic_source_fragment",
     "named": true,
     "fields": {}
   },
@@ -2342,6 +2351,10 @@
         },
         {
           "type": "arithmetic_operator",
+          "named": true
+        },
+        {
+          "type": "arithmetic_source_fragment",
           "named": true
         },
         {

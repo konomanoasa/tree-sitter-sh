@@ -108,6 +108,50 @@ printf [a] [abc] [!a-z] []-] [a-zA-Z] [^a] [*?] [a-*] [*-z] [[:alpha:]] [[.ch.]]
     (newline_list)))
 
 ==================
+chained bracket ranges consume endpoints from left to right
+==================
+
+printf [a-c-e] [a-b--]
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_range_source
+                            start: (pattern_bracket_character_source)
+                            operator: (pattern_bracket_range_operator_source)
+                            end: (pattern_bracket_character_source))
+                          member: (pattern_bracket_hyphen_source)
+                          member: (pattern_bracket_character_source))))
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_range_source
+                            start: (pattern_bracket_character_source)
+                            operator: (pattern_bracket_range_operator_source)
+                            end: (pattern_bracket_character_source))
+                          member: (pattern_bracket_hyphen_source)
+                          member: (pattern_bracket_hyphen_source)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 hyphen can be either endpoint of a bracket range
 ==================
 
@@ -2364,6 +2408,105 @@ printf [[:alpha:] [[.ch.] [[=a=] "${value#[[:alpha:]}"
                                 member: (pattern_bracket_character_source)
                                 member: (pattern_bracket_character_source)
                                 member: (pattern_bracket_character_source))))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+the leftmost complete bracket follows an incomplete opener
+==================
+
+printf [[:[]] [x[:y][[]a] "${value#[[.[]]}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)))
+                      (literal))
+                    word: (word
+                      (literal)
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)
+                          member: (pattern_bracket_character_source)))
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_bracket_character_source)))
+                      (literal))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (literal)
+                            (pattern_bracket_source
+                              members: (pattern_bracket_members_source
+                                member: (pattern_bracket_character_source)
+                                member: (pattern_bracket_character_source)))
+                            (literal))))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
+collating content may begin with its marker before a closing bracket
+==================
+
+printf [[..].]] "${value#[[..]x.]]}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (pattern_collating_symbol_source
+                            value: (pattern_collating_symbol_character_source)
+                            value: (pattern_collating_symbol_character_source)))))
+                    word: (word
+                      (double_quoted
+                        (parameter_expansion
+                          parameter: (variable_name)
+                          operator: (parameter_pattern_operator)
+                          pattern: (parameter_pattern
+                            (pattern_bracket_source
+                              members: (pattern_bracket_members_source
+                                member: (pattern_collating_symbol_source
+                                  value: (pattern_collating_symbol_character_source)
+                                  value: (pattern_collating_symbol_character_source)
+                                  value: (pattern_collating_symbol_character_source)))))))))))))))))
   trailing: (linebreak
     (newline_list)))
 

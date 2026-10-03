@@ -128,6 +128,16 @@ test("sh: parser scaling remains linear within the existing guard", () => {
       name: "bracket suffix parsing",
       small: `printf ${'[a"x"*[.]'.repeat(3_000)}\n`,
     },
+    {
+      large: `printf ${"[x[:y]z[a]".repeat(12_000)}\n`,
+      name: "bracket prefix and suffix parsing",
+      small: `printf ${"[x[:y]z[a]".repeat(3_000)}\n`,
+    },
+    {
+      large: `printf [${"a-".repeat(32_768)}a]\n`,
+      name: "chained bracket range parsing",
+      small: `printf [${"a-".repeat(8_192)}a]\n`,
+    },
   ];
 
   for (const contract of scalingSources) {

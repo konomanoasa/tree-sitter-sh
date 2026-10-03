@@ -1407,3 +1407,55 @@ echo ${#-\}} "${#-\\}" ${#?\}} "${#?\\}"
                             (double_quote_escape))))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+bracket and arithmetic scans read a doubled dollar before a parenthesis as one parameter
+==================
+
+echo [${x:-$$(}] "$(( ${x:-$$(} + 1 ))" "}"
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (pattern_bracket_source
+                        members: (pattern_bracket_members_source
+                          member: (parameter_expansion
+                            parameter: (variable_name)
+                            operator: (parameter_value_operator)
+                            word: (parameter_word
+                              (parameter_expansion
+                                parameter: (special_parameter))
+                              (literal))))))
+                    word: (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          expression: (arithmetic_binary_expression
+                            left: (parameter_expansion
+                              parameter: (variable_name)
+                              operator: (parameter_value_operator)
+                              word: (parameter_word
+                                (parameter_expansion
+                                  parameter: (special_parameter))
+                                (double_quote_text)))
+                            operator: (arithmetic_operator)
+                            right: (arithmetic_number)))))
+                    word: (word
+                      (double_quoted
+                        (double_quote_text))))))))))))
+  trailing: (linebreak
+    (newline_list)))

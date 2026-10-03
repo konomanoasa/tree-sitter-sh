@@ -1014,6 +1014,30 @@ static void test_source_context_counts_round_trip_and_reject_overflow(void) {
   clear_scanner(&scanner);
 }
 
+static void test_bracket_chains_round_trip_and_reject_unknown_phases(void) {
+  struct Scanner scanner = {0};
+  struct Scanner empty = {0};
+  struct Scanner restored = {0};
+  char empty_state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned empty_length = snapshot_scanner(&empty, empty_state);
+  assert(scanner_source_ready(&scanner));
+  assert(source_context_push(&scanner, WORD_FALLBACK_LITERAL_BEGIN));
+  scanner.contexts[0].bracket_chains = BRACKET_CHAINS_LIMIT - 1;
+  char serialized[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned length = snapshot_scanner(&scanner, serialized);
+  tree_sitter_sh_external_scanner_deserialize(&restored, serialized, length);
+  assert_scanner_matches_snapshot(&restored, serialized, length);
+  assert(restored.context_count == 1);
+  assert(restored.contexts[0].bracket_chains == BRACKET_CHAINS_LIMIT - 1);
+
+  scanner.contexts[0].bracket_chains = BRACKET_CHAINS_LIMIT;
+  length = snapshot_scanner(&scanner, serialized);
+  tree_sitter_sh_external_scanner_deserialize(&restored, serialized, length);
+  assert_scanner_matches_snapshot(&restored, empty_state, empty_length);
+  clear_scanner(&restored);
+  clear_scanner(&scanner);
+}
+
 static void test_here_document_line_layout_keeps_following_source_owners(void) {
   const struct {
     const char *source;
@@ -3073,6 +3097,7 @@ int main(void) {
   test_state_round_trip();
   test_equal_source_contexts_preserve_each_policy_restore();
   test_source_context_counts_round_trip_and_reject_overflow();
+  test_bracket_chains_round_trip_and_reject_unknown_phases();
   test_here_document_line_layout_keeps_following_source_owners();
   test_here_document_line_start_only_emits_valid_tokens();
   test_newline_boundaries_require_a_valid_enclosing_terminator();

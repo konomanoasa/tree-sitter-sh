@@ -86,10 +86,6 @@
       "scanner": "QUOTED_HERE_DOCUMENT_TEXT"
     },
     {
-      "begin": "_here_document_end_leading_tabs_begin",
-      "scanner": "HERE_DOCUMENT_END_LEADING_TABS"
-    },
-    {
       "begin": "_newline_begin",
       "scanner": "NEWLINE"
     },
@@ -112,6 +108,10 @@
     {
       "begin": "_pattern_bracket_hyphen_begin",
       "scanner": "PATTERN_BRACKET_HYPHEN"
+    },
+    {
+      "begin": "_pattern_bracket_range_operator_begin",
+      "scanner": "PATTERN_BRACKET_RANGE_OPERATOR"
     },
     {
       "begin": "_assignment_name_begin",
@@ -380,18 +380,6 @@
       "scanner": "PARAMETER_FALLBACK_LITERAL_BEGIN"
     },
     {
-      "begin": "_word_fallback_character_begin",
-      "scanner": "WORD_FALLBACK_CHARACTER_BEGIN"
-    },
-    {
-      "begin": "_assignment_fallback_character_begin",
-      "scanner": "ASSIGNMENT_FALLBACK_CHARACTER_BEGIN"
-    },
-    {
-      "begin": "_parameter_fallback_character_begin",
-      "scanner": "PARAMETER_FALLBACK_CHARACTER_BEGIN"
-    },
-    {
       "begin": "_word_initial_literal_begin",
       "scanner": "WORD_INITIAL_LITERAL_BEGIN",
       "whole": true
@@ -423,6 +411,14 @@
     {
       "begin": "_arithmetic_blank_begin",
       "scanner": "ARITHMETIC_BLANK_BEGIN"
+    },
+    {
+      "begin": "_parameter_length_operator_begin",
+      "scanner": "PARAMETER_LENGTH_OPERATOR_BEGIN"
+    },
+    {
+      "begin": "_arithmetic_source_fragment_begin",
+      "scanner": "ARITHMETIC_SOURCE_FRAGMENT_BEGIN"
     }
   ],
   "physical": [
@@ -575,26 +571,6 @@
       "scanner": "LOGICAL_NEWLINE_BEGIN"
     },
     {
-      "begin": "_fallback_bracket_open",
-      "scanner": "FALLBACK_BRACKET_OPEN"
-    },
-    {
-      "begin": "_fallback_bracket_close",
-      "scanner": "FALLBACK_BRACKET_CLOSE"
-    },
-    {
-      "begin": "_fallback_colon",
-      "scanner": "FALLBACK_COLON"
-    },
-    {
-      "begin": "_fallback_dot",
-      "scanner": "FALLBACK_DOT"
-    },
-    {
-      "begin": "_fallback_equals",
-      "scanner": "FALLBACK_EQUALS"
-    },
-    {
       "begin": "_word_initial_pattern_bracket_open",
       "scanner": "WORD_INITIAL_PATTERN_BRACKET_OPEN"
     },
@@ -617,10 +593,6 @@
     {
       "begin": "_word_initial_backquote_start",
       "scanner": "WORD_INITIAL_BACKQUOTE_START"
-    },
-    {
-      "begin": "_fallback_special_bracket_open",
-      "scanner": "FALLBACK_SPECIAL_BRACKET_OPEN"
     }
   ]
 }

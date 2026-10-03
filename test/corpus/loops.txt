@@ -652,6 +652,18 @@ for bad-name; do :; done
 
 
 ==================
+a number sign directly after a for loop name does not start a comment
+:error
+==================
+
+for item#comment
+do :; done
+
+---
+
+
+
+==================
 encoded continuations delimit adjacent words and the end of a for list
 ==================
 

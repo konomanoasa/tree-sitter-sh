@@ -376,6 +376,46 @@ echo $((1 + (2 * ${factor}) + $(value) + $((3 + 4))))
     (newline_list)))
 
 ==================
+dynamic arithmetic preserves incomplete numeric lexemes as source fragments
+==================
+
+echo $((0x${hex} + ${prefix}08 + ${name}123abc))
+
+---
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (arithmetic_expansion
+                        expression: (arithmetic_dynamic_expression
+                          (arithmetic_source_fragment)
+                          runtime_fragment: (parameter_expansion
+                            parameter: (variable_name))
+                          (arithmetic_operator)
+                          (parameter_expansion
+                            parameter: (variable_name))
+                          (arithmetic_source_fragment)
+                          (arithmetic_operator)
+                          (parameter_expansion
+                            parameter: (variable_name))
+                          (arithmetic_source_fragment)))))))))))))
+  trailing: (linebreak
+    (newline_list)))
+
+==================
 dynamic arithmetic source remains structured without evaluation
 ==================
 
