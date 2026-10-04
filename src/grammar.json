@@ -10905,13 +10905,8 @@
                   "name": "arithmetic_variable"
                 },
                 {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "_parenthesized_arithmetic_lvalue"
-                  },
-                  "named": true,
-                  "value": "parenthesized_arithmetic"
+                  "type": "SYMBOL",
+                  "name": "parenthesized_arithmetic"
                 }
               ]
             }
@@ -10951,74 +10946,6 @@
           }
         ]
       }
-    },
-    "_parenthesized_arithmetic_lvalue": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "_punct_left_parenthesis_physical"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_arithmetic_layout"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "FIELD",
-          "name": "expression",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "SYMBOL",
-                "name": "arithmetic_variable"
-              },
-              {
-                "type": "ALIAS",
-                "content": {
-                  "type": "SYMBOL",
-                  "name": "_parenthesized_arithmetic_lvalue"
-                },
-                "named": true,
-                "value": "parenthesized_arithmetic"
-              }
-            ]
-          }
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_arithmetic_closing_boundary"
-            },
-            {
-              "type": "CHOICE",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_arithmetic_layout"
-                },
-                {
-                  "type": "BLANK"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_punct_right_parenthesis_physical"
-        }
-      ]
     },
     "_arithmetic_conditional_expression": {
       "type": "PREC_RIGHT",
@@ -13128,10 +13055,6 @@
     ],
     [
       "case_list"
-    ],
-    [
-      "_parenthesized_arithmetic_lvalue",
-      "_arithmetic_primary_expression"
     ],
     [
       "complete_command"

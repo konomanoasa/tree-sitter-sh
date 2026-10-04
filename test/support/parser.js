@@ -160,17 +160,18 @@ function rootEndPoint(format, output) {
   throw new Error(`Unknown parse output format: ${format}`);
 }
 
-function runParse({
-  debug = false,
-  description,
-  edits = [],
-  format = "cst",
-  mode = "valid",
-  source,
-  expectedSource = source,
-  timeout = defaultParseTimeout,
-  processTimeout = parserProcessTimeout,
-}) {
+function runParse(options) {
+  const {
+    debug = false,
+    description,
+    edits = [],
+    format = "cst",
+    mode = "valid",
+    source,
+    expectedSource = source,
+    timeout = defaultParseTimeout,
+    processTimeout = parserProcessTimeout,
+  } = options;
   const arguments_ = [
     "parse",
     "--lib-path",

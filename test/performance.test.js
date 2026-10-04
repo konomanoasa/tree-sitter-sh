@@ -198,11 +198,11 @@ test("sh: incremental parsing reuses unchanged source and records editing timing
   const commandCount = 1200;
   const commandContents = commandLine.repeat(commandCount);
   const commandSource = writeSource("reuse-commands", commandContents);
-  for (const [position, index] of [
-    ["head", 0],
-    ["middle", 600],
-    ["tail", 1199],
-  ]) {
+  for (const [position, index] of Object.entries({
+    head: 0,
+    middle: 600,
+    tail: 1199,
+  })) {
     const name = `${position}-command-replace`;
     const edit = commandEditAt(index);
     const edited = editedSource(name, commandContents, edit);
@@ -229,11 +229,11 @@ test("sh: incremental parsing reuses unchanged source and records editing timing
     "reuse-commands-large",
     largeCommandContents,
   );
-  for (const [position, index] of [
-    ["head", 0],
-    ["middle", 2400],
-    ["tail", 4799],
-  ]) {
+  for (const [position, index] of Object.entries({
+    head: 0,
+    middle: 2400,
+    tail: 4799,
+  })) {
     const name = `large-${position}-command-replace`;
     const edit = commandEditAt(index);
     const edited = editedSource(name, largeCommandContents, edit);
@@ -257,11 +257,11 @@ test("sh: incremental parsing reuses unchanged source and records editing timing
   const functionLine = "alpha() { : beta; }\n";
   const functionContents = functionLine.repeat(commandCount);
   const functionSource = writeSource("reuse-functions", functionContents);
-  for (const [position, index] of [
-    ["head", 0],
-    ["middle", 600],
-    ["tail", 1199],
-  ]) {
+  for (const [position, index] of Object.entries({
+    head: 0,
+    middle: 600,
+    tail: 1199,
+  })) {
     const name = `${position}-function-closer-delete`;
     const edit = {
       byte: functionLine.length * index + 18,

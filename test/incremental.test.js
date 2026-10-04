@@ -165,16 +165,16 @@ test("sh: missing redirect filenames preserve operators and following commands t
     const initial = writeSource(`${name}-initial`, initialText);
     const broken = writeSource(`${name}-broken`, brokenText);
     const expected = [
-      ...["before", "after", "final"].map((word) => [
-        brokenText.indexOf(`echo ${word}`),
-        4,
-        "cmd_name",
-      ]),
-      [
-        brokenText.indexOf(`${operator} echo after`),
-        operator.length,
-        operatorType,
-      ],
+      ...["before", "after", "final"].map((word) => ({
+        start: brokenText.indexOf(`echo ${word}`),
+        length: 4,
+        type: "cmd_name",
+      })),
+      {
+        start: brokenText.indexOf(`${operator} echo after`),
+        length: operator.length,
+        type: operatorType,
+      },
     ];
     for (const output of parseRecoveryAfterEdits(initial, broken, name, edit)) {
       assert.equal(hasRecovery(output), true, name);
@@ -184,7 +184,7 @@ test("sh: missing redirect filenames preserve operators and following commands t
           .map((point) => sourceByteOffset(brokenText, point));
         return { type: nodeIdentity(entry).type, start, end };
       });
-      for (const [start, length, type] of expected) {
+      for (const { start, length, type } of expected) {
         assert.ok(start >= 0, `${name}: missing expected source`);
         const end = start + length;
         assert.ok(
@@ -421,40 +421,49 @@ test("sh: repairing pipeline errors restores continued and nested command source
 
 test("sh: heredoc lookahead terminates at source boundaries and preserves repairs", () => {
   const options = { processTimeout: 5_000 };
-  for (const [name, source, status, owner] of [
-    ["missing-tab-eof", ": [$(cat <<-X\n\t\t", 1],
-    ["missing-tab-backquote", ": `: [$(cat <<-X\n\t\t`\n", 1],
-    ["empty-tabs-eof", "cat <<-''\n\t\t", 0, "here_document"],
-    [
-      "empty-backquote-bracket",
-      "echo [`cat <<''\n`]\n",
-      0,
-      "pattern_bracket_source",
-    ],
-    [
-      "empty-backquote-arithmetic",
-      "echo $((`cat <<''\n`+1))\n",
-      0,
-      "arithmetic_expansion",
-    ],
-    [
-      "empty-after-body-bracket",
-      "echo [`cat <<''\nx\n`]\n",
-      0,
-      "pattern_bracket_source",
-    ],
-    [
-      "empty-after-body-arithmetic",
-      "echo $((`cat <<''\nx\n`+1))\n",
-      0,
-      "arithmetic_expansion",
-    ],
-    [
-      "partial-end-backquote",
-      "echo [`cat <<X\nX`]\n",
-      0,
-      "pattern_bracket_source",
-    ],
+  for (const { name, source, status, owner } of [
+    { name: "missing-tab-eof", source: ": [$(cat <<-X\n\t\t", status: 1 },
+    {
+      name: "missing-tab-backquote",
+      source: ": `: [$(cat <<-X\n\t\t`\n",
+      status: 1,
+    },
+    {
+      name: "empty-tabs-eof",
+      source: "cat <<-''\n\t\t",
+      status: 0,
+      owner: "here_document",
+    },
+    {
+      name: "empty-backquote-bracket",
+      source: "echo [`cat <<''\n`]\n",
+      status: 0,
+      owner: "pattern_bracket_source",
+    },
+    {
+      name: "empty-backquote-arithmetic",
+      source: "echo $((`cat <<''\n`+1))\n",
+      status: 0,
+      owner: "arithmetic_expansion",
+    },
+    {
+      name: "empty-after-body-bracket",
+      source: "echo [`cat <<''\nx\n`]\n",
+      status: 0,
+      owner: "pattern_bracket_source",
+    },
+    {
+      name: "empty-after-body-arithmetic",
+      source: "echo $((`cat <<''\nx\n`+1))\n",
+      status: 0,
+      owner: "arithmetic_expansion",
+    },
+    {
+      name: "partial-end-backquote",
+      source: "echo [`cat <<X\nX`]\n",
+      status: 0,
+      owner: "pattern_bracket_source",
+    },
   ]) {
     const output = runParse({
       ...options,
@@ -700,9 +709,9 @@ test("sh: heredoc expansions resume command lists through encoded continuations"
 });
 
 test("sh: quoted backquote ancestors remove continuations before inner tokenization", () => {
-  for (const [count, ranges] of [
-    [7, ["0:10-0:16"]],
-    [15, ["0:10-0:18", "0:18-0:24"]],
+  for (const { count, ranges } of [
+    { count: 7, ranges: ["0:10-0:16"] },
+    { count: 15, ranges: ["0:10-0:18", "0:18-0:24"] },
   ]) {
     const body = `\`: \\\`: ${"\\".repeat(count)}\n :\\\`\``;
     const unquotedText = `: ${body}\n`;
@@ -776,15 +785,15 @@ test("sh: backquote escape leaves retain their full source across run edits", ()
   const prefix = "before\n: `: ";
   const suffix = "* tail`\nafter\n";
   const cases = [
-    [1, ["1:5-1:7"]],
-    [2, ["1:5-1:8"]],
-    [3, ["1:5-1:8"]],
-    [4, ["1:5-1:9"]],
-    [5, ["1:5-1:9", "1:9-1:11"]],
-    [6, ["1:5-1:9", "1:9-1:12"]],
-    [7, ["1:5-1:9", "1:9-1:12"]],
-    [8, ["1:5-1:9", "1:9-1:13"]],
-  ].map(([count, ranges]) => {
+    { count: 1, ranges: ["1:5-1:7"] },
+    { count: 2, ranges: ["1:5-1:8"] },
+    { count: 3, ranges: ["1:5-1:8"] },
+    { count: 4, ranges: ["1:5-1:9"] },
+    { count: 5, ranges: ["1:5-1:9", "1:9-1:11"] },
+    { count: 6, ranges: ["1:5-1:9", "1:9-1:12"] },
+    { count: 7, ranges: ["1:5-1:9", "1:9-1:12"] },
+    { count: 8, ranges: ["1:5-1:9", "1:9-1:13"] },
+  ].map(({ count, ranges }) => {
     const source = writeSource(
       `backquote-escape-${count}`,
       prefix + "\\".repeat(count) + suffix,
@@ -820,11 +829,29 @@ test("sh: backquote escape leaves retain their full source across run edits", ()
 });
 
 test("sh: backquote dollar prefixes change from expansions to text after edits", () => {
-  for (const [name, prefix, suffix, leaf, width = 2] of [
-    ["argument", ": `: ", " `\n", "literal"],
-    ["double-quoted", ': `: "', ' "`\n', "double_quote_text", 3],
-    ["parameter-word", ": `: ${x:-", " }`\n", "literal", 3],
-    ["quoted-parameter-word", ': `: "${x:-', ' }"`\n', "double_quote_text", 3],
+  for (const { name, prefix, suffix, leaf, width = 2 } of [
+    { name: "argument", prefix: ": `: ", suffix: " `\n", leaf: "literal" },
+    {
+      name: "double-quoted",
+      prefix: ': `: "',
+      suffix: ' "`\n',
+      leaf: "double_quote_text",
+      width: 3,
+    },
+    {
+      name: "parameter-word",
+      prefix: ": `: ${x:-",
+      suffix: " }`\n",
+      leaf: "literal",
+      width: 3,
+    },
+    {
+      name: "quoted-parameter-word",
+      prefix: ': `: "${x:-',
+      suffix: ' }"`\n',
+      leaf: "double_quote_text",
+      width: 3,
+    },
   ]) {
     const initial = writeSource(
       `backquote-dollar-${name}-expansion`,
@@ -949,12 +976,12 @@ test("sh: encoded backquote continuations preserve I/O number classification", (
 });
 
 test("sh: I/O number classification survives quoted filename and continuation edits", () => {
-  for (const [name, marked, ioNumbers] of [
-    ["quoted-prefix", "echo >''2§>3\n", 0],
-    ["quoted-tail", "echo >2§''>3\n", 0],
-    ["assignment-value", "x=2§>3\n", 0],
-    ["separated-filename", "echo >2§ >3\n", 0],
-    ["descriptor", "echo 2§>3\n", 1],
+  for (const { name, marked, ioNumbers } of [
+    { name: "quoted-prefix", marked: "echo >''2§>3\n", ioNumbers: 0 },
+    { name: "quoted-tail", marked: "echo >2§''>3\n", ioNumbers: 0 },
+    { name: "assignment-value", marked: "x=2§>3\n", ioNumbers: 0 },
+    { name: "separated-filename", marked: "echo >2§ >3\n", ioNumbers: 0 },
+    { name: "descriptor", marked: "echo 2§>3\n", ioNumbers: 1 },
   ]) {
     const offset = marked.indexOf("§");
     const plain = writeSource(`io-word-${name}-plain`, marked.replace("§", ""));
@@ -980,11 +1007,15 @@ test("sh: I/O number classification survives quoted filename and continuation ed
       insert: "",
     });
   }
-  for (const [name, invalid, offset] of [
-    ["output-filename", "echo >2>3\n", 6],
-    ["input-filename", "<2>x\n", 1],
-    ["continued-output-filename", "echo >2\\\n>3\n", 6],
-    ["continued-input-filename", "<2\\\n>x\n", 1],
+  for (const { name, invalid, offset } of [
+    { name: "output-filename", invalid: "echo >2>3\n", offset: 6 },
+    { name: "input-filename", invalid: "<2>x\n", offset: 1 },
+    {
+      name: "continued-output-filename",
+      invalid: "echo >2\\\n>3\n",
+      offset: 6,
+    },
+    { name: "continued-input-filename", invalid: "<2\\\n>x\n", offset: 1 },
   ]) {
     const source = writeSource(`io-word-${name}-invalid`, invalid);
     const { status } = runParse({
@@ -1062,80 +1093,194 @@ test("sh: named tilde prefixes end before backquote continuations after edits", 
 test("sh: repairing missing operands and compound bodies matches a fresh parse", () => {
   const prefix = "before alpha\n";
   const suffix = "after omega\n";
-  for (const [name, broken, restored, wordOffset, removedLength = 0] of [
-    ["if-empty-body", "if :;then |;fi", "if :;then fixed;fi", 10, 1],
-    ["if-body-pipes", "if :;then | |;fi", "if :;then fixed;fi", 10, 3],
-    ["if-empty-condition", "if |;then :;fi", "if fixed;then :;fi", 3, 1],
-    ["if-body-and", "if :;then &&;fi", "if :;then fixed;fi", 10, 2],
-    ["if-body-semi-pipe", "if :;then ;|;fi", "if :;then fixed;fi", 10, 2],
-    ["while-empty-body", "while :;do |;done", "while :;do fixed;done", 11, 1],
-    [
-      "while-empty-condition",
-      "while |;do :;done",
-      "while fixed;do :;done",
-      6,
-      1,
-    ],
-    ["until-empty-body", "until :;do &&;done", "until :;do fixed;done", 11, 2],
-    ["for-empty-body", "for x;do |;done", "for x;do fixed;done", 9, 1],
-    ["brace-empty-body", "{ |; }", "{ fixed; }", 2, 1],
-    ["brace-body-pipes", "{ | |; }", "{ fixed; }", 2, 3],
-    ["brace-body-and", "{ &&; }", "{ fixed; }", 2, 2],
-    ["brace-body-semi-pipe", "{ ;|; }", "{ fixed; }", 2, 2],
-    ["subshell-empty-body", "(|;)", "(fixed;)", 1, 1],
-    ["subshell-body-semi-pipe", "(;|;)", "(fixed;)", 1, 2],
-    ["pipe", "broken | ;", "broken | fixed;", 9],
-    ["and", "broken && ;", "broken && fixed;", 10],
-    ["or", "broken || &", "broken || fixed&", 10],
-    ["negation", "! ;", "! fixed;", 2],
-    ["if-pipe", "if :;then :|;fi", "if :;then :|fixed;fi", 12],
-    [
-      "else-empty-command",
-      "if :;then :;else |;fi",
-      "if :;then :;else fixed;fi",
-      17,
-      1,
-    ],
-    [
-      "elif-empty-condition",
-      "if :;then :;elif |;then :;fi",
-      "if :;then :;elif fixed;then :;fi",
-      17,
-      1,
-    ],
-    [
-      "while-and",
-      "while :; do : && ; done",
-      "while :; do : && fixed; done",
-      17,
-    ],
-    ["for-or", "for x;do :||;done", "for x;do :||fixed;done", 12],
-    ["brace-pipe", "{ :|; }", "{ :|fixed; }", 4],
-    [
-      "case-first-pattern",
-      "case x in ) :;;esac",
-      "case x in fixed) :;;esac",
-      10,
-    ],
-    [
-      "case-next-pattern",
-      "case x in x|) :;;esac",
-      "case x in x|fixed) :;;esac",
-      12,
-    ],
-    [
-      "case-both-patterns",
-      "case x in |) :;;esac",
-      "case x in fixed) :;;esac",
-      10,
-      1,
-    ],
-    [
-      "case-pipe",
-      "case x in x) : | ;; esac",
-      "case x in x) : | fixed;; esac",
-      17,
-    ],
+  for (const { name, broken, restored, wordOffset, removedLength = 0 } of [
+    {
+      name: "if-empty-body",
+      broken: "if :;then |;fi",
+      restored: "if :;then fixed;fi",
+      wordOffset: 10,
+      removedLength: 1,
+    },
+    {
+      name: "if-body-pipes",
+      broken: "if :;then | |;fi",
+      restored: "if :;then fixed;fi",
+      wordOffset: 10,
+      removedLength: 3,
+    },
+    {
+      name: "if-empty-condition",
+      broken: "if |;then :;fi",
+      restored: "if fixed;then :;fi",
+      wordOffset: 3,
+      removedLength: 1,
+    },
+    {
+      name: "if-body-and",
+      broken: "if :;then &&;fi",
+      restored: "if :;then fixed;fi",
+      wordOffset: 10,
+      removedLength: 2,
+    },
+    {
+      name: "if-body-semi-pipe",
+      broken: "if :;then ;|;fi",
+      restored: "if :;then fixed;fi",
+      wordOffset: 10,
+      removedLength: 2,
+    },
+    {
+      name: "while-empty-body",
+      broken: "while :;do |;done",
+      restored: "while :;do fixed;done",
+      wordOffset: 11,
+      removedLength: 1,
+    },
+    {
+      name: "while-empty-condition",
+      broken: "while |;do :;done",
+      restored: "while fixed;do :;done",
+      wordOffset: 6,
+      removedLength: 1,
+    },
+    {
+      name: "until-empty-body",
+      broken: "until :;do &&;done",
+      restored: "until :;do fixed;done",
+      wordOffset: 11,
+      removedLength: 2,
+    },
+    {
+      name: "for-empty-body",
+      broken: "for x;do |;done",
+      restored: "for x;do fixed;done",
+      wordOffset: 9,
+      removedLength: 1,
+    },
+    {
+      name: "brace-empty-body",
+      broken: "{ |; }",
+      restored: "{ fixed; }",
+      wordOffset: 2,
+      removedLength: 1,
+    },
+    {
+      name: "brace-body-pipes",
+      broken: "{ | |; }",
+      restored: "{ fixed; }",
+      wordOffset: 2,
+      removedLength: 3,
+    },
+    {
+      name: "brace-body-and",
+      broken: "{ &&; }",
+      restored: "{ fixed; }",
+      wordOffset: 2,
+      removedLength: 2,
+    },
+    {
+      name: "brace-body-semi-pipe",
+      broken: "{ ;|; }",
+      restored: "{ fixed; }",
+      wordOffset: 2,
+      removedLength: 2,
+    },
+    {
+      name: "subshell-empty-body",
+      broken: "(|;)",
+      restored: "(fixed;)",
+      wordOffset: 1,
+      removedLength: 1,
+    },
+    {
+      name: "subshell-body-semi-pipe",
+      broken: "(;|;)",
+      restored: "(fixed;)",
+      wordOffset: 1,
+      removedLength: 2,
+    },
+    {
+      name: "pipe",
+      broken: "broken | ;",
+      restored: "broken | fixed;",
+      wordOffset: 9,
+    },
+    {
+      name: "and",
+      broken: "broken && ;",
+      restored: "broken && fixed;",
+      wordOffset: 10,
+    },
+    {
+      name: "or",
+      broken: "broken || &",
+      restored: "broken || fixed&",
+      wordOffset: 10,
+    },
+    { name: "negation", broken: "! ;", restored: "! fixed;", wordOffset: 2 },
+    {
+      name: "if-pipe",
+      broken: "if :;then :|;fi",
+      restored: "if :;then :|fixed;fi",
+      wordOffset: 12,
+    },
+    {
+      name: "else-empty-command",
+      broken: "if :;then :;else |;fi",
+      restored: "if :;then :;else fixed;fi",
+      wordOffset: 17,
+      removedLength: 1,
+    },
+    {
+      name: "elif-empty-condition",
+      broken: "if :;then :;elif |;then :;fi",
+      restored: "if :;then :;elif fixed;then :;fi",
+      wordOffset: 17,
+      removedLength: 1,
+    },
+    {
+      name: "while-and",
+      broken: "while :; do : && ; done",
+      restored: "while :; do : && fixed; done",
+      wordOffset: 17,
+    },
+    {
+      name: "for-or",
+      broken: "for x;do :||;done",
+      restored: "for x;do :||fixed;done",
+      wordOffset: 12,
+    },
+    {
+      name: "brace-pipe",
+      broken: "{ :|; }",
+      restored: "{ :|fixed; }",
+      wordOffset: 4,
+    },
+    {
+      name: "case-first-pattern",
+      broken: "case x in ) :;;esac",
+      restored: "case x in fixed) :;;esac",
+      wordOffset: 10,
+    },
+    {
+      name: "case-next-pattern",
+      broken: "case x in x|) :;;esac",
+      restored: "case x in x|fixed) :;;esac",
+      wordOffset: 12,
+    },
+    {
+      name: "case-both-patterns",
+      broken: "case x in |) :;;esac",
+      restored: "case x in fixed) :;;esac",
+      wordOffset: 10,
+      removedLength: 1,
+    },
+    {
+      name: "case-pipe",
+      broken: "case x in x) : | ;; esac",
+      restored: "case x in x) : | fixed;; esac",
+      wordOffset: 17,
+    },
   ]) {
     const initial = writeSource(
       `missing-${name}-operand`,
@@ -2272,7 +2417,7 @@ test("sh: arithmetic vertical tabs and form feeds retain expression structure", 
 });
 
 test("sh: arithmetic source fragments retain classification after completion and repair", () => {
-  for (const [
+  for (const {
     name,
     expression,
     byte,
@@ -2280,34 +2425,34 @@ test("sh: arithmetic source fragments retain classification after completion and
     replacement,
     completed,
     type,
-  ] of [
-    [
-      "hexadecimal-prefix",
-      `0x\${digits}`,
-      10,
-      `\${digits}`,
-      "F",
-      "0xF",
-      "arithmetic_number",
-    ],
-    [
-      "octal-suffix",
-      `\${prefix}08`,
-      8,
-      `\${prefix}`,
-      "1",
-      "108",
-      "arithmetic_number",
-    ],
-    [
-      "numeric-name-suffix",
-      `\${prefix}123abc`,
-      8,
-      `\${prefix}`,
-      "a",
-      "a123abc",
-      "arithmetic_variable",
-    ],
+  } of [
+    {
+      name: "hexadecimal-prefix",
+      expression: `0x\${digits}`,
+      byte: 10,
+      replaced: `\${digits}`,
+      replacement: "F",
+      completed: "0xF",
+      type: "arithmetic_number",
+    },
+    {
+      name: "octal-suffix",
+      expression: `\${prefix}08`,
+      byte: 8,
+      replaced: `\${prefix}`,
+      replacement: "1",
+      completed: "108",
+      type: "arithmetic_number",
+    },
+    {
+      name: "numeric-name-suffix",
+      expression: `\${prefix}123abc`,
+      byte: 8,
+      replaced: `\${prefix}`,
+      replacement: "a",
+      completed: "a123abc",
+      type: "arithmetic_variable",
+    },
   ]) {
     const initialText = `echo $((${expression}))\n`;
     const initial = writeSource(`${name}-fragment`, initialText);
@@ -2734,37 +2879,61 @@ test("sh: expansion dollars stay expansions after recovery edits", () => {
 });
 
 test("sh: bracket range ownership follows endpoint and hyphen edits", () => {
-  for (const [name, before, after, edits, undo] of [
-    ["extend-chain", "[a-c-e]", "[a-c-e-g]", [[6, 0, "-g"]], [[6, 2, ""]]],
-    ["complete-range", "[a-]", "[a-z]", [[3, 0, "z"]], [[3, 1, ""]]],
-    ["hyphen-endpoint", "[a-b--]", "[a-b--c]", [[6, 0, "c"]], [[6, 1, ""]]],
-    ["shift-endpoint", "[a-c-e]", "[a--c-e]", [[3, 0, "-"]], [[3, 1, ""]]],
-    [
-      "class-to-collating",
-      "[a-[:x:]]",
-      "[a-[.x.]]",
-      [
-        [4, 1, "."],
-        [6, 1, "."],
+  for (const { name, before, after, edits, undo } of [
+    {
+      name: "extend-chain",
+      before: "[a-c-e]",
+      after: "[a-c-e-g]",
+      edits: [{ byte: 6, deleteBytes: 0, insert: "-g" }],
+      undo: [{ byte: 6, deleteBytes: 2, insert: "" }],
+    },
+    {
+      name: "complete-range",
+      before: "[a-]",
+      after: "[a-z]",
+      edits: [{ byte: 3, deleteBytes: 0, insert: "z" }],
+      undo: [{ byte: 3, deleteBytes: 1, insert: "" }],
+    },
+    {
+      name: "hyphen-endpoint",
+      before: "[a-b--]",
+      after: "[a-b--c]",
+      edits: [{ byte: 6, deleteBytes: 0, insert: "c" }],
+      undo: [{ byte: 6, deleteBytes: 1, insert: "" }],
+    },
+    {
+      name: "shift-endpoint",
+      before: "[a-c-e]",
+      after: "[a--c-e]",
+      edits: [{ byte: 3, deleteBytes: 0, insert: "-" }],
+      undo: [{ byte: 3, deleteBytes: 1, insert: "" }],
+    },
+    {
+      name: "class-to-collating",
+      before: "[a-[:x:]]",
+      after: "[a-[.x.]]",
+      edits: [
+        { byte: 4, deleteBytes: 1, insert: "." },
+        { byte: 6, deleteBytes: 1, insert: "." },
       ],
-      [
-        [4, 1, ":"],
-        [6, 1, ":"],
+      undo: [
+        { byte: 4, deleteBytes: 1, insert: ":" },
+        { byte: 6, deleteBytes: 1, insert: ":" },
       ],
-    ],
-    [
-      "equivalence-to-collating",
-      "[a-[=x=]]",
-      "[a-[.x.]]",
-      [
-        [4, 1, "."],
-        [6, 1, "."],
+    },
+    {
+      name: "equivalence-to-collating",
+      before: "[a-[=x=]]",
+      after: "[a-[.x.]]",
+      edits: [
+        { byte: 4, deleteBytes: 1, insert: "." },
+        { byte: 6, deleteBytes: 1, insert: "." },
       ],
-      [
-        [4, 1, "="],
-        [6, 1, "="],
+      undo: [
+        { byte: 4, deleteBytes: 1, insert: "=" },
+        { byte: 6, deleteBytes: 1, insert: "=" },
       ],
-    ],
+    },
   ]) {
     for (const [context, prefix, suffix] of [
       ["word", "printf ", "\n"],
@@ -2778,7 +2947,7 @@ test("sh: bracket range ownership follows endpoint and hyphen edits", () => {
         `${name}-${context}-final`,
         prefix + after + suffix,
       );
-      const withPrefix = ([byte, deleteBytes, insert]) => ({
+      const withPrefix = ({ byte, deleteBytes, insert }) => ({
         byte: prefix.length + byte,
         deleteBytes,
         insert,
@@ -2996,27 +3165,36 @@ test("sh: bracket fallback remains stable across complete and incomplete edits",
     "bracket-command-fallback-member",
     lines(": [$((case x in x)esac))] arg >out"),
   );
-  for (const [initial, final, name, edit, member, end, argument, redirect] of [
-    [
-      arithmeticBracket,
-      fallbackBracket,
-      "arithmetic-member-to-command-fallback",
-      { byte: 10, deleteBytes: 0, insert: " x in x)esac" },
-      "command_substitution",
-      24,
-      "0:26-0:29",
-      "0:30-0:34",
-    ],
-    [
-      fallbackBracket,
-      arithmeticBracket,
-      "command-fallback-member-to-arithmetic",
-      { byte: 10, deleteBytes: 12, insert: "" },
-      "arithmetic_expansion",
-      12,
-      "0:14-0:17",
-      "0:18-0:22",
-    ],
+  for (const {
+    initial,
+    final,
+    name,
+    edit,
+    member,
+    end,
+    argument,
+    redirect,
+  } of [
+    {
+      initial: arithmeticBracket,
+      final: fallbackBracket,
+      name: "arithmetic-member-to-command-fallback",
+      edit: { byte: 10, deleteBytes: 0, insert: " x in x)esac" },
+      member: "command_substitution",
+      end: 24,
+      argument: "0:26-0:29",
+      redirect: "0:30-0:34",
+    },
+    {
+      initial: fallbackBracket,
+      final: arithmeticBracket,
+      name: "command-fallback-member-to-arithmetic",
+      edit: { byte: 10, deleteBytes: 12, insert: "" },
+      member: "arithmetic_expansion",
+      end: 12,
+      argument: "0:14-0:17",
+      redirect: "0:18-0:22",
+    },
   ]) {
     for (const output of assertIncrementalEqualsFresh(
       initial,
@@ -3610,28 +3788,28 @@ test("sh: here-document body escape runs fold all enclosing backquotes", () => {
 });
 
 test("sh: paired here-document backslashes retain the newline before the delimiter", () => {
-  for (const [name, initialText, finalText, offset, width] of [
-    [
-      "plain",
-      ": `cat <<EOF\nbody\nEOF\n`\n",
-      ": `cat <<EOF\n\\\\\\\\\nEOF\n`\n",
-      13,
-      4,
-    ],
-    [
-      "quoted",
-      ': "`cat <<EOF\nbody\nEOF\n`"\n',
-      ': "`cat <<EOF\n\\\\\\\\\nEOF\n`"\n',
-      14,
-      4,
-    ],
-    [
-      "nested",
-      ": `: \\`cat <<EOF\nbody\nEOF\n\\`\n`\n",
-      ": `: \\`cat <<EOF\n\\\\\\\\\\\\\\\\\nEOF\n\\`\n`\n",
-      17,
-      8,
-    ],
+  for (const { name, initialText, finalText, offset, width } of [
+    {
+      name: "plain",
+      initialText: ": `cat <<EOF\nbody\nEOF\n`\n",
+      finalText: ": `cat <<EOF\n\\\\\\\\\nEOF\n`\n",
+      offset: 13,
+      width: 4,
+    },
+    {
+      name: "quoted",
+      initialText: ': "`cat <<EOF\nbody\nEOF\n`"\n',
+      finalText: ': "`cat <<EOF\n\\\\\\\\\nEOF\n`"\n',
+      offset: 14,
+      width: 4,
+    },
+    {
+      name: "nested",
+      initialText: ": `: \\`cat <<EOF\nbody\nEOF\n\\`\n`\n",
+      finalText: ": `: \\`cat <<EOF\n\\\\\\\\\\\\\\\\\nEOF\n\\`\n`\n",
+      offset: 17,
+      width: 8,
+    },
   ]) {
     const initial = writeSource(`${name}-body-before-paired-run`, initialText);
     const final = writeSource(`${name}-body-paired-newline`, finalText);
@@ -4044,33 +4222,42 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
       "after",
     ),
   );
-  for (const [initial, final, name, edits, member, end, redirect, argument] of [
-    [
-      arithmeticDelimiter,
-      fallbackDelimiter,
-      "arithmetic-delimiter-to-command-fallback",
-      [
+  for (const {
+    initial,
+    final,
+    name,
+    edits,
+    member,
+    end,
+    redirect,
+    argument,
+  } of [
+    {
+      initial: arithmeticDelimiter,
+      final: fallbackDelimiter,
+      name: "arithmetic-delimiter-to-command-fallback",
+      edits: [
         { byte: 37, deleteBytes: 0, insert: " x in x)esac" },
         { byte: 13, deleteBytes: 0, insert: " x in x)esac" },
       ],
-      "command_substitution",
-      27,
-      "0:28-0:32",
-      "0:33-0:36",
-    ],
-    [
-      fallbackDelimiter,
-      arithmeticDelimiter,
-      "command-fallback-delimiter-to-arithmetic",
-      [
+      member: "command_substitution",
+      end: 27,
+      redirect: "0:28-0:32",
+      argument: "0:33-0:36",
+    },
+    {
+      initial: fallbackDelimiter,
+      final: arithmeticDelimiter,
+      name: "command-fallback-delimiter-to-arithmetic",
+      edits: [
         { byte: 49, deleteBytes: 12, insert: "" },
         { byte: 13, deleteBytes: 12, insert: "" },
       ],
-      "arithmetic_expansion",
-      15,
-      "0:16-0:20",
-      "0:21-0:24",
-    ],
+      member: "arithmetic_expansion",
+      end: 15,
+      redirect: "0:16-0:20",
+      argument: "0:21-0:24",
+    },
   ]) {
     for (const output of assertIncrementalEqualsFresh(
       initial,
@@ -4265,28 +4452,28 @@ test("sh: editing retained quoted-body backslash prefixes matches a fresh parse"
     "quoted-body-prefix-initial",
     `${prefix}${"\\".repeat(3)}${suffix}`,
   );
-  for (const [name, run, edit, continuations, textRange] of [
-    [
-      "extend-prefix",
-      "\\".repeat(5),
-      { byte: prefix.length + 1, deleteBytes: 0, insert: "\\\\" },
-      ["2:4-2:5"],
-      "2:0-3:1",
-    ],
-    [
-      "remove-continuation-by-changing-parity",
-      "\\\\",
-      { byte: prefix.length + 1, deleteBytes: 1, insert: "" },
-      [],
-      "2:0-2:2",
-    ],
-    [
-      "replace-counted-backslash-with-text",
-      "\\x\\",
-      { byte: prefix.length + 1, deleteBytes: 1, insert: "x" },
-      ["2:2-2:3"],
-      "2:0-3:1",
-    ],
+  for (const { name, run, edit, continuations, textRange } of [
+    {
+      name: "extend-prefix",
+      run: "\\".repeat(5),
+      edit: { byte: prefix.length + 1, deleteBytes: 0, insert: "\\\\" },
+      continuations: ["2:4-2:5"],
+      textRange: "2:0-3:1",
+    },
+    {
+      name: "remove-continuation-by-changing-parity",
+      run: "\\\\",
+      edit: { byte: prefix.length + 1, deleteBytes: 1, insert: "" },
+      continuations: [],
+      textRange: "2:0-2:2",
+    },
+    {
+      name: "replace-counted-backslash-with-text",
+      run: "\\x\\",
+      edit: { byte: prefix.length + 1, deleteBytes: 1, insert: "x" },
+      continuations: ["2:2-2:3"],
+      textRange: "2:0-3:1",
+    },
   ]) {
     const source = writeSource(name, `${prefix}${run}${suffix}`);
     for (const output of assertIncrementalEqualsFresh(
@@ -4582,100 +4769,139 @@ test("sh: line-continuation and comment contracts", () => {
 });
 
 test("sh: commands regain their public structure after command boundary errors", () => {
-  for (const [name, initial, final, offset, replacement, stray = ";"] of [
-    ["simple-command", "a; b\n", "a; c\n", 3, "c"],
-    [
-      "redirection-target-before-semicolon",
-      "cat >x; echo after\n",
-      "cat >y; echo after\n",
-      5,
-      "y",
-      "",
-    ],
-    [
-      "redirection-target-before-ampersand",
-      "cat >x & echo after\n",
-      "cat >y & echo after\n",
-      5,
-      "y",
-      "",
-    ],
-    [
-      "arithmetic-operand-before-semicolon",
-      "echo $((1 + (2))); echo after\n",
-      "echo $((1 + (3))); echo after\n",
-      13,
-      "3",
-      "",
-    ],
-    [
-      "for-header-before-subshell",
-      "for x in a; do :; done\n(echo after)\necho tail\n",
-      "for x in a;  do :; done\n(echo after)\necho tail\n",
-      12,
-      " d",
-      "",
-    ],
-    ["function", "f() { a; b; }\n", "f() { a; c; }\n", 9, "c"],
-    ["if-clause", "if a; then b; c; fi\n", "if a; then b; d; fi\n", 14, "d"],
-    [
-      "case-item",
-      "case x in x) a; b;; esac\n",
-      "case x in x) a; c;; esac\n",
-      16,
-      "c",
-    ],
-    ["newline", "a\nb\nc\n", "a\nd\nc\n", 2, "d", ")"],
-    ["terminated-line", "a;\nb\nc\n", "a;\nd\nc\n", 3, "d", ";;"],
-    [
-      "comment-and-blank-line",
-      "a \n# boundary\n\nb\nc\n",
-      "a \n# boundary\n\nd\nc\n",
-      15,
-      "d",
-      "|",
-    ],
-    ["continued-layout", "a\n\\\nb\nc\n", "a\n\\\nd\nc\n", 4, "d", "&"],
-    [
-      "continued-word-after-stray",
-      "a; b; ec\\\nho tail\n",
-      "a; d; ec\\\nho tail\n",
-      3,
-      "d",
-      ")",
-    ],
-    [
-      "single-quoted-word-after-stray",
-      "a; b; 'echo' tail\n",
-      "a; d; 'echo' tail\n",
-      3,
-      "d",
-      ")",
-    ],
-    [
-      "double-quoted-word-after-stray",
-      'a; b; "$command" tail\n',
-      'a; d; "$command" tail\n',
-      3,
-      "d",
-      ")",
-    ],
-    [
-      "parameter-word-after-stray",
-      `a; b; \${command} tail\n`,
-      `a; d; \${command} tail\n`,
-      3,
-      "d",
-      ")",
-    ],
-    [
-      "heredoc-substitution",
-      "cat <<END\n$(a\nb\nc)\nEND\nafter\n",
-      "cat <<END\n$(a\nd\nc)\nEND\nafter\n",
-      14,
-      "d",
-      ";;",
-    ],
+  for (const { name, initial, final, offset, replacement, stray = ";" } of [
+    {
+      name: "simple-command",
+      initial: "a; b\n",
+      final: "a; c\n",
+      offset: 3,
+      replacement: "c",
+    },
+    {
+      name: "redirection-target-before-semicolon",
+      initial: "cat >x; echo after\n",
+      final: "cat >y; echo after\n",
+      offset: 5,
+      replacement: "y",
+      stray: "",
+    },
+    {
+      name: "redirection-target-before-ampersand",
+      initial: "cat >x & echo after\n",
+      final: "cat >y & echo after\n",
+      offset: 5,
+      replacement: "y",
+      stray: "",
+    },
+    {
+      name: "arithmetic-operand-before-semicolon",
+      initial: "echo $((1 + (2))); echo after\n",
+      final: "echo $((1 + (3))); echo after\n",
+      offset: 13,
+      replacement: "3",
+      stray: "",
+    },
+    {
+      name: "for-header-before-subshell",
+      initial: "for x in a; do :; done\n(echo after)\necho tail\n",
+      final: "for x in a;  do :; done\n(echo after)\necho tail\n",
+      offset: 12,
+      replacement: " d",
+      stray: "",
+    },
+    {
+      name: "function",
+      initial: "f() { a; b; }\n",
+      final: "f() { a; c; }\n",
+      offset: 9,
+      replacement: "c",
+    },
+    {
+      name: "if-clause",
+      initial: "if a; then b; c; fi\n",
+      final: "if a; then b; d; fi\n",
+      offset: 14,
+      replacement: "d",
+    },
+    {
+      name: "case-item",
+      initial: "case x in x) a; b;; esac\n",
+      final: "case x in x) a; c;; esac\n",
+      offset: 16,
+      replacement: "c",
+    },
+    {
+      name: "newline",
+      initial: "a\nb\nc\n",
+      final: "a\nd\nc\n",
+      offset: 2,
+      replacement: "d",
+      stray: ")",
+    },
+    {
+      name: "terminated-line",
+      initial: "a;\nb\nc\n",
+      final: "a;\nd\nc\n",
+      offset: 3,
+      replacement: "d",
+      stray: ";;",
+    },
+    {
+      name: "comment-and-blank-line",
+      initial: "a \n# boundary\n\nb\nc\n",
+      final: "a \n# boundary\n\nd\nc\n",
+      offset: 15,
+      replacement: "d",
+      stray: "|",
+    },
+    {
+      name: "continued-layout",
+      initial: "a\n\\\nb\nc\n",
+      final: "a\n\\\nd\nc\n",
+      offset: 4,
+      replacement: "d",
+      stray: "&",
+    },
+    {
+      name: "continued-word-after-stray",
+      initial: "a; b; ec\\\nho tail\n",
+      final: "a; d; ec\\\nho tail\n",
+      offset: 3,
+      replacement: "d",
+      stray: ")",
+    },
+    {
+      name: "single-quoted-word-after-stray",
+      initial: "a; b; 'echo' tail\n",
+      final: "a; d; 'echo' tail\n",
+      offset: 3,
+      replacement: "d",
+      stray: ")",
+    },
+    {
+      name: "double-quoted-word-after-stray",
+      initial: 'a; b; "$command" tail\n',
+      final: 'a; d; "$command" tail\n',
+      offset: 3,
+      replacement: "d",
+      stray: ")",
+    },
+    {
+      name: "parameter-word-after-stray",
+      initial: `a; b; \${command} tail\n`,
+      final: `a; d; \${command} tail\n`,
+      offset: 3,
+      replacement: "d",
+      stray: ")",
+    },
+    {
+      name: "heredoc-substitution",
+      initial: "cat <<END\n$(a\nb\nc)\nEND\nafter\n",
+      final: "cat <<END\n$(a\nd\nc)\nEND\nafter\n",
+      offset: 14,
+      replacement: "d",
+      stray: ";;",
+    },
   ]) {
     const before = writeSource(`${name}-before-stray-separator`, initial);
     const insertion = { byte: offset, deleteBytes: 1, insert: stray };
@@ -4702,7 +4928,7 @@ test("sh: commands regain their public structure after command boundary errors",
 });
 
 test("sh: restoring missing compound keywords preserves command source", () => {
-  for (const [
+  for (const {
     name,
     initial,
     final,
@@ -4710,45 +4936,47 @@ test("sh: restoring missing compound keywords preserves command source", () => {
     owner,
     commands = 3,
     keywords = 1,
-  ] of [
-    [
-      "if-closer",
-      "if true; then echo inside; fi\necho after\n",
-      "if true; then echo inside; fi \necho after\n",
-      "fi",
-      "if_clause",
-    ],
-    [
-      "loop-closer",
-      "while true; do echo inside; done\necho after\n",
-      "while true; do echo inside; done \necho after\n",
-      "done",
-      "while_clause",
-    ],
-    [
-      "for-header-do",
-      "for x in a; do\necho inside; done\necho after\n",
-      "for x in a; do \necho inside; done\necho after\n",
-      "do",
-      "for_clause",
-      2,
-    ],
-    [
-      "if-header-then",
-      "if true; then\necho inside; fi\necho after\n",
-      "if true; then \necho inside; fi\necho after\n",
-      "then",
-      "if_clause",
-    ],
-    [
-      "elif-header-then",
-      "if false; then :; elif true; then\necho inside; fi\necho after\n",
-      "if false; then :; elif true; then \necho inside; fi\necho after\n",
-      "then",
-      "else_part",
-      5,
-      2,
-    ],
+  } of [
+    {
+      name: "if-closer",
+      initial: "if true; then echo inside; fi\necho after\n",
+      final: "if true; then echo inside; fi \necho after\n",
+      keyword: "fi",
+      owner: "if_clause",
+    },
+    {
+      name: "loop-closer",
+      initial: "while true; do echo inside; done\necho after\n",
+      final: "while true; do echo inside; done \necho after\n",
+      keyword: "done",
+      owner: "while_clause",
+    },
+    {
+      name: "for-header-do",
+      initial: "for x in a; do\necho inside; done\necho after\n",
+      final: "for x in a; do \necho inside; done\necho after\n",
+      keyword: "do",
+      owner: "for_clause",
+      commands: 2,
+    },
+    {
+      name: "if-header-then",
+      initial: "if true; then\necho inside; fi\necho after\n",
+      final: "if true; then \necho inside; fi\necho after\n",
+      keyword: "then",
+      owner: "if_clause",
+    },
+    {
+      name: "elif-header-then",
+      initial:
+        "if false; then :; elif true; then\necho inside; fi\necho after\n",
+      final:
+        "if false; then :; elif true; then \necho inside; fi\necho after\n",
+      keyword: "then",
+      owner: "else_part",
+      commands: 5,
+      keywords: 2,
+    },
   ]) {
     const offset = initial.indexOf(`${keyword}\n`);
     const removal = { byte: offset, deleteBytes: keyword.length, insert: "" };
@@ -6146,7 +6374,7 @@ test("sh: editing enclosing quotes updates backquote command word structure", ()
   );
   for (const output of restored) assertOccurrenceCount(output, "word: word", 4);
 
-  for (const [
+  for (const {
     name,
     initialText,
     finalText,
@@ -6155,75 +6383,82 @@ test("sh: editing enclosing quotes updates backquote command word structure", ()
     escapeRanges,
     quoteNode = "dollar_single_quoted",
     parameterRange,
-  ] of [
-    ["plain", ": `: $'\\''`", ": `: $'\\\\''`", 7, "0:5-0:11", ["0:7-0:10"]],
-    [
-      "quoted",
-      ": \"`: $'\\''`\"",
-      ": \"`: $'\\\\''`\"",
-      8,
-      "0:6-0:12",
-      ["0:8-0:11"],
-    ],
-    [
-      "nested",
-      ": \"`: \\`: $'\\\\\\''\\``\"",
-      ": \"`: \\`: $'\\\\\\\\''\\``\"",
-      12,
-      "0:10-0:18",
-      ["0:12-0:17"],
-    ],
-    [
-      "paired",
-      ": `: $'\\\\\\\\\\''`",
-      ": `: $'\\\\\\\\\\\\''`",
-      7,
-      "0:5-0:15",
-      ["0:7-0:11", "0:11-0:14"],
-    ],
-    [
-      "control",
-      ": `: $'\\c\\\\\\\\'`",
-      ": `: $'\\\\c\\\\\\\\'`",
-      7,
-      "0:5-0:15",
-      ["0:7-0:14"],
-    ],
-    [
-      "nested-control",
-      ": \"`: \\`: $'\\\\\\c\\\\\\\\\\\\\\\\'\\``\"",
-      ": \"`: \\`: $'\\\\\\\\c\\\\\\\\\\\\\\\\'\\``\"",
-      12,
-      "0:10-0:26",
-      ["0:12-0:25"],
-    ],
-    [
-      "escaped-opener",
-      ": `: $'\\\\''`",
-      ": `: \\$'\\\\''`",
-      5,
-      "0:5-0:12",
-      ["0:8-0:11"],
-    ],
-    [
-      "double-quote-text",
-      "echo `a \"$'x'\"`",
-      "echo `a \"\\$'x'\"`",
-      9,
-      "0:8-0:15",
-      [],
-      "double_quoted",
-    ],
-    [
-      "parameter-word-text",
-      'echo `a "$' + "{x:-$'x'}\"`",
-      'echo `a "$' + "{x:-\\$'x'}\"`",
-      14,
-      "0:8-0:21",
-      [],
-      "double_quoted",
-      "0:9-0:20",
-    ],
+  } of [
+    {
+      name: "plain",
+      initialText: ": `: $'\\''`",
+      finalText: ": `: $'\\\\''`",
+      offset: 7,
+      quoteRange: "0:5-0:11",
+      escapeRanges: ["0:7-0:10"],
+    },
+    {
+      name: "quoted",
+      initialText: ": \"`: $'\\''`\"",
+      finalText: ": \"`: $'\\\\''`\"",
+      offset: 8,
+      quoteRange: "0:6-0:12",
+      escapeRanges: ["0:8-0:11"],
+    },
+    {
+      name: "nested",
+      initialText: ": \"`: \\`: $'\\\\\\''\\``\"",
+      finalText: ": \"`: \\`: $'\\\\\\\\''\\``\"",
+      offset: 12,
+      quoteRange: "0:10-0:18",
+      escapeRanges: ["0:12-0:17"],
+    },
+    {
+      name: "paired",
+      initialText: ": `: $'\\\\\\\\\\''`",
+      finalText: ": `: $'\\\\\\\\\\\\''`",
+      offset: 7,
+      quoteRange: "0:5-0:15",
+      escapeRanges: ["0:7-0:11", "0:11-0:14"],
+    },
+    {
+      name: "control",
+      initialText: ": `: $'\\c\\\\\\\\'`",
+      finalText: ": `: $'\\\\c\\\\\\\\'`",
+      offset: 7,
+      quoteRange: "0:5-0:15",
+      escapeRanges: ["0:7-0:14"],
+    },
+    {
+      name: "nested-control",
+      initialText: ": \"`: \\`: $'\\\\\\c\\\\\\\\\\\\\\\\'\\``\"",
+      finalText: ": \"`: \\`: $'\\\\\\\\c\\\\\\\\\\\\\\\\'\\``\"",
+      offset: 12,
+      quoteRange: "0:10-0:26",
+      escapeRanges: ["0:12-0:25"],
+    },
+    {
+      name: "escaped-opener",
+      initialText: ": `: $'\\\\''`",
+      finalText: ": `: \\$'\\\\''`",
+      offset: 5,
+      quoteRange: "0:5-0:12",
+      escapeRanges: ["0:8-0:11"],
+    },
+    {
+      name: "double-quote-text",
+      initialText: "echo `a \"$'x'\"`",
+      finalText: "echo `a \"\\$'x'\"`",
+      offset: 9,
+      quoteRange: "0:8-0:15",
+      escapeRanges: [],
+      quoteNode: "double_quoted",
+    },
+    {
+      name: "parameter-word-text",
+      initialText: 'echo `a "$' + "{x:-$'x'}\"`",
+      finalText: 'echo `a "$' + "{x:-\\$'x'}\"`",
+      offset: 14,
+      quoteRange: "0:8-0:21",
+      escapeRanges: [],
+      quoteNode: "double_quoted",
+      parameterRange: "0:9-0:20",
+    },
   ]) {
     const initial = writeSource(
       `backquote-dollar-quote-${name}-initial`,
@@ -6566,10 +6801,25 @@ test("sh: backquote bracket escapes retain logical range endpoints and separate 
     }
   }
 
-  for (const [initialName, finalName, offset, inserted] of [
-    ["escaped-ordinary-endpoint", "complete-raw-pair-endpoint", 8, 2],
-    ["complete-raw-pair-endpoint", "complete-trailing-member", 8, 4],
-    ["nested-backquote-endpoint", "nested-backquote-separate-member", 12, 8],
+  for (const { initialName, finalName, offset, inserted } of [
+    {
+      initialName: "escaped-ordinary-endpoint",
+      finalName: "complete-raw-pair-endpoint",
+      offset: 8,
+      inserted: 2,
+    },
+    {
+      initialName: "complete-raw-pair-endpoint",
+      finalName: "complete-trailing-member",
+      offset: 8,
+      inserted: 4,
+    },
+    {
+      initialName: "nested-backquote-endpoint",
+      finalName: "nested-backquote-separate-member",
+      offset: 12,
+      inserted: 8,
+    },
   ]) {
     const initial = paths.get(initialName);
     const final = paths.get(finalName);
@@ -6670,21 +6920,21 @@ test("sh: enclosing backquote escape runs keep bracket classification across edi
     "backquote-bracket-shrink",
     { byte: 14, deleteBytes: 1, insert: "" },
   );
-  for (const [name, plainSource, escapedSource, offset, openerRange] of [
-    [
-      "unquoted",
-      lines(": `: [$(cat <<X", "]", "X", ")]`"),
-      lines(": `: [$(cat <<\\\\X", "]", "X", ")]`"),
-      14,
-      "0:5-0:6",
-    ],
-    [
-      "double-quoted",
-      lines(': "`: [$(cat <<X', "]", "X", ')]`"'),
-      lines(': "`: [$(cat <<\\\\X', "]", "X", ')]`"'),
-      15,
-      "0:6-0:7",
-    ],
+  for (const { name, plainSource, escapedSource, offset, openerRange } of [
+    {
+      name: "unquoted",
+      plainSource: lines(": `: [$(cat <<X", "]", "X", ")]`"),
+      escapedSource: lines(": `: [$(cat <<\\\\X", "]", "X", ")]`"),
+      offset: 14,
+      openerRange: "0:5-0:6",
+    },
+    {
+      name: "double-quoted",
+      plainSource: lines(': "`: [$(cat <<X', "]", "X", ')]`"'),
+      escapedSource: lines(': "`: [$(cat <<\\\\X', "]", "X", ')]`"'),
+      offset: 15,
+      openerRange: "0:6-0:7",
+    },
   ]) {
     const plain = writeSource(`bracket-heredoc-${name}-plain`, plainSource);
     const escaped = writeSource(

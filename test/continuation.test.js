@@ -12,145 +12,207 @@ import {
 } from "./support/parser.js";
 
 const fixtures = [
-  ["command name", "pri§ntf value\n", [["literal", "printf"]]],
-  ["argument", "printf foo§bar\n", [["literal", "foobar"]]],
-  ["Unicode argument", "printf é§🙂a§bc\n", [["literal", "é🙂abc"]]],
-  ["bullet in argument", "printf a§•§b\n", [["literal", "a•b"]]],
-  [
-    "Unicode separators in argument",
-    "printf a\u2028§b\u2029§c\n",
-    [["literal", "a\u2028b\u2029c"]],
-  ],
-  [
-    "Unicode separators in double quote text",
-    'printf "a\u2028§b\u2029§c"\n',
-    [["double_quote_text", "a\u2028b\u2029c"]],
-  ],
-  [
-    "assignment",
-    "VA§R=va§lue\n",
-    [
-      ["variable_name", "VAR"],
-      ["literal", "value"],
+  {
+    name: "command name",
+    marked: "pri§ntf value\n",
+    expectedNodes: [{ type: "literal", spelling: "printf" }],
+  },
+  {
+    name: "argument",
+    marked: "printf foo§bar\n",
+    expectedNodes: [{ type: "literal", spelling: "foobar" }],
+  },
+  {
+    name: "Unicode argument",
+    marked: "printf é§🙂a§bc\n",
+    expectedNodes: [{ type: "literal", spelling: "é🙂abc" }],
+  },
+  {
+    name: "bullet in argument",
+    marked: "printf a§•§b\n",
+    expectedNodes: [{ type: "literal", spelling: "a•b" }],
+  },
+  {
+    name: "Unicode separators in argument",
+    marked: "printf a\u2028§b\u2029§c\n",
+    expectedNodes: [{ type: "literal", spelling: "a\u2028b\u2029c" }],
+  },
+  {
+    name: "Unicode separators in double quote text",
+    marked: 'printf "a\u2028§b\u2029§c"\n',
+    expectedNodes: [{ type: "double_quote_text", spelling: "a\u2028b\u2029c" }],
+  },
+  {
+    name: "assignment",
+    marked: "VA§R=va§lue\n",
+    expectedNodes: [
+      { type: "variable_name", spelling: "VAR" },
+      { type: "literal", spelling: "value" },
     ],
-  ],
-  [
-    "reserved words",
-    "i§f :; th§en :; f§i\n",
-    [
-      ["if_keyword", "if"],
-      ["then_keyword", "then"],
-      ["fi_keyword", "fi"],
+  },
+  {
+    name: "reserved words",
+    marked: "i§f :; th§en :; f§i\n",
+    expectedNodes: [
+      { type: "if_keyword", spelling: "if" },
+      { type: "then_keyword", spelling: "then" },
+      { type: "fi_keyword", spelling: "fi" },
     ],
-  ],
-  ["function name", "wor§ker() { :; }\n", [["fname", "worker"]]],
-  [
-    "for name and words",
-    "for al§pha i§n o§ne two; d§o :; do§ne\n",
-    [
-      ["name", "alpha"],
-      ["in_keyword", "in"],
-      ["literal", "one"],
+  },
+  {
+    name: "function name",
+    marked: "wor§ker() { :; }\n",
+    expectedNodes: [{ type: "fname", spelling: "worker" }],
+  },
+  {
+    name: "for name and words",
+    marked: "for al§pha i§n o§ne two; d§o :; do§ne\n",
+    expectedNodes: [
+      { type: "name", spelling: "alpha" },
+      { type: "in_keyword", spelling: "in" },
+      { type: "literal", spelling: "one" },
     ],
-  ],
-  [
-    "control operators",
-    "a &§& b |§| c\n",
-    [
-      ["and_if", "&&"],
-      ["or_if", "||"],
+  },
+  {
+    name: "control operators",
+    marked: "a &§& b |§| c\n",
+    expectedNodes: [
+      { type: "and_if", spelling: "&&" },
+      { type: "or_if", spelling: "||" },
     ],
-  ],
-  [
-    "case terminators",
-    "case x in a) : ;§; b) : ;§& esac\n",
-    [
-      ["dsemi", ";;"],
-      ["semi_and", ";&"],
+  },
+  {
+    name: "case terminators",
+    marked: "case x in a) : ;§; b) : ;§& esac\n",
+    expectedNodes: [
+      { type: "dsemi", spelling: ";;" },
+      { type: "semi_and", spelling: ";&" },
     ],
-  ],
-  ["IO number", "printf 1§2>out\n", [["io_number", "12"]]],
-  ["redirection operator", "printf >§>out\n", [["dgreat", ">>"]]],
-  ["redirection filename", "printf >out§put\n", [["literal", "output"]]],
-  [
-    "parameter name and operand",
-    ": $§{va§r:-va§lue}\n",
-    [
-      ["variable_name", "var"],
-      ["literal", "value"],
+  },
+  {
+    name: "IO number",
+    marked: "printf 1§2>out\n",
+    expectedNodes: [{ type: "io_number", spelling: "12" }],
+  },
+  {
+    name: "redirection operator",
+    marked: "printf >§>out\n",
+    expectedNodes: [{ type: "dgreat", spelling: ">>" }],
+  },
+  {
+    name: "redirection filename",
+    marked: "printf >out§put\n",
+    expectedNodes: [{ type: "literal", spelling: "output" }],
+  },
+  {
+    name: "parameter name and operand",
+    marked: ": $§{va§r:-va§lue}\n",
+    expectedNodes: [
+      { type: "variable_name", spelling: "var" },
+      { type: "literal", spelling: "value" },
     ],
-  ],
-  [
-    "parameter operator",
-    `: \${var:§-value}\n`,
-    [["parameter_value_operator", ":-"]],
-  ],
-  [
-    "parameter length of hash",
-    `: \${#§#}\n`,
-    [
-      ["parameter_length_operator", "#"],
-      ["special_parameter", "#", 1],
+  },
+  {
+    name: "parameter operator",
+    marked: `: \${var:§-value}\n`,
+    expectedNodes: [{ type: "parameter_value_operator", spelling: ":-" }],
+  },
+  {
+    name: "parameter length of hash",
+    marked: `: \${#§#}\n`,
+    expectedNodes: [
+      { type: "parameter_length_operator", spelling: "#" },
+      { type: "special_parameter", spelling: "#", occurrence: 1 },
     ],
-  ],
-  [
-    "parameter length of options",
-    `: \${#§-}\n`,
-    [
-      ["parameter_length_operator", "#"],
-      ["special_parameter", "-"],
+  },
+  {
+    name: "parameter length of options",
+    marked: `: \${#§-}\n`,
+    expectedNodes: [
+      { type: "parameter_length_operator", spelling: "#" },
+      { type: "special_parameter", spelling: "-" },
     ],
-  ],
-  [
-    "parameter length of status",
-    `: \${#§?}\n`,
-    [
-      ["parameter_length_operator", "#"],
-      ["special_parameter", "?"],
+  },
+  {
+    name: "parameter length of status",
+    marked: `: \${#§?}\n`,
+    expectedNodes: [
+      { type: "parameter_length_operator", spelling: "#" },
+      { type: "special_parameter", spelling: "?" },
     ],
-  ],
-  [
-    "longest prefix pattern operator",
-    `: \${var#§#value}\n`,
-    [["parameter_pattern_operator", "##"]],
-  ],
-  ["unbraced parameter", ": $va§r\n", [["variable_name", "var"]]],
-  ["numeric parameter spelling", `: \${0§0}\n`, []],
-  ["positional parameter", `: \${0§1}\n`, [["positional_parameter", "01"]]],
-  ["command prefix", ": $§(printf value)\n", []],
-  ["arithmetic prefix", ": $§(§(1 + 2)§)\n", []],
-  ["arithmetic number", ": $((1§23 + 4))\n", [["arithmetic_number", "123"]]],
-  [
-    "arithmetic assignment operator",
-    ": $((value <§<= 1))\n",
-    [["arithmetic_operator", "<<="]],
-  ],
-  ["double quote text", ': "foo§bar"\n', [["double_quote_text", "foobar"]]],
-  ["dollar quote prefix", ": $§'text'\n", []],
-  [
-    "pattern character class",
-    ": [[:al§pha:]]\n",
-    [["pattern_character_class_content_source", "alpha"]],
-  ],
-  ["tilde user", ": ~roo§t/path\n", [["literal", "root"]]],
-  [
-    "heredoc operator and delimiter",
-    "cat <§<§-E§OF\nbody\nEOF\n",
-    [
-      ["dlessdash", "<<-"],
-      ["literal", "EOF"],
+  },
+  {
+    name: "longest prefix pattern operator",
+    marked: `: \${var#§#value}\n`,
+    expectedNodes: [{ type: "parameter_pattern_operator", spelling: "##" }],
+  },
+  {
+    name: "unbraced parameter",
+    marked: ": $va§r\n",
+    expectedNodes: [{ type: "variable_name", spelling: "var" }],
+  },
+  {
+    name: "numeric parameter spelling",
+    marked: `: \${0§0}\n`,
+    expectedNodes: [],
+  },
+  {
+    name: "positional parameter",
+    marked: `: \${0§1}\n`,
+    expectedNodes: [{ type: "positional_parameter", spelling: "01" }],
+  },
+  { name: "command prefix", marked: ": $§(printf value)\n", expectedNodes: [] },
+  { name: "arithmetic prefix", marked: ": $§(§(1 + 2)§)\n", expectedNodes: [] },
+  {
+    name: "arithmetic number",
+    marked: ": $((1§23 + 4))\n",
+    expectedNodes: [{ type: "arithmetic_number", spelling: "123" }],
+  },
+  {
+    name: "arithmetic assignment operator",
+    marked: ": $((value <§<= 1))\n",
+    expectedNodes: [{ type: "arithmetic_operator", spelling: "<<=" }],
+  },
+  {
+    name: "double quote text",
+    marked: ': "foo§bar"\n',
+    expectedNodes: [{ type: "double_quote_text", spelling: "foobar" }],
+  },
+  { name: "dollar quote prefix", marked: ": $§'text'\n", expectedNodes: [] },
+  {
+    name: "pattern character class",
+    marked: ": [[:al§pha:]]\n",
+    expectedNodes: [
+      { type: "pattern_character_class_content_source", spelling: "alpha" },
     ],
-  ],
-  [
-    "heredoc body and closing word",
-    "cat <<EOF\nfoo§bar\nEO§F\n",
-    [
-      ["here_document_text", "foobar"],
-      ["here_document_end_text", "EOF", 1],
+  },
+  {
+    name: "tilde user",
+    marked: ": ~roo§t/path\n",
+    expectedNodes: [{ type: "literal", spelling: "root" }],
+  },
+  {
+    name: "heredoc operator and delimiter",
+    marked: "cat <§<§-E§OF\nbody\nEOF\n",
+    expectedNodes: [
+      { type: "dlessdash", spelling: "<<-" },
+      { type: "literal", spelling: "EOF" },
     ],
-  ],
-  ["word separator", "printf foo §bar\n", []],
-  ["closed compound redirect", "( : )§2>out\n", []],
+  },
+  {
+    name: "heredoc body and closing word",
+    marked: "cat <<EOF\nfoo§bar\nEO§F\n",
+    expectedNodes: [
+      { type: "here_document_text", spelling: "foobar" },
+      { type: "here_document_end_text", spelling: "EOF", occurrence: 1 },
+    ],
+  },
+  { name: "word separator", marked: "printf foo §bar\n", expectedNodes: [] },
+  {
+    name: "closed compound redirect",
+    marked: "( : )§2>out\n",
+    expectedNodes: [],
+  },
 ];
 
 function point(source, byte) {
@@ -186,7 +248,7 @@ function sourceVariants(marked, repeats) {
   return { logical, physical, offsets, slashes, mappedRange };
 }
 
-for (const [name, marked, expectedNodes] of fixtures) {
+for (const { name, marked, expectedNodes } of fixtures) {
   test(`continued ${name} preserves formal CST and original byte ranges`, () => {
     const logical = writeSource(`${name}-logical`, marked.replaceAll("§", ""));
     const logicalOutput = parseValidCst(logical);
@@ -211,7 +273,7 @@ for (const [name, marked, expectedNodes] of fixtures) {
           );
         }
       }
-      for (const [type, spelling, occurrence = 0] of expectedNodes) {
+      for (const { type, spelling, occurrence = 0 } of expectedNodes) {
         let offset = -1;
         for (let index = 0; index <= occurrence; index += 1) {
           offset = variant.logical.indexOf(spelling, offset + 1);
@@ -247,16 +309,31 @@ for (const [name, marked, expectedNodes] of fixtures) {
 }
 
 test("quoting and native comments retain physical pairs that are not continuations", () => {
-  for (const [name, source, type, count] of [
-    ["single quote", ": 'ab\\\ncd'\n", "single_quoted", 1],
-    ["dollar single quote", ": $'ab\\\ncd'\n", "dollar_single_quoted", 1],
-    [
-      "quoted heredoc",
-      "cat <<'END'\nab\\\ncd\nEND\n",
-      "quoted_here_document_body",
-      1,
-    ],
-    ["native comment", "#ab\\\nword\n", "cmd_name", 1],
+  for (const { name, source, type, count } of [
+    {
+      name: "single quote",
+      source: ": 'ab\\\ncd'\n",
+      type: "single_quoted",
+      count: 1,
+    },
+    {
+      name: "dollar single quote",
+      source: ": $'ab\\\ncd'\n",
+      type: "dollar_single_quoted",
+      count: 1,
+    },
+    {
+      name: "quoted heredoc",
+      source: "cat <<'END'\nab\\\ncd\nEND\n",
+      type: "quoted_here_document_body",
+      count: 1,
+    },
+    {
+      name: "native comment",
+      source: "#ab\\\nword\n",
+      type: "cmd_name",
+      count: 1,
+    },
   ]) {
     const output = parseValidCst(writeSource(name, source));
     assert.deepEqual(continuationManifest(output), [], name);

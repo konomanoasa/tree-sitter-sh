@@ -151,14 +151,14 @@ const physicalSource = ($, token, decorate = (character) => character) =>
     repeat(sourceToken($, token, "physical", "prefix")),
     decorate(sourceToken($, token, "physical", "character")),
   );
-const physical = ($, token, spelling, fieldName = null) => {
+const physical = ($, token, spelling, fieldName) => {
   if (token.type === "CHOICE") {
     return choice(
       ...token.members.map((begin) => physical($, begin, spelling, fieldName)),
     );
   }
   const character = (source) => alias(source, spelling);
-  if (fieldName !== null) {
+  if (fieldName !== undefined) {
     return physicalSource($, token, (source) =>
       field(fieldName, character(source)),
     );
@@ -321,12 +321,6 @@ const arithmeticBinaryOperatorRules = () => {
 };
 const arithmeticClosingLayout = ($) =>
   seq($._arithmetic_closing_boundary, optional($._arithmetic_layout));
-
-const arithmeticLvalue = ($) =>
-  choice(
-    $.arithmetic_variable,
-    alias($._parenthesized_arithmetic_lvalue, $.parenthesized_arithmetic),
-  );
 
 const parenthesizedArithmetic = ($, expression) =>
   seq(
@@ -989,7 +983,6 @@ export default grammar({
     [$.complete_commands],
     [$._sequential_newline_separator, $.linebreak],
     [$.case_list],
-    [$._parenthesized_arithmetic_lvalue, $._arithmetic_primary_expression],
     [$.complete_command],
   ],
 
@@ -2175,7 +2168,10 @@ export default grammar({
     arithmetic_assignment_expression: ($) =>
       prec.right(
         seq(
-          field("left", arithmeticLvalue($)),
+          field(
+            "left",
+            choice($.arithmetic_variable, $.parenthesized_arithmetic),
+          ),
           $._arithmetic_assignment_operator_segment,
           arithmeticOperandLayout($),
           field(
@@ -2187,9 +2183,6 @@ export default grammar({
           ),
         ),
       ),
-
-    _parenthesized_arithmetic_lvalue: ($) =>
-      parenthesizedArithmetic($, arithmeticLvalue($)),
 
     _arithmetic_conditional_expression: ($) =>
       prec.right(

@@ -135,42 +135,49 @@ test("sh: nested backquotes preserve arithmetic classification across edits", ()
 });
 
 test("sh: hexadecimal quote escapes retain every digit across edits", () => {
-  for (const [name, initialText, finalText, edit, initialRange, finalRange] of [
-    [
-      "third-hexadecimal-digit",
-      ": $'\\x12g'\n",
-      ": $'\\x123g'\n",
-      { byte: 8, deleteBytes: 0, insert: "3" },
-      "0:4-0:8",
-      "0:4-0:9",
-    ],
-    [
-      "fourth-hexadecimal-digit",
-      ": $'\\x123g'\n",
-      ": $'\\x1234g'\n",
-      { byte: 9, deleteBytes: 0, insert: "4" },
-      "0:4-0:9",
-      "0:4-0:10",
-    ],
-    [
-      "backquote-third-hexadecimal-digit",
-      ": `: $'\\\\x12g'`\n",
-      ": `: $'\\\\x123g'`\n",
-      { byte: 12, deleteBytes: 0, insert: "3" },
-      "0:7-0:12",
-      "0:7-0:13",
-    ],
+  for (const {
+    name,
+    initialText,
+    finalText,
+    edit,
+    initialRange,
+    finalRange,
+  } of [
+    {
+      name: "third-hexadecimal-digit",
+      initialText: ": $'\\x12g'\n",
+      finalText: ": $'\\x123g'\n",
+      edit: { byte: 8, deleteBytes: 0, insert: "3" },
+      initialRange: "0:4-0:8",
+      finalRange: "0:4-0:9",
+    },
+    {
+      name: "fourth-hexadecimal-digit",
+      initialText: ": $'\\x123g'\n",
+      finalText: ": $'\\x1234g'\n",
+      edit: { byte: 9, deleteBytes: 0, insert: "4" },
+      initialRange: "0:4-0:9",
+      finalRange: "0:4-0:10",
+    },
+    {
+      name: "backquote-third-hexadecimal-digit",
+      initialText: ": `: $'\\\\x12g'`\n",
+      finalText: ": `: $'\\\\x123g'`\n",
+      edit: { byte: 12, deleteBytes: 0, insert: "3" },
+      initialRange: "0:7-0:12",
+      finalRange: "0:7-0:13",
+    },
   ]) {
     const initial = writeSource(`${name}-initial`, initialText);
     const final = writeSource(`${name}-final`, finalText);
-    for (const [before, after, change, range] of [
-      [initial, final, edit, finalRange],
-      [
-        final,
-        initial,
-        { byte: edit.byte, deleteBytes: 1, insert: "" },
-        initialRange,
-      ],
+    for (const { before, after, change, range } of [
+      { before: initial, after: final, change: edit, range: finalRange },
+      {
+        before: final,
+        after: initial,
+        change: { byte: edit.byte, deleteBytes: 1, insert: "" },
+        range: initialRange,
+      },
     ]) {
       for (const output of assertIncrementalEqualsFresh(
         before,
@@ -198,26 +205,70 @@ test("sh: hexadecimal quote escapes retain every digit across edits", () => {
 
 test("sh: backquote closers delimit keywords and trailing word continuations", () => {
   const contexts = [
-    ["nested", ": `: \\`", "\\``\n", 2],
-    ["deeper", ": `: \\`: \\\\\\`", "\\\\\\`\\``\n", 3],
-    ["quoted", ': "`: \\`', '\\``"\n', 2],
+    { context: "nested", prefix: ": `: \\`", suffix: "\\``\n", depth: 2 },
+    {
+      context: "deeper",
+      prefix: ": `: \\`: \\\\\\`",
+      suffix: "\\\\\\`\\``\n",
+      depth: 3,
+    },
+    { context: "quoted", prefix: ': "`: \\`', suffix: '\\``"\n', depth: 2 },
   ];
   const bodies = [
-    ["conditional", "if :; then :; fi", "if_clause", "fi_keyword", 14, 2],
-    ["loop", "while :; do :; done", "while_clause", "done_keyword", 15, 4],
-    ["case", "case x in x) :;; esac", "case_clause", "esac_keyword", 17, 4],
-    ["brace", "{ :; }", "brace_group", '"}"', 5, 1],
-    ["word", "x", "simple_command", "literal `x`", 0, 1],
+    {
+      bodyName: "conditional",
+      body: "if :; then :; fi",
+      node: "if_clause",
+      terminal: "fi_keyword",
+      offset: 14,
+      length: 2,
+    },
+    {
+      bodyName: "loop",
+      body: "while :; do :; done",
+      node: "while_clause",
+      terminal: "done_keyword",
+      offset: 15,
+      length: 4,
+    },
+    {
+      bodyName: "case",
+      body: "case x in x) :;; esac",
+      node: "case_clause",
+      terminal: "esac_keyword",
+      offset: 17,
+      length: 4,
+    },
+    {
+      bodyName: "brace",
+      body: "{ :; }",
+      node: "brace_group",
+      terminal: '"}"',
+      offset: 5,
+      length: 1,
+    },
+    {
+      bodyName: "word",
+      body: "x",
+      node: "simple_command",
+      terminal: "literal `x`",
+      offset: 0,
+      length: 1,
+    },
   ];
   const layouts = [
-    ["adjacent", "", []],
-    ["continued", "\\\n", [0]],
-    ["folded", "\\\\\n", [1]],
-    ["spaced-folded", " \\\\\n", [2]],
+    { layoutName: "adjacent", layout: "", continuationOffsets: [] },
+    { layoutName: "continued", layout: "\\\n", continuationOffsets: [0] },
+    { layoutName: "folded", layout: "\\\\\n", continuationOffsets: [1] },
+    {
+      layoutName: "spaced-folded",
+      layout: " \\\\\n",
+      continuationOffsets: [2],
+    },
   ];
-  for (const [context, prefix, suffix, depth] of contexts) {
-    for (const [bodyName, body, node, terminal, offset, length] of bodies) {
-      for (const [layoutName, layout, continuationOffsets] of layouts) {
+  for (const { context, prefix, suffix, depth } of contexts) {
+    for (const { bodyName, body, node, terminal, offset, length } of bodies) {
+      for (const { layoutName, layout, continuationOffsets } of layouts) {
         const name = `${context}-${bodyName}-${layoutName}`;
         const sourceText = prefix + body + layout + suffix;
         const source = writeSource(name, sourceText);
@@ -600,28 +651,60 @@ test("sh: backquote escape units retain their enclosing source classification", 
 });
 
 test("sh: tilde prefixes retain ownership across bracket and backquote edits", () => {
-  for (const [name, contents, prefixes] of [
-    ["complete bracket", "A=[a:~/x]\n", ["~"]],
-    ["incomplete bracket", "A=[a:~/x\n", ["~"]],
-    ["nested bracket", "A=[a[b:~/x]]\n", ["~"]],
-    ["closing bracket in login name", "A=[a:~root]/x\n", ["~root]"]],
-    ["character class", "A=[[:alpha:]:~/x]\n", ["~"]],
-    ["class marker colon", "A=[[:~/x]]\n", ["~"]],
-    ["collating symbol", "A=[[.a:~/x.]]\n", ["~"]],
-    ["equivalence class", "A=[[=a:~/x=]]\n", ["~"]],
-    ["two prefixes", "A=[a:~/x]:~/y\n", ["~", "~"]],
-    ["parameter after colon", `A=[a:\${x}:~/x]\n`, ["~"]],
-    ["command after colon", "A=[a:$(printf x):~/x]\n", ["~"]],
-    ["backquote after colon", "A=[a:`printf x`:~/x]\n", ["~"]],
-    ["nested backquote", ": `: \\`A=[a:~x\\``\n", ["~x"]],
-    ["nested backquote assignment", ": `: \\`A=~x\\``\n", ["~x"]],
-    ["nested backquote argument", ": `: \\`: ~x\\``\n", ["~x"]],
-    ["escaped colon", "A=[a\\:~/x]\n", []],
-    ["quoted colon", 'A=[a":"~/x]\n', []],
-    ["nested colon", `A=[a\${x:-:}~/x]\n`, []],
-    ["quoted tilde", 'A=[a:"~"/x]\n', []],
-    ["ordinary word", ": [a:~/x]\n", []],
-    ["parameter word", `: \${x:-[a:~/x]}\n`, []],
+  for (const { name, contents, prefixes } of [
+    { name: "complete bracket", contents: "A=[a:~/x]\n", prefixes: ["~"] },
+    { name: "incomplete bracket", contents: "A=[a:~/x\n", prefixes: ["~"] },
+    { name: "nested bracket", contents: "A=[a[b:~/x]]\n", prefixes: ["~"] },
+    {
+      name: "closing bracket in login name",
+      contents: "A=[a:~root]/x\n",
+      prefixes: ["~root]"],
+    },
+    {
+      name: "character class",
+      contents: "A=[[:alpha:]:~/x]\n",
+      prefixes: ["~"],
+    },
+    { name: "class marker colon", contents: "A=[[:~/x]]\n", prefixes: ["~"] },
+    { name: "collating symbol", contents: "A=[[.a:~/x.]]\n", prefixes: ["~"] },
+    { name: "equivalence class", contents: "A=[[=a:~/x=]]\n", prefixes: ["~"] },
+    { name: "two prefixes", contents: "A=[a:~/x]:~/y\n", prefixes: ["~", "~"] },
+    {
+      name: "parameter after colon",
+      contents: `A=[a:\${x}:~/x]\n`,
+      prefixes: ["~"],
+    },
+    {
+      name: "command after colon",
+      contents: "A=[a:$(printf x):~/x]\n",
+      prefixes: ["~"],
+    },
+    {
+      name: "backquote after colon",
+      contents: "A=[a:`printf x`:~/x]\n",
+      prefixes: ["~"],
+    },
+    {
+      name: "nested backquote",
+      contents: ": `: \\`A=[a:~x\\``\n",
+      prefixes: ["~x"],
+    },
+    {
+      name: "nested backquote assignment",
+      contents: ": `: \\`A=~x\\``\n",
+      prefixes: ["~x"],
+    },
+    {
+      name: "nested backquote argument",
+      contents: ": `: \\`: ~x\\``\n",
+      prefixes: ["~x"],
+    },
+    { name: "escaped colon", contents: "A=[a\\:~/x]\n", prefixes: [] },
+    { name: "quoted colon", contents: 'A=[a":"~/x]\n', prefixes: [] },
+    { name: "nested colon", contents: `A=[a\${x:-:}~/x]\n`, prefixes: [] },
+    { name: "quoted tilde", contents: 'A=[a:"~"/x]\n', prefixes: [] },
+    { name: "ordinary word", contents: ": [a:~/x]\n", prefixes: [] },
+    { name: "parameter word", contents: `: \${x:-[a:~/x]}\n`, prefixes: [] },
   ]) {
     const initial = writeSource(name, contents.replaceAll("~", "Q"));
     const final = writeSource(name, contents);
@@ -685,72 +768,122 @@ test("sh: fixed arithmetic errors select a subshell despite runtime fragments", 
 });
 
 test("sh: runtime fragments can complete arithmetic lexemes and productions", () => {
-  for (const [name, expression, completion, completed, lexemes = []] of [
-    [
-      "hexadecimal-prefix",
-      `0x\${x}`,
-      "F",
-      "0xF",
-      [["0x", "arithmetic_source_fragment"]],
-    ],
-    [
-      "uppercase-hexadecimal-prefix",
-      `0X\${x}`,
-      "F",
-      "0XF",
-      [["0X", "arithmetic_source_fragment"]],
-    ],
-    [
-      "octal-suffix-completed-as-decimal",
-      `\${x}08`,
-      "1",
-      "108",
-      [["08", "arithmetic_source_fragment"]],
-    ],
-    [
-      "numeric-suffix-completed-as-name",
-      `\${x}123abc`,
-      "value",
-      "value123abc",
-      [["123abc", "arithmetic_source_fragment"]],
-    ],
-    [
-      "nonhexadecimal-suffix-completed-as-name",
-      `\${x}0xg`,
-      "value",
-      "value0xg",
-      [["0xg", "arithmetic_source_fragment"]],
-    ],
-    [
-      "parenthesized-hexadecimal-prefix",
-      `(0x\${x}) * 2`,
-      "F",
-      "(0xF) * 2",
-      [["0x", "arithmetic_source_fragment"]],
-    ],
-    [
-      "name-prefix",
-      `foo\${x}`,
-      "bar",
-      "foobar",
-      [["foo", "arithmetic_variable"]],
-    ],
-    ["octal-prefix", `0\${x}`, "7", "07"],
-    ["empty-numeric-fragment", `1\${x}2`, "", "12"],
-    ["numeric-suffix-and-operator", `1\${x} 2`, "+", "1+ 2"],
-    ["equality-operator", `1 =\${x} 2`, "=", "1 == 2"],
-    ["conditional-prefix", `\${x} : 2`, "1 ? 3", "1 ? 3 : 2"],
-    ["conditional-suffix", `1 ? \${x}`, "2 : 3", "1 ? 2 : 3"],
-    ["assignment-target", `\${x} = 1`, "a", "a = 1"],
-    ["parenthesized-assignment-target", `(\${x}) = 1`, "a", "(a) = 1"],
-    [
-      "conditional-assignment-consequence",
-      `a + \${x} = 2 : 3`,
-      "b ? c",
-      "a + b ? c = 2 : 3",
-    ],
-    ["parenthesized-operand", `(1 \${x}) * 2`, "+ 3", "(1 + 3) * 2"],
-    ["operator-before-group", `\${x}(1 + 2)`, "2 * ", "2 * (1 + 2)"],
+  for (const { name, expression, completion, completed, lexemes = [] } of [
+    {
+      name: "hexadecimal-prefix",
+      expression: `0x\${x}`,
+      completion: "F",
+      completed: "0xF",
+      lexemes: [["0x", "arithmetic_source_fragment"]],
+    },
+    {
+      name: "uppercase-hexadecimal-prefix",
+      expression: `0X\${x}`,
+      completion: "F",
+      completed: "0XF",
+      lexemes: [["0X", "arithmetic_source_fragment"]],
+    },
+    {
+      name: "octal-suffix-completed-as-decimal",
+      expression: `\${x}08`,
+      completion: "1",
+      completed: "108",
+      lexemes: [["08", "arithmetic_source_fragment"]],
+    },
+    {
+      name: "numeric-suffix-completed-as-name",
+      expression: `\${x}123abc`,
+      completion: "value",
+      completed: "value123abc",
+      lexemes: [["123abc", "arithmetic_source_fragment"]],
+    },
+    {
+      name: "nonhexadecimal-suffix-completed-as-name",
+      expression: `\${x}0xg`,
+      completion: "value",
+      completed: "value0xg",
+      lexemes: [["0xg", "arithmetic_source_fragment"]],
+    },
+    {
+      name: "parenthesized-hexadecimal-prefix",
+      expression: `(0x\${x}) * 2`,
+      completion: "F",
+      completed: "(0xF) * 2",
+      lexemes: [["0x", "arithmetic_source_fragment"]],
+    },
+    {
+      name: "name-prefix",
+      expression: `foo\${x}`,
+      completion: "bar",
+      completed: "foobar",
+      lexemes: [["foo", "arithmetic_variable"]],
+    },
+    {
+      name: "octal-prefix",
+      expression: `0\${x}`,
+      completion: "7",
+      completed: "07",
+    },
+    {
+      name: "empty-numeric-fragment",
+      expression: `1\${x}2`,
+      completion: "",
+      completed: "12",
+    },
+    {
+      name: "numeric-suffix-and-operator",
+      expression: `1\${x} 2`,
+      completion: "+",
+      completed: "1+ 2",
+    },
+    {
+      name: "equality-operator",
+      expression: `1 =\${x} 2`,
+      completion: "=",
+      completed: "1 == 2",
+    },
+    {
+      name: "conditional-prefix",
+      expression: `\${x} : 2`,
+      completion: "1 ? 3",
+      completed: "1 ? 3 : 2",
+    },
+    {
+      name: "conditional-suffix",
+      expression: `1 ? \${x}`,
+      completion: "2 : 3",
+      completed: "1 ? 2 : 3",
+    },
+    {
+      name: "assignment-target",
+      expression: `\${x} = 1`,
+      completion: "a",
+      completed: "a = 1",
+    },
+    {
+      name: "parenthesized-assignment-target",
+      expression: `(\${x}) = 1`,
+      completion: "a",
+      completed: "(a) = 1",
+    },
+    {
+      name: "conditional-assignment-consequence",
+      expression: `a + \${x} = 2 : 3`,
+      completion: "b ? c",
+      completed: "a + b ? c = 2 : 3",
+    },
+    {
+      name: "parenthesized-operand",
+      expression: `(1 \${x}) * 2`,
+      completion: "+ 3",
+      completed: "(1 + 3) * 2",
+    },
+    {
+      name: "operator-before-group",
+      expression: `\${x}(1 + 2)`,
+      completion: "2 * ",
+      completed: "2 * (1 + 2)",
+    },
   ]) {
     assert.equal(expression.replace(`\${x}`, completion), completed, name);
     for (const [variant, value] of [
@@ -789,7 +922,7 @@ test("sh: runtime fragments can complete arithmetic lexemes and productions", ()
 });
 
 test("sh: dynamic arithmetic retains later runtime fragments across edits", () => {
-  for (const [
+  for (const {
     name,
     prefix,
     fragment,
@@ -798,14 +931,77 @@ test("sh: dynamic arithmetic retains later runtime fragments across edits", () =
     arithmetic,
     commands,
     backquotes,
-  ] of [
-    ["adjacent-parameters", "a$x", "$y", "", 2, 1, 0, 0],
-    ["braced-parameters", `a\${x}`, `\${y}`, "", 2, 1, 0, 0],
-    ["later-variable-suffix", "a$x + a", "$y", "", 2, 1, 0, 0],
-    ["parenthesized-parameters", "(a$x", "$y", ")", 2, 1, 0, 0],
-    ["later-command-substitution", "a$x", "$(echo y)", "", 1, 1, 1, 0],
-    ["later-arithmetic-expansion", "a$x", "$((1))", "", 1, 2, 0, 0],
-    ["later-backquote-substitution", "a$x", "`echo y`", "", 1, 1, 0, 1],
+  } of [
+    {
+      name: "adjacent-parameters",
+      prefix: "a$x",
+      fragment: "$y",
+      suffix: "",
+      parameters: 2,
+      arithmetic: 1,
+      commands: 0,
+      backquotes: 0,
+    },
+    {
+      name: "braced-parameters",
+      prefix: `a\${x}`,
+      fragment: `\${y}`,
+      suffix: "",
+      parameters: 2,
+      arithmetic: 1,
+      commands: 0,
+      backquotes: 0,
+    },
+    {
+      name: "later-variable-suffix",
+      prefix: "a$x + a",
+      fragment: "$y",
+      suffix: "",
+      parameters: 2,
+      arithmetic: 1,
+      commands: 0,
+      backquotes: 0,
+    },
+    {
+      name: "parenthesized-parameters",
+      prefix: "(a$x",
+      fragment: "$y",
+      suffix: ")",
+      parameters: 2,
+      arithmetic: 1,
+      commands: 0,
+      backquotes: 0,
+    },
+    {
+      name: "later-command-substitution",
+      prefix: "a$x",
+      fragment: "$(echo y)",
+      suffix: "",
+      parameters: 1,
+      arithmetic: 1,
+      commands: 1,
+      backquotes: 0,
+    },
+    {
+      name: "later-arithmetic-expansion",
+      prefix: "a$x",
+      fragment: "$((1))",
+      suffix: "",
+      parameters: 1,
+      arithmetic: 2,
+      commands: 0,
+      backquotes: 0,
+    },
+    {
+      name: "later-backquote-substitution",
+      prefix: "a$x",
+      fragment: "`echo y`",
+      suffix: "",
+      parameters: 1,
+      arithmetic: 1,
+      commands: 0,
+      backquotes: 1,
+    },
   ]) {
     const initial = writeSource(
       `${name}-initial`,
@@ -837,49 +1033,49 @@ test("sh: dynamic arithmetic retains later runtime fragments across edits", () =
 });
 
 test("sh: arithmetic viability follows edits through nested scanner callers", () => {
-  for (const [name, initial, final, range, outerArithmetic] of [
-    [
-      "plain-substitution",
-      "echo $((1 $x))\n",
-      "echo $((: $x))\n",
-      "0:5-0:14",
-      0,
-    ],
-    [
-      "nested-arithmetic",
-      "echo $((1 + $((1 $x))))\n",
-      "echo $((1 + $((: $x))))\n",
-      "0:12-0:21",
-      1,
-    ],
-    [
-      "quoted-parameter-word",
-      `echo "\${value:-$((1 $x))}"\n`,
-      `echo "\${value:-$((: $x))}"\n`,
-      "0:15-0:24",
-      0,
-    ],
-    [
-      "here-document-body",
-      "cat <<END\n$((1 $x))\nEND\n",
-      "cat <<END\n$((: $x))\nEND\n",
-      "1:0-1:9",
-      0,
-    ],
-    [
-      "here-document-delimiter",
-      "cat <<$((1 $x))\nbody\n$((1 $x))\n",
-      "cat <<$((: $x))\nbody\n$((: $x))\n",
-      "0:6-0:15",
-      0,
-    ],
-    [
-      "backquote-command",
-      "echo `echo $((1 $x))`\n",
-      "echo `echo $((: $x))`\n",
-      "0:11-0:20",
-      0,
-    ],
+  for (const { name, initial, final, range, outerArithmetic } of [
+    {
+      name: "plain-substitution",
+      initial: "echo $((1 $x))\n",
+      final: "echo $((: $x))\n",
+      range: "0:5-0:14",
+      outerArithmetic: 0,
+    },
+    {
+      name: "nested-arithmetic",
+      initial: "echo $((1 + $((1 $x))))\n",
+      final: "echo $((1 + $((: $x))))\n",
+      range: "0:12-0:21",
+      outerArithmetic: 1,
+    },
+    {
+      name: "quoted-parameter-word",
+      initial: `echo "\${value:-$((1 $x))}"\n`,
+      final: `echo "\${value:-$((: $x))}"\n`,
+      range: "0:15-0:24",
+      outerArithmetic: 0,
+    },
+    {
+      name: "here-document-body",
+      initial: "cat <<END\n$((1 $x))\nEND\n",
+      final: "cat <<END\n$((: $x))\nEND\n",
+      range: "1:0-1:9",
+      outerArithmetic: 0,
+    },
+    {
+      name: "here-document-delimiter",
+      initial: "cat <<$((1 $x))\nbody\n$((1 $x))\n",
+      final: "cat <<$((: $x))\nbody\n$((: $x))\n",
+      range: "0:6-0:15",
+      outerArithmetic: 0,
+    },
+    {
+      name: "backquote-command",
+      initial: "echo `echo $((1 $x))`\n",
+      final: "echo `echo $((: $x))`\n",
+      range: "0:11-0:20",
+      outerArithmetic: 0,
+    },
   ]) {
     const initialSource = writeSource(`${name}-viable`, initial);
     const finalSource = writeSource(`${name}-impossible`, final);
@@ -1091,6 +1287,7 @@ test("sh: pattern bracket ranges require one start and one end", () => {
     ({ type, named }) => named && type === "pattern_bracket_range_source",
   );
   assert.ok(range);
+  assert.ok(range.fields);
   for (const field of ["start", "end"]) {
     assert.equal(range.fields[field].required, true, field);
     assert.equal(range.fields[field].multiple, false, field);
@@ -1098,37 +1295,37 @@ test("sh: pattern bracket ranges require one start and one end", () => {
 });
 
 test("sh: bracket ranges consume source endpoints from left to right", () => {
-  for (const [name, pattern, ranges] of [
-    ["shared-endpoint", "[a-c-e]", [[1, 4]]],
-    [
-      "separate-ranges",
-      "[a-c-e-g]",
-      [
+  for (const { name, pattern, ranges } of [
+    { name: "shared-endpoint", pattern: "[a-c-e]", ranges: [[1, 4]] },
+    {
+      name: "separate-ranges",
+      pattern: "[a-c-e-g]",
+      ranges: [
         [1, 4],
         [5, 8],
       ],
-    ],
-    ["trailing-hyphens", "[a-b--]", [[1, 4]]],
-    [
-      "hyphen-start-after-range",
-      "[a-b--c]",
-      [
+    },
+    { name: "trailing-hyphens", pattern: "[a-b--]", ranges: [[1, 4]] },
+    {
+      name: "hyphen-start-after-range",
+      pattern: "[a-b--c]",
+      ranges: [
         [1, 4],
         [4, 7],
       ],
-    ],
-    ["repeated-hyphens", "[-----]", [[1, 4]]],
-    ["repeated-endpoints", "[a-a-a]", [[1, 4]]],
-    ["trailing-hyphen", "[a-]", []],
-    ["class-after-hyphen", "[a-[:alpha:]]", []],
-    ["class-before-hyphen", "[[:alpha:]-z]", []],
-    ["equivalence-after-hyphen", "[a-[=x=]]", []],
-    ["collating-endpoint", "[a-[.ch.]-z]", [[1, 9]]],
-    ["quoted-endpoints", "['a'-'c'-e]", [[1, 8]]],
-    ["expanded-endpoint", `[a-\${x}-e]`, [[1, 7]]],
-    ["initial-right-bracket", "[]-a-c]", [[1, 4]]],
-    ["left-bracket-endpoint", "[a-[]", [[1, 4]]],
-    ["escaped-right-bracket", "[a-\\]-e]", [[1, 5]]],
+    },
+    { name: "repeated-hyphens", pattern: "[-----]", ranges: [[1, 4]] },
+    { name: "repeated-endpoints", pattern: "[a-a-a]", ranges: [[1, 4]] },
+    { name: "trailing-hyphen", pattern: "[a-]", ranges: [] },
+    { name: "class-after-hyphen", pattern: "[a-[:alpha:]]", ranges: [] },
+    { name: "class-before-hyphen", pattern: "[[:alpha:]-z]", ranges: [] },
+    { name: "equivalence-after-hyphen", pattern: "[a-[=x=]]", ranges: [] },
+    { name: "collating-endpoint", pattern: "[a-[.ch.]-z]", ranges: [[1, 9]] },
+    { name: "quoted-endpoints", pattern: "['a'-'c'-e]", ranges: [[1, 8]] },
+    { name: "expanded-endpoint", pattern: `[a-\${x}-e]`, ranges: [[1, 7]] },
+    { name: "initial-right-bracket", pattern: "[]-a-c]", ranges: [[1, 4]] },
+    { name: "left-bracket-endpoint", pattern: "[a-[]", ranges: [[1, 4]] },
+    { name: "escaped-right-bracket", pattern: "[a-\\]-e]", ranges: [[1, 5]] },
   ]) {
     for (const [context, prefix, suffix] of [
       ["word", "printf ", "\n"],
@@ -1159,34 +1356,60 @@ test("sh: bracket ranges consume source endpoints from left to right", () => {
 });
 
 test("sh: public fields retain optional roots and singular source owners", () => {
-  for (const [type, field, required, types] of [
-    ["program", "commands", false, ["complete_commands"]],
-    [
-      "command",
-      "body",
-      true,
-      ["compound_command", "function_definition", "simple_command"],
-    ],
-    ["command", "redirects", false, ["redirect_list"]],
-    ["function_body", "body", true, ["compound_command"]],
-    ["function_body", "redirects", false, ["redirect_list"]],
-    ["here_end", "word", true, ["word"]],
-    [
-      "here_document",
-      "body",
-      false,
-      ["here_document_body", "quoted_here_document_body"],
-    ],
-    ["here_document", "end", true, ["here_document_end"]],
-    [
-      "parameter_expansion",
-      "parameter",
-      false,
-      ["positional_parameter", "special_parameter", "variable_name"],
-    ],
+  for (const { type, field, required, types } of [
+    {
+      type: "program",
+      field: "commands",
+      required: false,
+      types: ["complete_commands"],
+    },
+    {
+      type: "command",
+      field: "body",
+      required: true,
+      types: ["compound_command", "function_definition", "simple_command"],
+    },
+    {
+      type: "command",
+      field: "redirects",
+      required: false,
+      types: ["redirect_list"],
+    },
+    {
+      type: "function_body",
+      field: "body",
+      required: true,
+      types: ["compound_command"],
+    },
+    {
+      type: "function_body",
+      field: "redirects",
+      required: false,
+      types: ["redirect_list"],
+    },
+    { type: "here_end", field: "word", required: true, types: ["word"] },
+    {
+      type: "here_document",
+      field: "body",
+      required: false,
+      types: ["here_document_body", "quoted_here_document_body"],
+    },
+    {
+      type: "here_document",
+      field: "end",
+      required: true,
+      types: ["here_document_end"],
+    },
+    {
+      type: "parameter_expansion",
+      field: "parameter",
+      required: false,
+      types: ["positional_parameter", "special_parameter", "variable_name"],
+    },
   ]) {
     const node = nodeTypes.find((node) => node.named && node.type === type);
     assert.ok(node, type);
+    assert.ok(node.fields, type);
     assert.deepEqual(
       node.fields[field],
       {
