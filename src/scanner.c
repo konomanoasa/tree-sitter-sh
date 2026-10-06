@@ -89,6 +89,8 @@ enum TokenType {
   ASSIGNMENT_TILDE_END,
   ASSIGNMENT_NAME_TOKEN,
   FNAME_TOKEN,
+  DECLARATION_NAME_BEGIN,
+  FORWARDING_NAME_BEGIN,
   AND_OR_CONTINUATION,
   WORD_SEPARATOR_BEGIN,
   TERM_CONTINUATION,
@@ -423,16 +425,6 @@ static const struct ReservedWord RESERVED_WORDS[] = {
   {"until", UNTIL_KEYWORD},
 };
 
-static const struct ReservedWord CLOSING_WORDS[] = {
-  {"then", THEN_KEYWORD},
-  {"elif", ELIF_KEYWORD},
-  {"else", ELSE_KEYWORD},
-  {"fi", FI_KEYWORD},
-  {"do", DO_KEYWORD},
-  {"done", DONE_KEYWORD},
-  {"esac", ESAC_KEYWORD},
-};
-
 static const struct ReservedWord *find_reserved_word(const char *word) {
   size_t word_count = sizeof(RESERVED_WORDS) / sizeof(RESERVED_WORDS[0]);
   for (size_t index = 0; index < word_count; index += 1) {
@@ -481,8 +473,6 @@ clear_document_array(struct HereDocument **documents, size_t *count) {
   *count = 0;
 }
 
-/* A document can only start at a newline of the substitution that declared it,
- * so closing that substitution discards the declaration. */
 static void discard_documents_above(
   struct HereDocument **documents,
   size_t *count,
@@ -649,8 +639,7 @@ static bool partition_pending_documents(
   return true;
 }
 
-/* Keeps the grown frame array on the scanner even when the caller rolls back.
- */
+/* The scanner must retain reallocated frames even after rollback. */
 static bool
 suspend_active_documents(struct Scanner *scanner, struct Scanner *next) {
   if (
@@ -933,7 +922,6 @@ static bool accept_character(TSLexer *lexer, enum TokenType symbol) {
   return true;
 }
 
-/* An odd run escapes the next character unless the enclosed source ends. */
 static bool skip_escape_run(TSLexer *lexer, bool *continuation) {
   size_t count = 0;
   while (lexer->lookahead == '\\') {
@@ -965,7 +953,6 @@ static bool advance_source(TSLexer *lexer, struct ByteBuffer *source) {
   return true;
 }
 
-/* The second `$` of `$$` is a parameter, not the start of an expansion. */
 static bool skip_dollar_parameter(TSLexer *lexer, struct ByteBuffer *source) {
   return lexer->lookahead != '$' || advance_source(lexer, source);
 }
@@ -1563,7 +1550,6 @@ enum BracketAtom {
   BRACKET_ATOM_END,
 };
 
-/* Consumes an escape or a quoted or expanded member; plain source is left. */
 static enum BracketAtom
 skip_bracket_quoted_atom(const struct Scanner *scanner, TSLexer *lexer) {
   int32_t character = lexer->lookahead;
@@ -1631,8 +1617,7 @@ enum BracketClassStage {
   BRACKET_CLASS_STAGE_COUNT,
 };
 
-/* Everything an opening bracket still needs to know about the source read so
- * far: two brackets in the same phase at the same position end alike. */
+/* Brackets at the same position and phase have the same ending. */
 enum BracketPhase {
   BRACKET_PHASE_NEGATION,
   BRACKET_PHASE_FIRST,
@@ -1704,7 +1689,7 @@ static unsigned bracket_phase_after(unsigned phase, enum BracketInput input) {
   }
 }
 
-/* Chains are the phases of the brackets already known to stay open. */
+/* Bits mark phases already known to remain unclosed. */
 static uint16_t bracket_chains_after(uint16_t chains, enum BracketInput input) {
   uint16_t next = 0;
   for (unsigned phase = 0; phase < BRACKET_PHASE_COUNT; phase += 1) {
@@ -1781,7 +1766,6 @@ static bool scan_pattern_bracket(
         break;
       }
     }
-    // A bracket that joins a chain stays open like the chain does.
     if ((*chains & (1u << phase)) != 0) {
       break;
     }
@@ -1938,7 +1922,6 @@ struct DelimiterGroupBuffer {
   bool failed;
 };
 
-// EXPECT_PATTERN distinguishes a closing esac from a later pattern word.
 enum CaseTrackerState {
   CASE_TRACKER_EXPECT_WORD,
   CASE_TRACKER_EXPECT_IN,
@@ -3041,7 +3024,6 @@ static bool flush_nested_here_documents(struct DelimiterReader *reader) {
   return valid;
 }
 
-/* A nested delimiter ends at the first token delimiter of its own group. */
 static void delimiter_complete_nested_delimiter(
   struct DelimiterReader *reader,
   size_t command_depth
@@ -3090,8 +3072,6 @@ delimiter_backquote_boundary(struct DelimiterReader *reader) {
   return DELIMITER_STEP_NEXT;
 }
 
-/* Returns true once the closing brace of a double-quoted parameter is consumed.
- */
 static bool delimiter_parameter_quote_step(
   struct DelimiterReader *reader,
   int32_t character
@@ -3131,7 +3111,6 @@ static void delimiter_double_quoted_step(struct DelimiterReader *reader) {
   }
 }
 
-/* Returns true while blanks before a nested delimiter are consumed. */
 static bool delimiter_expect_nested_delimiter(
   struct DelimiterReader *reader,
   int32_t character
@@ -3294,7 +3273,6 @@ static void delimiter_backslash(
   lexer->advance(lexer, false);
 }
 
-/* Returns true when the parenthesis was consumed as a case pattern. */
 static bool delimiter_case_pattern_parenthesis(
   struct DelimiterReader *reader,
   int32_t character,
@@ -3731,22 +3709,7 @@ scan_delimited_character_token(TSLexer *lexer, enum TokenType symbol) {
   return accept_character(lexer, symbol) && is_token_delimiter(lexer);
 }
 
-static bool classify_reserved_word(
-  const char *word,
-  const bool *valid_symbols,
-  TSSymbol *symbol
-) {
-  const struct ReservedWord *reserved_word = find_reserved_word(word);
-  if (reserved_word == NULL || !valid_symbols[reserved_word->symbol]) {
-    return false;
-  }
-
-  *symbol = (TSSymbol)reserved_word->symbol;
-  return true;
-}
-
-static bool
-read_reserved_word(TSLexer *lexer, char *word, const bool *valid_symbols) {
+static bool read_reserved_word(TSLexer *lexer, char *word) {
   unsigned length = 0;
 
   while (is_lowercase_letter(lexer->lookahead)) {
@@ -3759,18 +3722,7 @@ read_reserved_word(TSLexer *lexer, char *word, const bool *valid_symbols) {
   }
 
   word[length] = '\0';
-  if (valid_symbols != NULL) {
-    TSSymbol symbol;
-    if (classify_reserved_word(word, valid_symbols, &symbol)) {
-      lexer->mark_end(lexer);
-    }
-  }
-
-  if (length == 0 || !is_token_delimiter(lexer)) {
-    return false;
-  }
-
-  return true;
+  return length > 0 && is_token_delimiter(lexer);
 }
 
 static bool word_source_can_continue(const bool *valid_symbols) {
@@ -3783,42 +3735,36 @@ static bool word_source_can_continue(const bool *valid_symbols) {
 }
 
 static bool scan_reserved_word(TSLexer *lexer, const bool *valid_symbols) {
-  char word[6];
-  TSSymbol symbol;
-  if (
-    !read_reserved_word(lexer, word, valid_symbols) ||
-    !classify_reserved_word(word, valid_symbols, &symbol)
-  ) {
-    return false;
-  }
-  lexer->result_symbol = symbol;
-  return true;
-}
-
-static bool scan_lowercase_dispatch(TSLexer *lexer, const bool *valid_symbols) {
   if (word_source_can_continue(valid_symbols)) {
     return false;
   }
   lexer->mark_end(lexer);
-  return scan_reserved_word(lexer, valid_symbols);
+  char word[6];
+  if (!read_reserved_word(lexer, word)) {
+    return false;
+  }
+  const struct ReservedWord *reserved_word = find_reserved_word(word);
+  if (reserved_word == NULL || !valid_symbols[reserved_word->symbol]) {
+    return false;
+  }
+  lexer->mark_end(lexer);
+  lexer->result_symbol = (TSSymbol)reserved_word->symbol;
+  return true;
 }
 
 static bool scan_horizontal_blanks(TSLexer *lexer);
 
 static bool
 scan_name_or_reserved_word(TSLexer *lexer, const bool *valid_symbols) {
-  char word[6];
+  char word[9];
   size_t length = 0;
-  bool is_reserved_candidate = true;
+  bool candidate = true;
 
   lexer->mark_end(lexer);
   do {
     if (
-      is_reserved_candidate &&
-      lexer->lookahead >=
-      'a' &&
-      lexer->lookahead <=
-      'z' &&
+      candidate &&
+      is_lowercase_letter(lexer->lookahead) &&
       length <
       sizeof(word) -
       1
@@ -3826,25 +3772,15 @@ scan_name_or_reserved_word(TSLexer *lexer, const bool *valid_symbols) {
       word[length] = (char)lexer->lookahead;
       length += 1;
     } else {
-      is_reserved_candidate = false;
+      candidate = false;
     }
     lexer->advance(lexer, false);
   } while (is_name_character(lexer->lookahead));
 
   lexer->mark_end(lexer);
 
-  word[is_reserved_candidate ? length : 0] = '\0';
+  word[candidate ? length : 0] = '\0';
   const struct ReservedWord *reserved_word = find_reserved_word(word);
-  // An unavailable reserved token forces recovery instead of a command name.
-  TSSymbol symbol = TOKEN_COUNT;
-  if (
-    !classify_reserved_word(word, valid_symbols, &symbol) &&
-    reserved_word !=
-    NULL &&
-    valid_symbols[FNAME_TOKEN]
-  ) {
-    symbol = (TSSymbol)reserved_word->symbol;
-  }
 
   if (lexer->lookahead == '=') {
     if (!valid_symbols[ASSIGNMENT_NAME_TOKEN]) {
@@ -3854,7 +3790,7 @@ scan_name_or_reserved_word(TSLexer *lexer, const bool *valid_symbols) {
     return true;
   }
 
-  if (is_name_character(lexer->lookahead) || !is_token_delimiter(lexer)) {
+  if (!is_token_delimiter(lexer)) {
     return false;
   }
 
@@ -3864,13 +3800,29 @@ scan_name_or_reserved_word(TSLexer *lexer, const bool *valid_symbols) {
       lexer->result_symbol = FNAME_TOKEN;
       return true;
     }
-    return false;
   }
 
-  if (symbol == TOKEN_COUNT) {
+  if (
+    valid_symbols[DECLARATION_NAME_BEGIN] &&
+    (strcmp(word, "export") == 0 || strcmp(word, "readonly") == 0)
+  ) {
+    lexer->result_symbol = DECLARATION_NAME_BEGIN;
+    return true;
+  }
+  if (valid_symbols[FORWARDING_NAME_BEGIN] && strcmp(word, "command") == 0) {
+    lexer->result_symbol = FORWARDING_NAME_BEGIN;
+    return true;
+  }
+
+  // An unavailable reserved token forces recovery instead of a command name.
+  if (
+    reserved_word ==
+    NULL ||
+    (!valid_symbols[reserved_word->symbol] && !valid_symbols[FNAME_TOKEN])
+  ) {
     return false;
   }
-  lexer->result_symbol = symbol;
+  lexer->result_symbol = (TSSymbol)reserved_word->symbol;
   return true;
 }
 
@@ -3894,15 +3846,22 @@ static bool classify_scanned_comment_boundary(
 
 static bool
 closing_reserved_word_ends_term(const char *word, const bool *valid_symbols) {
-  for (
-    size_t index = 0; index < sizeof(CLOSING_WORDS) / sizeof(CLOSING_WORDS[0]);
-    index += 1
-  ) {
-    if (strcmp(word, CLOSING_WORDS[index].text) == 0) {
-      return valid_symbols[CLOSING_WORDS[index].symbol];
-    }
+  const struct ReservedWord *reserved_word = find_reserved_word(word);
+  if (reserved_word == NULL || !valid_symbols[reserved_word->symbol]) {
+    return false;
   }
-  return false;
+  switch (reserved_word->symbol) {
+  case THEN_KEYWORD:
+  case ELIF_KEYWORD:
+  case ELSE_KEYWORD:
+  case FI_KEYWORD:
+  case DO_KEYWORD:
+  case DONE_KEYWORD:
+  case ESAC_KEYWORD:
+    return true;
+  default:
+    return false;
+  }
 }
 
 enum TermContinuation {
@@ -4168,7 +4127,7 @@ static bool scan_element_boundary(
         lexer->result_symbol = TERM_CONTINUATION;
         return true;
       }
-      // The boundary keeps the lookahead that closed the term in the tree.
+      // Preserve the term-ending lookahead for incremental reparsing.
       if (continuation != TERM_SOURCE_DEFER && valid_symbols[TERM_BOUNDARY]) {
         lexer->result_symbol = TERM_BOUNDARY;
         return true;
@@ -4269,7 +4228,7 @@ static enum TermContinuation finish_term_continuation(
     };
     if (is_lowercase_letter(start.first_character)) {
       start.first_word_is_reserved_candidate =
-        read_reserved_word(lexer, start.first_word, NULL);
+        read_reserved_word(lexer, start.first_word);
       start.first_is_delimited = start.first_word_is_reserved_candidate;
     } else if (start.first_character == '}' || start.first_character == ';') {
       lexer->advance(lexer, false);
@@ -4348,19 +4307,12 @@ static bool classify_shell_boundary(
     return true;
   }
 
-  return is_lowercase_letter(character) &&
-    !crossed_layout &&
-    scan_reserved_word(lexer, valid_symbols);
+  return false;
 }
 
 static bool scan_shell_boundary(TSLexer *lexer, const bool *valid_symbols) {
   lexer->mark_end(lexer);
-  bool crossed_layout = is_horizontal_blank(lexer->lookahead) ||
-    (lexer->lookahead == '\\' && valid_symbols[REDIRECT_LIST_BEGIN]);
-  if (crossed_layout) {
-    scan_horizontal_blanks(lexer);
-  }
-
+  bool crossed_layout = scan_horizontal_blanks(lexer);
   return classify_shell_boundary(lexer, valid_symbols, crossed_layout);
 }
 
@@ -4405,7 +4357,6 @@ static bool classify_layout_run(
   TSLexer *lexer,
   const bool *valid_symbols
 ) {
-  scan_horizontal_blanks(lexer);
   int32_t character = lexer->lookahead;
   if (
     character ==
@@ -4437,7 +4388,6 @@ static bool classify_layout_run(
   return false;
 }
 
-/* COUNT marks operators outside the binary and assignment grammar. */
 static enum ArithmeticOperatorCategory classify_arithmetic_operator(
   int32_t first,
   int32_t second,
@@ -4551,8 +4501,7 @@ scan_arithmetic_boundary(TSLexer *lexer, const bool *valid_symbols) {
   return false;
 }
 
-// Parser ambiguity can reuse a flat subtree where a fresh parse selects the
-// structured one.
+// Validate first so subtree reuse cannot change arithmetic structure.
 
 enum ValidationTokenKind {
   VALIDATION_TOKEN_NUMBER,
@@ -4615,7 +4564,7 @@ append_arithmetic_source(struct ArithmeticScan *scan, int32_t character) {
       ' ' &&
       scan->source[scan->source_length - 4] == -1
     ) {
-      // Two fragments retain the mandatory blank separating their tokens.
+      // Preserve the mandatory blank between fragments.
       scan->source_length -= 2;
     }
   }
@@ -4691,7 +4640,6 @@ static void clear_arithmetic_scan(struct ArithmeticScan *scan) {
   *scan = (struct ArithmeticScan){0};
 }
 
-/* Subshell frames share the newlines of their enclosing substitution. */
 static size_t embedded_substitution_depth(const struct EmbeddedSkip *skip) {
   size_t depth = skip->frame_count;
   while (
@@ -6060,7 +6008,6 @@ static bool scan_here_document_sequence_end(
   scanner->sequence_end_pending = false;
   restore_suspended_documents(scanner);
   lexer->mark_end(lexer);
-  // The source after the sequence decides whether the enclosing term continues.
   finish_term_continuation(scanner, lexer, valid_symbols);
   lexer->result_symbol = HERE_DOCUMENT_SEQUENCE_END;
   return true;
@@ -6744,7 +6691,10 @@ scan_dispatch(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
     return scan_active_here_document(scanner, lexer, valid);
   }
   if (
-    (valid[ASSIGNMENT_NAME_TOKEN] || valid[FNAME_TOKEN]) &&
+    (valid[ASSIGNMENT_NAME_TOKEN] ||
+      valid[FNAME_TOKEN] ||
+      valid[DECLARATION_NAME_BEGIN] ||
+      valid[FORWARDING_NAME_BEGIN]) &&
     is_name_start_character(lexer->lookahead)
   ) {
     return scan_name_or_reserved_word(lexer, valid);
@@ -6884,7 +6834,7 @@ scan_dispatch(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
       scan_delimited_character_token(lexer, PIPELINE_NEGATION);
   }
   return is_lowercase_letter(lexer->lookahead) &&
-    scan_lowercase_dispatch(lexer, valid);
+    scan_reserved_word(lexer, valid);
 }
 
 static void complete_ambiguous_substitutions(struct LookaheadLexer *lookahead) {
@@ -7026,7 +6976,7 @@ static bool scanner_source_ready(struct Scanner *scanner) {
   return true;
 }
 
-/* Rejects before mutating so a failed push leaves the state serializable. */
+/* Reject before mutation to keep failed pushes serializable. */
 static bool
 source_context_push(struct Scanner *scanner, enum TokenType opener) {
   size_t depth = 0;
@@ -7443,7 +7393,6 @@ static bool emit_physical_source(
     if (completed == HERE_DOCUMENT_END_LINE_END) {
       scanner->here_document_end_line_consumed = true;
     }
-    // A fallback holds the brackets left open by the source consumed in it.
     bool opens_fallback = is_bracket_fallback_context(completed);
     if (emission->tracks_brackets && !opens_fallback) {
       if (!in_bracket_fallback(scanner)) {
@@ -7578,7 +7527,6 @@ static bool lexical_name(TSLexer *lexer, enum TokenType symbol) {
   do {
     lexer->advance(lexer, false);
   } while (is_name_character(lexer->lookahead));
-  /* A loop name is a whole word. */
   if (symbol == NAME_BEGIN && !is_token_delimiter(lexer)) {
     return false;
   }
@@ -7851,7 +7799,7 @@ static bool lexical_classify(struct LogicalLexer *input, const bool *valid) {
   if (is_horizontal_blank(lexer->lookahead) && valid[LOGICAL_BLANK_BEGIN]) {
     scan_horizontal_blanks(lexer);
     lexer->mark_end(lexer);
-    // A separator before the blank depends on the source that follows it.
+    // Following source must invalidate the preceding separator on edits.
     scan_separator_target(lexer);
     lexer->result_symbol = LOGICAL_BLANK_BEGIN;
     return true;
@@ -7957,14 +7905,12 @@ static bool is_tilde_context(enum TokenType opener) {
     opener == PARAMETER_TILDE_START;
 }
 
-/* A bracket fallback keeps the boundaries of the context that contains it. */
 static enum TokenType pattern_context(const struct Scanner *scanner) {
   size_t count =
     scanner->context_count - (in_bracket_fallback(scanner) ? 1 : 0);
   return count == 0 ? TOKEN_COUNT : scanner->contexts[count - 1].opener;
 }
 
-/* Chains enter at the bracket and leave where the scan stopped. */
 static bool lexical_pattern_probe(
   const struct Scanner *scanner,
   struct LogicalLexer *input,
@@ -8525,7 +8471,7 @@ static bool classify_recovery_source(
   }
   if (
     is_lowercase_letter(input->lexer.lookahead) &&
-    scan_lowercase_dispatch(&input->lexer, valid)
+    scan_reserved_word(&input->lexer, valid)
   ) {
     return true;
   }
@@ -8537,7 +8483,6 @@ static bool classify_recovery_source(
   return classify_word_start(scanner, input, valid);
 }
 
-/* Records the brackets still open after a source unit of a fallback. */
 static bool track_bracket_fallback(
   struct Scanner *scanner,
   struct LogicalLexer *input,
@@ -8636,7 +8581,6 @@ static bool scan_source(
   struct NativeInput native = {.lexer = lexer};
   struct LogicalLexer input;
   if (!logical_init(&input, &native, &scanner->source)) {
-    logical_clear(&input);
     native_input_clear(&native);
     return false;
   }

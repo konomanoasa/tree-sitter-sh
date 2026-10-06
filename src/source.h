@@ -24,7 +24,7 @@ enum SourceStageKind {
 };
 
 struct SourceOrigin {
-  /* Advance ordinals; a resumed pending unit can begin before this callback. */
+  /* Resumed units may have advance ordinals before this callback. */
   int64_t start;
   int64_t end;
   int64_t character;
@@ -254,8 +254,7 @@ static inline bool source_feed_stage(
     return source_append_logical(cursor, character);
   }
   if (character.boundary_stage != SIZE_MAX) {
-    /* The boundary ends the enclosed source, so later stages cannot pair a
-     * pending backslash with anything inside it. */
+    /* Pending backslashes cannot pair across this source boundary. */
     return source_flush_pending(cursor, index) &&
       source_append_logical(cursor, character);
   }

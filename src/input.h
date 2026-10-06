@@ -256,8 +256,7 @@ static inline bool logical_fork(
   return result;
 }
 
-/* The quote ending at consumed is already classified; cached lookahead is not.
- */
+/* Reclassify cached lookahead, preserving the consumed quote. */
 static inline bool logical_replace_view(
   struct LogicalLexer *input,
   size_t inherited_stage_count,

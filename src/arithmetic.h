@@ -893,8 +893,6 @@ static size_t dynamic_arithmetic_completion_key(
   );
 }
 
-/* Open addressing over indices offset by one so that zero marks an empty slot.
- */
 static bool dynamic_arithmetic_rehash(
   size_t **hash,
   size_t *capacity,

@@ -116,6 +116,10 @@
 (assignment_word
   "=" @operator)
 
+(word
+  name: (variable_name)
+  "=" @operator)
+
 [
   "&"
   "|"

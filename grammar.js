@@ -72,13 +72,13 @@ const PATTERN_PRECEDENCE = {
 const lexical = ($, begin) =>
   seq(begin, repeat1(sourceToken($, begin, "lexical", "piece")));
 
-const wholeLexical = ($, begin, decorate = (source) => source) =>
-  seq(optional(begin), decorate(sourceToken($, begin, "lexical", "whole")));
-
 // Alias the token directly so inserted MISSING tokens stay visible.
 const wholeSource = ($, begin, lexeme, visible) =>
   choice(
-    wholeLexical($, begin, (source) => alias(source, visible)),
+    seq(
+      optional(begin),
+      alias(sourceToken($, begin, "lexical", "whole"), visible),
+    ),
     alias(lexeme, visible),
   );
 
@@ -145,25 +145,20 @@ const PHYSICAL_RULES = {
   _word_initial_dollar_expansion_start: "$",
   _word_initial_backquote_start: "`",
 };
-const physicalSource = ($, token, decorate = (character) => character) =>
+const physicalSource = ($, token, decorate) =>
   seq(
     token,
     repeat(sourceToken($, token, "physical", "prefix")),
     decorate(sourceToken($, token, "physical", "character")),
   );
 const physical = ($, token, spelling, fieldName) => {
-  if (token.type === "CHOICE") {
-    return choice(
-      ...token.members.map((begin) => physical($, begin, spelling, fieldName)),
-    );
-  }
   const character = (source) => alias(source, spelling);
   if (fieldName !== undefined) {
     return physicalSource($, token, (source) =>
       field(fieldName, character(source)),
     );
   }
-  if (token.type === "SYMBOL" && Object.hasOwn(PHYSICAL_RULES, token.name)) {
+  if (Object.hasOwn(PHYSICAL_RULES, token.name)) {
     if (PHYSICAL_RULES[token.name] !== spelling) {
       throw new Error(`${token.name} is spelled ${PHYSICAL_RULES[token.name]}`);
     }
@@ -190,7 +185,6 @@ const structuredSourceParts = ($) => [
 ];
 const patternSpecialValue = ($, character) =>
   repeat1(field("value", choice(character, ...structuredSourceParts($))));
-// The first literal holds an incomplete `[` that the scanner tracks to the end.
 const bracketFallback = ($, first, literal, bracket, end) =>
   seq(
     alias(first, $.literal),
@@ -245,7 +239,7 @@ const arithmeticBinaryExpression = ($, left, right, operatorSegment) =>
     seq(
       field("left", left),
       operatorSegment,
-      arithmeticOperandLayout($),
+      optional($._arithmetic_layout),
       field("right", right),
     ),
   );
@@ -256,19 +250,6 @@ const arithmeticBoundaryLayout = ($, boundary) =>
 const arithmeticOperatorSegment = ($, boundary, operator) =>
   seq(arithmeticBoundaryLayout($, boundary), field("operator", operator));
 
-const arithmeticOperandLayout = ($) => optional($._arithmetic_layout);
-
-const arithmeticUnaryExpression = ($) =>
-  prec.right(
-    seq(
-      field(
-        "operator",
-        alias($._arithmetic_unary_operator_lexeme, $.arithmetic_operator),
-      ),
-      arithmeticOperandLayout($),
-      field("operand", $._arithmetic_unary_expression),
-    ),
-  );
 const arithmeticBinaryLevelRules = () => {
   const rules = {};
   ARITHMETIC_BINARY_LEVELS.forEach((level, index) => {
@@ -335,29 +316,21 @@ const arithmeticExpansionStart = (
   marker,
   start = $._command_substitution_start,
 ) => seq(start, marker, physical($, $._punct_left_parenthesis, "("));
-const closedArithmeticExpansion = ($, start, expression, closing) =>
-  seq(
-    start,
-    optional($._arithmetic_layout),
-    field("expression", expression),
-    closing,
-    physical($, $._punct_right_parenthesis, ")"),
-    physical($, $._punct_right_parenthesis, ")"),
-    $._arithmetic_expansion_end,
-  );
 const arithmeticExpansion = ($, start, dynamicStart) =>
   choice(
-    closedArithmeticExpansion(
-      $,
-      start,
-      $._arithmetic_assignment_expression,
-      arithmeticClosingLayout($),
-    ),
-    closedArithmeticExpansion(
-      $,
-      dynamicStart,
-      $.arithmetic_dynamic_expression,
-      arithmeticClosingLayout($),
+    ...[
+      [start, $._arithmetic_assignment_expression],
+      [dynamicStart, $.arithmetic_dynamic_expression],
+    ].map(([opening, expression]) =>
+      seq(
+        opening,
+        optional($._arithmetic_layout),
+        field("expression", expression),
+        arithmeticClosingLayout($),
+        physical($, $._punct_right_parenthesis, ")"),
+        physical($, $._punct_right_parenthesis, ")"),
+        $._arithmetic_expansion_end,
+      ),
     ),
   );
 
@@ -379,19 +352,12 @@ const boundaryLineComment = ($, comment) =>
 const trailingComment = ($) =>
   seq($._trailing_comment_boundary, optional($._horizontal_layout), $.comment);
 
-// Expansions whose parameter words inherit a double-quoted context.
 const quotedExpansionParts = ($) => [
   alias($._double_quoted_parameter_expansion, $.parameter_expansion),
   $.command_substitution,
   $.arithmetic_expansion,
   alias($._double_quoted_backquote_substitution, $.backquote_substitution),
 ];
-const doubleQuotedPart = ($) =>
-  choice(
-    $.double_quote_text,
-    $.double_quote_escape,
-    ...quotedExpansionParts($),
-  );
 const singleQuoted = ($, opener) =>
   seq(
     physical($, opener, "'"),
@@ -401,7 +367,13 @@ const singleQuoted = ($, opener) =>
 const doubleQuoted = ($, opener) =>
   seq(
     physical($, opener, '"'),
-    repeat(doubleQuotedPart($)),
+    repeat(
+      choice(
+        $.double_quote_text,
+        $.double_quote_escape,
+        ...quotedExpansionParts($),
+      ),
+    ),
     physical($, $._dq_close, '"'),
   );
 const dollarSingleQuoted = ($, dollar) =>
@@ -417,7 +389,6 @@ const hereDocumentRedirect = ($, operator, end) =>
     optional($._horizontal_layout),
     field("end", end),
   );
-// The begin token tells the scanner whether <<- strips leading tabs.
 const hereEnd = ($, begin) =>
   seq(
     begin,
@@ -427,9 +398,9 @@ const hereEnd = ($, begin) =>
 const hereDocumentEndSource = (begin, text) => seq(begin, repeat(text));
 const backquoteSubstitution = ($, start) =>
   seq(
-    backquoteDelimiter($, start),
+    physical($, start, "`"),
     optional(field("body", $.backquote_substitution_body)),
-    backquoteDelimiter($, $._backquote_end),
+    physical($, $._backquote_end, "`"),
   );
 const completeCommandsTail = ($) =>
   seq(
@@ -453,15 +424,12 @@ const substitutionCommandsBody = ($, leadingLayout) =>
     trailingComment($),
   );
 
-const dollarExpansionPrefix = ($, start = $._dollar_expansion_start) =>
-  physical($, start, "$");
 const dollarExpansionStart = (
   $,
   token,
   spelling,
   start = $._dollar_expansion_start,
-) => seq(dollarExpansionPrefix($, start), physical($, token, spelling));
-const backquoteDelimiter = ($, token) => physical($, token, "`");
+) => seq(physical($, start, "$"), physical($, token, spelling));
 const commandSubstitution = ($, prefix) =>
   seq(
     prefix,
@@ -483,9 +451,6 @@ const patternSpecialClassSource = ($, marker, characterSource) =>
     ),
   );
 
-const patternCharacterClassStructuredContent = ($) =>
-  choice(...structuredSourceParts($));
-
 const patternCharacterClassBody = ($, content) =>
   choice(
     field("content", content),
@@ -493,7 +458,7 @@ const patternCharacterClassBody = ($, content) =>
       optional(field("content", content)),
       repeat1(
         seq(
-          field("content", patternCharacterClassStructuredContent($)),
+          field("content", choice(...structuredSourceParts($))),
           optional(field("content", content)),
         ),
       ),
@@ -522,10 +487,7 @@ const parameterExpansion = (
   prec(
     1,
     choice(
-      seq(
-        dollarExpansionPrefix($, start),
-        field("parameter", $._unbraced_parameter),
-      ),
+      seq(physical($, start, "$"), field("parameter", $._unbraced_parameter)),
       bracedParameterExpansion($, word, prefix),
     ),
   );
@@ -611,12 +573,10 @@ const caseClauseItems = ($) =>
     seq(field("items", $.case_list_ns), $._esac_keyword_source),
   );
 
-const compoundListField = ($, name) => field(name, $.compound_list);
-
 const conditionalThenHeader = ($, keyword) =>
   seq(
     keyword,
-    compoundListField($, "condition"),
+    field("condition", $.compound_list),
     optional($._closing_layout),
     $._then_keyword_source,
   );
@@ -624,7 +584,7 @@ const conditionalThenHeader = ($, keyword) =>
 const conditionalThenBranch = ($, header, tail) =>
   seq(
     header,
-    compoundListField($, "consequence"),
+    field("consequence", $.compound_list),
     optional($._closing_layout),
     tail,
   );
@@ -678,6 +638,20 @@ const commandRedirectContinuations = ($) => [
   seq($._redirect_separator, field("redirect", $.io_redirect)),
 ];
 
+const namedCommand = ($, name, fieldName) =>
+  choice(
+    seq(field(fieldName, name), optional(field("suffix", $.cmd_suffix))),
+    ...[
+      [$._declaration_command_name, $._declaration_suffix],
+      [$._forwarding_command_name, $._forwarding_suffix],
+    ].map(([command, suffix]) =>
+      seq(
+        field(fieldName, alias(command, name)),
+        optional(field("suffix", alias(suffix, $.cmd_suffix))),
+      ),
+    ),
+  );
+
 const redirectList = ($) =>
   seq(
     field("redirect", $.io_redirect),
@@ -697,8 +671,6 @@ const redirectableCompoundCommand = ($) =>
       ),
     ),
   );
-const assignmentPlainChunk = ($) => lexical($, $._assignment_literal_begin);
-const parameterPlainChunk = ($) => lexical($, $._parameter_literal_begin);
 const patternBracketExpression = ($, list, opener) =>
   prec.dynamic(
     PATTERN_PRECEDENCE.expression,
@@ -832,6 +804,8 @@ export default grammar({
       $._assignment_tilde_end,
       $._assignment_name_begin,
       $._fname_begin,
+      $._declaration_name_begin,
+      $._forwarding_name_begin,
       $._and_or_continuation,
       $._word_separator_begin,
       $._term_continuation,
@@ -1272,7 +1246,7 @@ export default grammar({
     brace_group: ($) =>
       seq(
         physical($, $._left_brace, "{"),
-        compoundListField($, "body"),
+        field("body", $.compound_list),
         optional($._closing_layout),
         physical($, $._right_brace, "}"),
       ),
@@ -1306,7 +1280,7 @@ export default grammar({
     do_group: ($) =>
       seq(
         $._do_keyword_source,
-        compoundListField($, "body"),
+        field("body", $.compound_list),
         optional($._closing_layout),
         prec(20, $._done_keyword_source),
       ),
@@ -1327,14 +1301,14 @@ export default grammar({
           ),
           seq(
             $._else_keyword_source,
-            compoundListField($, "body"),
+            field("body", $.compound_list),
             optional($._closing_layout),
           ),
         ),
       ),
 
     _loop_condition: ($) =>
-      seq(compoundListField($, "condition"), optional($._closing_layout)),
+      seq(field("condition", $.compound_list), optional($._closing_layout)),
 
     while_clause: ($) => loopClause($, $._while_keyword_source),
 
@@ -1420,15 +1394,9 @@ export default grammar({
       choice(
         seq(
           field("prefix", $.cmd_prefix),
-          optional(
-            seq(
-              $._word_separator,
-              field("word", $.cmd_word),
-              optional(field("suffix", $.cmd_suffix)),
-            ),
-          ),
+          optional(seq($._word_separator, namedCommand($, $.cmd_word, "word"))),
         ),
-        seq(field("name", $.cmd_name), optional(field("suffix", $.cmd_suffix))),
+        namedCommand($, $.cmd_name, "name"),
       ),
 
     cmd_prefix: ($) =>
@@ -1452,11 +1420,61 @@ export default grammar({
 
     cmd_word: ($) => $.word,
 
-    cmd_suffix: ($) =>
+    _declaration_command_name: ($) => alias($._declaration_word, $.word),
+
+    _forwarding_command_name: ($) => alias($._forwarding_word, $.word),
+
+    _declaration_word: ($) => alias($._declaration_name, $.literal),
+
+    _forwarding_word: ($) => alias($._forwarding_name, $.literal),
+
+    _declaration_name: ($) => lexical($, $._declaration_name_begin),
+
+    _forwarding_name: ($) => lexical($, $._forwarding_name_begin),
+
+    cmd_suffix: ($) => $._cmd_suffix,
+
+    _cmd_suffix: ($) =>
       repeat1(
         choice(
           seq($._word_separator, field("word", $.word)),
           ...commandRedirectContinuations($),
+        ),
+      ),
+
+    _declaration_suffix: ($) =>
+      repeat1(
+        choice(
+          seq(
+            $._word_separator,
+            field("word", choice($.word, alias($.assignment_word, $.word))),
+          ),
+          ...commandRedirectContinuations($),
+        ),
+      ),
+
+    _forwarding_suffix: ($) =>
+      choice(
+        seq(
+          repeat1(choice(...commandRedirectContinuations($))),
+          optional($._forwarding_argument),
+        ),
+        $._forwarding_argument,
+      ),
+
+    _forwarding_argument: ($) =>
+      seq(
+        $._word_separator,
+        choice(
+          seq(field("word", $.word), optional($._cmd_suffix)),
+          seq(
+            field("word", alias($._declaration_word, $.word)),
+            optional($._declaration_suffix),
+          ),
+          seq(
+            field("word", alias($._forwarding_word, $.word)),
+            optional($._forwarding_suffix),
+          ),
         ),
       ),
 
@@ -1614,7 +1632,8 @@ export default grammar({
         $._word_structured_part,
       ),
 
-    _assignment_literal: ($) => prec.right(assignmentPlainChunk($)),
+    _assignment_literal: ($) =>
+      prec.right(lexical($, $._assignment_literal_begin)),
 
     word: ($) => $._source_word,
 
@@ -2065,7 +2084,8 @@ export default grammar({
         $.pattern_question_source,
         $._word_structured_part,
       ),
-    _parameter_pattern_literal: ($) => prec.right(parameterPlainChunk($)),
+    _parameter_pattern_literal: ($) =>
+      prec.right(lexical($, $._parameter_literal_begin)),
 
     _double_quoted_parameter_text: ($) =>
       lexical($, $._double_quoted_parameter_text_begin),
@@ -2151,13 +2171,7 @@ export default grammar({
       ),
 
     parenthesized_arithmetic_dynamic_source: ($) =>
-      seq(
-        physical($, $._punct_left_parenthesis, "("),
-        optional($._arithmetic_layout),
-        field("expression", $.arithmetic_dynamic_expression),
-        arithmeticClosingLayout($),
-        physical($, $._punct_right_parenthesis, ")"),
-      ),
+      parenthesizedArithmetic($, $.arithmetic_dynamic_expression),
 
     _arithmetic_assignment_expression: ($) =>
       choice(
@@ -2173,7 +2187,7 @@ export default grammar({
             choice($.arithmetic_variable, $.parenthesized_arithmetic),
           ),
           $._arithmetic_assignment_operator_segment,
-          arithmeticOperandLayout($),
+          optional($._arithmetic_layout),
           field(
             "right",
             choice(
@@ -2197,10 +2211,10 @@ export default grammar({
         seq(
           field("condition", $._arithmetic_logical_or_expression),
           $._arithmetic_question_operator_segment,
-          arithmeticOperandLayout($),
+          optional($._arithmetic_layout),
           field("consequence", $._arithmetic_assignment_expression),
           $._arithmetic_colon_operator_segment,
-          arithmeticOperandLayout($),
+          optional($._arithmetic_layout),
           field("alternative", $._arithmetic_conditional_expression),
         ),
       ),
@@ -2210,7 +2224,17 @@ export default grammar({
     _arithmetic_unary_expression: ($) =>
       choice($.arithmetic_unary_expression, $._arithmetic_primary_expression),
 
-    arithmetic_unary_expression: ($) => arithmeticUnaryExpression($),
+    arithmetic_unary_expression: ($) =>
+      prec.right(
+        seq(
+          field(
+            "operator",
+            alias($._arithmetic_unary_operator_lexeme, $.arithmetic_operator),
+          ),
+          optional($._arithmetic_layout),
+          field("operand", $._arithmetic_unary_expression),
+        ),
+      ),
     _arithmetic_primary_expression: ($) =>
       choice(
         $.arithmetic_number,

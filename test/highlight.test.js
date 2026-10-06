@@ -58,7 +58,6 @@ function renderedCaptures(html, source) {
 function createHighlighter({ directory, root, run, captureNames }) {
   const parserDirectory = join(directory, "parsers");
   mkdirSync(parserDirectory);
-  // CLI discovery requires a tree-sitter-* entry even when the checkout is renamed.
   symlinkSync(root, join(parserDirectory, "tree-sitter-test"), "junction");
   const configPath = join(directory, "highlight.json");
   const capturePath = join(directory, "captures.txt");
@@ -125,7 +124,6 @@ function assertCaptures(source, actual, ranges) {
     expected.fill(capture, start, end);
     previousEnd = end;
   }
-  // HTML emits line breaks outside spans.
   for (const [index, byte] of bytes.entries()) {
     if (byte !== 10)
       assert.equal(
@@ -190,6 +188,49 @@ function assertCommand(arguments_) {
 }
 
 const finalCaptureCases = [
+  {
+    name: "declaration words expose names and operators while pattern values remain strings",
+    source: "readonly x=[a-z]* y=~\n",
+    captures: [
+      [0, 8, "function.call"],
+      [9, 10, "variable"],
+      [10, 11, "operator"],
+      [11, 17, "string"],
+      [18, 19, "variable"],
+      [19, 20, "operator"],
+      [20, 21, "string.special.path"],
+    ],
+  },
+  {
+    name: "forwarded utility names retain argument captures and assignments survive redirects",
+    source: "command export x=sh >out y=\n",
+    captures: [
+      [0, 7, "function.call"],
+      [8, 14, "string"],
+      [15, 16, "variable"],
+      [16, 17, "operator"],
+      [17, 19, "string"],
+      [20, 21, "operator"],
+      [21, 24, "string"],
+      [25, 26, "variable"],
+      [26, 27, "operator"],
+    ],
+  },
+  {
+    name: "quoted utility names and forwarding options keep ordinary assignment-looking arguments",
+    source: '"export" x=sh; command -- export y=sh\n',
+    captures: [
+      [0, 1, "punctuation.delimiter"],
+      [1, 7, "string"],
+      [7, 8, "punctuation.delimiter"],
+      [9, 13, "string"],
+      [13, 14, "punctuation.delimiter"],
+      [15, 22, "function.call"],
+      [23, 25, "string"],
+      [26, 32, "string"],
+      [33, 37, "string"],
+    ],
+  },
   {
     name: "HTML-sensitive Unicode literals retain source bytes and captures",
     source: 'printf "é😀<&>\'"\n',

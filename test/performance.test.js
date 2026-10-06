@@ -320,6 +320,35 @@ test("sh: incremental parsing reuses unchanged source and records editing timing
   );
 });
 
+test("sh: declaration context edits record incremental and fresh timings", (context) => {
+  const arguments_ = " x=~/bin:$PATH".repeat(1200);
+  for (const [name, prefix, edit] of [
+    [
+      "declaration-name",
+      "export",
+      { byte: 0, deleteBytes: 6, insert: "printf" },
+    ],
+    [
+      "command-option",
+      "command export",
+      { byte: 8, deleteBytes: 0, insert: "-- " },
+    ],
+  ]) {
+    const initial = `${prefix}${arguments_}\n`;
+    const source = writeSource(`${name}-initial`, initial);
+    const edited = writeSource(
+      `${name}-edited`,
+      applyEdits(Buffer.from(initial), [edit]),
+    );
+    compareIncrementalAndFresh({}, source, edited, name, edit);
+    const incremental = medianIncrementalParseDuration(source, edit, name);
+    const fresh = medianFreshParseDuration(edited, name);
+    context.diagnostic(
+      `${name}: incremental ${incremental}ms, fresh ${fresh}ms`,
+    );
+  }
+});
+
 test("sh: nested arithmetic measurements cover ordinary editing depth", (context) => {
   for (const [kind, initialLeaf, finalLeaf] of [
     ["number", "1", "2"],

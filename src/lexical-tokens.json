@@ -122,6 +122,14 @@
       "scanner": "FNAME_TOKEN"
     },
     {
+      "begin": "_declaration_name_begin",
+      "scanner": "DECLARATION_NAME_BEGIN"
+    },
+    {
+      "begin": "_forwarding_name_begin",
+      "scanner": "FORWARDING_NAME_BEGIN"
+    },
+    {
       "begin": "_pre_newline_blank_begin",
       "scanner": "PRE_NEWLINE_BLANK"
     },
