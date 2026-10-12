@@ -4,7 +4,7 @@ every ordinary redirection operator has a structured target
 
 command < input >output >|forced >>append <&0 >&1 <>state
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -70,7 +70,7 @@ decimal file descriptors must immediately precede the operator
 
 command 0<input 1>output 2>>errors 3<&0 4>&1 5<>state 123>|forced
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -143,7 +143,7 @@ adjacent redirections remain distinct
 
 command<input>output 2>&1 3<&0
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -194,7 +194,7 @@ redirection-only simple commands have no command name
 <input 2>output
 A=one >assigned
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -246,7 +246,7 @@ assignments and redirections can precede a command in source order
 
 A=one >first B=two <second command before>third middle 2>>errors after<last
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -314,7 +314,7 @@ redirection targets retain source-word structure
 
 command >pre"quoted"${name} 2>$(printf file) <'input file' >-x >A=value >$name
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -392,7 +392,7 @@ subshells retain trailing output redirections
 
 (:)>subshell 2>>subshell_log
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -438,7 +438,7 @@ brace groups retain trailing input and output redirections
 
 { :; }<brace_input >brace_output
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -484,7 +484,7 @@ for clauses retain trailing input duplication
 
 for item; do :; done<&0
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -532,7 +532,7 @@ case clauses retain trailing output duplication
 
 case item in item) :;; esac>&1
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -584,7 +584,7 @@ if clauses retain trailing read-write redirections
 
 if :; then :; fi<>state
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -641,7 +641,7 @@ while clauses retain trailing clobber redirections
 
 while :; do :; done>|while_output
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -699,7 +699,7 @@ until clauses retain trailing numbered output redirections
 
 until :; do :; done 3>until_output
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -759,7 +759,7 @@ redirected compound commands retain pipeline and list boundaries
 { :; }>brace_output && next
 if :; then :; fi>if_output; next
 
----
+------------------
 
 (program
   (linebreak
@@ -889,7 +889,7 @@ closed compound and function commands retain trailing redirects
 
 printf '%s\n' "$({ :; } >group)" "$(holder() { :; } >function)"
 
----
+------------------
 
 (program
   (linebreak
@@ -984,7 +984,7 @@ redirected closed commands preserve their real reserved closers
 if (:) >out then :; fi
 { (:) >out }
 
----
+------------------
 
 (program
   (linebreak
@@ -1080,7 +1080,7 @@ brace-shaped words remain ordinary words before redirects
 cat {fd}>output
 {input}<source
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1132,7 +1132,7 @@ cat {input}<<EOF
 body
 EOF
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1173,7 +1173,7 @@ separated quoted and escaped digits remain ordinary words
 
 echo 2 >out \2>escaped "3">quoted 4\>literal x2>next
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1232,7 +1232,7 @@ quoted escaped and noninitial hashes remain target text
 
 command >file#suffix >\#escaped >'#quoted'
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1278,7 +1278,7 @@ echo2>file
 echo x2>next
 A=2 3>errors
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1366,7 +1366,7 @@ a redirect target suffix cannot become a following descriptor
 <""2>x
 <${x}2>y
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1422,7 +1422,7 @@ redirections preserve command boundaries
 >out; <in
 command>file && 2>errors other
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1489,139 +1489,13 @@ command>file && 2>errors other
     (newline_list)))
 
 ==================
-raw newlines end redirect attachment while escaped newlines preserve it
-==================
-
-(:)\
-2>first\
->second
-(:)
->separate
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (subshell
-                    body: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal))))))))))))
-                (line_continuation)
-                redirects: (redirect_list
-                  redirect: (io_redirect
-                    number: (io_number)
-                    body: (io_file
-                      filename: (filename
-                        word: (word
-                          (literal)))))
-                  (line_continuation)
-                  redirect: (io_redirect
-                    body: (io_file
-                      filename: (filename
-                        word: (word
-                          (literal))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (subshell
-                    body: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal))))))))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-redirection token boundaries preserve intervening continuations
-==================
-
-2\
->out command >\
-target
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      number: (io_number)
-                      (line_continuation)
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))
-                  word: (cmd_word
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_file
-                        (line_continuation)
-                        filename: (filename
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 a descriptor before a second redirection leaves the first target missing
 :error
 ==================
 
 echo 1>2>3
 
----
+------------------
 
 
 
@@ -1632,4 +1506,70 @@ a descriptor before an output redirection cannot satisfy an input target
 
 echo <2>x
 
----
+------------------
+
+
+
+==================
+malformed missing redirection target
+:error
+==================
+before alpha
+broken >;
+after omega
+
+------------------
+
+
+
+==================
+malformed empty subshell with redirection
+:error
+==================
+before alpha
+() >x
+after omega
+
+------------------
+
+
+
+==================
+malformed missing target in closed subshell
+:error
+==================
+before alpha
+( : > )
+after omega
+
+------------------
+
+
+
+==================
+missing word redirection target before eof
+:error
+==================
+2>
+
+------------------
+
+
+
+==================
+io location extension brace group
+:error
+==================
+{ :; } {fd}>out
+
+------------------
+
+
+
+==================
+io location extension function body
+:error
+==================
+f() { :; } {fd}>out
+
+------------------

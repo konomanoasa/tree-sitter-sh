@@ -1,11 +1,11 @@
-================================================================================
+==================
 declaration arguments preserve WORD with assignment fields
-================================================================================
+==================
 
 readonly x=sh y=
 export z="$value"
 
----
+------------------
 
 (program
   (linebreak
@@ -49,13 +49,13 @@ export z="$value"
   (linebreak
     (newline_list)))
 
-================================================================================
+==================
 declaration forwarding ignores redirections and preserves prefix ownership
-================================================================================
+==================
 
 p=v command >out command readonly x=~ y=ok
 
----
+------------------
 
 (program
   (linebreak
@@ -97,13 +97,13 @@ p=v command >out command readonly x=~ y=ok
   (linebreak
     (newline_list)))
 
-================================================================================
+==================
 declaration arguments continue after ordinary words and redirections
-================================================================================
+==================
 
 export -p x=1 name >file=value y=2
 
----
+------------------
 
 (program
   (linebreak
@@ -140,14 +140,14 @@ export -p x=1 name >file=value y=2
   (linebreak
     (newline_list)))
 
-================================================================================
+==================
 declaration recognition excludes quoted names and command options
-================================================================================
+==================
 
 "export" x=sh
 command -- export y=sh
 
----
+------------------
 
 (program
   (linebreak
@@ -188,13 +188,13 @@ command -- export y=sh
   (linebreak
     (newline_list)))
 
-================================================================================
+==================
 declaration arguments distinguish quoted names from quoted values
-================================================================================
+==================
 
 export \x=sh "y=sh" z="sh"
 
----
+------------------
 
 (program
   (linebreak
@@ -225,15 +225,15 @@ export \x=sh "y=sh" z="sh"
   (linebreak
     (newline_list)))
 
-================================================================================
+==================
 declaration utility can follow a here-document redirect
-================================================================================
+==================
 
 command <<END export x=sh
 body
 END
 
----
+------------------
 
 (program
   (linebreak
@@ -271,3 +271,1112 @@ END
             (here_document_text))
           (here_document_end
             (here_document_end_text)))))))
+
+==================
+declaration ranges
+:cst
+==================
+readonly x=sh y=
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:16     commands: complete_commands
+0:0  - 0:16       command: complete_command
+0:0  - 0:16         body: list
+0:0  - 0:16           and_or: and_or
+0:0  - 0:16             pipeline: pipeline
+0:0  - 0:16               sequence: pipe_sequence
+0:0  - 0:16                 command: command
+0:0  - 0:16                   body: simple_command
+0:0  - 0:8                      name: cmd_name
+0:0  - 0:8                        word
+0:0  - 0:8                          literal `readonly`
+0:8  - 0:16                     suffix: cmd_suffix
+0:9  - 0:13                       word: word
+0:9  - 0:10                         name: variable_name `x`
+0:10 - 0:11                         "="
+0:11 - 0:13                         value: assignment_value
+0:11 - 0:13                           literal `sh`
+0:14 - 0:16                       word: word
+0:14 - 0:15                         name: variable_name `y`
+0:15 - 0:16                         "="
+0:16 - 1:0      trailing: linebreak
+0:16 - 1:0        newline_list
+0:16 - 1:0          "\n"
+
+==================
+prefix and forwarding
+:cst
+==================
+p=v command >out command export -p x=sh name y=~
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:48     commands: complete_commands
+0:0  - 0:48       command: complete_command
+0:0  - 0:48         body: list
+0:0  - 0:48           and_or: and_or
+0:0  - 0:48             pipeline: pipeline
+0:0  - 0:48               sequence: pipe_sequence
+0:0  - 0:48                 command: command
+0:0  - 0:48                   body: simple_command
+0:0  - 0:3                      prefix: cmd_prefix
+0:0  - 0:3                        assignment: assignment_word
+0:0  - 0:1                          name: variable_name `p`
+0:1  - 0:2                          "="
+0:2  - 0:3                          value: assignment_value
+0:2  - 0:3                            literal `v`
+0:4  - 0:11                     word: cmd_word
+0:4  - 0:11                       word
+0:4  - 0:11                         literal `command`
+0:11 - 0:48                     suffix: cmd_suffix
+0:12 - 0:16                       redirect: io_redirect
+0:12 - 0:16                         body: io_file
+0:12 - 0:13                           ">"
+0:13 - 0:16                           filename: filename
+0:13 - 0:16                             word: word
+0:13 - 0:16                               literal `out`
+0:17 - 0:24                       word: word
+0:17 - 0:24                         literal `command`
+0:25 - 0:31                       word: word
+0:25 - 0:31                         literal `export`
+0:32 - 0:34                       word: word
+0:32 - 0:34                         literal `-p`
+0:35 - 0:39                       word: word
+0:35 - 0:36                         name: variable_name `x`
+0:36 - 0:37                         "="
+0:37 - 0:39                         value: assignment_value
+0:37 - 0:39                           literal `sh`
+0:40 - 0:44                       word: word
+0:40 - 0:44                         literal `name`
+0:45 - 0:48                       word: word
+0:45 - 0:46                         name: variable_name `y`
+0:46 - 0:47                         "="
+0:47 - 0:48                         value: assignment_value
+0:47 - 0:48                           tilde_expansion
+0:47 - 0:48                             "~"
+0:48 - 1:0      trailing: linebreak
+0:48 - 1:0        newline_list
+0:48 - 1:0          "\n"
+
+==================
+redirect targets
+:cst
+==================
+export x=1 >file=value y=2 2>other=value z=3
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:44     commands: complete_commands
+0:0  - 0:44       command: complete_command
+0:0  - 0:44         body: list
+0:0  - 0:44           and_or: and_or
+0:0  - 0:44             pipeline: pipeline
+0:0  - 0:44               sequence: pipe_sequence
+0:0  - 0:44                 command: command
+0:0  - 0:44                   body: simple_command
+0:0  - 0:6                      name: cmd_name
+0:0  - 0:6                        word
+0:0  - 0:6                          literal `export`
+0:6  - 0:44                     suffix: cmd_suffix
+0:7  - 0:10                       word: word
+0:7  - 0:8                          name: variable_name `x`
+0:8  - 0:9                          "="
+0:9  - 0:10                         value: assignment_value
+0:9  - 0:10                           literal `1`
+0:11 - 0:22                       redirect: io_redirect
+0:11 - 0:22                         body: io_file
+0:11 - 0:12                           ">"
+0:12 - 0:22                           filename: filename
+0:12 - 0:22                             word: word
+0:12 - 0:22                               literal `file=value`
+0:23 - 0:26                       word: word
+0:23 - 0:24                         name: variable_name `y`
+0:24 - 0:25                         "="
+0:25 - 0:26                         value: assignment_value
+0:25 - 0:26                           literal `2`
+0:27 - 0:40                       redirect: io_redirect
+0:27 - 0:28                         number: io_number `2`
+0:28 - 0:40                         body: io_file
+0:28 - 0:29                           ">"
+0:29 - 0:40                           filename: filename
+0:29 - 0:40                             word: word
+0:29 - 0:40                               literal `other=value`
+0:41 - 0:44                       word: word
+0:41 - 0:42                         name: variable_name `z`
+0:42 - 0:43                         "="
+0:43 - 0:44                         value: assignment_value
+0:43 - 0:44                           literal `3`
+0:44 - 1:0      trailing: linebreak
+0:44 - 1:0        newline_list
+0:44 - 1:0          "\n"
+
+==================
+redirect without spaces
+:cst
+==================
+command>out export x=1>next y=2
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:31     commands: complete_commands
+0:0  - 0:31       command: complete_command
+0:0  - 0:31         body: list
+0:0  - 0:31           and_or: and_or
+0:0  - 0:31             pipeline: pipeline
+0:0  - 0:31               sequence: pipe_sequence
+0:0  - 0:31                 command: command
+0:0  - 0:31                   body: simple_command
+0:0  - 0:7                      name: cmd_name
+0:0  - 0:7                        word
+0:0  - 0:7                          literal `command`
+0:7  - 0:31                     suffix: cmd_suffix
+0:7  - 0:11                       redirect: io_redirect
+0:7  - 0:11                         body: io_file
+0:7  - 0:8                            ">"
+0:8  - 0:11                           filename: filename
+0:8  - 0:11                             word: word
+0:8  - 0:11                               literal `out`
+0:12 - 0:18                       word: word
+0:12 - 0:18                         literal `export`
+0:19 - 0:22                       word: word
+0:19 - 0:20                         name: variable_name `x`
+0:20 - 0:21                         "="
+0:21 - 0:22                         value: assignment_value
+0:21 - 0:22                           literal `1`
+0:22 - 0:27                       redirect: io_redirect
+0:22 - 0:27                         body: io_file
+0:22 - 0:23                           ">"
+0:23 - 0:27                           filename: filename
+0:23 - 0:27                             word: word
+0:23 - 0:27                               literal `next`
+0:28 - 0:31                       word: word
+0:28 - 0:29                         name: variable_name `y`
+0:29 - 0:30                         "="
+0:30 - 0:31                         value: assignment_value
+0:30 - 0:31                           literal `2`
+0:31 - 1:0      trailing: linebreak
+0:31 - 1:0        newline_list
+0:31 - 1:0          "\n"
+
+==================
+here document before utility
+:cst
+==================
+command <<END export x=1
+body
+END
+
+------------------
+
+0:0  - 3:0    program
+0:0  - 0:24     commands: complete_commands
+0:0  - 0:24       command: complete_command
+0:0  - 0:24         body: list
+0:0  - 0:24           and_or: and_or
+0:0  - 0:24             pipeline: pipeline
+0:0  - 0:24               sequence: pipe_sequence
+0:0  - 0:24                 command: command
+0:0  - 0:24                   body: simple_command
+0:0  - 0:7                      name: cmd_name
+0:0  - 0:7                        word
+0:0  - 0:7                          literal `command`
+0:7  - 0:24                     suffix: cmd_suffix
+0:8  - 0:13                       redirect: io_redirect
+0:8  - 0:13                         body: io_here
+0:8  - 0:10                           operator: dless `<<`
+0:10 - 0:13                           end: here_end
+0:10 - 0:13                             word: word
+0:10 - 0:13                               literal `END`
+0:14 - 0:20                       word: word
+0:14 - 0:20                         literal `export`
+0:21 - 0:24                       word: word
+0:21 - 0:22                         name: variable_name `x`
+0:22 - 0:23                         "="
+0:23 - 0:24                         value: assignment_value
+0:23 - 0:24                           literal `1`
+0:24 - 3:0      trailing: linebreak
+0:24 - 3:0        newline_list
+0:24 - 3:0          here_document_sequence
+0:24 - 1:0            line_end: here_document_line_end
+0:24 - 0:25             `\n`
+1:0  - 3:0            document: here_document
+1:0  - 2:0              body: here_document_body
+1:0  - 1:4                here_document_text `body`
+2:0  - 3:0              end: here_document_end
+2:0  - 2:3                here_document_end_text `END`
+
+==================
+here document delimiter
+:cst
+==================
+readonly <<x=y x=1 y=2
+body
+x=y
+
+------------------
+
+0:0  - 3:0    program
+0:0  - 0:22     commands: complete_commands
+0:0  - 0:22       command: complete_command
+0:0  - 0:22         body: list
+0:0  - 0:22           and_or: and_or
+0:0  - 0:22             pipeline: pipeline
+0:0  - 0:22               sequence: pipe_sequence
+0:0  - 0:22                 command: command
+0:0  - 0:22                   body: simple_command
+0:0  - 0:8                      name: cmd_name
+0:0  - 0:8                        word
+0:0  - 0:8                          literal `readonly`
+0:8  - 0:22                     suffix: cmd_suffix
+0:9  - 0:14                       redirect: io_redirect
+0:9  - 0:14                         body: io_here
+0:9  - 0:11                           operator: dless `<<`
+0:11 - 0:14                           end: here_end
+0:11 - 0:14                             word: word
+0:11 - 0:14                               literal `x=y`
+0:15 - 0:18                       word: word
+0:15 - 0:16                         name: variable_name `x`
+0:16 - 0:17                         "="
+0:17 - 0:18                         value: assignment_value
+0:17 - 0:18                           literal `1`
+0:19 - 0:22                       word: word
+0:19 - 0:20                         name: variable_name `y`
+0:20 - 0:21                         "="
+0:21 - 0:22                         value: assignment_value
+0:21 - 0:22                           literal `2`
+0:22 - 3:0      trailing: linebreak
+0:22 - 3:0        newline_list
+0:22 - 3:0          here_document_sequence
+0:22 - 1:0            line_end: here_document_line_end
+0:22 - 0:23             `\n`
+1:0  - 3:0            document: here_document
+1:0  - 2:0              body: here_document_body
+1:0  - 1:4                here_document_text `body`
+2:0  - 3:0              end: here_document_end
+2:0  - 2:3                here_document_end_text `x=y`
+
+==================
+nested substitutions
+:cst
+==================
+export outer="$(echo no=value; readonly inner=ok)" after=ok
+echo plain=value
+
+------------------
+
+0:0  - 2:0    program
+0:0  - 1:16     commands: complete_commands
+0:0  - 0:59       command: complete_command
+0:0  - 0:59         body: list
+0:0  - 0:59           and_or: and_or
+0:0  - 0:59             pipeline: pipeline
+0:0  - 0:59               sequence: pipe_sequence
+0:0  - 0:59                 command: command
+0:0  - 0:59                   body: simple_command
+0:0  - 0:6                      name: cmd_name
+0:0  - 0:6                        word
+0:0  - 0:6                          literal `export`
+0:6  - 0:59                     suffix: cmd_suffix
+0:7  - 0:50                       word: word
+0:7  - 0:12                         name: variable_name `outer`
+0:12 - 0:13                         "="
+0:13 - 0:50                         value: assignment_value
+0:13 - 0:50                           double_quoted
+0:13 - 0:14                             "\""
+0:14 - 0:49                             command_substitution
+0:14 - 0:15                               "$"
+0:15 - 0:16                               "("
+0:16 - 0:48                               body: command_substitution_body
+0:16 - 0:48                                 complete_commands
+0:16 - 0:48                                   command: complete_command
+0:16 - 0:48                                     body: list
+0:16 - 0:29                                       and_or: and_or
+0:16 - 0:29                                         pipeline: pipeline
+0:16 - 0:29                                           sequence: pipe_sequence
+0:16 - 0:29                                             command: command
+0:16 - 0:29                                               body: simple_command
+0:16 - 0:20                                                 name: cmd_name
+0:16 - 0:20                                                   word
+0:16 - 0:20                                                     literal `echo`
+0:20 - 0:29                                                 suffix: cmd_suffix
+0:21 - 0:29                                                   word: word
+0:21 - 0:29                                                     literal `no=value`
+0:29 - 0:30                                       separator: separator_op
+0:29 - 0:30                                         ";"
+0:31 - 0:48                                       and_or: and_or
+0:31 - 0:48                                         pipeline: pipeline
+0:31 - 0:48                                           sequence: pipe_sequence
+0:31 - 0:48                                             command: command
+0:31 - 0:48                                               body: simple_command
+0:31 - 0:39                                                 name: cmd_name
+0:31 - 0:39                                                   word
+0:31 - 0:39                                                     literal `readonly`
+0:39 - 0:48                                                 suffix: cmd_suffix
+0:40 - 0:48                                                   word: word
+0:40 - 0:45                                                     name: variable_name `inner`
+0:45 - 0:46                                                     "="
+0:46 - 0:48                                                     value: assignment_value
+0:46 - 0:48                                                       literal `ok`
+0:48 - 0:49                               ")"
+0:49 - 0:50                             "\""
+0:51 - 0:59                       word: word
+0:51 - 0:56                         name: variable_name `after`
+0:56 - 0:57                         "="
+0:57 - 0:59                         value: assignment_value
+0:57 - 0:59                           literal `ok`
+0:59 - 1:0        separator: newline_list
+0:59 - 1:0          "\n"
+1:0  - 1:16       command: complete_command
+1:0  - 1:16         body: list
+1:0  - 1:16           and_or: and_or
+1:0  - 1:16             pipeline: pipeline
+1:0  - 1:16               sequence: pipe_sequence
+1:0  - 1:16                 command: command
+1:0  - 1:16                   body: simple_command
+1:0  - 1:4                      name: cmd_name
+1:0  - 1:4                        word
+1:0  - 1:4                          literal `echo`
+1:4  - 1:16                     suffix: cmd_suffix
+1:5  - 1:16                       word: word
+1:5  - 1:16                         literal `plain=value`
+1:16 - 2:0      trailing: linebreak
+1:16 - 2:0        newline_list
+1:16 - 2:0          "\n"
+
+==================
+backquotes
+:cst
+==================
+: `command readonly x=one y=two`
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:32     commands: complete_commands
+0:0  - 0:32       command: complete_command
+0:0  - 0:32         body: list
+0:0  - 0:32           and_or: and_or
+0:0  - 0:32             pipeline: pipeline
+0:0  - 0:32               sequence: pipe_sequence
+0:0  - 0:32                 command: command
+0:0  - 0:32                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:32                     suffix: cmd_suffix
+0:2  - 0:32                       word: word
+0:2  - 0:32                         backquote_substitution
+0:2  - 0:3                            "\`"
+0:3  - 0:31                           body: backquote_substitution_body
+0:3  - 0:31                             complete_commands
+0:3  - 0:31                               command: complete_command
+0:3  - 0:31                                 body: list
+0:3  - 0:31                                   and_or: and_or
+0:3  - 0:31                                     pipeline: pipeline
+0:3  - 0:31                                       sequence: pipe_sequence
+0:3  - 0:31                                         command: command
+0:3  - 0:31                                           body: simple_command
+0:3  - 0:10                                             name: cmd_name
+0:3  - 0:10                                               word
+0:3  - 0:10                                                 literal `command`
+0:10 - 0:31                                             suffix: cmd_suffix
+0:11 - 0:19                                               word: word
+0:11 - 0:19                                                 literal `readonly`
+0:20 - 0:25                                               word: word
+0:20 - 0:21                                                 name: variable_name `x`
+0:21 - 0:22                                                 "="
+0:22 - 0:25                                                 value: assignment_value
+0:22 - 0:25                                                   literal `one`
+0:26 - 0:31                                               word: word
+0:26 - 0:27                                                 name: variable_name `y`
+0:27 - 0:28                                                 "="
+0:28 - 0:31                                                 value: assignment_value
+0:28 - 0:31                                                   literal `two`
+0:31 - 0:32                           "\`"
+0:32 - 1:0      trailing: linebreak
+0:32 - 1:0        newline_list
+0:32 - 1:0          "\n"
+
+==================
+nested backquotes
+:cst
+==================
+: `echo \`command export x=one\``
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:33     commands: complete_commands
+0:0  - 0:33       command: complete_command
+0:0  - 0:33         body: list
+0:0  - 0:33           and_or: and_or
+0:0  - 0:33             pipeline: pipeline
+0:0  - 0:33               sequence: pipe_sequence
+0:0  - 0:33                 command: command
+0:0  - 0:33                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:33                     suffix: cmd_suffix
+0:2  - 0:33                       word: word
+0:2  - 0:33                         backquote_substitution
+0:2  - 0:3                            "\`"
+0:3  - 0:32                           body: backquote_substitution_body
+0:3  - 0:32                             complete_commands
+0:3  - 0:32                               command: complete_command
+0:3  - 0:32                                 body: list
+0:3  - 0:32                                   and_or: and_or
+0:3  - 0:32                                     pipeline: pipeline
+0:3  - 0:32                                       sequence: pipe_sequence
+0:3  - 0:32                                         command: command
+0:3  - 0:32                                           body: simple_command
+0:3  - 0:7                                              name: cmd_name
+0:3  - 0:7                                                word
+0:3  - 0:7                                                  literal `echo`
+0:7  - 0:32                                             suffix: cmd_suffix
+0:8  - 0:32                                               word: word
+0:8  - 0:32                                                 backquote_substitution
+0:9  - 0:10                                                   "\`"
+0:10 - 0:30                                                   body: backquote_substitution_body
+0:10 - 0:30                                                     complete_commands
+0:10 - 0:30                                                       command: complete_command
+0:10 - 0:30                                                         body: list
+0:10 - 0:30                                                           and_or: and_or
+0:10 - 0:30                                                             pipeline: pipeline
+0:10 - 0:30                                                               sequence: pipe_sequence
+0:10 - 0:30                                                                 command: command
+0:10 - 0:30                                                                   body: simple_command
+0:10 - 0:17                                                                     name: cmd_name
+0:10 - 0:17                                                                       word
+0:10 - 0:17                                                                         literal `command`
+0:17 - 0:30                                                                     suffix: cmd_suffix
+0:18 - 0:24                                                                       word: word
+0:18 - 0:24                                                                         literal `export`
+0:25 - 0:30                                                                       word: word
+0:25 - 0:26                                                                         name: variable_name `x`
+0:26 - 0:27                                                                         "="
+0:27 - 0:30                                                                         value: assignment_value
+0:27 - 0:30                                                                           literal `one`
+0:31 - 0:32                                                   "\`"
+0:32 - 0:33                           "\`"
+0:33 - 1:0      trailing: linebreak
+0:33 - 1:0        newline_list
+0:33 - 1:0          "\n"
+
+==================
+here document body substitution
+:cst
+==================
+cat <<END
+$(command export x=one)
+END
+
+------------------
+
+0:0  - 3:0    program
+0:0  - 0:9      commands: complete_commands
+0:0  - 0:9        command: complete_command
+0:0  - 0:9          body: list
+0:0  - 0:9            and_or: and_or
+0:0  - 0:9              pipeline: pipeline
+0:0  - 0:9                sequence: pipe_sequence
+0:0  - 0:9                  command: command
+0:0  - 0:9                    body: simple_command
+0:0  - 0:3                      name: cmd_name
+0:0  - 0:3                        word
+0:0  - 0:3                          literal `cat`
+0:3  - 0:9                      suffix: cmd_suffix
+0:4  - 0:9                        redirect: io_redirect
+0:4  - 0:9                          body: io_here
+0:4  - 0:6                            operator: dless `<<`
+0:6  - 0:9                            end: here_end
+0:6  - 0:9                              word: word
+0:6  - 0:9                                literal `END`
+0:9  - 3:0      trailing: linebreak
+0:9  - 3:0        newline_list
+0:9  - 3:0          here_document_sequence
+0:9  - 1:0            line_end: here_document_line_end
+0:9  - 0:10             `\n`
+1:0  - 3:0            document: here_document
+1:0  - 2:0              body: here_document_body
+1:0  - 1:23               command_substitution
+1:0  - 1:1                  "$"
+1:1  - 1:2                  "("
+1:2  - 1:22                 body: command_substitution_body
+1:2  - 1:22                   complete_commands
+1:2  - 1:22                     command: complete_command
+1:2  - 1:22                       body: list
+1:2  - 1:22                         and_or: and_or
+1:2  - 1:22                           pipeline: pipeline
+1:2  - 1:22                             sequence: pipe_sequence
+1:2  - 1:22                               command: command
+1:2  - 1:22                                 body: simple_command
+1:2  - 1:9                                    name: cmd_name
+1:2  - 1:9                                      word
+1:2  - 1:9                                        literal `command`
+1:9  - 1:22                                   suffix: cmd_suffix
+1:10 - 1:16                                     word: word
+1:10 - 1:16                                       literal `export`
+1:17 - 1:22                                     word: word
+1:17 - 1:18                                       name: variable_name `x`
+1:18 - 1:19                                       "="
+1:19 - 1:22                                       value: assignment_value
+1:19 - 1:22                                         literal `one`
+1:22 - 1:23                 ")"
+2:0  - 3:0              end: here_document_end
+2:0  - 2:3                here_document_end_text `END`
+
+==================
+command boundaries
+:cst
+==================
+export x=1 | echo a=2; command echo b=3 && readonly y=4
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:55     commands: complete_commands
+0:0  - 0:55       command: complete_command
+0:0  - 0:55         body: list
+0:0  - 0:21           and_or: and_or
+0:0  - 0:21             pipeline: pipeline
+0:0  - 0:21               sequence: pipe_sequence
+0:0  - 0:10                 command: command
+0:0  - 0:10                   body: simple_command
+0:0  - 0:6                      name: cmd_name
+0:0  - 0:6                        word
+0:0  - 0:6                          literal `export`
+0:6  - 0:10                     suffix: cmd_suffix
+0:7  - 0:10                       word: word
+0:7  - 0:8                          name: variable_name `x`
+0:8  - 0:9                          "="
+0:9  - 0:10                         value: assignment_value
+0:9  - 0:10                           literal `1`
+0:11 - 0:12                 "|"
+0:13 - 0:21                 command: command
+0:13 - 0:21                   body: simple_command
+0:13 - 0:17                     name: cmd_name
+0:13 - 0:17                       word
+0:13 - 0:17                         literal `echo`
+0:17 - 0:21                     suffix: cmd_suffix
+0:18 - 0:21                       word: word
+0:18 - 0:21                         literal `a=2`
+0:21 - 0:22           separator: separator_op
+0:21 - 0:22             ";"
+0:23 - 0:55           and_or: and_or
+0:23 - 0:39             pipeline: pipeline
+0:23 - 0:39               sequence: pipe_sequence
+0:23 - 0:39                 command: command
+0:23 - 0:39                   body: simple_command
+0:23 - 0:30                     name: cmd_name
+0:23 - 0:30                       word
+0:23 - 0:30                         literal `command`
+0:30 - 0:39                     suffix: cmd_suffix
+0:31 - 0:35                       word: word
+0:31 - 0:35                         literal `echo`
+0:36 - 0:39                       word: word
+0:36 - 0:39                         literal `b=3`
+0:40 - 0:42             operator: and_if `&&`
+0:43 - 0:55             pipeline: pipeline
+0:43 - 0:55               sequence: pipe_sequence
+0:43 - 0:55                 command: command
+0:43 - 0:55                   body: simple_command
+0:43 - 0:51                     name: cmd_name
+0:43 - 0:51                       word
+0:43 - 0:51                         literal `readonly`
+0:51 - 0:55                     suffix: cmd_suffix
+0:52 - 0:55                       word: word
+0:52 - 0:53                         name: variable_name `y`
+0:53 - 0:54                         "="
+0:54 - 0:55                         value: assignment_value
+0:54 - 0:55                           literal `4`
+0:55 - 1:0      trailing: linebreak
+0:55 - 1:0        newline_list
+0:55 - 1:0          "\n"
+
+==================
+quoted and dynamic names
+:cst
+==================
+"export" a=1; \readonly b=2; ex"port" c=3; $cmd d=4; command "$cmd" e=5; command "export" f=6
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:93     commands: complete_commands
+0:0  - 0:93       command: complete_command
+0:0  - 0:93         body: list
+0:0  - 0:12           and_or: and_or
+0:0  - 0:12             pipeline: pipeline
+0:0  - 0:12               sequence: pipe_sequence
+0:0  - 0:12                 command: command
+0:0  - 0:12                   body: simple_command
+0:0  - 0:8                      name: cmd_name
+0:0  - 0:8                        word
+0:0  - 0:8                          double_quoted
+0:0  - 0:1                            "\""
+0:1  - 0:7                            double_quote_text `export`
+0:7  - 0:8                            "\""
+0:8  - 0:12                     suffix: cmd_suffix
+0:9  - 0:12                       word: word
+0:9  - 0:12                         literal `a=1`
+0:12 - 0:13           separator: separator_op
+0:12 - 0:13             ";"
+0:14 - 0:27           and_or: and_or
+0:14 - 0:27             pipeline: pipeline
+0:14 - 0:27               sequence: pipe_sequence
+0:14 - 0:27                 command: command
+0:14 - 0:27                   body: simple_command
+0:14 - 0:23                     name: cmd_name
+0:14 - 0:23                       word
+0:14 - 0:16                         escaped_character `\\r`
+0:16 - 0:23                         literal `eadonly`
+0:23 - 0:27                     suffix: cmd_suffix
+0:24 - 0:27                       word: word
+0:24 - 0:27                         literal `b=2`
+0:27 - 0:28           separator: separator_op
+0:27 - 0:28             ";"
+0:29 - 0:41           and_or: and_or
+0:29 - 0:41             pipeline: pipeline
+0:29 - 0:41               sequence: pipe_sequence
+0:29 - 0:41                 command: command
+0:29 - 0:41                   body: simple_command
+0:29 - 0:37                     name: cmd_name
+0:29 - 0:37                       word
+0:29 - 0:31                         literal `ex`
+0:31 - 0:37                         double_quoted
+0:31 - 0:32                           "\""
+0:32 - 0:36                           double_quote_text `port`
+0:36 - 0:37                           "\""
+0:37 - 0:41                     suffix: cmd_suffix
+0:38 - 0:41                       word: word
+0:38 - 0:41                         literal `c=3`
+0:41 - 0:42           separator: separator_op
+0:41 - 0:42             ";"
+0:43 - 0:51           and_or: and_or
+0:43 - 0:51             pipeline: pipeline
+0:43 - 0:51               sequence: pipe_sequence
+0:43 - 0:51                 command: command
+0:43 - 0:51                   body: simple_command
+0:43 - 0:47                     name: cmd_name
+0:43 - 0:47                       word
+0:43 - 0:47                         parameter_expansion
+0:43 - 0:44                           "$"
+0:44 - 0:47                           parameter: variable_name `cmd`
+0:47 - 0:51                     suffix: cmd_suffix
+0:48 - 0:51                       word: word
+0:48 - 0:51                         literal `d=4`
+0:51 - 0:52           separator: separator_op
+0:51 - 0:52             ";"
+0:53 - 0:71           and_or: and_or
+0:53 - 0:71             pipeline: pipeline
+0:53 - 0:71               sequence: pipe_sequence
+0:53 - 0:71                 command: command
+0:53 - 0:71                   body: simple_command
+0:53 - 0:60                     name: cmd_name
+0:53 - 0:60                       word
+0:53 - 0:60                         literal `command`
+0:60 - 0:71                     suffix: cmd_suffix
+0:61 - 0:67                       word: word
+0:61 - 0:67                         double_quoted
+0:61 - 0:62                           "\""
+0:62 - 0:66                           parameter_expansion
+0:62 - 0:63                             "$"
+0:63 - 0:66                             parameter: variable_name `cmd`
+0:66 - 0:67                           "\""
+0:68 - 0:71                       word: word
+0:68 - 0:71                         literal `e=5`
+0:71 - 0:72           separator: separator_op
+0:71 - 0:72             ";"
+0:73 - 0:93           and_or: and_or
+0:73 - 0:93             pipeline: pipeline
+0:73 - 0:93               sequence: pipe_sequence
+0:73 - 0:93                 command: command
+0:73 - 0:93                   body: simple_command
+0:73 - 0:80                     name: cmd_name
+0:73 - 0:80                       word
+0:73 - 0:80                         literal `command`
+0:80 - 0:93                     suffix: cmd_suffix
+0:81 - 0:89                       word: word
+0:81 - 0:89                         double_quoted
+0:81 - 0:82                           "\""
+0:82 - 0:88                           double_quote_text `export`
+0:88 - 0:89                           "\""
+0:90 - 0:93                       word: word
+0:90 - 0:93                         literal `f=6`
+0:93 - 1:0      trailing: linebreak
+0:93 - 1:0        newline_list
+0:93 - 1:0          "\n"
+
+==================
+forwarding options and ordinary names
+:cst
+==================
+command -- export a=1; command -p readonly b=2; command -v export c=3; command echo export d=4; readonlyx e=5
+
+------------------
+
+0:0   - 1:0     program
+0:0   - 0:109     commands: complete_commands
+0:0   - 0:109       command: complete_command
+0:0   - 0:109         body: list
+0:0   - 0:21            and_or: and_or
+0:0   - 0:21              pipeline: pipeline
+0:0   - 0:21                sequence: pipe_sequence
+0:0   - 0:21                  command: command
+0:0   - 0:21                    body: simple_command
+0:0   - 0:7                       name: cmd_name
+0:0   - 0:7                         word
+0:0   - 0:7                           literal `command`
+0:7   - 0:21                      suffix: cmd_suffix
+0:8   - 0:10                        word: word
+0:8   - 0:10                          literal `--`
+0:11  - 0:17                        word: word
+0:11  - 0:17                          literal `export`
+0:18  - 0:21                        word: word
+0:18  - 0:21                          literal `a=1`
+0:21  - 0:22            separator: separator_op
+0:21  - 0:22              ";"
+0:23  - 0:46            and_or: and_or
+0:23  - 0:46              pipeline: pipeline
+0:23  - 0:46                sequence: pipe_sequence
+0:23  - 0:46                  command: command
+0:23  - 0:46                    body: simple_command
+0:23  - 0:30                      name: cmd_name
+0:23  - 0:30                        word
+0:23  - 0:30                          literal `command`
+0:30  - 0:46                      suffix: cmd_suffix
+0:31  - 0:33                        word: word
+0:31  - 0:33                          literal `-p`
+0:34  - 0:42                        word: word
+0:34  - 0:42                          literal `readonly`
+0:43  - 0:46                        word: word
+0:43  - 0:46                          literal `b=2`
+0:46  - 0:47            separator: separator_op
+0:46  - 0:47              ";"
+0:48  - 0:69            and_or: and_or
+0:48  - 0:69              pipeline: pipeline
+0:48  - 0:69                sequence: pipe_sequence
+0:48  - 0:69                  command: command
+0:48  - 0:69                    body: simple_command
+0:48  - 0:55                      name: cmd_name
+0:48  - 0:55                        word
+0:48  - 0:55                          literal `command`
+0:55  - 0:69                      suffix: cmd_suffix
+0:56  - 0:58                        word: word
+0:56  - 0:58                          literal `-v`
+0:59  - 0:65                        word: word
+0:59  - 0:65                          literal `export`
+0:66  - 0:69                        word: word
+0:66  - 0:69                          literal `c=3`
+0:69  - 0:70            separator: separator_op
+0:69  - 0:70              ";"
+0:71  - 0:94            and_or: and_or
+0:71  - 0:94              pipeline: pipeline
+0:71  - 0:94                sequence: pipe_sequence
+0:71  - 0:94                  command: command
+0:71  - 0:94                    body: simple_command
+0:71  - 0:78                      name: cmd_name
+0:71  - 0:78                        word
+0:71  - 0:78                          literal `command`
+0:78  - 0:94                      suffix: cmd_suffix
+0:79  - 0:83                        word: word
+0:79  - 0:83                          literal `echo`
+0:84  - 0:90                        word: word
+0:84  - 0:90                          literal `export`
+0:91  - 0:94                        word: word
+0:91  - 0:94                          literal `d=4`
+0:94  - 0:95            separator: separator_op
+0:94  - 0:95              ";"
+0:96  - 0:109           and_or: and_or
+0:96  - 0:109             pipeline: pipeline
+0:96  - 0:109               sequence: pipe_sequence
+0:96  - 0:109                 command: command
+0:96  - 0:109                   body: simple_command
+0:96  - 0:105                     name: cmd_name
+0:96  - 0:105                       word
+0:96  - 0:105                         literal `readonlyx`
+0:105 - 0:109                     suffix: cmd_suffix
+0:106 - 0:109                       word: word
+0:106 - 0:109                         literal `e=5`
+0:109 - 1:0       trailing: linebreak
+0:109 - 1:0         newline_list
+0:109 - 1:0           "\n"
+
+==================
+extension commands
+:cst
+==================
+local a=1; declare b=2; typeset c=3; builtin export d=4
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:55     commands: complete_commands
+0:0  - 0:55       command: complete_command
+0:0  - 0:55         body: list
+0:0  - 0:9            and_or: and_or
+0:0  - 0:9              pipeline: pipeline
+0:0  - 0:9                sequence: pipe_sequence
+0:0  - 0:9                  command: command
+0:0  - 0:9                    body: simple_command
+0:0  - 0:5                      name: cmd_name
+0:0  - 0:5                        word
+0:0  - 0:5                          literal `local`
+0:5  - 0:9                      suffix: cmd_suffix
+0:6  - 0:9                        word: word
+0:6  - 0:9                          literal `a=1`
+0:9  - 0:10           separator: separator_op
+0:9  - 0:10             ";"
+0:11 - 0:22           and_or: and_or
+0:11 - 0:22             pipeline: pipeline
+0:11 - 0:22               sequence: pipe_sequence
+0:11 - 0:22                 command: command
+0:11 - 0:22                   body: simple_command
+0:11 - 0:18                     name: cmd_name
+0:11 - 0:18                       word
+0:11 - 0:18                         literal `declare`
+0:18 - 0:22                     suffix: cmd_suffix
+0:19 - 0:22                       word: word
+0:19 - 0:22                         literal `b=2`
+0:22 - 0:23           separator: separator_op
+0:22 - 0:23             ";"
+0:24 - 0:35           and_or: and_or
+0:24 - 0:35             pipeline: pipeline
+0:24 - 0:35               sequence: pipe_sequence
+0:24 - 0:35                 command: command
+0:24 - 0:35                   body: simple_command
+0:24 - 0:31                     name: cmd_name
+0:24 - 0:31                       word
+0:24 - 0:31                         literal `typeset`
+0:31 - 0:35                     suffix: cmd_suffix
+0:32 - 0:35                       word: word
+0:32 - 0:35                         literal `c=3`
+0:35 - 0:36           separator: separator_op
+0:35 - 0:36             ";"
+0:37 - 0:55           and_or: and_or
+0:37 - 0:55             pipeline: pipeline
+0:37 - 0:55               sequence: pipe_sequence
+0:37 - 0:55                 command: command
+0:37 - 0:55                   body: simple_command
+0:37 - 0:44                     name: cmd_name
+0:37 - 0:44                       word
+0:37 - 0:44                         literal `builtin`
+0:44 - 0:55                     suffix: cmd_suffix
+0:45 - 0:51                       word: word
+0:45 - 0:51                         literal `export`
+0:52 - 0:55                       word: word
+0:52 - 0:55                         literal `d=4`
+0:55 - 1:0      trailing: linebreak
+0:55 - 1:0        newline_list
+0:55 - 1:0          "\n"
+
+==================
+non assignment operands
+:cst
+==================
+export \x=1 "y=2" $name=3 x\=4 1x=5 x+=6 z=7
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:44     commands: complete_commands
+0:0  - 0:44       command: complete_command
+0:0  - 0:44         body: list
+0:0  - 0:44           and_or: and_or
+0:0  - 0:44             pipeline: pipeline
+0:0  - 0:44               sequence: pipe_sequence
+0:0  - 0:44                 command: command
+0:0  - 0:44                   body: simple_command
+0:0  - 0:6                      name: cmd_name
+0:0  - 0:6                        word
+0:0  - 0:6                          literal `export`
+0:6  - 0:44                     suffix: cmd_suffix
+0:7  - 0:11                       word: word
+0:7  - 0:9                          escaped_character `\\x`
+0:9  - 0:11                         literal `=1`
+0:12 - 0:17                       word: word
+0:12 - 0:17                         double_quoted
+0:12 - 0:13                           "\""
+0:13 - 0:16                           double_quote_text `y=2`
+0:16 - 0:17                           "\""
+0:18 - 0:25                       word: word
+0:18 - 0:23                         parameter_expansion
+0:18 - 0:19                           "$"
+0:19 - 0:23                           parameter: variable_name `name`
+0:23 - 0:25                         literal `=3`
+0:26 - 0:30                       word: word
+0:26 - 0:27                         literal `x`
+0:27 - 0:29                         escaped_character `\\=`
+0:29 - 0:30                         literal `4`
+0:31 - 0:35                       word: word
+0:31 - 0:35                         literal `1x=5`
+0:36 - 0:40                       word: word
+0:36 - 0:40                         literal `x+=6`
+0:41 - 0:44                       word: word
+0:41 - 0:42                         name: variable_name `z`
+0:42 - 0:43                         "="
+0:43 - 0:44                         value: assignment_value
+0:43 - 0:44                           literal `7`
+0:44 - 1:0      trailing: linebreak
+0:44 - 1:0        newline_list
+0:44 - 1:0          "\n"
+
+==================
+function name
+:cst
+==================
+command() { export x=1; }; readonly() { :; }
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:44     commands: complete_commands
+0:0  - 0:44       command: complete_command
+0:0  - 0:44         body: list
+0:0  - 0:25           and_or: and_or
+0:0  - 0:25             pipeline: pipeline
+0:0  - 0:25               sequence: pipe_sequence
+0:0  - 0:25                 command: command
+0:0  - 0:25                   body: function_definition
+0:0  - 0:7                      name: fname `command`
+0:7  - 0:8                      "("
+0:8  - 0:9                      ")"
+0:10 - 0:25                     body: function_body
+0:10 - 0:25                       body: compound_command
+0:10 - 0:25                         brace_group
+0:10 - 0:11                           "{"
+0:11 - 0:23                           body: compound_list
+0:12 - 0:22                             body: term
+0:12 - 0:22                               and_or: and_or
+0:12 - 0:22                                 pipeline: pipeline
+0:12 - 0:22                                   sequence: pipe_sequence
+0:12 - 0:22                                     command: command
+0:12 - 0:22                                       body: simple_command
+0:12 - 0:18                                         name: cmd_name
+0:12 - 0:18                                           word
+0:12 - 0:18                                             literal `export`
+0:18 - 0:22                                         suffix: cmd_suffix
+0:19 - 0:22                                           word: word
+0:19 - 0:20                                             name: variable_name `x`
+0:20 - 0:21                                             "="
+0:21 - 0:22                                             value: assignment_value
+0:21 - 0:22                                               literal `1`
+0:22 - 0:23                             terminator: separator
+0:22 - 0:23                               operator: separator_op
+0:22 - 0:23                                 ";"
+0:24 - 0:25                           "}"
+0:25 - 0:26           separator: separator_op
+0:25 - 0:26             ";"
+0:27 - 0:44           and_or: and_or
+0:27 - 0:44             pipeline: pipeline
+0:27 - 0:44               sequence: pipe_sequence
+0:27 - 0:44                 command: command
+0:27 - 0:44                   body: function_definition
+0:27 - 0:35                     name: fname `readonly`
+0:35 - 0:36                     "("
+0:36 - 0:37                     ")"
+0:38 - 0:44                     body: function_body
+0:38 - 0:44                       body: compound_command
+0:38 - 0:44                         brace_group
+0:38 - 0:39                           "{"
+0:39 - 0:42                           body: compound_list
+0:40 - 0:41                             body: term
+0:40 - 0:41                               and_or: and_or
+0:40 - 0:41                                 pipeline: pipeline
+0:40 - 0:41                                   sequence: pipe_sequence
+0:40 - 0:41                                     command: command
+0:40 - 0:41                                       body: simple_command
+0:40 - 0:41                                         name: cmd_name
+0:40 - 0:41                                           word
+0:40 - 0:41                                             literal `:`
+0:41 - 0:42                             terminator: separator
+0:41 - 0:42                               operator: separator_op
+0:41 - 0:42                                 ";"
+0:43 - 0:44                           "}"
+0:44 - 1:0      trailing: linebreak
+0:44 - 1:0        newline_list
+0:44 - 1:0          "\n"
+
+==================
+declaration values
+:cst
+==================
+export x=~/bin:~user y="${v:-ok}" z=$((1+2)) g=[a-z]*
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:53     commands: complete_commands
+0:0  - 0:53       command: complete_command
+0:0  - 0:53         body: list
+0:0  - 0:53           and_or: and_or
+0:0  - 0:53             pipeline: pipeline
+0:0  - 0:53               sequence: pipe_sequence
+0:0  - 0:53                 command: command
+0:0  - 0:53                   body: simple_command
+0:0  - 0:6                      name: cmd_name
+0:0  - 0:6                        word
+0:0  - 0:6                          literal `export`
+0:6  - 0:53                     suffix: cmd_suffix
+0:7  - 0:20                       word: word
+0:7  - 0:8                          name: variable_name `x`
+0:8  - 0:9                          "="
+0:9  - 0:20                         value: assignment_value
+0:9  - 0:10                           tilde_expansion
+0:9  - 0:10                             "~"
+0:10 - 0:15                           literal `/bin:`
+0:15 - 0:20                           tilde_expansion
+0:15 - 0:16                             "~"
+0:16 - 0:20                             user: tilde_user
+0:16 - 0:20                               literal `user`
+0:21 - 0:33                       word: word
+0:21 - 0:22                         name: variable_name `y`
+0:22 - 0:23                         "="
+0:23 - 0:33                         value: assignment_value
+0:23 - 0:33                           double_quoted
+0:23 - 0:24                             "\""
+0:24 - 0:32                             parameter_expansion
+0:24 - 0:25                               "$"
+0:25 - 0:26                               "{"
+0:26 - 0:27                               parameter: variable_name `v`
+0:27 - 0:29                               operator: parameter_value_operator `:-`
+0:29 - 0:31                               word: parameter_word
+0:29 - 0:31                                 double_quote_text `ok`
+0:31 - 0:32                               "}"
+0:32 - 0:33                             "\""
+0:34 - 0:44                       word: word
+0:34 - 0:35                         name: variable_name `z`
+0:35 - 0:36                         "="
+0:36 - 0:44                         value: assignment_value
+0:36 - 0:44                           arithmetic_expansion
+0:36 - 0:37                             "$"
+0:37 - 0:38                             "("
+0:38 - 0:39                             "("
+0:39 - 0:42                             expression: arithmetic_binary_expression
+0:39 - 0:40                               left: arithmetic_number `1`
+0:40 - 0:41                               operator: arithmetic_operator `+`
+0:41 - 0:42                               right: arithmetic_number `2`
+0:42 - 0:43                             ")"
+0:43 - 0:44                             ")"
+0:45 - 0:53                       word: word
+0:45 - 0:46                         name: variable_name `g`
+0:46 - 0:47                         "="
+0:47 - 0:53                         value: assignment_value
+0:47 - 0:52                           pattern_bracket_source
+0:47 - 0:48                             "["
+0:48 - 0:51                             members: pattern_bracket_members_source
+0:48 - 0:51                               member: pattern_bracket_range_source
+0:48 - 0:49                                 start: pattern_bracket_character_source `a`
+0:49 - 0:50                                 operator: pattern_bracket_range_operator_source `-`
+0:50 - 0:51                                 end: pattern_bracket_character_source `z`
+0:51 - 0:52                             "]"
+0:52 - 0:53                           pattern_star_source `*`
+0:53 - 1:0      trailing: linebreak
+0:53 - 1:0        newline_list
+0:53 - 1:0          "\n"

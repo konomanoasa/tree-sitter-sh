@@ -27,6 +27,10 @@ npm test
 
 [POSIX.1-2024 Shell Command Language](https://pubs.opengroup.org/onlinepubs/9799919799.2024edition/utilities/V3_chap02.html)
 
+## Used By
+
+[sh-ts-mode](https://github.com/konomanoasa/sh-ts-mode): Emacs major mode.
+
 ## License
 
 [MIT](LICENSE)

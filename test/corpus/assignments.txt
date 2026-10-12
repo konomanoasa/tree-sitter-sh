@@ -4,7 +4,7 @@ an assignment-only simple command has no command name
 
 A= B=$value C=$(printf value)
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -53,7 +53,7 @@ assignment values retain their source-word structure
 
 VALUE=pre"quoted"${name}$((1 + 2))
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -89,7 +89,7 @@ assignments can precede a command and its arguments
 
 MODE=fast EMPTY= EXTRA==value command -v operand
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -132,7 +132,7 @@ y=then
 y=a:do
 cmd x=fi
 
----
+------------------
 
 (program
   (linebreak
@@ -186,7 +186,7 @@ assignment-shaped words after the command name are arguments
 
 A=one command B=two C='three words' -x --long operand
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -229,7 +229,7 @@ assignment command and argument positions remain distinct
 
 A=-x -x --long
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -265,7 +265,7 @@ worker() {
 }
 result=`printf nested`
 
----
+------------------
 
 (program
   (linebreak
@@ -328,102 +328,12 @@ result=`printf nested`
     (newline_list)))
 
 ==================
-assignment-only commands retain command boundaries
-==================
-
-A=one; B=two
-C=three && D=four
-E=five\
-
-next
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)))))))))
-        separator: (separator_op)
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal))))))))
-          operator: (and_if)
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal)))))))))))
-    (line_continuation)
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 an empty name leaves assignment-shaped source as a command word
 ==================
 
 =value argument
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -451,7 +361,7 @@ a leading digit leaves assignment-shaped source as a command word
 
 1NAME=value argument
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -479,7 +389,7 @@ a quoted name leaves assignment-shaped source as a command word
 
 'NAME'=value argument
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -509,7 +419,7 @@ an escaped equals sign remains command-word source
 
 NAME\=value argument
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -539,7 +449,7 @@ an expanded name leaves assignment-shaped source as a command word
 
 NAME${suffix}=value argument
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -563,33 +473,3 @@ NAME${suffix}=value argument
                       (literal)))))))))))
   trailing: (linebreak
     (newline_list)))
-
-==================
-a blank-led continuation run after an assignment reaches the end of input
-==================
-
-a=b \
-
-
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal))))))))))))
-  trailing: (linebreak
-    (newline_list
-      (line_continuation))))

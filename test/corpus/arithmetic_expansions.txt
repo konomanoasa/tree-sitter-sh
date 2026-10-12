@@ -4,7 +4,7 @@ arithmetic assignment operators remain structured after horizontal layout
 
 : "$((a = b *= c /= d %= e += f -= g <<= h >>= i &= j ^= k |= l))"
 
----
+------------------
 
 (program
   (linebreak
@@ -67,7 +67,7 @@ arithmetic conditional and binary operators preserve their nested precedence
 
 : "$((a ? b || c && d | e ^ f & g == h != i < j <= k > l >= m << n >> o + p - q * r / s % t : u))"
 
----
+------------------
 
 (program
   (linebreak
@@ -156,7 +156,7 @@ arithmetic expansion follows POSIX expression precedence
 
 printf "$((a = b += 2 ? b << 1 : ~b & 7))" "$((0x10 + 077 + (value * 3)))"
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -219,7 +219,7 @@ unary signs bind adjacent static operands
 
 : "$((-x))" "$((+x + y))" "$((1+-2))" "$((-x + $y))"
 
----
+------------------
 
 (program
   (linebreak
@@ -279,7 +279,7 @@ parenthesized arithmetic variables remain valid assignment left operands
 
 : "$(((name) = 1))" "$((((nested)) += 2))"
 
----
+------------------
 
 (program
   (linebreak
@@ -322,7 +322,7 @@ arithmetic expansion preserves balanced and nested source
 
 echo $((1 + (2 * ${factor}) + $(value) + $((3 + 4))))
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -381,7 +381,7 @@ dynamic arithmetic preserves incomplete numeric lexemes as source fragments
 
 echo $((0x${hex} + ${prefix}08 + ${name}123abc))
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -421,7 +421,7 @@ dynamic arithmetic source remains structured without evaluation
 
 printf "$((1 $operator 2))" "$(($left + $(value)))" "$((1 + (2 $operator 3)))"
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -487,7 +487,7 @@ runtime arithmetic fragments can precede parenthesized source
 
 printf '%s\n' "$((a ${operator} (b + c)))"
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -527,7 +527,7 @@ a case pattern inside an embedded substitution stays inside the arithmetic readi
 
 echo $(( $(case x in a) echo 1;; esac) + 1 ))
 
----
+------------------
 
 (program
   (linebreak
@@ -594,7 +594,7 @@ a case pattern esac after a pipe stays inside the validated substitution
 
 echo $(( $(case q in x|esac) echo 1;; esac) + 1 ))
 
----
+------------------
 
 (program
   (linebreak
@@ -663,7 +663,7 @@ a numeric case word keeps the substitution inside the dynamic reading
 
 echo $(( $(case 9 in x) echo 1;; esac) 1 ))
 
----
+------------------
 
 (program
   (linebreak
@@ -729,7 +729,7 @@ a case after a command-prefix reserved word stays inside the arithmetic reading
 
 echo $(( $(if :; then case a in b) echo 1;; esac; fi) + 1 ))
 
----
+------------------
 
 (program
   (linebreak
@@ -821,7 +821,7 @@ a case after a brace-group opener stays inside the arithmetic reading
 
 echo $(( $({ case a in b) echo 1;; esac; }) + 1 ))
 
----
+------------------
 
 (program
   (linebreak
@@ -898,7 +898,7 @@ arithmetic parameter prefixes undergo surrounding backquote quote removal
 
 : `: $((\$x))`
 
----
+------------------
 
 (program
   (linebreak
@@ -943,7 +943,7 @@ arithmetic command substitutions retain surrounding backquote quote removal
 
 : "`: $(( $(printf 1; : \")\") ))`"
 
----
+------------------
 
 (program
   (linebreak
@@ -1016,7 +1016,7 @@ arithmetic layout remains at operators and closing delimiters
 
 : "$((a==b + 2))" "$((a==b + (2)))" "$((a=b + (2)))"
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1076,7 +1076,7 @@ arithmetic layout spans raw newlines in the committed readings
 y))" "$((1 +
 2))"
 
----
+------------------
 
 (program
   (linebreak
@@ -1116,7 +1116,7 @@ arithmetic unary negation remains arithmetic after horizontal layout
 
 : "$((! a))" "$((!!a))"
 
----
+------------------
 
 (program
   (linebreak
@@ -1156,7 +1156,7 @@ sign runs adjacent to a runtime fragment stay flat source
 
 : "$((-x$y))" "$((1+x$y))" "$((-1$y))"
 
----
+------------------
 
 (program
   (linebreak
@@ -1207,7 +1207,7 @@ adjacent prefix increment spelling leaves arithmetic for command substitution
 
 : "$((++a))"
 
----
+------------------
 
 (program
   (linebreak
@@ -1256,7 +1256,7 @@ adjacent prefix decrement spelling leaves arithmetic for command substitution
 
 : "$((--a))"
 
----
+------------------
 
 (program
   (linebreak
@@ -1305,7 +1305,7 @@ adjacent repeated signs between operands leave arithmetic for command substituti
 
 : $((a--b))
 
----
+------------------
 
 (program
   (linebreak
@@ -1353,7 +1353,7 @@ a top-level comma leaves arithmetic for command substitution
 
 printf "$((1, 2))"
 
----
+------------------
 
 (program
   (linebreak
@@ -1400,66 +1400,12 @@ printf "$((1, 2))"
     (newline_list)))
 
 ==================
-a continuation before the closers stays in the command-substitution reading
-==================
-
-: "$((1 +\
-))"
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (command_substitution
-                          (command_substitution_body
-                            (complete_commands
-                              (complete_command
-                                (list
-                                  (and_or
-                                    (pipeline
-                                      (pipe_sequence
-                                        (command
-                                          (compound_command
-                                            (subshell
-                                              (compound_list
-                                                (term
-                                                  (and_or
-                                                    (pipeline
-                                                      (pipe_sequence
-                                                        (command
-                                                          (simple_command
-                                                            (cmd_name
-                                                              (word
-                                                                (literal)))
-                                                            (cmd_suffix
-                                                              (word
-                                                                (literal))))))))))
-                                              (line_continuation)))))))))))))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
 a missing operand before the closers leaves arithmetic for command substitution
 ==================
 
 printf "$((1 + ))"
 
----
+------------------
 
 (program
   (linebreak
@@ -1512,7 +1458,7 @@ an empty arithmetic spelling requires recovery for an empty subshell
 
 printf "$(())"
 
----
+------------------
 
 
 
@@ -1523,7 +1469,7 @@ a blank arithmetic expression cannot form a subshell command
 
 printf "$((  ))"
 
----
+------------------
 
 
 
@@ -1534,7 +1480,7 @@ an empty parenthesized arithmetic expression requires recovery
 
 printf "$((()))"
 
----
+------------------
 
 
 
@@ -1545,7 +1491,7 @@ a parenthesized non-lvalue cannot become an assignment left operand
 
 : "$(((name + 1) = 2))"
 
----
+------------------
 
 
 
@@ -1556,7 +1502,7 @@ input ending inside arithmetic requires recovery
 
 x=$((1 +
 
----
+------------------
 
 
 
@@ -1566,7 +1512,7 @@ arithmetic vertical tabs and form feeds separate operands and operators
 
 echo $((1+2))
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1598,7 +1544,7 @@ Dynamic arithmetic preserves later adjacent runtime fragments
 
 echo $((a$x$b)) $((name${x} + name${y}))
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1644,7 +1590,7 @@ Nested backquotes preserve dynamic arithmetic and subshell fallback
 : `: $((\`printf a\` = 1))`
 : `: $((1 \`printf +\` 2; :))`
 
----
+------------------
 
 (program
   (linebreak
@@ -1826,3 +1772,2185 @@ Nested backquotes preserve dynamic arithmetic and subshell fallback
                                                                                       (literal)))))))))))))))))))))))))))))))))))))))))))
   (linebreak
     (newline_list)))
+
+==================
+arithmetic prefix increment
+:cst
+==================
+: "$((++a))"
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:12     commands: complete_commands
+0:0  - 0:12       command: complete_command
+0:0  - 0:12         body: list
+0:0  - 0:12           and_or: and_or
+0:0  - 0:12             pipeline: pipeline
+0:0  - 0:12               sequence: pipe_sequence
+0:0  - 0:12                 command: command
+0:0  - 0:12                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:12                     suffix: cmd_suffix
+0:2  - 0:12                       word: word
+0:2  - 0:12                         double_quoted
+0:2  - 0:3                            "\""
+0:3  - 0:11                           command_substitution
+0:3  - 0:4                              "$"
+0:4  - 0:5                              "("
+0:5  - 0:10                             body: command_substitution_body
+0:5  - 0:10                               complete_commands
+0:5  - 0:10                                 command: complete_command
+0:5  - 0:10                                   body: list
+0:5  - 0:10                                     and_or: and_or
+0:5  - 0:10                                       pipeline: pipeline
+0:5  - 0:10                                         sequence: pipe_sequence
+0:5  - 0:10                                           command: command
+0:5  - 0:10                                             body: compound_command
+0:5  - 0:10                                               subshell
+0:5  - 0:6                                                  "("
+0:6  - 0:9                                                  body: compound_list
+0:6  - 0:9                                                    body: term
+0:6  - 0:9                                                      and_or: and_or
+0:6  - 0:9                                                        pipeline: pipeline
+0:6  - 0:9                                                          sequence: pipe_sequence
+0:6  - 0:9                                                            command: command
+0:6  - 0:9                                                              body: simple_command
+0:6  - 0:9                                                                name: cmd_name
+0:6  - 0:9                                                                  word
+0:6  - 0:9                                                                    literal `++a`
+0:9  - 0:10                                                 ")"
+0:10 - 0:11                             ")"
+0:11 - 0:12                           "\""
+0:12 - 1:0      trailing: linebreak
+0:12 - 1:0        newline_list
+0:12 - 1:0          "\n"
+
+==================
+arithmetic prefix decrement
+:cst
+==================
+: "$((--a))"
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:12     commands: complete_commands
+0:0  - 0:12       command: complete_command
+0:0  - 0:12         body: list
+0:0  - 0:12           and_or: and_or
+0:0  - 0:12             pipeline: pipeline
+0:0  - 0:12               sequence: pipe_sequence
+0:0  - 0:12                 command: command
+0:0  - 0:12                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:12                     suffix: cmd_suffix
+0:2  - 0:12                       word: word
+0:2  - 0:12                         double_quoted
+0:2  - 0:3                            "\""
+0:3  - 0:11                           command_substitution
+0:3  - 0:4                              "$"
+0:4  - 0:5                              "("
+0:5  - 0:10                             body: command_substitution_body
+0:5  - 0:10                               complete_commands
+0:5  - 0:10                                 command: complete_command
+0:5  - 0:10                                   body: list
+0:5  - 0:10                                     and_or: and_or
+0:5  - 0:10                                       pipeline: pipeline
+0:5  - 0:10                                         sequence: pipe_sequence
+0:5  - 0:10                                           command: command
+0:5  - 0:10                                             body: compound_command
+0:5  - 0:10                                               subshell
+0:5  - 0:6                                                  "("
+0:6  - 0:9                                                  body: compound_list
+0:6  - 0:9                                                    body: term
+0:6  - 0:9                                                      and_or: and_or
+0:6  - 0:9                                                        pipeline: pipeline
+0:6  - 0:9                                                          sequence: pipe_sequence
+0:6  - 0:9                                                            command: command
+0:6  - 0:9                                                              body: simple_command
+0:6  - 0:9                                                                name: cmd_name
+0:6  - 0:9                                                                  word
+0:6  - 0:9                                                                    literal `--a`
+0:9  - 0:10                                                 ")"
+0:10 - 0:11                             ")"
+0:11 - 0:12                           "\""
+0:12 - 1:0      trailing: linebreak
+0:12 - 1:0        newline_list
+0:12 - 1:0          "\n"
+
+==================
+arithmetic infix increment
+:cst
+==================
+: "$((a++b))"
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:13     commands: complete_commands
+0:0  - 0:13       command: complete_command
+0:0  - 0:13         body: list
+0:0  - 0:13           and_or: and_or
+0:0  - 0:13             pipeline: pipeline
+0:0  - 0:13               sequence: pipe_sequence
+0:0  - 0:13                 command: command
+0:0  - 0:13                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:13                     suffix: cmd_suffix
+0:2  - 0:13                       word: word
+0:2  - 0:13                         double_quoted
+0:2  - 0:3                            "\""
+0:3  - 0:12                           command_substitution
+0:3  - 0:4                              "$"
+0:4  - 0:5                              "("
+0:5  - 0:11                             body: command_substitution_body
+0:5  - 0:11                               complete_commands
+0:5  - 0:11                                 command: complete_command
+0:5  - 0:11                                   body: list
+0:5  - 0:11                                     and_or: and_or
+0:5  - 0:11                                       pipeline: pipeline
+0:5  - 0:11                                         sequence: pipe_sequence
+0:5  - 0:11                                           command: command
+0:5  - 0:11                                             body: compound_command
+0:5  - 0:11                                               subshell
+0:5  - 0:6                                                  "("
+0:6  - 0:10                                                 body: compound_list
+0:6  - 0:10                                                   body: term
+0:6  - 0:10                                                     and_or: and_or
+0:6  - 0:10                                                       pipeline: pipeline
+0:6  - 0:10                                                         sequence: pipe_sequence
+0:6  - 0:10                                                           command: command
+0:6  - 0:10                                                             body: simple_command
+0:6  - 0:10                                                               name: cmd_name
+0:6  - 0:10                                                                 word
+0:6  - 0:10                                                                   literal `a++b`
+0:10 - 0:11                                                 ")"
+0:11 - 0:12                             ")"
+0:12 - 0:13                           "\""
+0:13 - 1:0      trailing: linebreak
+0:13 - 1:0        newline_list
+0:13 - 1:0          "\n"
+
+==================
+arithmetic infix decrement
+:cst
+==================
+: "$((a--b))"
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:13     commands: complete_commands
+0:0  - 0:13       command: complete_command
+0:0  - 0:13         body: list
+0:0  - 0:13           and_or: and_or
+0:0  - 0:13             pipeline: pipeline
+0:0  - 0:13               sequence: pipe_sequence
+0:0  - 0:13                 command: command
+0:0  - 0:13                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:13                     suffix: cmd_suffix
+0:2  - 0:13                       word: word
+0:2  - 0:13                         double_quoted
+0:2  - 0:3                            "\""
+0:3  - 0:12                           command_substitution
+0:3  - 0:4                              "$"
+0:4  - 0:5                              "("
+0:5  - 0:11                             body: command_substitution_body
+0:5  - 0:11                               complete_commands
+0:5  - 0:11                                 command: complete_command
+0:5  - 0:11                                   body: list
+0:5  - 0:11                                     and_or: and_or
+0:5  - 0:11                                       pipeline: pipeline
+0:5  - 0:11                                         sequence: pipe_sequence
+0:5  - 0:11                                           command: command
+0:5  - 0:11                                             body: compound_command
+0:5  - 0:11                                               subshell
+0:5  - 0:6                                                  "("
+0:6  - 0:10                                                 body: compound_list
+0:6  - 0:10                                                   body: term
+0:6  - 0:10                                                     and_or: and_or
+0:6  - 0:10                                                       pipeline: pipeline
+0:6  - 0:10                                                         sequence: pipe_sequence
+0:6  - 0:10                                                           command: command
+0:6  - 0:10                                                             body: simple_command
+0:6  - 0:10                                                               name: cmd_name
+0:6  - 0:10                                                                 word
+0:6  - 0:10                                                                   literal `a--b`
+0:10 - 0:11                                                 ")"
+0:11 - 0:12                             ")"
+0:12 - 0:13                           "\""
+0:13 - 1:0      trailing: linebreak
+0:13 - 1:0        newline_list
+0:13 - 1:0          "\n"
+
+==================
+leading colon
+:cst
+==================
+echo $((: $x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:14     commands: complete_commands
+0:0  - 0:14       command: complete_command
+0:0  - 0:14         body: list
+0:0  - 0:14           and_or: and_or
+0:0  - 0:14             pipeline: pipeline
+0:0  - 0:14               sequence: pipe_sequence
+0:0  - 0:14                 command: command
+0:0  - 0:14                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:14                     suffix: cmd_suffix
+0:5  - 0:14                       word: word
+0:5  - 0:14                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:13                           body: command_substitution_body
+0:7  - 0:13                             complete_commands
+0:7  - 0:13                               command: complete_command
+0:7  - 0:13                                 body: list
+0:7  - 0:13                                   and_or: and_or
+0:7  - 0:13                                     pipeline: pipeline
+0:7  - 0:13                                       sequence: pipe_sequence
+0:7  - 0:13                                         command: command
+0:7  - 0:13                                           body: compound_command
+0:7  - 0:13                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:12                                               body: compound_list
+0:8  - 0:12                                                 body: term
+0:8  - 0:12                                                   and_or: and_or
+0:8  - 0:12                                                     pipeline: pipeline
+0:8  - 0:12                                                       sequence: pipe_sequence
+0:8  - 0:12                                                         command: command
+0:8  - 0:12                                                           body: simple_command
+0:8  - 0:9                                                              name: cmd_name
+0:8  - 0:9                                                                word
+0:8  - 0:9                                                                  literal `:`
+0:9  - 0:12                                                             suffix: cmd_suffix
+0:10 - 0:12                                                               word: word
+0:10 - 0:12                                                                 parameter_expansion
+0:10 - 0:11                                                                   "$"
+0:11 - 0:12                                                                   parameter: variable_name `x`
+0:12 - 0:13                                               ")"
+0:13 - 0:14                           ")"
+0:14 - 1:0      trailing: linebreak
+0:14 - 1:0        newline_list
+0:14 - 1:0          "\n"
+
+==================
+optional increment
+:cst
+==================
+echo $((++a $x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:16     commands: complete_commands
+0:0  - 0:16       command: complete_command
+0:0  - 0:16         body: list
+0:0  - 0:16           and_or: and_or
+0:0  - 0:16             pipeline: pipeline
+0:0  - 0:16               sequence: pipe_sequence
+0:0  - 0:16                 command: command
+0:0  - 0:16                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:16                     suffix: cmd_suffix
+0:5  - 0:16                       word: word
+0:5  - 0:16                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:15                           body: command_substitution_body
+0:7  - 0:15                             complete_commands
+0:7  - 0:15                               command: complete_command
+0:7  - 0:15                                 body: list
+0:7  - 0:15                                   and_or: and_or
+0:7  - 0:15                                     pipeline: pipeline
+0:7  - 0:15                                       sequence: pipe_sequence
+0:7  - 0:15                                         command: command
+0:7  - 0:15                                           body: compound_command
+0:7  - 0:15                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:14                                               body: compound_list
+0:8  - 0:14                                                 body: term
+0:8  - 0:14                                                   and_or: and_or
+0:8  - 0:14                                                     pipeline: pipeline
+0:8  - 0:14                                                       sequence: pipe_sequence
+0:8  - 0:14                                                         command: command
+0:8  - 0:14                                                           body: simple_command
+0:8  - 0:11                                                             name: cmd_name
+0:8  - 0:11                                                               word
+0:8  - 0:11                                                                 literal `++a`
+0:11 - 0:14                                                             suffix: cmd_suffix
+0:12 - 0:14                                                               word: word
+0:12 - 0:14                                                                 parameter_expansion
+0:12 - 0:13                                                                   "$"
+0:13 - 0:14                                                                   parameter: variable_name `x`
+0:14 - 0:15                                               ")"
+0:15 - 0:16                           ")"
+0:16 - 1:0      trailing: linebreak
+0:16 - 1:0        newline_list
+0:16 - 1:0          "\n"
+
+==================
+optional decrement
+:cst
+==================
+echo $((--a $x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:16     commands: complete_commands
+0:0  - 0:16       command: complete_command
+0:0  - 0:16         body: list
+0:0  - 0:16           and_or: and_or
+0:0  - 0:16             pipeline: pipeline
+0:0  - 0:16               sequence: pipe_sequence
+0:0  - 0:16                 command: command
+0:0  - 0:16                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:16                     suffix: cmd_suffix
+0:5  - 0:16                       word: word
+0:5  - 0:16                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:15                           body: command_substitution_body
+0:7  - 0:15                             complete_commands
+0:7  - 0:15                               command: complete_command
+0:7  - 0:15                                 body: list
+0:7  - 0:15                                   and_or: and_or
+0:7  - 0:15                                     pipeline: pipeline
+0:7  - 0:15                                       sequence: pipe_sequence
+0:7  - 0:15                                         command: command
+0:7  - 0:15                                           body: compound_command
+0:7  - 0:15                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:14                                               body: compound_list
+0:8  - 0:14                                                 body: term
+0:8  - 0:14                                                   and_or: and_or
+0:8  - 0:14                                                     pipeline: pipeline
+0:8  - 0:14                                                       sequence: pipe_sequence
+0:8  - 0:14                                                         command: command
+0:8  - 0:14                                                           body: simple_command
+0:8  - 0:11                                                             name: cmd_name
+0:8  - 0:11                                                               word
+0:8  - 0:11                                                                 literal `--a`
+0:11 - 0:14                                                             suffix: cmd_suffix
+0:12 - 0:14                                                               word: word
+0:12 - 0:14                                                                 parameter_expansion
+0:12 - 0:13                                                                   "$"
+0:13 - 0:14                                                                   parameter: variable_name `x`
+0:14 - 0:15                                               ")"
+0:15 - 0:16                           ")"
+0:16 - 1:0      trailing: linebreak
+0:16 - 1:0        newline_list
+0:16 - 1:0          "\n"
+
+==================
+empty conditional consequence
+:cst
+==================
+echo $((1 ? : $x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:18     commands: complete_commands
+0:0  - 0:18       command: complete_command
+0:0  - 0:18         body: list
+0:0  - 0:18           and_or: and_or
+0:0  - 0:18             pipeline: pipeline
+0:0  - 0:18               sequence: pipe_sequence
+0:0  - 0:18                 command: command
+0:0  - 0:18                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:18                     suffix: cmd_suffix
+0:5  - 0:18                       word: word
+0:5  - 0:18                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:17                           body: command_substitution_body
+0:7  - 0:17                             complete_commands
+0:7  - 0:17                               command: complete_command
+0:7  - 0:17                                 body: list
+0:7  - 0:17                                   and_or: and_or
+0:7  - 0:17                                     pipeline: pipeline
+0:7  - 0:17                                       sequence: pipe_sequence
+0:7  - 0:17                                         command: command
+0:7  - 0:17                                           body: compound_command
+0:7  - 0:17                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:16                                               body: compound_list
+0:8  - 0:16                                                 body: term
+0:8  - 0:16                                                   and_or: and_or
+0:8  - 0:16                                                     pipeline: pipeline
+0:8  - 0:16                                                       sequence: pipe_sequence
+0:8  - 0:16                                                         command: command
+0:8  - 0:16                                                           body: simple_command
+0:8  - 0:9                                                              name: cmd_name
+0:8  - 0:9                                                                word
+0:8  - 0:9                                                                  literal `1`
+0:9  - 0:16                                                             suffix: cmd_suffix
+0:10 - 0:11                                                               word: word
+0:10 - 0:11                                                                 pattern_question_source `?`
+0:12 - 0:13                                                               word: word
+0:12 - 0:13                                                                 literal `:`
+0:14 - 0:16                                                               word: word
+0:14 - 0:16                                                                 parameter_expansion
+0:14 - 0:15                                                                   "$"
+0:15 - 0:16                                                                   parameter: variable_name `x`
+0:16 - 0:17                                               ")"
+0:17 - 0:18                           ")"
+0:18 - 1:0      trailing: linebreak
+0:18 - 1:0        newline_list
+0:18 - 1:0          "\n"
+
+==================
+adjacent fixed operands
+:cst
+==================
+echo $((1 2 $x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:16     commands: complete_commands
+0:0  - 0:16       command: complete_command
+0:0  - 0:16         body: list
+0:0  - 0:16           and_or: and_or
+0:0  - 0:16             pipeline: pipeline
+0:0  - 0:16               sequence: pipe_sequence
+0:0  - 0:16                 command: command
+0:0  - 0:16                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:16                     suffix: cmd_suffix
+0:5  - 0:16                       word: word
+0:5  - 0:16                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:15                           body: command_substitution_body
+0:7  - 0:15                             complete_commands
+0:7  - 0:15                               command: complete_command
+0:7  - 0:15                                 body: list
+0:7  - 0:15                                   and_or: and_or
+0:7  - 0:15                                     pipeline: pipeline
+0:7  - 0:15                                       sequence: pipe_sequence
+0:7  - 0:15                                         command: command
+0:7  - 0:15                                           body: compound_command
+0:7  - 0:15                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:14                                               body: compound_list
+0:8  - 0:14                                                 body: term
+0:8  - 0:14                                                   and_or: and_or
+0:8  - 0:14                                                     pipeline: pipeline
+0:8  - 0:14                                                       sequence: pipe_sequence
+0:8  - 0:14                                                         command: command
+0:8  - 0:14                                                           body: simple_command
+0:8  - 0:9                                                              name: cmd_name
+0:8  - 0:9                                                                word
+0:8  - 0:9                                                                  literal `1`
+0:9  - 0:14                                                             suffix: cmd_suffix
+0:10 - 0:11                                                               word: word
+0:10 - 0:11                                                                 literal `2`
+0:12 - 0:14                                                               word: word
+0:12 - 0:14                                                                 parameter_expansion
+0:12 - 0:13                                                                   "$"
+0:13 - 0:14                                                                   parameter: variable_name `x`
+0:14 - 0:15                                               ")"
+0:15 - 0:16                           ")"
+0:16 - 1:0      trailing: linebreak
+0:16 - 1:0        newline_list
+0:16 - 1:0          "\n"
+
+==================
+invalid octal before fragment
+:cst
+==================
+echo $((08 $x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:15     commands: complete_commands
+0:0  - 0:15       command: complete_command
+0:0  - 0:15         body: list
+0:0  - 0:15           and_or: and_or
+0:0  - 0:15             pipeline: pipeline
+0:0  - 0:15               sequence: pipe_sequence
+0:0  - 0:15                 command: command
+0:0  - 0:15                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:15                     suffix: cmd_suffix
+0:5  - 0:15                       word: word
+0:5  - 0:15                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:14                           body: command_substitution_body
+0:7  - 0:14                             complete_commands
+0:7  - 0:14                               command: complete_command
+0:7  - 0:14                                 body: list
+0:7  - 0:14                                   and_or: and_or
+0:7  - 0:14                                     pipeline: pipeline
+0:7  - 0:14                                       sequence: pipe_sequence
+0:7  - 0:14                                         command: command
+0:7  - 0:14                                           body: compound_command
+0:7  - 0:14                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:13                                               body: compound_list
+0:8  - 0:13                                                 body: term
+0:8  - 0:13                                                   and_or: and_or
+0:8  - 0:13                                                     pipeline: pipeline
+0:8  - 0:13                                                       sequence: pipe_sequence
+0:8  - 0:13                                                         command: command
+0:8  - 0:13                                                           body: simple_command
+0:8  - 0:10                                                             name: cmd_name
+0:8  - 0:10                                                               word
+0:8  - 0:10                                                                 literal `08`
+0:10 - 0:13                                                             suffix: cmd_suffix
+0:11 - 0:13                                                               word: word
+0:11 - 0:13                                                                 parameter_expansion
+0:11 - 0:12                                                                   "$"
+0:12 - 0:13                                                                   parameter: variable_name `x`
+0:13 - 0:14                                               ")"
+0:14 - 0:15                           ")"
+0:15 - 1:0      trailing: linebreak
+0:15 - 1:0        newline_list
+0:15 - 1:0          "\n"
+
+==================
+uncompleted hexadecimal before blank
+:cst
+==================
+echo $((0x $x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:15     commands: complete_commands
+0:0  - 0:15       command: complete_command
+0:0  - 0:15         body: list
+0:0  - 0:15           and_or: and_or
+0:0  - 0:15             pipeline: pipeline
+0:0  - 0:15               sequence: pipe_sequence
+0:0  - 0:15                 command: command
+0:0  - 0:15                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:15                     suffix: cmd_suffix
+0:5  - 0:15                       word: word
+0:5  - 0:15                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:14                           body: command_substitution_body
+0:7  - 0:14                             complete_commands
+0:7  - 0:14                               command: complete_command
+0:7  - 0:14                                 body: list
+0:7  - 0:14                                   and_or: and_or
+0:7  - 0:14                                     pipeline: pipeline
+0:7  - 0:14                                       sequence: pipe_sequence
+0:7  - 0:14                                         command: command
+0:7  - 0:14                                           body: compound_command
+0:7  - 0:14                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:13                                               body: compound_list
+0:8  - 0:13                                                 body: term
+0:8  - 0:13                                                   and_or: and_or
+0:8  - 0:13                                                     pipeline: pipeline
+0:8  - 0:13                                                       sequence: pipe_sequence
+0:8  - 0:13                                                         command: command
+0:8  - 0:13                                                           body: simple_command
+0:8  - 0:10                                                             name: cmd_name
+0:8  - 0:10                                                               word
+0:8  - 0:10                                                                 literal `0x`
+0:10 - 0:13                                                             suffix: cmd_suffix
+0:11 - 0:13                                                               word: word
+0:11 - 0:13                                                                 parameter_expansion
+0:11 - 0:12                                                                   "$"
+0:12 - 0:13                                                                   parameter: variable_name `x`
+0:13 - 0:14                                               ")"
+0:14 - 0:15                           ")"
+0:15 - 1:0      trailing: linebreak
+0:15 - 1:0        newline_list
+0:15 - 1:0          "\n"
+
+==================
+invalid hexadecimal before fragment
+:cst
+==================
+echo $((0xg$x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:15     commands: complete_commands
+0:0  - 0:15       command: complete_command
+0:0  - 0:15         body: list
+0:0  - 0:15           and_or: and_or
+0:0  - 0:15             pipeline: pipeline
+0:0  - 0:15               sequence: pipe_sequence
+0:0  - 0:15                 command: command
+0:0  - 0:15                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:15                     suffix: cmd_suffix
+0:5  - 0:15                       word: word
+0:5  - 0:15                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:14                           body: command_substitution_body
+0:7  - 0:14                             complete_commands
+0:7  - 0:14                               command: complete_command
+0:7  - 0:14                                 body: list
+0:7  - 0:14                                   and_or: and_or
+0:7  - 0:14                                     pipeline: pipeline
+0:7  - 0:14                                       sequence: pipe_sequence
+0:7  - 0:14                                         command: command
+0:7  - 0:14                                           body: compound_command
+0:7  - 0:14                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:13                                               body: compound_list
+0:8  - 0:13                                                 body: term
+0:8  - 0:13                                                   and_or: and_or
+0:8  - 0:13                                                     pipeline: pipeline
+0:8  - 0:13                                                       sequence: pipe_sequence
+0:8  - 0:13                                                         command: command
+0:8  - 0:13                                                           body: simple_command
+0:8  - 0:13                                                             name: cmd_name
+0:8  - 0:13                                                               word
+0:8  - 0:11                                                                 literal `0xg`
+0:11 - 0:13                                                                 parameter_expansion
+0:11 - 0:12                                                                   "$"
+0:12 - 0:13                                                                   parameter: variable_name `x`
+0:13 - 0:14                                               ")"
+0:14 - 0:15                           ")"
+0:15 - 1:0      trailing: linebreak
+0:15 - 1:0        newline_list
+0:15 - 1:0          "\n"
+
+==================
+invalid numeric name before fragment
+:cst
+==================
+echo $((123abc$x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:18     commands: complete_commands
+0:0  - 0:18       command: complete_command
+0:0  - 0:18         body: list
+0:0  - 0:18           and_or: and_or
+0:0  - 0:18             pipeline: pipeline
+0:0  - 0:18               sequence: pipe_sequence
+0:0  - 0:18                 command: command
+0:0  - 0:18                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:18                     suffix: cmd_suffix
+0:5  - 0:18                       word: word
+0:5  - 0:18                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:17                           body: command_substitution_body
+0:7  - 0:17                             complete_commands
+0:7  - 0:17                               command: complete_command
+0:7  - 0:17                                 body: list
+0:7  - 0:17                                   and_or: and_or
+0:7  - 0:17                                     pipeline: pipeline
+0:7  - 0:17                                       sequence: pipe_sequence
+0:7  - 0:17                                         command: command
+0:7  - 0:17                                           body: compound_command
+0:7  - 0:17                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:16                                               body: compound_list
+0:8  - 0:16                                                 body: term
+0:8  - 0:16                                                   and_or: and_or
+0:8  - 0:16                                                     pipeline: pipeline
+0:8  - 0:16                                                       sequence: pipe_sequence
+0:8  - 0:16                                                         command: command
+0:8  - 0:16                                                           body: simple_command
+0:8  - 0:16                                                             name: cmd_name
+0:8  - 0:16                                                               word
+0:8  - 0:14                                                                 literal `123abc`
+0:14 - 0:16                                                                 parameter_expansion
+0:14 - 0:15                                                                   "$"
+0:15 - 0:16                                                                   parameter: variable_name `x`
+0:16 - 0:17                                               ")"
+0:17 - 0:18                           ")"
+0:18 - 1:0      trailing: linebreak
+0:18 - 1:0        newline_list
+0:18 - 1:0          "\n"
+
+==================
+invalid fixed operand operator
+:cst
+==================
+echo $((1 + * $x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:18     commands: complete_commands
+0:0  - 0:18       command: complete_command
+0:0  - 0:18         body: list
+0:0  - 0:18           and_or: and_or
+0:0  - 0:18             pipeline: pipeline
+0:0  - 0:18               sequence: pipe_sequence
+0:0  - 0:18                 command: command
+0:0  - 0:18                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:18                     suffix: cmd_suffix
+0:5  - 0:18                       word: word
+0:5  - 0:18                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:17                           body: command_substitution_body
+0:7  - 0:17                             complete_commands
+0:7  - 0:17                               command: complete_command
+0:7  - 0:17                                 body: list
+0:7  - 0:17                                   and_or: and_or
+0:7  - 0:17                                     pipeline: pipeline
+0:7  - 0:17                                       sequence: pipe_sequence
+0:7  - 0:17                                         command: command
+0:7  - 0:17                                           body: compound_command
+0:7  - 0:17                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:16                                               body: compound_list
+0:8  - 0:16                                                 body: term
+0:8  - 0:16                                                   and_or: and_or
+0:8  - 0:16                                                     pipeline: pipeline
+0:8  - 0:16                                                       sequence: pipe_sequence
+0:8  - 0:16                                                         command: command
+0:8  - 0:16                                                           body: simple_command
+0:8  - 0:9                                                              name: cmd_name
+0:8  - 0:9                                                                word
+0:8  - 0:9                                                                  literal `1`
+0:9  - 0:16                                                             suffix: cmd_suffix
+0:10 - 0:11                                                               word: word
+0:10 - 0:11                                                                 literal `+`
+0:12 - 0:13                                                               word: word
+0:12 - 0:13                                                                 pattern_star_source `*`
+0:14 - 0:16                                                               word: word
+0:14 - 0:16                                                                 parameter_expansion
+0:14 - 0:15                                                                   "$"
+0:15 - 0:16                                                                   parameter: variable_name `x`
+0:16 - 0:17                                               ")"
+0:17 - 0:18                           ")"
+0:18 - 1:0      trailing: linebreak
+0:18 - 1:0        newline_list
+0:18 - 1:0          "\n"
+
+==================
+invalid operator between fragments
+:cst
+==================
+echo $(($x + * $y))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:19     commands: complete_commands
+0:0  - 0:19       command: complete_command
+0:0  - 0:19         body: list
+0:0  - 0:19           and_or: and_or
+0:0  - 0:19             pipeline: pipeline
+0:0  - 0:19               sequence: pipe_sequence
+0:0  - 0:19                 command: command
+0:0  - 0:19                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:19                     suffix: cmd_suffix
+0:5  - 0:19                       word: word
+0:5  - 0:19                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:18                           body: command_substitution_body
+0:7  - 0:18                             complete_commands
+0:7  - 0:18                               command: complete_command
+0:7  - 0:18                                 body: list
+0:7  - 0:18                                   and_or: and_or
+0:7  - 0:18                                     pipeline: pipeline
+0:7  - 0:18                                       sequence: pipe_sequence
+0:7  - 0:18                                         command: command
+0:7  - 0:18                                           body: compound_command
+0:7  - 0:18                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:17                                               body: compound_list
+0:8  - 0:17                                                 body: term
+0:8  - 0:17                                                   and_or: and_or
+0:8  - 0:17                                                     pipeline: pipeline
+0:8  - 0:17                                                       sequence: pipe_sequence
+0:8  - 0:17                                                         command: command
+0:8  - 0:17                                                           body: simple_command
+0:8  - 0:10                                                             name: cmd_name
+0:8  - 0:10                                                               word
+0:8  - 0:10                                                                 parameter_expansion
+0:8  - 0:9                                                                    "$"
+0:9  - 0:10                                                                   parameter: variable_name `x`
+0:10 - 0:17                                                             suffix: cmd_suffix
+0:11 - 0:12                                                               word: word
+0:11 - 0:12                                                                 literal `+`
+0:13 - 0:14                                                               word: word
+0:13 - 0:14                                                                 pattern_star_source `*`
+0:15 - 0:17                                                               word: word
+0:15 - 0:17                                                                 parameter_expansion
+0:15 - 0:16                                                                   "$"
+0:16 - 0:17                                                                   parameter: variable_name `y`
+0:17 - 0:18                                               ")"
+0:18 - 0:19                           ")"
+0:19 - 1:0      trailing: linebreak
+0:19 - 1:0        newline_list
+0:19 - 1:0          "\n"
+
+==================
+missing final operand
+:cst
+==================
+echo $((1 + $x *))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:18     commands: complete_commands
+0:0  - 0:18       command: complete_command
+0:0  - 0:18         body: list
+0:0  - 0:18           and_or: and_or
+0:0  - 0:18             pipeline: pipeline
+0:0  - 0:18               sequence: pipe_sequence
+0:0  - 0:18                 command: command
+0:0  - 0:18                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:18                     suffix: cmd_suffix
+0:5  - 0:18                       word: word
+0:5  - 0:18                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:17                           body: command_substitution_body
+0:7  - 0:17                             complete_commands
+0:7  - 0:17                               command: complete_command
+0:7  - 0:17                                 body: list
+0:7  - 0:17                                   and_or: and_or
+0:7  - 0:17                                     pipeline: pipeline
+0:7  - 0:17                                       sequence: pipe_sequence
+0:7  - 0:17                                         command: command
+0:7  - 0:17                                           body: compound_command
+0:7  - 0:17                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:16                                               body: compound_list
+0:8  - 0:16                                                 body: term
+0:8  - 0:16                                                   and_or: and_or
+0:8  - 0:16                                                     pipeline: pipeline
+0:8  - 0:16                                                       sequence: pipe_sequence
+0:8  - 0:16                                                         command: command
+0:8  - 0:16                                                           body: simple_command
+0:8  - 0:9                                                              name: cmd_name
+0:8  - 0:9                                                                word
+0:8  - 0:9                                                                  literal `1`
+0:9  - 0:16                                                             suffix: cmd_suffix
+0:10 - 0:11                                                               word: word
+0:10 - 0:11                                                                 literal `+`
+0:12 - 0:14                                                               word: word
+0:12 - 0:14                                                                 parameter_expansion
+0:12 - 0:13                                                                   "$"
+0:13 - 0:14                                                                   parameter: variable_name `x`
+0:15 - 0:16                                                               word: word
+0:15 - 0:16                                                                 pattern_star_source `*`
+0:16 - 0:17                                               ")"
+0:17 - 0:18                           ")"
+0:18 - 1:0      trailing: linebreak
+0:18 - 1:0        newline_list
+0:18 - 1:0          "\n"
+
+==================
+numeric assignment target
+:cst
+==================
+echo $((1 = $x))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:16     commands: complete_commands
+0:0  - 0:16       command: complete_command
+0:0  - 0:16         body: list
+0:0  - 0:16           and_or: and_or
+0:0  - 0:16             pipeline: pipeline
+0:0  - 0:16               sequence: pipe_sequence
+0:0  - 0:16                 command: command
+0:0  - 0:16                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:16                     suffix: cmd_suffix
+0:5  - 0:16                       word: word
+0:5  - 0:16                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:15                           body: command_substitution_body
+0:7  - 0:15                             complete_commands
+0:7  - 0:15                               command: complete_command
+0:7  - 0:15                                 body: list
+0:7  - 0:15                                   and_or: and_or
+0:7  - 0:15                                     pipeline: pipeline
+0:7  - 0:15                                       sequence: pipe_sequence
+0:7  - 0:15                                         command: command
+0:7  - 0:15                                           body: compound_command
+0:7  - 0:15                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:14                                               body: compound_list
+0:8  - 0:14                                                 body: term
+0:8  - 0:14                                                   and_or: and_or
+0:8  - 0:14                                                     pipeline: pipeline
+0:8  - 0:14                                                       sequence: pipe_sequence
+0:8  - 0:14                                                         command: command
+0:8  - 0:14                                                           body: simple_command
+0:8  - 0:9                                                              name: cmd_name
+0:8  - 0:9                                                                word
+0:8  - 0:9                                                                  literal `1`
+0:9  - 0:14                                                             suffix: cmd_suffix
+0:10 - 0:11                                                               word: word
+0:10 - 0:11                                                                 literal `=`
+0:12 - 0:14                                                               word: word
+0:12 - 0:14                                                                 parameter_expansion
+0:12 - 0:13                                                                   "$"
+0:13 - 0:14                                                                   parameter: variable_name `x`
+0:14 - 0:15                                               ")"
+0:15 - 0:16                           ")"
+0:16 - 1:0      trailing: linebreak
+0:16 - 1:0        newline_list
+0:16 - 1:0          "\n"
+
+==================
+binary assignment target
+:cst
+==================
+echo $((a + $x = 2))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:20     commands: complete_commands
+0:0  - 0:20       command: complete_command
+0:0  - 0:20         body: list
+0:0  - 0:20           and_or: and_or
+0:0  - 0:20             pipeline: pipeline
+0:0  - 0:20               sequence: pipe_sequence
+0:0  - 0:20                 command: command
+0:0  - 0:20                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:20                     suffix: cmd_suffix
+0:5  - 0:20                       word: word
+0:5  - 0:20                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:19                           body: command_substitution_body
+0:7  - 0:19                             complete_commands
+0:7  - 0:19                               command: complete_command
+0:7  - 0:19                                 body: list
+0:7  - 0:19                                   and_or: and_or
+0:7  - 0:19                                     pipeline: pipeline
+0:7  - 0:19                                       sequence: pipe_sequence
+0:7  - 0:19                                         command: command
+0:7  - 0:19                                           body: compound_command
+0:7  - 0:19                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:18                                               body: compound_list
+0:8  - 0:18                                                 body: term
+0:8  - 0:18                                                   and_or: and_or
+0:8  - 0:18                                                     pipeline: pipeline
+0:8  - 0:18                                                       sequence: pipe_sequence
+0:8  - 0:18                                                         command: command
+0:8  - 0:18                                                           body: simple_command
+0:8  - 0:9                                                              name: cmd_name
+0:8  - 0:9                                                                word
+0:8  - 0:9                                                                  literal `a`
+0:9  - 0:18                                                             suffix: cmd_suffix
+0:10 - 0:11                                                               word: word
+0:10 - 0:11                                                                 literal `+`
+0:12 - 0:14                                                               word: word
+0:12 - 0:14                                                                 parameter_expansion
+0:12 - 0:13                                                                   "$"
+0:13 - 0:14                                                                   parameter: variable_name `x`
+0:15 - 0:16                                                               word: word
+0:15 - 0:16                                                                 literal `=`
+0:17 - 0:18                                                               word: word
+0:17 - 0:18                                                                 literal `2`
+0:18 - 0:19                                               ")"
+0:19 - 0:20                           ")"
+0:20 - 1:0      trailing: linebreak
+0:20 - 1:0        newline_list
+0:20 - 1:0          "\n"
+
+==================
+parenthesized fixed error
+:cst
+==================
+echo $(((1 = $x)))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:18     commands: complete_commands
+0:0  - 0:18       command: complete_command
+0:0  - 0:18         body: list
+0:0  - 0:18           and_or: and_or
+0:0  - 0:18             pipeline: pipeline
+0:0  - 0:18               sequence: pipe_sequence
+0:0  - 0:18                 command: command
+0:0  - 0:18                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:18                     suffix: cmd_suffix
+0:5  - 0:18                       word: word
+0:5  - 0:18                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:17                           body: command_substitution_body
+0:7  - 0:17                             complete_commands
+0:7  - 0:17                               command: complete_command
+0:7  - 0:17                                 body: list
+0:7  - 0:17                                   and_or: and_or
+0:7  - 0:17                                     pipeline: pipeline
+0:7  - 0:17                                       sequence: pipe_sequence
+0:7  - 0:17                                         command: command
+0:7  - 0:17                                           body: compound_command
+0:7  - 0:17                                             subshell
+0:7  - 0:8                                                "("
+0:8  - 0:16                                               body: compound_list
+0:8  - 0:16                                                 body: term
+0:8  - 0:16                                                   and_or: and_or
+0:8  - 0:16                                                     pipeline: pipeline
+0:8  - 0:16                                                       sequence: pipe_sequence
+0:8  - 0:16                                                         command: command
+0:8  - 0:16                                                           body: compound_command
+0:8  - 0:16                                                             subshell
+0:8  - 0:9                                                                "("
+0:9  - 0:15                                                               body: compound_list
+0:9  - 0:15                                                                 body: term
+0:9  - 0:15                                                                   and_or: and_or
+0:9  - 0:15                                                                     pipeline: pipeline
+0:9  - 0:15                                                                       sequence: pipe_sequence
+0:9  - 0:15                                                                         command: command
+0:9  - 0:15                                                                           body: simple_command
+0:9  - 0:10                                                                             name: cmd_name
+0:9  - 0:10                                                                               word
+0:9  - 0:10                                                                                 literal `1`
+0:10 - 0:15                                                                             suffix: cmd_suffix
+0:11 - 0:12                                                                               word: word
+0:11 - 0:12                                                                                 literal `=`
+0:13 - 0:15                                                                               word: word
+0:13 - 0:15                                                                                 parameter_expansion
+0:13 - 0:14                                                                                   "$"
+0:14 - 0:15                                                                                   parameter: variable_name `x`
+0:15 - 0:16                                                               ")"
+0:16 - 0:17                                               ")"
+0:17 - 0:18                           ")"
+0:18 - 1:0      trailing: linebreak
+0:18 - 1:0        newline_list
+0:18 - 1:0          "\n"
+
+==================
+arithmetic vertical tab variable
+:cst
+==================
+echo $((value))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:17     commands: complete_commands
+0:0  - 0:17       command: complete_command
+0:0  - 0:17         body: list
+0:0  - 0:17           and_or: and_or
+0:0  - 0:17             pipeline: pipeline
+0:0  - 0:17               sequence: pipe_sequence
+0:0  - 0:17                 command: command
+0:0  - 0:17                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:17                     suffix: cmd_suffix
+0:5  - 0:17                       word: word
+0:5  - 0:17                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:9  - 0:14                           expression: arithmetic_variable `value`
+0:15 - 0:16                           ")"
+0:16 - 0:17                           ")"
+0:17 - 1:0      trailing: linebreak
+0:17 - 1:0        newline_list
+0:17 - 1:0          "\n"
+
+==================
+arithmetic vertical tab binary
+:cst
+==================
+echo $((1+2))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:16     commands: complete_commands
+0:0  - 0:16       command: complete_command
+0:0  - 0:16         body: list
+0:0  - 0:16           and_or: and_or
+0:0  - 0:16             pipeline: pipeline
+0:0  - 0:16               sequence: pipe_sequence
+0:0  - 0:16                 command: command
+0:0  - 0:16                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:16                     suffix: cmd_suffix
+0:5  - 0:16                       word: word
+0:5  - 0:16                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:8  - 0:13                           expression: arithmetic_binary_expression
+0:8  - 0:9                              left: arithmetic_number `1`
+0:10 - 0:11                             operator: arithmetic_operator `+`
+0:12 - 0:13                             right: arithmetic_number `2`
+0:14 - 0:15                           ")"
+0:15 - 0:16                           ")"
+0:16 - 1:0      trailing: linebreak
+0:16 - 1:0        newline_list
+0:16 - 1:0          "\n"
+
+==================
+arithmetic vertical tab assignment
+:cst
+==================
+echo $(((value)=1))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:23     commands: complete_commands
+0:0  - 0:23       command: complete_command
+0:0  - 0:23         body: list
+0:0  - 0:23           and_or: and_or
+0:0  - 0:23             pipeline: pipeline
+0:0  - 0:23               sequence: pipe_sequence
+0:0  - 0:23                 command: command
+0:0  - 0:23                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:23                     suffix: cmd_suffix
+0:5  - 0:23                       word: word
+0:5  - 0:23                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:8  - 0:21                           expression: arithmetic_assignment_expression
+0:8  - 0:17                             left: parenthesized_arithmetic
+0:8  - 0:9                                "("
+0:10 - 0:15                               expression: arithmetic_variable `value`
+0:16 - 0:17                               ")"
+0:18 - 0:19                             operator: arithmetic_operator `=`
+0:20 - 0:21                             right: arithmetic_number `1`
+0:21 - 0:22                           ")"
+0:22 - 0:23                           ")"
+0:23 - 1:0      trailing: linebreak
+0:23 - 1:0        newline_list
+0:23 - 1:0          "\n"
+
+==================
+arithmetic vertical tab dynamic
+:cst
+==================
+echo $((1$value2))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:20     commands: complete_commands
+0:0  - 0:20       command: complete_command
+0:0  - 0:20         body: list
+0:0  - 0:20           and_or: and_or
+0:0  - 0:20             pipeline: pipeline
+0:0  - 0:20               sequence: pipe_sequence
+0:0  - 0:20                 command: command
+0:0  - 0:20                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:20                     suffix: cmd_suffix
+0:5  - 0:20                       word: word
+0:5  - 0:20                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:8  - 0:18                           expression: arithmetic_dynamic_expression
+0:8  - 0:9                              arithmetic_number `1`
+0:10 - 0:16                             runtime_fragment: parameter_expansion
+0:10 - 0:11                               "$"
+0:11 - 0:16                               parameter: variable_name `value`
+0:17 - 0:18                             arithmetic_number `2`
+0:18 - 0:19                           ")"
+0:19 - 0:20                           ")"
+0:20 - 1:0      trailing: linebreak
+0:20 - 1:0        newline_list
+0:20 - 1:0          "\n"
+
+==================
+arithmetic vertical tab unary plus
+:cst
+==================
+echo $((1++2))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:15     commands: complete_commands
+0:0  - 0:15       command: complete_command
+0:0  - 0:15         body: list
+0:0  - 0:15           and_or: and_or
+0:0  - 0:15             pipeline: pipeline
+0:0  - 0:15               sequence: pipe_sequence
+0:0  - 0:15                 command: command
+0:0  - 0:15                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:15                     suffix: cmd_suffix
+0:5  - 0:15                       word: word
+0:5  - 0:15                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:8  - 0:13                           expression: arithmetic_binary_expression
+0:8  - 0:9                              left: arithmetic_number `1`
+0:9  - 0:10                             operator: arithmetic_operator `+`
+0:11 - 0:13                             right: arithmetic_unary_expression
+0:11 - 0:12                               operator: arithmetic_operator `+`
+0:12 - 0:13                               operand: arithmetic_number `2`
+0:13 - 0:14                           ")"
+0:14 - 0:15                           ")"
+0:15 - 1:0      trailing: linebreak
+0:15 - 1:0        newline_list
+0:15 - 1:0          "\n"
+
+==================
+arithmetic vertical tab unary minus
+:cst
+==================
+echo $((1--2))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:15     commands: complete_commands
+0:0  - 0:15       command: complete_command
+0:0  - 0:15         body: list
+0:0  - 0:15           and_or: and_or
+0:0  - 0:15             pipeline: pipeline
+0:0  - 0:15               sequence: pipe_sequence
+0:0  - 0:15                 command: command
+0:0  - 0:15                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:15                     suffix: cmd_suffix
+0:5  - 0:15                       word: word
+0:5  - 0:15                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:8  - 0:13                           expression: arithmetic_binary_expression
+0:8  - 0:9                              left: arithmetic_number `1`
+0:9  - 0:10                             operator: arithmetic_operator `-`
+0:11 - 0:13                             right: arithmetic_unary_expression
+0:11 - 0:12                               operator: arithmetic_operator `-`
+0:12 - 0:13                               operand: arithmetic_number `2`
+0:13 - 0:14                           ")"
+0:14 - 0:15                           ")"
+0:15 - 1:0      trailing: linebreak
+0:15 - 1:0        newline_list
+0:15 - 1:0          "\n"
+
+==================
+arithmetic form feed variable
+:cst
+==================
+echo $((value))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:17     commands: complete_commands
+0:0  - 0:17       command: complete_command
+0:0  - 0:17         body: list
+0:0  - 0:17           and_or: and_or
+0:0  - 0:17             pipeline: pipeline
+0:0  - 0:17               sequence: pipe_sequence
+0:0  - 0:17                 command: command
+0:0  - 0:17                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:17                     suffix: cmd_suffix
+0:5  - 0:17                       word: word
+0:5  - 0:17                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:9  - 0:14                           expression: arithmetic_variable `value`
+0:15 - 0:16                           ")"
+0:16 - 0:17                           ")"
+0:17 - 1:0      trailing: linebreak
+0:17 - 1:0        newline_list
+0:17 - 1:0          "\n"
+
+==================
+arithmetic form feed binary
+:cst
+==================
+echo $((1+2))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:16     commands: complete_commands
+0:0  - 0:16       command: complete_command
+0:0  - 0:16         body: list
+0:0  - 0:16           and_or: and_or
+0:0  - 0:16             pipeline: pipeline
+0:0  - 0:16               sequence: pipe_sequence
+0:0  - 0:16                 command: command
+0:0  - 0:16                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:16                     suffix: cmd_suffix
+0:5  - 0:16                       word: word
+0:5  - 0:16                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:8  - 0:13                           expression: arithmetic_binary_expression
+0:8  - 0:9                              left: arithmetic_number `1`
+0:10 - 0:11                             operator: arithmetic_operator `+`
+0:12 - 0:13                             right: arithmetic_number `2`
+0:14 - 0:15                           ")"
+0:15 - 0:16                           ")"
+0:16 - 1:0      trailing: linebreak
+0:16 - 1:0        newline_list
+0:16 - 1:0          "\n"
+
+==================
+arithmetic form feed assignment
+:cst
+==================
+echo $(((value)=1))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:23     commands: complete_commands
+0:0  - 0:23       command: complete_command
+0:0  - 0:23         body: list
+0:0  - 0:23           and_or: and_or
+0:0  - 0:23             pipeline: pipeline
+0:0  - 0:23               sequence: pipe_sequence
+0:0  - 0:23                 command: command
+0:0  - 0:23                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:23                     suffix: cmd_suffix
+0:5  - 0:23                       word: word
+0:5  - 0:23                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:8  - 0:21                           expression: arithmetic_assignment_expression
+0:8  - 0:17                             left: parenthesized_arithmetic
+0:8  - 0:9                                "("
+0:10 - 0:15                               expression: arithmetic_variable `value`
+0:16 - 0:17                               ")"
+0:18 - 0:19                             operator: arithmetic_operator `=`
+0:20 - 0:21                             right: arithmetic_number `1`
+0:21 - 0:22                           ")"
+0:22 - 0:23                           ")"
+0:23 - 1:0      trailing: linebreak
+0:23 - 1:0        newline_list
+0:23 - 1:0          "\n"
+
+==================
+arithmetic form feed dynamic
+:cst
+==================
+echo $((1$value2))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:20     commands: complete_commands
+0:0  - 0:20       command: complete_command
+0:0  - 0:20         body: list
+0:0  - 0:20           and_or: and_or
+0:0  - 0:20             pipeline: pipeline
+0:0  - 0:20               sequence: pipe_sequence
+0:0  - 0:20                 command: command
+0:0  - 0:20                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:20                     suffix: cmd_suffix
+0:5  - 0:20                       word: word
+0:5  - 0:20                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:8  - 0:18                           expression: arithmetic_dynamic_expression
+0:8  - 0:9                              arithmetic_number `1`
+0:10 - 0:16                             runtime_fragment: parameter_expansion
+0:10 - 0:11                               "$"
+0:11 - 0:16                               parameter: variable_name `value`
+0:17 - 0:18                             arithmetic_number `2`
+0:18 - 0:19                           ")"
+0:19 - 0:20                           ")"
+0:20 - 1:0      trailing: linebreak
+0:20 - 1:0        newline_list
+0:20 - 1:0          "\n"
+
+==================
+arithmetic form feed unary plus
+:cst
+==================
+echo $((1++2))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:15     commands: complete_commands
+0:0  - 0:15       command: complete_command
+0:0  - 0:15         body: list
+0:0  - 0:15           and_or: and_or
+0:0  - 0:15             pipeline: pipeline
+0:0  - 0:15               sequence: pipe_sequence
+0:0  - 0:15                 command: command
+0:0  - 0:15                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:15                     suffix: cmd_suffix
+0:5  - 0:15                       word: word
+0:5  - 0:15                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:8  - 0:13                           expression: arithmetic_binary_expression
+0:8  - 0:9                              left: arithmetic_number `1`
+0:9  - 0:10                             operator: arithmetic_operator `+`
+0:11 - 0:13                             right: arithmetic_unary_expression
+0:11 - 0:12                               operator: arithmetic_operator `+`
+0:12 - 0:13                               operand: arithmetic_number `2`
+0:13 - 0:14                           ")"
+0:14 - 0:15                           ")"
+0:15 - 1:0      trailing: linebreak
+0:15 - 1:0        newline_list
+0:15 - 1:0          "\n"
+
+==================
+arithmetic form feed unary minus
+:cst
+==================
+echo $((1--2))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:15     commands: complete_commands
+0:0  - 0:15       command: complete_command
+0:0  - 0:15         body: list
+0:0  - 0:15           and_or: and_or
+0:0  - 0:15             pipeline: pipeline
+0:0  - 0:15               sequence: pipe_sequence
+0:0  - 0:15                 command: command
+0:0  - 0:15                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:15                     suffix: cmd_suffix
+0:5  - 0:15                       word: word
+0:5  - 0:15                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:8  - 0:13                           expression: arithmetic_binary_expression
+0:8  - 0:9                              left: arithmetic_number `1`
+0:9  - 0:10                             operator: arithmetic_operator `-`
+0:11 - 0:13                             right: arithmetic_unary_expression
+0:11 - 0:12                               operator: arithmetic_operator `-`
+0:12 - 0:13                               operand: arithmetic_number `2`
+0:13 - 0:14                           ")"
+0:14 - 0:15                           ")"
+0:15 - 1:0      trailing: linebreak
+0:15 - 1:0        newline_list
+0:15 - 1:0          "\n"
+
+==================
+arithmetic structured newline
+:cst
+==================
+: "$((1 +
+2))" "$((1
+))"
+
+------------------
+
+0:0  - 3:0    program
+0:0  - 2:3      commands: complete_commands
+0:0  - 2:3        command: complete_command
+0:0  - 2:3          body: list
+0:0  - 2:3            and_or: and_or
+0:0  - 2:3              pipeline: pipeline
+0:0  - 2:3                sequence: pipe_sequence
+0:0  - 2:3                  command: command
+0:0  - 2:3                    body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 2:3                      suffix: cmd_suffix
+0:2  - 1:4                        word: word
+0:2  - 1:4                          double_quoted
+0:2  - 0:3                            "\""
+0:3  - 1:3                            arithmetic_expansion
+0:3  - 0:4                              "$"
+0:4  - 0:5                              "("
+0:5  - 0:6                              "("
+0:6  - 1:1                              expression: arithmetic_binary_expression
+0:6  - 0:7                                left: arithmetic_number `1`
+0:8  - 0:9                                operator: arithmetic_operator `+`
+1:0  - 1:1                                right: arithmetic_number `2`
+1:1  - 1:2                              ")"
+1:2  - 1:3                              ")"
+1:3  - 1:4                            "\""
+1:5  - 2:3                        word: word
+1:5  - 2:3                          double_quoted
+1:5  - 1:6                            "\""
+1:6  - 2:2                            arithmetic_expansion
+1:6  - 1:7                              "$"
+1:7  - 1:8                              "("
+1:8  - 1:9                              "("
+1:9  - 1:10                             expression: arithmetic_number `1`
+2:0  - 2:1                              ")"
+2:1  - 2:2                              ")"
+2:2  - 2:3                            "\""
+2:3  - 3:0      trailing: linebreak
+2:3  - 3:0        newline_list
+2:3  - 3:0          "\n"
+
+==================
+embedded case inside arithmetic
+:cst
+==================
+echo $(( $(case x in a) echo 1;; esac) + 1 ))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:45     commands: complete_commands
+0:0  - 0:45       command: complete_command
+0:0  - 0:45         body: list
+0:0  - 0:45           and_or: and_or
+0:0  - 0:45             pipeline: pipeline
+0:0  - 0:45               sequence: pipe_sequence
+0:0  - 0:45                 command: command
+0:0  - 0:45                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:45                     suffix: cmd_suffix
+0:5  - 0:45                       word: word
+0:5  - 0:45                         arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:9  - 0:42                           expression: arithmetic_binary_expression
+0:9  - 0:38                             left: command_substitution
+0:9  - 0:10                               "$"
+0:10 - 0:11                               "("
+0:11 - 0:37                               body: command_substitution_body
+0:11 - 0:37                                 complete_commands
+0:11 - 0:37                                   command: complete_command
+0:11 - 0:37                                     body: list
+0:11 - 0:37                                       and_or: and_or
+0:11 - 0:37                                         pipeline: pipeline
+0:11 - 0:37                                           sequence: pipe_sequence
+0:11 - 0:37                                             command: command
+0:11 - 0:37                                               body: compound_command
+0:11 - 0:37                                                 case_clause
+0:11 - 0:15                                                   case_keyword `case`
+0:16 - 0:17                                                   word: word
+0:16 - 0:17                                                     literal `x`
+0:18 - 0:20                                                   in: in
+0:18 - 0:20                                                     in_keyword `in`
+0:21 - 0:33                                                   items: case_list
+0:21 - 0:33                                                     item: case_item
+0:21 - 0:22                                                       patterns: pattern_list
+0:21 - 0:22                                                         word: word
+0:21 - 0:22                                                           literal `a`
+0:22 - 0:23                                                       ")"
+0:23 - 0:30                                                       body: compound_list
+0:24 - 0:30                                                         body: term
+0:24 - 0:30                                                           and_or: and_or
+0:24 - 0:30                                                             pipeline: pipeline
+0:24 - 0:30                                                               sequence: pipe_sequence
+0:24 - 0:30                                                                 command: command
+0:24 - 0:30                                                                   body: simple_command
+0:24 - 0:28                                                                     name: cmd_name
+0:24 - 0:28                                                                       word
+0:24 - 0:28                                                                         literal `echo`
+0:28 - 0:30                                                                     suffix: cmd_suffix
+0:29 - 0:30                                                                       word: word
+0:29 - 0:30                                                                         literal `1`
+0:30 - 0:32                                                       terminator: dsemi `;;`
+0:33 - 0:37                                                   esac_keyword `esac`
+0:37 - 0:38                               ")"
+0:39 - 0:40                             operator: arithmetic_operator `+`
+0:41 - 0:42                             right: arithmetic_number `1`
+0:43 - 0:44                           ")"
+0:44 - 0:45                           ")"
+0:45 - 1:0      trailing: linebreak
+0:45 - 1:0        newline_list
+0:45 - 1:0          "\n"
+
+==================
+embedded document inside arithmetic
+:cst
+==================
+echo $(( $(cat <<E
+ x ) y
+E
+) + 1 ))
+
+------------------
+
+0:0  - 4:0    program
+0:0  - 3:8      commands: complete_commands
+0:0  - 3:8        command: complete_command
+0:0  - 3:8          body: list
+0:0  - 3:8            and_or: and_or
+0:0  - 3:8              pipeline: pipeline
+0:0  - 3:8                sequence: pipe_sequence
+0:0  - 3:8                  command: command
+0:0  - 3:8                    body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 3:8                      suffix: cmd_suffix
+0:5  - 3:8                        word: word
+0:5  - 3:8                          arithmetic_expansion
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:8                            "("
+0:9  - 3:5                            expression: arithmetic_binary_expression
+0:9  - 3:1                              left: command_substitution
+0:9  - 0:10                               "$"
+0:10 - 0:11                               "("
+0:11 - 3:0                                body: command_substitution_body
+0:11 - 0:18                                 complete_commands
+0:11 - 0:18                                   command: complete_command
+0:11 - 0:18                                     body: list
+0:11 - 0:18                                       and_or: and_or
+0:11 - 0:18                                         pipeline: pipeline
+0:11 - 0:18                                           sequence: pipe_sequence
+0:11 - 0:18                                             command: command
+0:11 - 0:18                                               body: simple_command
+0:11 - 0:14                                                 name: cmd_name
+0:11 - 0:14                                                   word
+0:11 - 0:14                                                     literal `cat`
+0:14 - 0:18                                                 suffix: cmd_suffix
+0:15 - 0:18                                                   redirect: io_redirect
+0:15 - 0:18                                                     body: io_here
+0:15 - 0:17                                                       operator: dless `<<`
+0:17 - 0:18                                                       end: here_end
+0:17 - 0:18                                                         word: word
+0:17 - 0:18                                                           literal `E`
+0:18 - 3:0                                  linebreak
+0:18 - 3:0                                    newline_list
+0:18 - 3:0                                      here_document_sequence
+0:18 - 1:0                                        line_end: here_document_line_end
+0:18 - 0:19                                         `\n`
+1:0  - 3:0                                        document: here_document
+1:0  - 2:0                                          body: here_document_body
+1:0  - 1:6                                            here_document_text ` x ) y`
+2:0  - 3:0                                          end: here_document_end
+2:0  - 2:1                                            here_document_end_text `E`
+3:0  - 3:1                                ")"
+3:2  - 3:3                              operator: arithmetic_operator `+`
+3:4  - 3:5                              right: arithmetic_number `1`
+3:6  - 3:7                            ")"
+3:7  - 3:8                            ")"
+3:8  - 4:0      trailing: linebreak
+3:8  - 4:0        newline_list
+3:8  - 4:0          "\n"
+
+==================
+arithmetic nested case
+:cst
+==================
+: "$(( $(printf %s $(case x in x) printf 1;; esac)) ))"
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:55     commands: complete_commands
+0:0  - 0:55       command: complete_command
+0:0  - 0:55         body: list
+0:0  - 0:55           and_or: and_or
+0:0  - 0:55             pipeline: pipeline
+0:0  - 0:55               sequence: pipe_sequence
+0:0  - 0:55                 command: command
+0:0  - 0:55                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:55                     suffix: cmd_suffix
+0:2  - 0:55                       word: word
+0:2  - 0:55                         double_quoted
+0:2  - 0:3                            "\""
+0:3  - 0:54                           arithmetic_expansion
+0:3  - 0:4                              "$"
+0:4  - 0:5                              "("
+0:5  - 0:6                              "("
+0:7  - 0:51                             expression: command_substitution
+0:7  - 0:8                                "$"
+0:8  - 0:9                                "("
+0:9  - 0:50                               body: command_substitution_body
+0:9  - 0:50                                 complete_commands
+0:9  - 0:50                                   command: complete_command
+0:9  - 0:50                                     body: list
+0:9  - 0:50                                       and_or: and_or
+0:9  - 0:50                                         pipeline: pipeline
+0:9  - 0:50                                           sequence: pipe_sequence
+0:9  - 0:50                                             command: command
+0:9  - 0:50                                               body: simple_command
+0:9  - 0:15                                                 name: cmd_name
+0:9  - 0:15                                                   word
+0:9  - 0:15                                                     literal `printf`
+0:15 - 0:50                                                 suffix: cmd_suffix
+0:16 - 0:18                                                   word: word
+0:16 - 0:18                                                     literal `%s`
+0:19 - 0:50                                                   word: word
+0:19 - 0:50                                                     command_substitution
+0:19 - 0:20                                                       "$"
+0:20 - 0:21                                                       "("
+0:21 - 0:49                                                       body: command_substitution_body
+0:21 - 0:49                                                         complete_commands
+0:21 - 0:49                                                           command: complete_command
+0:21 - 0:49                                                             body: list
+0:21 - 0:49                                                               and_or: and_or
+0:21 - 0:49                                                                 pipeline: pipeline
+0:21 - 0:49                                                                   sequence: pipe_sequence
+0:21 - 0:49                                                                     command: command
+0:21 - 0:49                                                                       body: compound_command
+0:21 - 0:49                                                                         case_clause
+0:21 - 0:25                                                                           case_keyword `case`
+0:26 - 0:27                                                                           word: word
+0:26 - 0:27                                                                             literal `x`
+0:28 - 0:30                                                                           in: in
+0:28 - 0:30                                                                             in_keyword `in`
+0:31 - 0:45                                                                           items: case_list
+0:31 - 0:45                                                                             item: case_item
+0:31 - 0:32                                                                               patterns: pattern_list
+0:31 - 0:32                                                                                 word: word
+0:31 - 0:32                                                                                   literal `x`
+0:32 - 0:33                                                                               ")"
+0:33 - 0:42                                                                               body: compound_list
+0:34 - 0:42                                                                                 body: term
+0:34 - 0:42                                                                                   and_or: and_or
+0:34 - 0:42                                                                                     pipeline: pipeline
+0:34 - 0:42                                                                                       sequence: pipe_sequence
+0:34 - 0:42                                                                                         command: command
+0:34 - 0:42                                                                                           body: simple_command
+0:34 - 0:40                                                                                             name: cmd_name
+0:34 - 0:40                                                                                               word
+0:34 - 0:40                                                                                                 literal `printf`
+0:40 - 0:42                                                                                             suffix: cmd_suffix
+0:41 - 0:42                                                                                               word: word
+0:41 - 0:42                                                                                                 literal `1`
+0:42 - 0:44                                                                               terminator: dsemi `;;`
+0:45 - 0:49                                                                           esac_keyword `esac`
+0:49 - 0:50                                                       ")"
+0:50 - 0:51                               ")"
+0:52 - 0:53                             ")"
+0:53 - 0:54                             ")"
+0:54 - 0:55                           "\""
+0:55 - 1:0      trailing: linebreak
+0:55 - 1:0        newline_list
+0:55 - 1:0          "\n"
+
+==================
+arithmetic quoted parameter apostrophe
+:cst
+==================
+echo "$(( ${x:-'} $op 1 ))"
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:27     commands: complete_commands
+0:0  - 0:27       command: complete_command
+0:0  - 0:27         body: list
+0:0  - 0:27           and_or: and_or
+0:0  - 0:27             pipeline: pipeline
+0:0  - 0:27               sequence: pipe_sequence
+0:0  - 0:27                 command: command
+0:0  - 0:27                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:27                     suffix: cmd_suffix
+0:5  - 0:27                       word: word
+0:5  - 0:27                         double_quoted
+0:5  - 0:6                            "\""
+0:6  - 0:26                           arithmetic_expansion
+0:6  - 0:7                              "$"
+0:7  - 0:8                              "("
+0:8  - 0:9                              "("
+0:10 - 0:23                             expression: arithmetic_dynamic_expression
+0:10 - 0:17                               runtime_fragment: parameter_expansion
+0:10 - 0:11                                 "$"
+0:11 - 0:12                                 "{"
+0:12 - 0:13                                 parameter: variable_name `x`
+0:13 - 0:15                                 operator: parameter_value_operator `:-`
+0:15 - 0:16                                 word: parameter_word
+0:15 - 0:16                                   double_quote_text `'`
+0:16 - 0:17                                 "}"
+0:18 - 0:21                               parameter_expansion
+0:18 - 0:19                                 "$"
+0:19 - 0:21                                 parameter: variable_name `op`
+0:22 - 0:23                               arithmetic_number `1`
+0:24 - 0:25                             ")"
+0:25 - 0:26                             ")"
+0:26 - 0:27                           "\""
+0:27 - 1:0      trailing: linebreak
+0:27 - 1:0        newline_list
+0:27 - 1:0          "\n"
+
+==================
+arithmetic nested quoted parameter
+:cst
+==================
+: $(( ${x-${y-'}} $op 1 ))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:26     commands: complete_commands
+0:0  - 0:26       command: complete_command
+0:0  - 0:26         body: list
+0:0  - 0:26           and_or: and_or
+0:0  - 0:26             pipeline: pipeline
+0:0  - 0:26               sequence: pipe_sequence
+0:0  - 0:26                 command: command
+0:0  - 0:26                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:26                     suffix: cmd_suffix
+0:2  - 0:26                       word: word
+0:2  - 0:26                         arithmetic_expansion
+0:2  - 0:3                            "$"
+0:3  - 0:4                            "("
+0:4  - 0:5                            "("
+0:6  - 0:23                           expression: arithmetic_dynamic_expression
+0:6  - 0:17                             runtime_fragment: parameter_expansion
+0:6  - 0:7                                "$"
+0:7  - 0:8                                "{"
+0:8  - 0:9                                parameter: variable_name `x`
+0:9  - 0:10                               operator: parameter_value_operator `-`
+0:10 - 0:16                               word: parameter_word
+0:10 - 0:16                                 parameter_expansion
+0:10 - 0:11                                   "$"
+0:11 - 0:12                                   "{"
+0:12 - 0:13                                   parameter: variable_name `y`
+0:13 - 0:14                                   operator: parameter_value_operator `-`
+0:14 - 0:15                                   word: parameter_word
+0:14 - 0:15                                     double_quote_text `'`
+0:15 - 0:16                                   "}"
+0:16 - 0:17                               "}"
+0:18 - 0:21                             parameter_expansion
+0:18 - 0:19                               "$"
+0:19 - 0:21                               parameter: variable_name `op`
+0:22 - 0:23                             arithmetic_number `1`
+0:24 - 0:25                           ")"
+0:25 - 0:26                           ")"
+0:26 - 1:0      trailing: linebreak
+0:26 - 1:0        newline_list
+0:26 - 1:0          "\n"
+
+==================
+arithmetic positional parameter pattern
+:cst
+==================
+: $(( ${10#'}'} $op 1 ))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:24     commands: complete_commands
+0:0  - 0:24       command: complete_command
+0:0  - 0:24         body: list
+0:0  - 0:24           and_or: and_or
+0:0  - 0:24             pipeline: pipeline
+0:0  - 0:24               sequence: pipe_sequence
+0:0  - 0:24                 command: command
+0:0  - 0:24                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:24                     suffix: cmd_suffix
+0:2  - 0:24                       word: word
+0:2  - 0:24                         arithmetic_expansion
+0:2  - 0:3                            "$"
+0:3  - 0:4                            "("
+0:4  - 0:5                            "("
+0:6  - 0:21                           expression: arithmetic_dynamic_expression
+0:6  - 0:15                             runtime_fragment: parameter_expansion
+0:6  - 0:7                                "$"
+0:7  - 0:8                                "{"
+0:8  - 0:10                               parameter: positional_parameter `10`
+0:10 - 0:11                               operator: parameter_pattern_operator `#`
+0:11 - 0:14                               pattern: parameter_pattern
+0:11 - 0:14                                 single_quoted
+0:11 - 0:12                                   "'"
+0:12 - 0:13                                   single_quote_content `}`
+0:13 - 0:14                                   "'"
+0:14 - 0:15                               "}"
+0:16 - 0:19                             parameter_expansion
+0:16 - 0:17                               "$"
+0:17 - 0:19                               parameter: variable_name `op`
+0:20 - 0:21                             arithmetic_number `1`
+0:22 - 0:23                           ")"
+0:23 - 0:24                           ")"
+0:24 - 1:0      trailing: linebreak
+0:24 - 1:0        newline_list
+0:24 - 1:0          "\n"
+
+==================
+arithmetic named parameter pattern
+:cst
+==================
+: $(( ${name%%'}'} $op 1 ))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:27     commands: complete_commands
+0:0  - 0:27       command: complete_command
+0:0  - 0:27         body: list
+0:0  - 0:27           and_or: and_or
+0:0  - 0:27             pipeline: pipeline
+0:0  - 0:27               sequence: pipe_sequence
+0:0  - 0:27                 command: command
+0:0  - 0:27                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:27                     suffix: cmd_suffix
+0:2  - 0:27                       word: word
+0:2  - 0:27                         arithmetic_expansion
+0:2  - 0:3                            "$"
+0:3  - 0:4                            "("
+0:4  - 0:5                            "("
+0:6  - 0:24                           expression: arithmetic_dynamic_expression
+0:6  - 0:18                             runtime_fragment: parameter_expansion
+0:6  - 0:7                                "$"
+0:7  - 0:8                                "{"
+0:8  - 0:12                               parameter: variable_name `name`
+0:12 - 0:14                               operator: parameter_pattern_operator `%%`
+0:14 - 0:17                               pattern: parameter_pattern
+0:14 - 0:17                                 single_quoted
+0:14 - 0:15                                   "'"
+0:15 - 0:16                                   single_quote_content `}`
+0:16 - 0:17                                   "'"
+0:17 - 0:18                               "}"
+0:19 - 0:22                             parameter_expansion
+0:19 - 0:20                               "$"
+0:20 - 0:22                               parameter: variable_name `op`
+0:23 - 0:24                             arithmetic_number `1`
+0:25 - 0:26                           ")"
+0:26 - 0:27                           ")"
+0:27 - 1:0      trailing: linebreak
+0:27 - 1:0        newline_list
+0:27 - 1:0          "\n"
+
+==================
+arithmetic command quoted parameter
+:cst
+==================
+: $(( $(printf %s "${x-'}") $op 1 ))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:36     commands: complete_commands
+0:0  - 0:36       command: complete_command
+0:0  - 0:36         body: list
+0:0  - 0:36           and_or: and_or
+0:0  - 0:36             pipeline: pipeline
+0:0  - 0:36               sequence: pipe_sequence
+0:0  - 0:36                 command: command
+0:0  - 0:36                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:36                     suffix: cmd_suffix
+0:2  - 0:36                       word: word
+0:2  - 0:36                         arithmetic_expansion
+0:2  - 0:3                            "$"
+0:3  - 0:4                            "("
+0:4  - 0:5                            "("
+0:6  - 0:33                           expression: arithmetic_dynamic_expression
+0:6  - 0:27                             runtime_fragment: command_substitution
+0:6  - 0:7                                "$"
+0:7  - 0:8                                "("
+0:8  - 0:26                               body: command_substitution_body
+0:8  - 0:26                                 complete_commands
+0:8  - 0:26                                   command: complete_command
+0:8  - 0:26                                     body: list
+0:8  - 0:26                                       and_or: and_or
+0:8  - 0:26                                         pipeline: pipeline
+0:8  - 0:26                                           sequence: pipe_sequence
+0:8  - 0:26                                             command: command
+0:8  - 0:26                                               body: simple_command
+0:8  - 0:14                                                 name: cmd_name
+0:8  - 0:14                                                   word
+0:8  - 0:14                                                     literal `printf`
+0:14 - 0:26                                                 suffix: cmd_suffix
+0:15 - 0:17                                                   word: word
+0:15 - 0:17                                                     literal `%s`
+0:18 - 0:26                                                   word: word
+0:18 - 0:26                                                     double_quoted
+0:18 - 0:19                                                       "\""
+0:19 - 0:25                                                       parameter_expansion
+0:19 - 0:20                                                         "$"
+0:20 - 0:21                                                         "{"
+0:21 - 0:22                                                         parameter: variable_name `x`
+0:22 - 0:23                                                         operator: parameter_value_operator `-`
+0:23 - 0:24                                                         word: parameter_word
+0:23 - 0:24                                                           double_quote_text `'`
+0:24 - 0:25                                                         "}"
+0:25 - 0:26                                                       "\""
+0:26 - 0:27                               ")"
+0:28 - 0:31                             parameter_expansion
+0:28 - 0:29                               "$"
+0:29 - 0:31                               parameter: variable_name `op`
+0:32 - 0:33                             arithmetic_number `1`
+0:34 - 0:35                           ")"
+0:35 - 0:36                           ")"
+0:36 - 1:0      trailing: linebreak
+0:36 - 1:0        newline_list
+0:36 - 1:0          "\n"
+
+==================
+arithmetic command single quoted parenthesis
+:cst
+==================
+: $(( $(printf %s ')') $op 1 ))
+
+------------------
+
+0:0  - 1:0    program
+0:0  - 0:31     commands: complete_commands
+0:0  - 0:31       command: complete_command
+0:0  - 0:31         body: list
+0:0  - 0:31           and_or: and_or
+0:0  - 0:31             pipeline: pipeline
+0:0  - 0:31               sequence: pipe_sequence
+0:0  - 0:31                 command: command
+0:0  - 0:31                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:31                     suffix: cmd_suffix
+0:2  - 0:31                       word: word
+0:2  - 0:31                         arithmetic_expansion
+0:2  - 0:3                            "$"
+0:3  - 0:4                            "("
+0:4  - 0:5                            "("
+0:6  - 0:28                           expression: arithmetic_dynamic_expression
+0:6  - 0:22                             runtime_fragment: command_substitution
+0:6  - 0:7                                "$"
+0:7  - 0:8                                "("
+0:8  - 0:21                               body: command_substitution_body
+0:8  - 0:21                                 complete_commands
+0:8  - 0:21                                   command: complete_command
+0:8  - 0:21                                     body: list
+0:8  - 0:21                                       and_or: and_or
+0:8  - 0:21                                         pipeline: pipeline
+0:8  - 0:21                                           sequence: pipe_sequence
+0:8  - 0:21                                             command: command
+0:8  - 0:21                                               body: simple_command
+0:8  - 0:14                                                 name: cmd_name
+0:8  - 0:14                                                   word
+0:8  - 0:14                                                     literal `printf`
+0:14 - 0:21                                                 suffix: cmd_suffix
+0:15 - 0:17                                                   word: word
+0:15 - 0:17                                                     literal `%s`
+0:18 - 0:21                                                   word: word
+0:18 - 0:21                                                     single_quoted
+0:18 - 0:19                                                       "'"
+0:19 - 0:20                                                       single_quote_content `)`
+0:20 - 0:21                                                       "'"
+0:21 - 0:22                               ")"
+0:23 - 0:26                             parameter_expansion
+0:23 - 0:24                               "$"
+0:24 - 0:26                               parameter: variable_name `op`
+0:27 - 0:28                             arithmetic_number `1`
+0:29 - 0:30                           ")"
+0:30 - 0:31                           ")"
+0:31 - 1:0      trailing: linebreak
+0:31 - 1:0        newline_list
+0:31 - 1:0          "\n"
+
+==================
+unterminated arithmetic expansion
+:error
+==================
+echo $((1 +
+after
+
+------------------

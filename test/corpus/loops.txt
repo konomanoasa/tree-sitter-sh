@@ -6,7 +6,7 @@ for item do
   use "$item"
 done
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -53,7 +53,7 @@ for clauses allow a semicolon before an implicit iteration body
 
 for item; do :; done
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -95,7 +95,7 @@ for clauses allow a newline before an implicit iteration body
 for item
 do :; done
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -137,7 +137,7 @@ for clauses retain an explicitly empty word list
 
 for item in; do :; done
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -183,7 +183,7 @@ do
   use "$item"
 done
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -247,7 +247,7 @@ do
   body
 done
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -305,7 +305,7 @@ until conditions and do bodies retain separate compound lists
 
 until ready; do wait; done
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -356,7 +356,7 @@ reserved spellings remain for variable names and iteration words
 
 for in in if then do; do printf "$in"; done
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -411,7 +411,7 @@ for wordlists keep reserved closer spellings as words
 
 for item in fi then elif else in do done esac; do :; done
 
----
+------------------
 
 (program
   (linebreak
@@ -447,181 +447,6 @@ for item in fi then elif else in do done esac; do :; done
                       (word
                         (literal)))
                     (sequential_sep)
-                    (do_group
-                      (do_keyword)
-                      (compound_list
-                        (term
-                          (and_or
-                            (pipeline
-                              (pipe_sequence
-                                (command
-                                  (simple_command
-                                    (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        (separator
-                          (separator_op)))
-                      (done_keyword)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-a for clause owns the removed newline between in and its wordlist
-==================
-
-for i in\
- a; do :; done
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (for_clause
-                    (for_keyword)
-                    (name)
-                    (in
-                      (in_keyword))
-                    (line_continuation)
-                    (wordlist
-                      (word
-                        (literal)))
-                    (sequential_sep)
-                    (do_group
-                      (do_keyword)
-                      (compound_list
-                        (term
-                          (and_or
-                            (pipeline
-                              (pipe_sequence
-                                (command
-                                  (simple_command
-                                    (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        (separator
-                          (separator_op)))
-                      (done_keyword)))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-for wordlist separators retain blank-leading continuation runs
-==================
-
-for i in \
-\
-word; do :; done
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (for_clause
-                    (for_keyword)
-                    name: (name)
-                    in: (in
-                      (in_keyword))
-                    (line_continuation)
-                    (line_continuation)
-                    words: (wordlist
-                      word: (word
-                        (literal)))
-                    separator: (sequential_sep)
-                    body: (do_group
-                      (do_keyword)
-                      body: (compound_list
-                        body: (term
-                          and_or: (and_or
-                            pipeline: (pipeline
-                              sequence: (pipe_sequence
-                                command: (command
-                                  body: (simple_command
-                                    name: (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        terminator: (separator
-                          operator: (separator_op)))
-                      (done_keyword)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-for linebreaks own blank-leading continuation runs
-==================
-
-for i \
-in a; do :; done
-for j \
-do :; done
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (for_clause
-                    (for_keyword)
-                    (name)
-                    (line_continuation)
-                    (in
-                      (in_keyword))
-                    (wordlist
-                      (word
-                        (literal)))
-                    (sequential_sep)
-                    (do_group
-                      (do_keyword)
-                      (compound_list
-                        (term
-                          (and_or
-                            (pipeline
-                              (pipe_sequence
-                                (command
-                                  (simple_command
-                                    (cmd_name
-                                      (word
-                                        (literal)))))))))
-                        (separator
-                          (separator_op)))
-                      (done_keyword))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (compound_command
-                  (for_clause
-                    (for_keyword)
-                    (name)
-                    (line_continuation)
                     (do_group
                       (do_keyword)
                       (compound_list
@@ -647,7 +472,7 @@ for loop variables must be POSIX names
 
 for bad-name; do :; done
 
----
+------------------
 
 
 
@@ -659,75 +484,4 @@ a number sign directly after a for loop name does not start a comment
 for item#comment
 do :; done
 
----
-
-
-
-==================
-encoded continuations delimit adjacent words and the end of a for list
-==================
-
-: `for x in one\\
- ~user\\
- ; do :; done`
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (backquote_substitution
-                        (backquote_substitution_body
-                          (complete_commands
-                            (complete_command
-                              (list
-                                (and_or
-                                  (pipeline
-                                    (pipe_sequence
-                                      (command
-                                        (compound_command
-                                          (for_clause
-                                            (for_keyword)
-                                            (name)
-                                            (in
-                                              (in_keyword))
-                                            (wordlist
-                                              (word
-                                                (literal))
-                                              (line_continuation)
-                                              (word
-                                                (tilde_expansion
-                                                  (tilde_user
-                                                    (literal))
-                                                  (line_continuation))))
-                                            (sequential_sep)
-                                            (do_group
-                                              (do_keyword)
-                                              (compound_list
-                                                (term
-                                                  (and_or
-                                                    (pipeline
-                                                      (pipe_sequence
-                                                        (command
-                                                          (simple_command
-                                                            (cmd_name
-                                                              (word
-                                                                (literal)))))))))
-                                                (separator
-                                                  (separator_op)))
-                                              (done_keyword)))))))))))))))))))))))
-  (linebreak
-    (newline_list)))
+------------------

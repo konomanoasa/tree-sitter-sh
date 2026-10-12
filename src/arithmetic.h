@@ -112,14 +112,10 @@ struct DynamicArithmeticGraph {
 };
 
 static bool arithmetic_whitespace(int32_t character) {
-  return character ==
-    ' ' ||
-    character ==
-    '\t' ||
-    character ==
-    '\n' ||
-    character ==
-    '\v' ||
+  return character == ' ' ||
+    character == '\t' ||
+    character == '\n' ||
+    character == '\v' ||
     character == '\f';
 }
 
@@ -147,172 +143,172 @@ static int dynamic_arithmetic_lex(uint8_t state, int32_t character) {
   bool name = is_name_start_character(character);
   bool digit = is_decimal_digit(character);
   switch (state) {
-  case DYNAMIC_LEX_START:
-    if (arithmetic_whitespace(character)) {
-      return DYNAMIC_LEX_START;
-    }
-    if (name) {
-      return DYNAMIC_LEX_NAME;
-    }
-    if (digit) {
-      return character == '0' ? DYNAMIC_LEX_ZERO : DYNAMIC_LEX_DECIMAL;
-    }
-    switch (character) {
-    case '+':
-      return DYNAMIC_LEX_PLUS;
-    case '-':
-      return DYNAMIC_LEX_MINUS;
-    case '!':
-      return DYNAMIC_LEX_BANG;
-    case '~':
-      return DYNAMIC_LEX_TILDE;
-    case '*':
-      return DYNAMIC_LEX_STAR;
-    case '/':
-      return DYNAMIC_LEX_SLASH;
-    case '%':
-      return DYNAMIC_LEX_PERCENT;
-    case '=':
-      return DYNAMIC_LEX_EQUALS;
-    case '<':
-      return DYNAMIC_LEX_LESS;
-    case '>':
-      return DYNAMIC_LEX_GREATER;
-    case '&':
-      return DYNAMIC_LEX_AMPERSAND;
-    case '|':
-      return DYNAMIC_LEX_PIPE;
-    case '^':
-      return DYNAMIC_LEX_CARET;
-    case '(':
-      return DYNAMIC_LEX_LEFT;
-    case ')':
-      return DYNAMIC_LEX_RIGHT;
-    case '?':
-      return DYNAMIC_LEX_QUESTION;
-    case ':':
-      return DYNAMIC_LEX_COLON;
+    case DYNAMIC_LEX_START:
+      if (arithmetic_whitespace(character)) {
+        return DYNAMIC_LEX_START;
+      }
+      if (name) {
+        return DYNAMIC_LEX_NAME;
+      }
+      if (digit) {
+        return character == '0' ? DYNAMIC_LEX_ZERO : DYNAMIC_LEX_DECIMAL;
+      }
+      switch (character) {
+        case '+':
+          return DYNAMIC_LEX_PLUS;
+        case '-':
+          return DYNAMIC_LEX_MINUS;
+        case '!':
+          return DYNAMIC_LEX_BANG;
+        case '~':
+          return DYNAMIC_LEX_TILDE;
+        case '*':
+          return DYNAMIC_LEX_STAR;
+        case '/':
+          return DYNAMIC_LEX_SLASH;
+        case '%':
+          return DYNAMIC_LEX_PERCENT;
+        case '=':
+          return DYNAMIC_LEX_EQUALS;
+        case '<':
+          return DYNAMIC_LEX_LESS;
+        case '>':
+          return DYNAMIC_LEX_GREATER;
+        case '&':
+          return DYNAMIC_LEX_AMPERSAND;
+        case '|':
+          return DYNAMIC_LEX_PIPE;
+        case '^':
+          return DYNAMIC_LEX_CARET;
+        case '(':
+          return DYNAMIC_LEX_LEFT;
+        case ')':
+          return DYNAMIC_LEX_RIGHT;
+        case '?':
+          return DYNAMIC_LEX_QUESTION;
+        case ':':
+          return DYNAMIC_LEX_COLON;
+        default:
+          return DYNAMIC_LEX_INVALID;
+      }
+    case DYNAMIC_LEX_NAME:
+      return name || digit ? DYNAMIC_LEX_NAME : DYNAMIC_LEX_STOP;
+    case DYNAMIC_LEX_ZERO:
+      if (character == 'x' || character == 'X') {
+        return DYNAMIC_LEX_HEX_PREFIX;
+      }
+      if (digit && character <= '7') {
+        return DYNAMIC_LEX_OCTAL;
+      }
+      return name || digit ? DYNAMIC_LEX_INVALID : DYNAMIC_LEX_STOP;
+    case DYNAMIC_LEX_OCTAL:
+      if (digit && character <= '7') {
+        return DYNAMIC_LEX_OCTAL;
+      }
+      return name || digit ? DYNAMIC_LEX_INVALID : DYNAMIC_LEX_STOP;
+    case DYNAMIC_LEX_DECIMAL:
+      if (digit) {
+        return DYNAMIC_LEX_DECIMAL;
+      }
+      return name ? DYNAMIC_LEX_INVALID : DYNAMIC_LEX_STOP;
+    case DYNAMIC_LEX_HEX_PREFIX:
+      return is_hexadecimal_digit(character) ? DYNAMIC_LEX_HEX
+                                             : DYNAMIC_LEX_INVALID;
+    case DYNAMIC_LEX_HEX:
+      if (is_hexadecimal_digit(character)) {
+        return DYNAMIC_LEX_HEX;
+      }
+      return name || digit ? DYNAMIC_LEX_INVALID : DYNAMIC_LEX_STOP;
+    case DYNAMIC_LEX_PLUS:
+    case DYNAMIC_LEX_MINUS:
+      if (character == (state == DYNAMIC_LEX_PLUS ? '+' : '-')) {
+        return DYNAMIC_LEX_INVALID;
+      }
+      return character == '=' ? DYNAMIC_LEX_ASSIGNMENT : DYNAMIC_LEX_STOP;
+    case DYNAMIC_LEX_BANG:
+    case DYNAMIC_LEX_EQUALS:
+      return character == '=' ? DYNAMIC_LEX_BINARY : DYNAMIC_LEX_STOP;
+    case DYNAMIC_LEX_STAR:
+    case DYNAMIC_LEX_SLASH:
+    case DYNAMIC_LEX_PERCENT:
+    case DYNAMIC_LEX_CARET:
+    case DYNAMIC_LEX_LEFT_SHIFT:
+    case DYNAMIC_LEX_RIGHT_SHIFT:
+      return character == '=' ? DYNAMIC_LEX_ASSIGNMENT : DYNAMIC_LEX_STOP;
+    case DYNAMIC_LEX_LESS:
+    case DYNAMIC_LEX_GREATER:
+      if (character == '=') {
+        return DYNAMIC_LEX_BINARY;
+      }
+      if (character == (state == DYNAMIC_LEX_LESS ? '<' : '>')) {
+        return state == DYNAMIC_LEX_LESS ? DYNAMIC_LEX_LEFT_SHIFT
+                                         : DYNAMIC_LEX_RIGHT_SHIFT;
+      }
+      return DYNAMIC_LEX_STOP;
+    case DYNAMIC_LEX_AMPERSAND:
+    case DYNAMIC_LEX_PIPE:
+      if (character == '=') {
+        return DYNAMIC_LEX_ASSIGNMENT;
+      }
+      return character == (state == DYNAMIC_LEX_AMPERSAND ? '&' : '|')
+        ? DYNAMIC_LEX_BINARY
+        : DYNAMIC_LEX_STOP;
     default:
-      return DYNAMIC_LEX_INVALID;
-    }
-  case DYNAMIC_LEX_NAME:
-    return name || digit ? DYNAMIC_LEX_NAME : DYNAMIC_LEX_STOP;
-  case DYNAMIC_LEX_ZERO:
-    if (character == 'x' || character == 'X') {
-      return DYNAMIC_LEX_HEX_PREFIX;
-    }
-    if (digit && character <= '7') {
-      return DYNAMIC_LEX_OCTAL;
-    }
-    return name || digit ? DYNAMIC_LEX_INVALID : DYNAMIC_LEX_STOP;
-  case DYNAMIC_LEX_OCTAL:
-    if (digit && character <= '7') {
-      return DYNAMIC_LEX_OCTAL;
-    }
-    return name || digit ? DYNAMIC_LEX_INVALID : DYNAMIC_LEX_STOP;
-  case DYNAMIC_LEX_DECIMAL:
-    if (digit) {
-      return DYNAMIC_LEX_DECIMAL;
-    }
-    return name ? DYNAMIC_LEX_INVALID : DYNAMIC_LEX_STOP;
-  case DYNAMIC_LEX_HEX_PREFIX:
-    return is_hexadecimal_digit(character) ? DYNAMIC_LEX_HEX
-                                           : DYNAMIC_LEX_INVALID;
-  case DYNAMIC_LEX_HEX:
-    if (is_hexadecimal_digit(character)) {
-      return DYNAMIC_LEX_HEX;
-    }
-    return name || digit ? DYNAMIC_LEX_INVALID : DYNAMIC_LEX_STOP;
-  case DYNAMIC_LEX_PLUS:
-  case DYNAMIC_LEX_MINUS:
-    if (character == (state == DYNAMIC_LEX_PLUS ? '+' : '-')) {
-      return DYNAMIC_LEX_INVALID;
-    }
-    return character == '=' ? DYNAMIC_LEX_ASSIGNMENT : DYNAMIC_LEX_STOP;
-  case DYNAMIC_LEX_BANG:
-  case DYNAMIC_LEX_EQUALS:
-    return character == '=' ? DYNAMIC_LEX_BINARY : DYNAMIC_LEX_STOP;
-  case DYNAMIC_LEX_STAR:
-  case DYNAMIC_LEX_SLASH:
-  case DYNAMIC_LEX_PERCENT:
-  case DYNAMIC_LEX_CARET:
-  case DYNAMIC_LEX_LEFT_SHIFT:
-  case DYNAMIC_LEX_RIGHT_SHIFT:
-    return character == '=' ? DYNAMIC_LEX_ASSIGNMENT : DYNAMIC_LEX_STOP;
-  case DYNAMIC_LEX_LESS:
-  case DYNAMIC_LEX_GREATER:
-    if (character == '=') {
-      return DYNAMIC_LEX_BINARY;
-    }
-    if (character == (state == DYNAMIC_LEX_LESS ? '<' : '>')) {
-      return state == DYNAMIC_LEX_LESS ? DYNAMIC_LEX_LEFT_SHIFT
-                                       : DYNAMIC_LEX_RIGHT_SHIFT;
-    }
-    return DYNAMIC_LEX_STOP;
-  case DYNAMIC_LEX_AMPERSAND:
-  case DYNAMIC_LEX_PIPE:
-    if (character == '=') {
-      return DYNAMIC_LEX_ASSIGNMENT;
-    }
-    return character == (state == DYNAMIC_LEX_AMPERSAND ? '&' : '|')
-      ? DYNAMIC_LEX_BINARY
-      : DYNAMIC_LEX_STOP;
-  default:
-    return DYNAMIC_LEX_STOP;
+      return DYNAMIC_LEX_STOP;
   }
 }
 
 static uint16_t dynamic_arithmetic_token(uint8_t state) {
   unsigned token;
   switch (state) {
-  case DYNAMIC_LEX_NAME:
-    token = DYNAMIC_ARITHMETIC_NAME;
-    break;
-  case DYNAMIC_LEX_ZERO:
-  case DYNAMIC_LEX_OCTAL:
-  case DYNAMIC_LEX_DECIMAL:
-  case DYNAMIC_LEX_HEX:
-    token = DYNAMIC_ARITHMETIC_NUMBER;
-    break;
-  case DYNAMIC_LEX_PLUS:
-  case DYNAMIC_LEX_MINUS:
-    return (uint16_t)((1u << DYNAMIC_ARITHMETIC_UNARY_OPERATOR) |
-      (1u << DYNAMIC_ARITHMETIC_BINARY_OPERATOR));
-  case DYNAMIC_LEX_BANG:
-  case DYNAMIC_LEX_TILDE:
-    token = DYNAMIC_ARITHMETIC_UNARY_OPERATOR;
-    break;
-  case DYNAMIC_LEX_EQUALS:
-  case DYNAMIC_LEX_ASSIGNMENT:
-    token = DYNAMIC_ARITHMETIC_ASSIGNMENT_OPERATOR;
-    break;
-  case DYNAMIC_LEX_STAR:
-  case DYNAMIC_LEX_SLASH:
-  case DYNAMIC_LEX_PERCENT:
-  case DYNAMIC_LEX_LESS:
-  case DYNAMIC_LEX_GREATER:
-  case DYNAMIC_LEX_AMPERSAND:
-  case DYNAMIC_LEX_PIPE:
-  case DYNAMIC_LEX_CARET:
-  case DYNAMIC_LEX_BINARY:
-  case DYNAMIC_LEX_LEFT_SHIFT:
-  case DYNAMIC_LEX_RIGHT_SHIFT:
-    token = DYNAMIC_ARITHMETIC_BINARY_OPERATOR;
-    break;
-  case DYNAMIC_LEX_LEFT:
-    token = DYNAMIC_ARITHMETIC_LEFT;
-    break;
-  case DYNAMIC_LEX_RIGHT:
-    token = DYNAMIC_ARITHMETIC_RIGHT;
-    break;
-  case DYNAMIC_LEX_QUESTION:
-    token = DYNAMIC_ARITHMETIC_QUESTION;
-    break;
-  case DYNAMIC_LEX_COLON:
-    token = DYNAMIC_ARITHMETIC_COLON;
-    break;
-  default:
-    return 0;
+    case DYNAMIC_LEX_NAME:
+      token = DYNAMIC_ARITHMETIC_NAME;
+      break;
+    case DYNAMIC_LEX_ZERO:
+    case DYNAMIC_LEX_OCTAL:
+    case DYNAMIC_LEX_DECIMAL:
+    case DYNAMIC_LEX_HEX:
+      token = DYNAMIC_ARITHMETIC_NUMBER;
+      break;
+    case DYNAMIC_LEX_PLUS:
+    case DYNAMIC_LEX_MINUS:
+      return (uint16_t)((1u << DYNAMIC_ARITHMETIC_UNARY_OPERATOR) |
+        (1u << DYNAMIC_ARITHMETIC_BINARY_OPERATOR));
+    case DYNAMIC_LEX_BANG:
+    case DYNAMIC_LEX_TILDE:
+      token = DYNAMIC_ARITHMETIC_UNARY_OPERATOR;
+      break;
+    case DYNAMIC_LEX_EQUALS:
+    case DYNAMIC_LEX_ASSIGNMENT:
+      token = DYNAMIC_ARITHMETIC_ASSIGNMENT_OPERATOR;
+      break;
+    case DYNAMIC_LEX_STAR:
+    case DYNAMIC_LEX_SLASH:
+    case DYNAMIC_LEX_PERCENT:
+    case DYNAMIC_LEX_LESS:
+    case DYNAMIC_LEX_GREATER:
+    case DYNAMIC_LEX_AMPERSAND:
+    case DYNAMIC_LEX_PIPE:
+    case DYNAMIC_LEX_CARET:
+    case DYNAMIC_LEX_BINARY:
+    case DYNAMIC_LEX_LEFT_SHIFT:
+    case DYNAMIC_LEX_RIGHT_SHIFT:
+      token = DYNAMIC_ARITHMETIC_BINARY_OPERATOR;
+      break;
+    case DYNAMIC_LEX_LEFT:
+      token = DYNAMIC_ARITHMETIC_LEFT;
+      break;
+    case DYNAMIC_LEX_RIGHT:
+      token = DYNAMIC_ARITHMETIC_RIGHT;
+      break;
+    case DYNAMIC_LEX_QUESTION:
+      token = DYNAMIC_ARITHMETIC_QUESTION;
+      break;
+    case DYNAMIC_LEX_COLON:
+      token = DYNAMIC_ARITHMETIC_COLON;
+      break;
+    default:
+      return 0;
   }
   return (uint16_t)(1u << token);
 }
@@ -442,13 +438,11 @@ static bool dynamic_arithmetic_emit(
   }
   position = dynamic_arithmetic_boundary(graph, position);
   if (
-    origin ==
-    0 &&
-    position >=
-    graph->required_end &&
+    origin == 0 &&
+    position >= graph->required_end &&
     (tokens &
       ((1u << DYNAMIC_ARITHMETIC_NAME) | (1u << DYNAMIC_ARITHMETIC_NUMBER))) !=
-    0
+      0
   ) {
     graph->valid = true;
     return true;
@@ -482,10 +476,8 @@ dynamic_arithmetic_build_graph(struct DynamicArithmeticGraph *graph) {
   for (size_t origin = 0; origin < graph->vertex_count; origin += 1) {
     size_t position = graph->vertices[origin].position;
     if (
-      position <
-      graph->length &&
-      graph->source[position] ==
-      -1 &&
+      position < graph->length &&
+      graph->source[position] == -1 &&
       !dynamic_arithmetic_edge(
         graph,
         origin,
@@ -522,8 +514,7 @@ dynamic_arithmetic_build_graph(struct DynamicArithmeticGraph *graph) {
           return false;
         }
         if (
-          item.state !=
-          DYNAMIC_LEX_START &&
+          item.state != DYNAMIC_LEX_START &&
           !dynamic_arithmetic_enqueue(
             graph,
             dynamic_arithmetic_after_hole(graph, item.position),
@@ -535,8 +526,7 @@ dynamic_arithmetic_build_graph(struct DynamicArithmeticGraph *graph) {
         for (int32_t character = 1; character < 128; character += 1) {
           int next = dynamic_arithmetic_lex(item.state, character);
           if (
-            next >=
-            0 &&
+            next >= 0 &&
             !dynamic_arithmetic_enqueue(graph, item.position, (uint8_t)next)
           ) {
             return false;
@@ -555,8 +545,7 @@ dynamic_arithmetic_build_graph(struct DynamicArithmeticGraph *graph) {
             return false;
           }
         } else if (
-          next >=
-          0 &&
+          next >= 0 &&
           !dynamic_arithmetic_enqueue(graph, item.position + 1, (uint8_t)next)
         ) {
           return false;
@@ -692,8 +681,7 @@ dynamic_arithmetic_project_graph(const struct DynamicArithmeticGraph *graph) {
   }
   projection.visited = ts_calloc(graph->vertex_count * state_count, 1);
   if (
-    projection.visited ==
-    NULL ||
+    projection.visited == NULL ||
     !dynamic_arithmetic_project_enqueue(&projection, 0)
   ) {
     goto finish;
@@ -706,8 +694,7 @@ dynamic_arithmetic_project_graph(const struct DynamicArithmeticGraph *graph) {
       &dynamic_arithmetic_rules[rules[state]];
     uint8_t dot = dots[state];
     if (
-      state ==
-      dynamic_arithmetic_rules[0].length &&
+      state == dynamic_arithmetic_rules[0].length &&
       graph->vertices[vertex].position >= graph->required_end
     ) {
       result = ARITHMETIC_VALIDATION_VALID;
@@ -729,10 +716,8 @@ dynamic_arithmetic_project_graph(const struct DynamicArithmeticGraph *graph) {
           goto finish;
         }
       } else if (
-        symbol <
-        DYNAMIC_ARITHMETIC_TOKEN_COUNT &&
-        (transition.tokens & (1u << symbol)) !=
-        0 &&
+        symbol < DYNAMIC_ARITHMETIC_TOKEN_COUNT &&
+        (transition.tokens & (1u << symbol)) != 0 &&
         !dynamic_arithmetic_project_enqueue(
           &projection,
           transition.target * state_count + state + 1
@@ -747,8 +732,7 @@ dynamic_arithmetic_project_graph(const struct DynamicArithmeticGraph *graph) {
       if (complete) {
         for (size_t position = 0; position < target->length; position += 1) {
           if (
-            dynamic_arithmetic_symbol(target, position) ==
-            rule->left &&
+            dynamic_arithmetic_symbol(target, position) == rule->left &&
             !dynamic_arithmetic_project_enqueue(
               &projection,
               vertex * state_count + starts[candidate] + position + 1
@@ -758,8 +742,7 @@ dynamic_arithmetic_project_graph(const struct DynamicArithmeticGraph *graph) {
           }
         }
       } else if (
-        symbol ==
-        target->left &&
+        symbol == target->left &&
         !dynamic_arithmetic_project_enqueue(
           &projection,
           vertex * state_count + starts[candidate]
@@ -827,9 +810,7 @@ static size_t dynamic_arithmetic_next(struct DynamicArithmeticChart *chart) {
   while (position < chart->pending_count / 2) {
     size_t child = position * 2 + 1;
     if (
-      child +
-      1 <
-      chart->pending_count &&
+      child + 1 < chart->pending_count &&
       dynamic_arithmetic_precedes(
         chart,
         chart->pending[child + 1],
@@ -946,8 +927,7 @@ static bool dynamic_arithmetic_add_item(
     ? dynamic_arithmetic_symbol(production, dot)
     : DYNAMIC_ARITHMETIC_SYMBOL_COUNT;
   size_t head = vertex * DYNAMIC_ARITHMETIC_SYMBOL_COUNT + symbol;
-  bool waiting = symbol >=
-    DYNAMIC_ARITHMETIC_TOKEN_COUNT &&
+  bool waiting = symbol >= DYNAMIC_ARITHMETIC_TOKEN_COUNT &&
     symbol < DYNAMIC_ARITHMETIC_SYMBOL_COUNT;
   struct DynamicArithmeticItem item =
     {vertex, origin, waiting ? chart->heads[head] : SIZE_MAX, rule, dot};
@@ -956,12 +936,9 @@ static bool dynamic_arithmetic_add_item(
   while (chart->hash[slot] != 0) {
     struct DynamicArithmeticItem existing = chart->items[chart->hash[slot] - 1];
     if (
-      existing.vertex ==
-      vertex &&
-      existing.origin ==
-      origin &&
-      existing.rule ==
-      rule &&
+      existing.vertex == vertex &&
+      existing.origin == origin &&
+      existing.rule == rule &&
       existing.dot == dot
     ) {
       return true;
@@ -1037,10 +1014,8 @@ static bool dynamic_arithmetic_complete(
     struct DynamicArithmeticCompletion completion =
       chart->completions[chart->completion_hash[slot] - 1];
     if (
-      completion.vertex ==
-      item.vertex &&
-      completion.origin ==
-      item.origin &&
+      completion.vertex == item.vertex &&
+      completion.origin == item.origin &&
       completion.symbol == symbol
     ) {
       return true;
@@ -1091,9 +1066,7 @@ dynamic_arithmetic_parse_graph(const struct DynamicArithmeticGraph *graph) {
   enum ArithmeticValidation result = ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
   if (
     graph->vertex_count >
-    SIZE_MAX /
-    sizeof(size_t) /
-    DYNAMIC_ARITHMETIC_SYMBOL_COUNT
+    SIZE_MAX / sizeof(size_t) / DYNAMIC_ARITHMETIC_SYMBOL_COUNT
   ) {
     return result;
   }
@@ -1127,10 +1100,8 @@ dynamic_arithmetic_parse_graph(const struct DynamicArithmeticGraph *graph) {
     bool complete = item.dot == rule->length;
     if (
       complete &&
-      rule->left ==
-      DYNAMIC_ARITHMETIC_START &&
-      item.origin ==
-      0 &&
+      rule->left == DYNAMIC_ARITHMETIC_START &&
+      item.origin == 0 &&
       graph->vertices[item.vertex].position >= graph->required_end
     ) {
       result = ARITHMETIC_VALIDATION_VALID;
@@ -1154,10 +1125,8 @@ dynamic_arithmetic_parse_graph(const struct DynamicArithmeticGraph *graph) {
           goto finish;
         }
       } else if (
-        symbol <
-        DYNAMIC_ARITHMETIC_TOKEN_COUNT &&
-        (transition.tokens & (1u << symbol)) !=
-        0 &&
+        symbol < DYNAMIC_ARITHMETIC_TOKEN_COUNT &&
+        (transition.tokens & (1u << symbol)) != 0 &&
         !dynamic_arithmetic_add_item(
           &chart,
           transition.target,
@@ -1178,8 +1147,7 @@ dynamic_arithmetic_parse_graph(const struct DynamicArithmeticGraph *graph) {
         sizeof(dynamic_arithmetic_rules) / sizeof(dynamic_arithmetic_rules[0]);
       for (size_t candidate = 0; candidate < count; candidate += 1) {
         if (
-          dynamic_arithmetic_rules[candidate].left ==
-          symbol &&
+          dynamic_arithmetic_rules[candidate].left == symbol &&
           !dynamic_arithmetic_add_item(
             &chart,
             item.vertex,
@@ -1270,16 +1238,9 @@ validate_dynamic_arithmetic(const int32_t *source, size_t length) {
   struct DynamicArithmeticGraph graph = {.source = source, .length = length};
   enum ArithmeticValidation result = ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
   if (
-    length ==
-    SIZE_MAX ||
-    length +
-    1 >
-    SIZE_MAX /
-    sizeof(uint64_t) ||
-    length +
-    1 >
-    SIZE_MAX /
-    sizeof(size_t)
+    length == SIZE_MAX ||
+    length + 1 > SIZE_MAX / sizeof(uint64_t) ||
+    length + 1 > SIZE_MAX / sizeof(size_t)
   ) {
     return result;
   }
@@ -1294,10 +1255,8 @@ validate_dynamic_arithmetic(const int32_t *source, size_t length) {
   for (size_t index = 0; index <= length; index += 1) {
     graph.vertex_ids[index] = SIZE_MAX;
     if (
-      index <
-      length &&
-      source[index] !=
-      -1 &&
+      index < length &&
+      source[index] != -1 &&
       !arithmetic_whitespace(source[index])
     ) {
       graph.required_end = index + 1;

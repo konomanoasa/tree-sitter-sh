@@ -1,21 +1,44 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
 import { grammars } from "../scripts/tree-sitter.js";
+import { assertOccurrenceCount } from "./support/cst.js";
 import {
   applyEdits,
   assertIncrementalEqualsFresh,
-  assertOccurrenceCount,
+  assertRepeatedColdParse,
   assertValid,
   compareIncrementalAndFresh,
   incrementalParseArguments,
   parseRecoveryAfterEdits,
   parserLibrary,
+  runParse,
   runParserCommand,
   writeSource,
 } from "./support/parser.js";
 
 const measurementSamples = 9;
+const warmupSamples = 1;
+const scalingInputMultiplier = 4;
+const maximumDurationMultiplier = 8;
+const scalingSlackMs = 100;
+const localEditCases = [
+  { prefix: "", lineCount: 1_200, referenceRatio: 0.75 },
+  { prefix: "large-", lineCount: 4_800, referenceRatio: 0.5 },
+];
+const structureEditLineCount = 1_200;
+const commentLineCount = 4_800;
+const declarationArgumentCount = 1_200;
+const arithmeticDepths = [16, 32];
+const runtimeFragmentCounts = [64, 128];
+const recoveryReferenceRatio = 1.5;
+
+function editPositions(lineCount) {
+  return Object.entries({
+    head: 0,
+    middle: Math.floor(lineCount / 2),
+    tail: lineCount - 1,
+  });
+}
 
 function medianDuration(samples) {
   const sorted = [...samples].sort((left, right) => left - right);
@@ -35,14 +58,14 @@ function readDuration(stdout, label, description) {
 
 function medianOperationDuration(arguments_, label, description, mode) {
   const samples = [];
-  for (let run = 0; run < measurementSamples + 1; run += 1) {
+  for (let run = 0; run < measurementSamples + warmupSamples; run += 1) {
     const result = runParserCommand(
       arguments_,
       mode === "recovery" ? [0, 1] : [0],
     );
     samples.push(readDuration(result.stdout, label, description));
   }
-  return medianDuration(samples.slice(1));
+  return medianDuration(samples.slice(warmupSamples));
 }
 
 function medianFreshParseDuration(source, description, mode = "valid") {
@@ -78,7 +101,7 @@ function medianIncrementalParseDuration(
   );
 }
 
-test("sh: parser scaling remains linear within the existing guard", () => {
+test("sh: large-input scaling stays within the growth budget", () => {
   const continuedComment = (count) => {
     const slash = "\\";
     const prefix = `: "\`: ${slash}"${slash}\`#x`;
@@ -87,62 +110,69 @@ test("sh: parser scaling remains linear within the existing guard", () => {
   };
   const encodedWordlist = (count) => {
     let source = `for x in value${"\\\n".repeat(count)} ; do :; done`;
-    for (let depth = 0; depth < 3; depth += 1) {
+    const backquoteDepth = 3;
+    for (let depth = 0; depth < backquoteDepth; depth += 1) {
       source = `: \`${source.replaceAll("\\", "\\\\").replaceAll("`", "\\`")}\``;
     }
     return `${source}\n`;
   };
   const scalingSources = [
     {
-      large: continuedComment(6_000),
       name: "nested comment continuation parsing",
-      small: continuedComment(1_500),
+      units: 1_500,
+      source: (count) => continuedComment(count),
     },
     {
-      large: encodedWordlist(12_000),
       name: "backquote wordlist continuation parsing",
-      small: encodedWordlist(3_000),
+      units: 3_000,
+      source: (count) => encodedWordlist(count),
     },
     {
-      large: `printf value${" \\\n".repeat(12_000)}after\n`,
       name: "spaced line-continuation parsing",
-      small: `printf value${" \\\n".repeat(3_000)}after\n`,
+      units: 3_000,
+      source: (count) => `printf value${" \\\n".repeat(count)}after\n`,
     },
     {
-      large: `printf value ${"\\\n".repeat(12_000)}after\n`,
       name: "direct line-continuation parsing",
-      small: `printf value ${"\\\n".repeat(3_000)}after\n`,
+      units: 3_000,
+      source: (count) => `printf value ${"\\\n".repeat(count)}after\n`,
     },
     {
-      large: `: "$((a${" \\\n".repeat(8_000)}+ b))"\n`,
       name: "arithmetic layout parsing",
-      small: `: "$((a${" \\\n".repeat(2_000)}+ b))"\n`,
+      units: 2_000,
+      source: (count) => `: "$((a${" \\\n".repeat(count)}+ b))"\n`,
     },
     {
-      large: `: "$((1${" \\\n".repeat(8_000)}$operator 2))"\n`,
       name: "dynamic arithmetic layout parsing",
-      small: `: "$((1${" \\\n".repeat(2_000)}$operator 2))"\n`,
+      units: 2_000,
+      source: (count) => `: "$((1${" \\\n".repeat(count)}$operator 2))"\n`,
     },
     {
-      large: `printf ${'[a"x"*[.]'.repeat(12_000)}\n`,
       name: "bracket suffix parsing",
-      small: `printf ${'[a"x"*[.]'.repeat(3_000)}\n`,
+      units: 3_000,
+      source: (count) => `printf ${'[a"x"*[.]'.repeat(count)}\n`,
     },
     {
-      large: `printf ${"[x[:y]z[a]".repeat(12_000)}\n`,
       name: "bracket prefix and suffix parsing",
-      small: `printf ${"[x[:y]z[a]".repeat(3_000)}\n`,
+      units: 3_000,
+      source: (count) => `printf ${"[x[:y]z[a]".repeat(count)}\n`,
     },
     {
-      large: `printf [${"a-".repeat(32_768)}a]\n`,
       name: "chained bracket range parsing",
-      small: `printf [${"a-".repeat(8_192)}a]\n`,
+      units: 8_192,
+      source: (count) => `printf [${"a-".repeat(count)}a]\n`,
     },
   ];
 
   for (const contract of scalingSources) {
-    const smallSource = writeSource(`${contract.name}-small`, contract.small);
-    const largeSource = writeSource(`${contract.name}-large`, contract.large);
+    const smallSource = writeSource(
+      `${contract.name}-small`,
+      contract.source(contract.units),
+    );
+    const largeSource = writeSource(
+      `${contract.name}-large`,
+      contract.source(contract.units * scalingInputMultiplier),
+    );
     assertValid(smallSource, `${contract.name} small`);
     assertValid(largeSource, `${contract.name} large`);
     const smallMilliseconds = medianFreshParseDuration(
@@ -153,9 +183,9 @@ test("sh: parser scaling remains linear within the existing guard", () => {
       largeSource,
       contract.name,
     );
-    const maximumScale = 8;
     assert.ok(
-      largeMilliseconds <= smallMilliseconds * maximumScale + 100,
+      largeMilliseconds <=
+        smallMilliseconds * maximumDurationMultiplier + scalingSlackMs,
       `${contract.name} scaled nonlinearly: ${smallMilliseconds}ms to ${largeMilliseconds}ms`,
     );
   }
@@ -190,81 +220,38 @@ test("sh: incremental parsing reuses unchanged source and records editing timing
   }
 
   const commandLine = "echo aaaa\n";
-  const commandEditAt = (index) => ({
-    byte: commandLine.length * index + 5,
-    deleteBytes: 1,
-    insert: "b",
-  });
-  const commandCount = 1200;
-  const commandContents = commandLine.repeat(commandCount);
-  const commandSource = writeSource("reuse-commands", commandContents);
-  for (const [position, index] of Object.entries({
-    head: 0,
-    middle: 600,
-    tail: 1199,
-  })) {
-    const name = `${position}-command-replace`;
-    const edit = commandEditAt(index);
-    const edited = editedSource(name, commandContents, edit);
-    const [parse] = compareIncrementalAndFresh(
-      { debug: true },
-      commandSource,
-      edited,
-      name,
-      edit,
-    );
-    assertSourceReuse(parse, name);
-    const incremental = medianIncrementalParseDuration(
-      commandSource,
-      edit,
-      name,
-    );
-    const fresh = medianFreshParseDuration(edited, name);
-    reportTiming(name, incremental, fresh, 0.75);
-  }
-
-  const largeCommandCount = 4800;
-  const largeCommandContents = commandLine.repeat(largeCommandCount);
-  const largeCommandSource = writeSource(
-    "reuse-commands-large",
-    largeCommandContents,
-  );
-  for (const [position, index] of Object.entries({
-    head: 0,
-    middle: 2400,
-    tail: 4799,
-  })) {
-    const name = `large-${position}-command-replace`;
-    const edit = commandEditAt(index);
-    const edited = editedSource(name, largeCommandContents, edit);
-    const [parse] = compareIncrementalAndFresh(
-      { debug: true },
-      largeCommandSource,
-      edited,
-      name,
-      edit,
-    );
-    assertSourceReuse(parse, name);
-    const incremental = medianIncrementalParseDuration(
-      largeCommandSource,
-      edit,
-      name,
-    );
-    const fresh = medianFreshParseDuration(edited, name);
-    reportTiming(name, incremental, fresh, 0.5);
+  for (const { prefix, lineCount, referenceRatio } of localEditCases) {
+    const contents = commandLine.repeat(lineCount);
+    const source = writeSource(`reuse-${prefix}commands`, contents);
+    for (const [position, index] of editPositions(lineCount)) {
+      const name = `${prefix}${position}-command-replace`;
+      const edit = {
+        byte: commandLine.length * index + commandLine.indexOf("aaaa"),
+        deleteBytes: 1,
+        insert: "b",
+      };
+      const edited = editedSource(name, contents, edit);
+      const [parse] = compareIncrementalAndFresh(
+        { debug: true },
+        source,
+        edited,
+        name,
+        edit,
+      );
+      assertSourceReuse(parse, name);
+      const incremental = medianIncrementalParseDuration(source, edit, name);
+      const fresh = medianFreshParseDuration(edited, name);
+      reportTiming(name, incremental, fresh, referenceRatio);
+    }
   }
 
   const functionLine = "alpha() { : beta; }\n";
-  const functionContents = functionLine.repeat(commandCount);
+  const functionContents = functionLine.repeat(structureEditLineCount);
   const functionSource = writeSource("reuse-functions", functionContents);
-  for (const [position, index] of Object.entries({
-    head: 0,
-    middle: 600,
-    tail: 1199,
-  })) {
+  for (const [position, index] of editPositions(structureEditLineCount)) {
     const name = `${position}-function-closer-delete`;
     const edit = {
-      byte: functionLine.length * index + 18,
+      byte: functionLine.length * index + functionLine.indexOf("}"),
       deleteBytes: 1,
       insert: "",
     };
@@ -277,11 +264,11 @@ test("sh: incremental parsing reuses unchanged source and records editing timing
       "recovery",
     );
     const fresh = medianFreshParseDuration(edited, name, "recovery");
-    reportTiming(name, incremental, fresh, 1.5);
+    reportTiming(name, incremental, fresh, recoveryReferenceRatio);
   }
 
   const commentLine = "# comment\n";
-  const largeCommentContents = commentLine.repeat(4800);
+  const largeCommentContents = commentLine.repeat(commentLineCount);
   const largeCommentSource = writeSource(
     "reuse-comments-large",
     largeCommentContents,
@@ -316,12 +303,12 @@ test("sh: incremental parsing reuses unchanged source and records editing timing
     commentName,
     largeCommentIncremental,
     largeCommentFreshEdited,
-    1.5,
+    recoveryReferenceRatio,
   );
 });
 
 test("sh: declaration context edits record incremental and fresh timings", (context) => {
-  const arguments_ = " x=~/bin:$PATH".repeat(1200);
+  const arguments_ = " x=~/bin:$PATH".repeat(declarationArgumentCount);
   for (const [name, prefix, edit] of [
     [
       "declaration-name",
@@ -355,7 +342,7 @@ test("sh: nested arithmetic measurements cover ordinary editing depth", (context
     ["parameter", `\${x:-1}`, `\${x:-2}`],
   ]) {
     const measurements = [];
-    for (const depth of [16, 32]) {
+    for (const depth of arithmeticDepths) {
       const name = `nested-arithmetic-${kind}-${depth}`;
       const prefix = `echo ${"$((".repeat(depth)}`;
       const suffix = `${"))".repeat(depth)}\n`;
@@ -390,7 +377,7 @@ test("sh: nested arithmetic measurements cover ordinary editing depth", (context
           ? "below timing resolution"
           : `${(large / small).toFixed(2)}x`;
       context.diagnostic(
-        `${operation} nested arithmetic with ${kind} leaf, 16 to 32 levels: ${small}ms to ${large}ms (${ratio})`,
+        `${operation} nested arithmetic with ${kind} leaf, ${arithmeticDepths[0]} to ${arithmeticDepths[1]} levels: ${small}ms to ${large}ms (${ratio})`,
       );
     }
   }
@@ -425,7 +412,7 @@ test("sh: dense runtime arithmetic fragments preserve editing performance", (con
     },
   ]) {
     const measurements = [];
-    for (const count of [64, 128]) {
+    for (const count of runtimeFragmentCounts) {
       const name = `dense-${fixture.name}-${count}`;
       const initialContents = fixture.source(count, "1");
       const finalContents = fixture.source(count, "2");
@@ -476,8 +463,127 @@ test("sh: dense runtime arithmetic fragments preserve editing performance", (con
           ? "below timing resolution"
           : `${(large / small).toFixed(2)}x`;
       context.diagnostic(
-        `${operation} ${fixture.name}, ${64 + fixture.extraParameters} to ${128 + fixture.extraParameters} runtime fragments: ${small}ms to ${large}ms (${ratio})`,
+        `${operation} ${fixture.name}, ${runtimeFragmentCounts[0] + fixture.extraParameters} to ${runtimeFragmentCounts[1] + fixture.extraParameters} runtime fragments: ${small}ms to ${large}ms (${ratio})`,
       );
     }
   }
+});
+
+test("sh: parser resource bounds preserve complete roots and deterministic recovery", () => {
+  const completionOnly = { completionOnly: true };
+  const arithmeticDepth = 2_000;
+  const unmatchedBracketCount = 80_000;
+  const bracketMemberCount = 16_000;
+  const bracketGroupCount = 4_000;
+  const incompleteClassCount = 4_000;
+  const continuationCount = 20_000;
+  const bodyParameterCount = 16_000;
+  const pendingDocumentCount = 600;
+  const maximumNestedDocuments = 44;
+  const excessDocumentDepth = 300;
+  const backquoteDepth = 6;
+  const largeValidSources = [
+    [
+      "deep-arithmetic-expansions",
+      `echo ${"$((".repeat(arithmeticDepth)}1${"))".repeat(arithmeticDepth)}\n`,
+    ],
+    ["unmatched-brackets", `printf ${"[".repeat(unmatchedBracketCount)}\n`],
+    ["long-bracket-list", `printf [${"a".repeat(bracketMemberCount)}]\n`],
+    ["repeated-brackets", `printf ${"[abc]".repeat(bracketGroupCount)}\n`],
+    [
+      "repeated-incomplete-special-brackets",
+      `printf [${"[:alpha:]".repeat(incompleteClassCount)}\n`,
+    ],
+    [
+      "continued-blank-lines",
+      `printf value ${"\\\n".repeat(continuationCount)}after\n`,
+    ],
+    [
+      "continued-pipe-linebreak",
+      `first|${"\\\n".repeat(continuationCount)}next\n`,
+    ],
+    [
+      "here-document-dollars",
+      `cat <<EOF\n${"$x".repeat(bodyParameterCount)}\nEOF\nafter\n`,
+    ],
+  ];
+  for (const [name, contents] of largeValidSources) {
+    assertValid(writeSource(name, contents), name, completionOnly);
+  }
+
+  const manyDocuments = writeSource(
+    "many-documents",
+    `cat${" <<X".repeat(pendingDocumentCount)}\n${"body\nX\n".repeat(pendingDocumentCount)}after\n`,
+  );
+  assertRepeatedColdParse(
+    "resource",
+    manyDocuments,
+    "many-documents",
+    completionOnly,
+  );
+
+  function nestedDocuments(depth) {
+    let contents = "cat <<D0\n";
+    for (let counter = 1; counter < depth; counter += 1) {
+      contents += `$(cat <<D${counter}\n`;
+    }
+    contents += "leaf\n";
+    for (let counter = depth - 1; counter >= 0; counter -= 1) {
+      contents += `D${counter}\n`;
+      if (counter > 0) {
+        contents += ")\n";
+      }
+    }
+    return `${contents}after\n`;
+  }
+
+  const deepDocuments = writeSource(
+    "deep-documents",
+    nestedDocuments(maximumNestedDocuments),
+  );
+  assertValid(deepDocuments, "deep-documents", completionOnly);
+  const excessDepth = writeSource(
+    "excess-document-depth",
+    nestedDocuments(maximumNestedDocuments + 1),
+  );
+  assert.equal(
+    runParse({
+      ...completionOnly,
+      source: excessDepth,
+      mode: "resource",
+      description: "nested document metadata exceeds 1024 bytes",
+    }).status,
+    1,
+  );
+  assertRepeatedColdParse(
+    "resource",
+    excessDepth,
+    "excess-document-depth",
+    completionOnly,
+  );
+  const boundedDocuments = writeSource(
+    "deep-documents-bounded",
+    nestedDocuments(excessDocumentDepth),
+  );
+  assertRepeatedColdParse(
+    "resource",
+    boundedDocuments,
+    "deep-documents-bounded",
+    completionOnly,
+  );
+
+  let nestedBackquotes = "echo `level1 ";
+  for (let level = 2; level <= backquoteDepth; level += 1) {
+    nestedBackquotes += `${"\\".repeat(2 ** (level - 1) - 1)}\`level${level} `;
+  }
+  nestedBackquotes += "leaf";
+  for (let level = backquoteDepth; level >= 2; level -= 1) {
+    nestedBackquotes += `${"\\".repeat(2 ** (level - 1) - 1)}\` end${level}`;
+  }
+  nestedBackquotes += "`\n";
+  assertValid(
+    writeSource("nested-backquotes", nestedBackquotes),
+    "nested-backquotes",
+    completionOnly,
+  );
 });

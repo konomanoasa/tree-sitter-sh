@@ -4,7 +4,7 @@ every command has the complete command hierarchy
 
 command argument
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -34,7 +34,7 @@ first && second || third &&
 # before the final pipeline
   fourth
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -88,7 +88,7 @@ list separators retain internal and terminal positions
 first; second & third;
 fourth &
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -145,7 +145,7 @@ only explicit separators start another command
 ./first one; second two
 third three
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -203,7 +203,7 @@ second
 
 third
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -253,7 +253,7 @@ pipeline negation is distinct from literal exclamation marks
 ! first one | second two
 !echo !
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -310,7 +310,7 @@ compound commands occupy command positions and nest
   done
 fi
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -473,7 +473,7 @@ function definitions can precede other commands in one list
 
 greet() { :; }; : | greet && greet; greet &
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -544,7 +544,7 @@ command substitutions use the same command hierarchy
 echo $(first | second && third; fourth)
 echo $(first;)
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -638,7 +638,7 @@ holder() {
   fourth;
 }
 
----
+------------------
 
 (program
   (linebreak
@@ -749,7 +749,7 @@ case value in
     second;;
 esac
 
----
+------------------
 
 (program
   (linebreak
@@ -965,7 +965,7 @@ regular_file_identity() {
   file_mode=$(stat -f '%Lp' "$1" 2>/dev/null) || return 1
 }
 
----
+------------------
 
 (program
   (linebreak
@@ -1162,7 +1162,7 @@ first one|second two&&
   fourth four
 fifth five&sixth six;seventh seven
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1268,7 +1268,7 @@ first |
 
   third
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1304,34 +1304,6 @@ first |
     (newline_list)))
 
 ==================
-pipeline negation permits continued layout before its command
-==================
-
-! \
-  echo
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            negation: (bang)
-            (line_continuation)
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 trailing blanks before separating newlines stay layout
 ==================
 
@@ -1339,7 +1311,7 @@ first one
 second two	
 third three
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1398,7 +1370,7 @@ if :; then :; fi & after_if
 
 after_blank
 
----
+------------------
 
 (program
   (linebreak
@@ -1489,7 +1461,7 @@ cd x; \rm -f y
 a
 \x
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1549,470 +1521,13 @@ a
     (newline_list)))
 
 ==================
-line continuations preserve command boundaries before operators
-==================
-
-first\
-  |second
-third\
-  ||fourth
-fifth\
-  &&sixth
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))
-              (line_continuation)
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))
-          (line_continuation)
-          operator: (or_if)
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))
-          (line_continuation)
-          operator: (and_if)
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-command layout preserves leading separator and connector continuations
-==================
-
-\
-a;  \
- \
-b &\
-c; d  \
- \
-| e  \
- \
-&& f
-
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  (line_continuation)
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))
-        separator: (separator_op)
-        (line_continuation)
-        (line_continuation)
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))
-        separator: (separator_op)
-        (line_continuation)
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))
-        separator: (separator_op)
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))
-              (line_continuation)
-              (line_continuation)
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))
-          (line_continuation)
-          (line_continuation)
-          operator: (and_if)
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-repeated continuations remain layout at command and connector boundaries
-==================
-
-\
-\
-:
-first|\
-next
-first\
-\
-&&next
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  (line_continuation)
-  (line_continuation)
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))
-              (line_continuation)
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))
-          (line_continuation)
-          (line_continuation)
-          operator: (and_if)
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-line continuation before an empty logical line remains layout
-==================
-
-first
-\
-
-second
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list
-      (line_continuation))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-a blank and line continuation before a separating newline share its run
-==================
-
-first \
-
-second
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list
-      (line_continuation))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-continuation runs before blank lines stay layout
-==================
-
-\
-\
-
-echo
-\
-\
-
-
----
-
-(program
-  (linebreak
-    (newline_list
-      (line_continuation)
-      (line_continuation)))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list
-      (line_continuation)
-      (line_continuation))))
-
-==================
-a continuation-only program stays layout
-==================
-\
-\
-
----
-
-(program
-  (line_continuation)
-  (line_continuation))
-
-==================
-a trailing continuation after a command stays layout at the end of input
-==================
-
-first\
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (line_continuation))
-
-==================
-trailing continuation runs stay layout at the end of input
-==================
-
-a \
-
-b;\
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal))))))))))
-    separator: (newline_list
-      (line_continuation))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))
-      terminator: (separator_op)))
-  (line_continuation))
-
-==================
-a blank-led continuation run after a closed group reaches the end of input
-==================
-
-{ a; } \
-
-
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (brace_group
-                    body: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        operator: (separator_op))))))))))))
-  trailing: (linebreak
-    (newline_list
-      (line_continuation))))
-
-==================
 a bang after a pipe requires a new pipeline head
 :error
 ==================
 
 echo hi | !
 
----
+------------------
 
 
 
@@ -2023,7 +1538,7 @@ a bang cannot prefix a command after a pipe
 
 echo hi | ! x
 
----
+------------------
 
 
 
@@ -2034,4 +1549,304 @@ a pipeline cannot repeat its leading bang
 
 ! ! x
 
----
+------------------
+
+
+
+==================
+compound list regression
+==================
+regular_file_identity() {
+  CURRENT_FILE_ID=
+  [ -f "$1" ] && [ ! -L "$1" ] ||
+    return 1
+  file_owner=$(stat -f '%u' "$1" 2>/dev/null) || return 1
+  file_mode=$(stat -f '%Lp' "$1" 2>/dev/null) || return 1
+}
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (function_definition
+                  (fname)
+                  (function_body
+                    (compound_command
+                      (brace_group
+                        (compound_list
+                          (linebreak
+                            (newline_list))
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_prefix
+                                        (assignment_word
+                                          (variable_name))))))))
+                            (separator
+                              (newline_list))
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))
+                                      (cmd_suffix
+                                        (word
+                                          (literal))
+                                        (word
+                                          (double_quoted
+                                            (parameter_expansion
+                                              (positional_parameter))))
+                                        (word
+                                          (literal)))))))
+                              (and_if)
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))
+                                      (cmd_suffix
+                                        (word
+                                          (literal))
+                                        (word
+                                          (literal))
+                                        (word
+                                          (double_quoted
+                                            (parameter_expansion
+                                              (positional_parameter))))
+                                        (word
+                                          (literal)))))))
+                              (or_if)
+                              (linebreak
+                                (newline_list))
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))
+                                      (cmd_suffix
+                                        (word
+                                          (literal))))))))
+                            (separator
+                              (newline_list))
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_prefix
+                                        (assignment_word
+                                          (variable_name)
+                                          (assignment_value
+                                            (command_substitution
+                                              (command_substitution_body
+                                                (complete_commands
+                                                  (complete_command
+                                                    (list
+                                                      (and_or
+                                                        (pipeline
+                                                          (pipe_sequence
+                                                            (command
+                                                              (simple_command
+                                                                (cmd_name
+                                                                  (word
+                                                                    (literal)))
+                                                                (cmd_suffix
+                                                                  (word
+                                                                    (literal))
+                                                                  (word
+                                                                    (single_quoted
+                                                                      (single_quote_content)))
+                                                                  (word
+                                                                    (double_quoted
+                                                                      (parameter_expansion
+                                                                        (positional_parameter))))
+                                                                  (io_redirect
+                                                                    (io_number)
+                                                                    (io_file
+                                                                      (filename
+                                                                        (word
+                                                                          (literal)))))))))))))))))))))))
+                              (or_if)
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))
+                                      (cmd_suffix
+                                        (word
+                                          (literal))))))))
+                            (separator
+                              (newline_list))
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_prefix
+                                        (assignment_word
+                                          (variable_name)
+                                          (assignment_value
+                                            (command_substitution
+                                              (command_substitution_body
+                                                (complete_commands
+                                                  (complete_command
+                                                    (list
+                                                      (and_or
+                                                        (pipeline
+                                                          (pipe_sequence
+                                                            (command
+                                                              (simple_command
+                                                                (cmd_name
+                                                                  (word
+                                                                    (literal)))
+                                                                (cmd_suffix
+                                                                  (word
+                                                                    (literal))
+                                                                  (word
+                                                                    (single_quoted
+                                                                      (single_quote_content)))
+                                                                  (word
+                                                                    (double_quoted
+                                                                      (parameter_expansion
+                                                                        (positional_parameter))))
+                                                                  (io_redirect
+                                                                    (io_number)
+                                                                    (io_file
+                                                                      (filename
+                                                                        (word
+                                                                          (literal)))))))))))))))))))))))
+                              (or_if)
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))
+                                      (cmd_suffix
+                                        (word
+                                          (literal)))))))))
+                          (separator
+                            (newline_list))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+malformed bang past pipeline head
+:error
+==================
+before alpha
+! ! alpha
+after omega
+
+------------------
+
+
+
+==================
+malformed missing pipe command after comment
+:error
+==================
+before alpha
+broken | # pending
+;
+after omega
+
+------------------
+
+
+
+==================
+malformed missing and command after linebreak
+:error
+==================
+before alpha
+broken &&
+;
+after omega
+
+------------------
+
+
+
+==================
+malformed missing command after operator run
+:error
+==================
+before alpha
+broken && ! | ;
+after omega
+
+------------------
+
+
+
+==================
+malformed missing negated command before newline
+:error
+==================
+before alpha
+! # pending
+after omega
+
+------------------
+
+
+
+==================
+missing word and if before eof
+:error
+==================
+alpha &&
+
+------------------
+
+
+
+==================
+missing word or if before blank line
+:error
+==================
+alpha ||
+
+
+------------------
+
+
+
+==================
+missing word pipe before eof
+:error
+==================
+alpha |
+
+------------------
+
+
+
+==================
+missing word and if before comment line
+:error
+==================
+alpha &&
+# pending
+
+------------------

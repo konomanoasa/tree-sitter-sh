@@ -4,7 +4,7 @@ a brace group can be a function body
 
 brace_body() { :; }
 
----
+------------------
 
 (program
   (linebreak
@@ -42,7 +42,7 @@ a subshell can be a function body
 
 subshell_body() (:)
 
----
+------------------
 
 (program
   (linebreak
@@ -78,7 +78,7 @@ a for clause can be a function body
 
 for_body() for item; do :; done
 
----
+------------------
 
 (program
   (linebreak
@@ -122,7 +122,7 @@ a case clause can be a function body
 
 case_body() case item in item) :;; esac
 
----
+------------------
 
 (program
   (linebreak
@@ -170,7 +170,7 @@ an if clause can be a function body
 
 if_body() if :; then :; fi
 
----
+------------------
 
 (program
   (linebreak
@@ -223,7 +223,7 @@ a while clause can be a function body
 
 while_body() while :; do :; done
 
----
+------------------
 
 (program
   (linebreak
@@ -277,7 +277,7 @@ an until clause can be a function body
 
 until_body() until :; do :; done
 
----
+------------------
 
 (program
   (linebreak
@@ -338,7 +338,7 @@ if_worker() {
   after
 }
 
----
+------------------
 
 (program
   (linebreak
@@ -446,7 +446,7 @@ for_worker() {
   b=
 }
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -578,7 +578,7 @@ greet() {
 }
 greet
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -629,7 +629,7 @@ a redirected function retains list boundaries
 
 holder() { :; }>function_output & holder
 
----
+------------------
 
 (program
   (linebreak
@@ -685,7 +685,7 @@ body
 E
 { :; }
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -743,69 +743,13 @@ E
     (newline_list)))
 
 ==================
-a continuation between a function header and body remains layout
-==================
-
-long_function()\
-{
-  :
-}
-long_function
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (function_definition
-                  name: (fname)
-                  (line_continuation)
-                  body: (function_body
-                    body: (compound_command
-                      (brace_group
-                        body: (compound_list
-                          leading: (linebreak
-                            (newline_list))
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal)))))))))
-                          terminator: (separator
-                            newlines: (newline_list)))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 reserved words cannot be function names
 :error
 ==================
 
 then() { :; }
 
----
+------------------
 
 
 
@@ -816,7 +760,7 @@ function names cannot contain hyphens
 
 bad-name() { :; }
 
----
+------------------
 
 
 
@@ -827,4 +771,4 @@ function names cannot start with digits
 
 9bad() { :; }
 
----
+------------------

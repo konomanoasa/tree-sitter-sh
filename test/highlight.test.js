@@ -16,6 +16,9 @@ import {
   root,
 } from "../scripts/tree-sitter.js";
 
+const highlightTimeoutMs = 60_000;
+const firstThemeColor = 17;
+
 function decodeEntities(text) {
   return text
     .replaceAll("&lt;", "<")
@@ -66,7 +69,7 @@ function createHighlighter({ directory, root, run, captureNames }) {
     JSON.stringify({
       "parser-directories": [parserDirectory],
       theme: Object.fromEntries(
-        captureNames.map((name, index) => [name, index + 17]),
+        captureNames.map((name, index) => [name, index + firstThemeColor]),
       ),
     }),
   );
@@ -179,7 +182,7 @@ after(() => {
 
 function assertCommand(arguments_) {
   const result = runner.run(arguments_, {
-    timeout: 60_000,
+    timeout: highlightTimeoutMs,
   });
   assert.ifError(result.error);
   assert.equal(result.status, 0, result.stdout + result.stderr);

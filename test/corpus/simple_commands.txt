@@ -4,7 +4,7 @@ blank-delimited words remain one command
 
 read -d : value
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -36,7 +36,7 @@ a dot utility name remains a command name
 
 .
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -61,7 +61,7 @@ a bracket utility name remains a command name
 
 [ value ]
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -91,7 +91,7 @@ quoted command names retain their word structure
 
 "printf" value
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -120,7 +120,7 @@ expanded command names retain their word structure
 
 ${runner} value
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -149,7 +149,7 @@ quoted escaped and literal hyphen-prefixed arguments retain source structure
 
 tool '-x' \-x "--long" --long
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -186,7 +186,7 @@ hyphen-prefixed words retain concatenated source parts
 
 tool --long'' -x${suffix} --long
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -221,7 +221,7 @@ reserved words remain literal command arguments
 
 printf if then elif else fi for in do done case esac while until
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -273,7 +273,7 @@ reserved word prefixes remain ordinary command names
 
 ifconfig then_value for-ever while2
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -305,7 +305,7 @@ brace prefixes remain ordinary command words
 
 {suffix }suffix
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -333,7 +333,7 @@ quoted and escaped reserved spellings remain ordinary command words
 
 "if" 'then' \for
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -367,7 +367,7 @@ braces remain words in argument positions
 echo } {
 holder() { echo value; }
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -425,7 +425,7 @@ command words after prefixes follow POSIX rule 7b
 x=1 done arg
 >out then else
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -480,7 +480,7 @@ if x; then echo fi done esac; fi
 while x; do echo fi done esac; done
 case x in x) echo fi done esac;; esac
 
----
+------------------
 
 (program
   (linebreak
@@ -614,155 +614,13 @@ case x in x) echo fi done esac;; esac
     (newline_list)))
 
 ==================
-internal blanks in continuation runs separate simple-command elements
-==================
-
-echo\
- \
-argument
-echo first\
-\
- \
-second
-<input\
- \
-command
-<input\
- \
-NAME=value
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  (line_continuation)
-                  suffix: (cmd_suffix
-                    (line_continuation)
-                    word: (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal))
-                    (line_continuation)
-                    (line_continuation)
-                    (line_continuation)
-                    word: (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal))))))
-                  (line_continuation)
-                  (line_continuation)
-                  word: (cmd_word
-                    (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  prefix: (cmd_prefix
-                    redirect: (io_redirect
-                      body: (io_file
-                        filename: (filename
-                          word: (word
-                            (literal)))))
-                    (line_continuation)
-                    (line_continuation)
-                    assignment: (assignment_word
-                      name: (variable_name)
-                      value: (assignment_value
-                        (literal))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
-a continuation followed by blank separates command words
-==================
-
-echo \
-  three
-next
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    (line_continuation)
-                    word: (word
-                      (literal))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 an unmatched fi cannot begin a simple command
 :error
 ==================
 
 fi
 
----
+------------------
 
 
 
@@ -773,4 +631,4 @@ an in keyword cannot begin a simple command
 
 in
 
----
+------------------

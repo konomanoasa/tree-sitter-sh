@@ -11,7 +11,7 @@ inside
 INNER
 }
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -104,7 +104,7 @@ inside backquote
 BACK
 `
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -201,7 +201,7 @@ INNER
 after
 OUTER
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -276,7 +276,7 @@ a
 b)
 E
 
----
+------------------
 
 (program
   (linebreak
@@ -368,7 +368,7 @@ B
 a
 A
 
----
+------------------
 
 (program
   (linebreak
@@ -440,7 +440,7 @@ echo $(( $(cat <<''
 
 ) + 1 ))
 
----
+------------------
 
 (program
   (linebreak
@@ -502,7 +502,7 @@ echo [$(cat <<""
 
 )]
 
----
+------------------
 
 (program
   (linebreak
@@ -562,7 +562,7 @@ echo $(( $(cat <<$''
 
 ) + 1 ))
 
----
+------------------
 
 (program
   (linebreak
@@ -624,7 +624,7 @@ x\\
 I
 ) + 1 ))
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -692,7 +692,7 @@ text
 \$v
 `
 
----
+------------------
 
 (program
   (linebreak
@@ -806,7 +806,7 @@ b
 \\\`x\\\`
 \``
 
----
+------------------
 
 (program
   (linebreak
@@ -884,134 +884,6 @@ b
     (newline_list)))
 
 ==================
-backquote continuations preserve their physical pairs and document boundaries
-==================
-
-echo `cat <<\\
-EOF
-abc \\
-$name
-EOF
-`
-echo `echo \`cat <<\\\\
-END
-body
-END
-\``
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (backquote_substitution
-                        body: (backquote_substitution_body
-                          (complete_commands
-                            command: (complete_command
-                              body: (list
-                                and_or: (and_or
-                                  pipeline: (pipeline
-                                    sequence: (pipe_sequence
-                                      command: (command
-                                        body: (simple_command
-                                          name: (cmd_name
-                                            (word
-                                              (literal)))
-                                          suffix: (cmd_suffix
-                                            redirect: (io_redirect
-                                              body: (io_here
-                                                operator: (dless)
-                                                (line_continuation)
-                                                end: (here_end
-                                                  word: (word
-                                                    (literal))))))))))))))
-                          (linebreak
-                            (newline_list
-                              (here_document_sequence
-                                line_end: (here_document_line_end)
-                                document: (here_document
-                                  body: (here_document_body
-                                    (here_document_text)
-                                    (line_continuation)
-                                    (parameter_expansion
-                                      parameter: (variable_name)))
-                                  end: (here_document_end
-                                    (here_document_end_text)))))))))))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (backquote_substitution
-                        body: (backquote_substitution_body
-                          (complete_commands
-                            command: (complete_command
-                              body: (list
-                                and_or: (and_or
-                                  pipeline: (pipeline
-                                    sequence: (pipe_sequence
-                                      command: (command
-                                        body: (simple_command
-                                          name: (cmd_name
-                                            (word
-                                              (literal)))
-                                          suffix: (cmd_suffix
-                                            word: (word
-                                              (backquote_substitution
-                                                body: (backquote_substitution_body
-                                                  (complete_commands
-                                                    command: (complete_command
-                                                      body: (list
-                                                        and_or: (and_or
-                                                          pipeline: (pipeline
-                                                            sequence: (pipe_sequence
-                                                              command: (command
-                                                                body: (simple_command
-                                                                  name: (cmd_name
-                                                                    (word
-                                                                      (literal)))
-                                                                  suffix: (cmd_suffix
-                                                                    redirect: (io_redirect
-                                                                      body: (io_here
-                                                                        operator: (dless)
-                                                                        (line_continuation)
-                                                                        end: (here_end
-                                                                          word: (word
-                                                                            (literal))))))))))))))
-                                                  (linebreak
-                                                    (newline_list
-                                                      (here_document_sequence
-                                                        line_end: (here_document_line_end)
-                                                        document: (here_document
-                                                          body: (here_document_body
-                                                            (here_document_text))
-                                                          end: (here_document_end
-                                                            (here_document_end_text))))))))))))))))))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 a rescan-retained backslash keeps an end line from matching
 :error
 ==================
@@ -1021,156 +893,9 @@ body
 \\d
 `
 
----
+------------------
 
 
-
-==================
-nested quoted here-documents inherit enclosing tabs and leading continuations
-==================
-
-cat <<-OUT
-$(cat <<'IN'
-\
-	IN
-)
-OUT
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dlessdash)
-                        end: (here_end
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (here_document_body
-            (command_substitution
-              body: (command_substitution_body
-                (complete_commands
-                  command: (complete_command
-                    body: (list
-                      and_or: (and_or
-                        pipeline: (pipeline
-                          sequence: (pipe_sequence
-                            command: (command
-                              body: (simple_command
-                                name: (cmd_name
-                                  (word
-                                    (literal)))
-                                suffix: (cmd_suffix
-                                  redirect: (io_redirect
-                                    body: (io_here
-                                      operator: (dless)
-                                      end: (here_end
-                                        word: (word
-                                          (single_quoted
-                                            (single_quote_content)))))))))))))))
-                (linebreak
-                  (newline_list
-                    (here_document_sequence
-                      line_end: (here_document_line_end)
-                      document: (here_document
-                        end: (here_document_end
-                          (line_continuation)
-                          (here_document_end_text)))))))))
-          end: (here_document_end
-            (here_document_end_text)))))))
-
-==================
-quoted nested bodies keep text before inherited continuations
-==================
-
-cat <<OUT
-$(cat <<'IN'
-\\\
- 
-IN
-)
-OUT
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (here_document_body
-            (command_substitution
-              body: (command_substitution_body
-                (complete_commands
-                  command: (complete_command
-                    body: (list
-                      and_or: (and_or
-                        pipeline: (pipeline
-                          sequence: (pipe_sequence
-                            command: (command
-                              body: (simple_command
-                                name: (cmd_name
-                                  (word
-                                    (literal)))
-                                suffix: (cmd_suffix
-                                  redirect: (io_redirect
-                                    body: (io_here
-                                      operator: (dless)
-                                      end: (here_end
-                                        word: (word
-                                          (single_quoted
-                                            (single_quote_content)))))))))))))))
-                (linebreak
-                  (newline_list
-                    (here_document_sequence
-                      line_end: (here_document_line_end)
-                      document: (here_document
-                        body: (quoted_here_document_body
-                          (quoted_here_document_text
-                            (line_continuation)))
-                        end: (here_document_end
-                          (here_document_end_text)))))))))
-          end: (here_document_end
-            (here_document_end_text)))))))
 
 ==================
 a here-document declared inside a substitution closed on its line never starts
@@ -1180,7 +905,7 @@ x=$(cat <<EOF)
 hi
 EOF
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1250,7 +975,7 @@ x=`cat <<EOF`
 hi
 EOF
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1320,7 +1045,7 @@ cat <<A $(cat <<B)
 x
 A
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1382,7 +1107,7 @@ cat <<E$(cat <<F)
 x
 E$(cat <<F)
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1444,7 +1169,7 @@ body
 F
 )
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1510,7 +1235,7 @@ echo $(( (1) + $(cat <<E; (
 E
 :)) ))
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1592,7 +1317,7 @@ x]
 E
 )]
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -1677,3 +1402,257 @@ E
                                         (here_document_end_text))))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+here document stripped tab tokens
+:cst
+==================
+cat <<-E
+$(a &&
+	b= c
+	if d; then e; fi
+	f g
+	h() { :; }
+)
+	E
+
+------------------
+
+0:0  - 8:0    program
+0:0  - 0:8      commands: complete_commands
+0:0  - 0:8        command: complete_command
+0:0  - 0:8          body: list
+0:0  - 0:8            and_or: and_or
+0:0  - 0:8              pipeline: pipeline
+0:0  - 0:8                sequence: pipe_sequence
+0:0  - 0:8                  command: command
+0:0  - 0:8                    body: simple_command
+0:0  - 0:3                      name: cmd_name
+0:0  - 0:3                        word
+0:0  - 0:3                          literal `cat`
+0:3  - 0:8                      suffix: cmd_suffix
+0:4  - 0:8                        redirect: io_redirect
+0:4  - 0:8                          body: io_here
+0:4  - 0:7                            operator: dlessdash `<<-`
+0:7  - 0:8                            end: here_end
+0:7  - 0:8                              word: word
+0:7  - 0:8                                literal `E`
+0:8  - 8:0      trailing: linebreak
+0:8  - 8:0        newline_list
+0:8  - 8:0          here_document_sequence
+0:8  - 1:0            line_end: here_document_line_end
+0:8  - 0:9              `\n`
+1:0  - 8:0            document: here_document
+1:0  - 7:0              body: here_document_body
+1:0  - 6:1                command_substitution
+1:0  - 1:1                  "$"
+1:1  - 1:2                  "("
+1:2  - 6:0                  body: command_substitution_body
+1:2  - 5:11                   complete_commands
+1:2  - 2:5                      command: complete_command
+1:2  - 2:5                        body: list
+1:2  - 2:5                          and_or: and_or
+1:2  - 1:3                            pipeline: pipeline
+1:2  - 1:3                              sequence: pipe_sequence
+1:2  - 1:3                                command: command
+1:2  - 1:3                                  body: simple_command
+1:2  - 1:3                                    name: cmd_name
+1:2  - 1:3                                      word
+1:2  - 1:3                                        literal `a`
+1:4  - 1:6                            operator: and_if `&&`
+1:6  - 2:0                            linebreak
+1:6  - 2:0                              newline_list
+1:6  - 2:0                                "\n"
+2:1  - 2:5                            pipeline: pipeline
+2:1  - 2:5                              sequence: pipe_sequence
+2:1  - 2:5                                command: command
+2:1  - 2:5                                  body: simple_command
+2:1  - 2:3                                    prefix: cmd_prefix
+2:1  - 2:3                                      assignment: assignment_word
+2:1  - 2:2                                        name: variable_name `b`
+2:2  - 2:3                                        "="
+2:4  - 2:5                                    word: cmd_word
+2:4  - 2:5                                      word
+2:4  - 2:5                                        literal `c`
+2:5  - 3:0                      separator: newline_list
+2:5  - 3:0                        "\n"
+3:1  - 3:17                     command: complete_command
+3:1  - 3:17                       body: list
+3:1  - 3:17                         and_or: and_or
+3:1  - 3:17                           pipeline: pipeline
+3:1  - 3:17                             sequence: pipe_sequence
+3:1  - 3:17                               command: command
+3:1  - 3:17                                 body: compound_command
+3:1  - 3:17                                   if_clause
+3:1  - 3:3                                      if_keyword `if`
+3:3  - 3:6                                      condition: compound_list
+3:4  - 3:5                                        body: term
+3:4  - 3:5                                          and_or: and_or
+3:4  - 3:5                                            pipeline: pipeline
+3:4  - 3:5                                              sequence: pipe_sequence
+3:4  - 3:5                                                command: command
+3:4  - 3:5                                                  body: simple_command
+3:4  - 3:5                                                    name: cmd_name
+3:4  - 3:5                                                      word
+3:4  - 3:5                                                        literal `d`
+3:5  - 3:6                                        terminator: separator
+3:5  - 3:6                                          operator: separator_op
+3:5  - 3:6                                            ";"
+3:7  - 3:11                                     then_keyword `then`
+3:11 - 3:14                                     consequence: compound_list
+3:12 - 3:13                                       body: term
+3:12 - 3:13                                         and_or: and_or
+3:12 - 3:13                                           pipeline: pipeline
+3:12 - 3:13                                             sequence: pipe_sequence
+3:12 - 3:13                                               command: command
+3:12 - 3:13                                                 body: simple_command
+3:12 - 3:13                                                   name: cmd_name
+3:12 - 3:13                                                     word
+3:12 - 3:13                                                       literal `e`
+3:13 - 3:14                                       terminator: separator
+3:13 - 3:14                                         operator: separator_op
+3:13 - 3:14                                           ";"
+3:15 - 3:17                                     fi_keyword `fi`
+3:17 - 4:0                      separator: newline_list
+3:17 - 4:0                        "\n"
+4:1  - 4:4                      command: complete_command
+4:1  - 4:4                        body: list
+4:1  - 4:4                          and_or: and_or
+4:1  - 4:4                            pipeline: pipeline
+4:1  - 4:4                              sequence: pipe_sequence
+4:1  - 4:4                                command: command
+4:1  - 4:4                                  body: simple_command
+4:1  - 4:2                                    name: cmd_name
+4:1  - 4:2                                      word
+4:1  - 4:2                                        literal `f`
+4:2  - 4:4                                    suffix: cmd_suffix
+4:3  - 4:4                                      word: word
+4:3  - 4:4                                        literal `g`
+4:4  - 5:0                      separator: newline_list
+4:4  - 5:0                        "\n"
+5:1  - 5:11                     command: complete_command
+5:1  - 5:11                       body: list
+5:1  - 5:11                         and_or: and_or
+5:1  - 5:11                           pipeline: pipeline
+5:1  - 5:11                             sequence: pipe_sequence
+5:1  - 5:11                               command: command
+5:1  - 5:11                                 body: function_definition
+5:1  - 5:2                                    name: fname `h`
+5:2  - 5:3                                    "("
+5:3  - 5:4                                    ")"
+5:5  - 5:11                                   body: function_body
+5:5  - 5:11                                     body: compound_command
+5:5  - 5:11                                       brace_group
+5:5  - 5:6                                          "{"
+5:6  - 5:9                                          body: compound_list
+5:7  - 5:8                                            body: term
+5:7  - 5:8                                              and_or: and_or
+5:7  - 5:8                                                pipeline: pipeline
+5:7  - 5:8                                                  sequence: pipe_sequence
+5:7  - 5:8                                                    command: command
+5:7  - 5:8                                                      body: simple_command
+5:7  - 5:8                                                        name: cmd_name
+5:7  - 5:8                                                          word
+5:7  - 5:8                                                            literal `:`
+5:8  - 5:9                                            terminator: separator
+5:8  - 5:9                                              operator: separator_op
+5:8  - 5:9                                                ";"
+5:10 - 5:11                                         "}"
+5:11 - 6:0                    linebreak
+5:11 - 6:0                      newline_list
+5:11 - 6:0                        "\n"
+6:0  - 6:1                  ")"
+7:0  - 8:0              end: here_document_end
+7:1  - 7:2                here_document_end_text `E`
+
+==================
+here escape final
+:cst
+==================
+echo $(cat <<E) x
+body
+E
+
+------------------
+
+0:0  - 3:0    program
+0:0  - 2:1      commands: complete_commands
+0:0  - 0:17       command: complete_command
+0:0  - 0:17         body: list
+0:0  - 0:17           and_or: and_or
+0:0  - 0:17             pipeline: pipeline
+0:0  - 0:17               sequence: pipe_sequence
+0:0  - 0:17                 command: command
+0:0  - 0:17                   body: simple_command
+0:0  - 0:4                      name: cmd_name
+0:0  - 0:4                        word
+0:0  - 0:4                          literal `echo`
+0:4  - 0:17                     suffix: cmd_suffix
+0:5  - 0:15                       word: word
+0:5  - 0:15                         command_substitution
+0:5  - 0:6                            "$"
+0:6  - 0:7                            "("
+0:7  - 0:14                           body: command_substitution_body
+0:7  - 0:14                             complete_commands
+0:7  - 0:14                               command: complete_command
+0:7  - 0:14                                 body: list
+0:7  - 0:14                                   and_or: and_or
+0:7  - 0:14                                     pipeline: pipeline
+0:7  - 0:14                                       sequence: pipe_sequence
+0:7  - 0:14                                         command: command
+0:7  - 0:14                                           body: simple_command
+0:7  - 0:10                                             name: cmd_name
+0:7  - 0:10                                               word
+0:7  - 0:10                                                 literal `cat`
+0:10 - 0:14                                             suffix: cmd_suffix
+0:11 - 0:14                                               redirect: io_redirect
+0:11 - 0:14                                                 body: io_here
+0:11 - 0:13                                                   operator: dless `<<`
+0:13 - 0:14                                                   end: here_end
+0:13 - 0:14                                                     word: word
+0:13 - 0:14                                                       literal `E`
+0:14 - 0:15                           ")"
+0:16 - 0:17                       word: word
+0:16 - 0:17                         literal `x`
+0:17 - 1:0        separator: newline_list
+0:17 - 1:0          "\n"
+1:0  - 1:4        command: complete_command
+1:0  - 1:4          body: list
+1:0  - 1:4            and_or: and_or
+1:0  - 1:4              pipeline: pipeline
+1:0  - 1:4                sequence: pipe_sequence
+1:0  - 1:4                  command: command
+1:0  - 1:4                    body: simple_command
+1:0  - 1:4                      name: cmd_name
+1:0  - 1:4                        word
+1:0  - 1:4                          literal `body`
+1:4  - 2:0        separator: newline_list
+1:4  - 2:0          "\n"
+2:0  - 2:1        command: complete_command
+2:0  - 2:1          body: list
+2:0  - 2:1            and_or: and_or
+2:0  - 2:1              pipeline: pipeline
+2:0  - 2:1                sequence: pipe_sequence
+2:0  - 2:1                  command: command
+2:0  - 2:1                    body: simple_command
+2:0  - 2:1                      name: cmd_name
+2:0  - 2:1                        word
+2:0  - 2:1                          literal `E`
+2:1  - 3:0      trailing: linebreak
+2:1  - 3:0        newline_list
+2:1  - 3:0          "\n"
+
+==================
+malformed shared nested here document delimiter
+:error
+==================
+before alpha
+cat <<EOF
+$(cat <<EOF
+body
+EOF
+)
+EOF
+after omega
+
+------------------

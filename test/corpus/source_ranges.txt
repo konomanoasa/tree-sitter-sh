@@ -1,0 +1,405 @@
+==================
+lexical source leaves
+:cst
+==================
+: abc:def=a~b
+: "a\q$"
+: [!:] [[:alpha:]] [[.a.b.]] [[=a=b=]]
+if :; then :; fi
+: && : || : >>out
+: ${#-} ${x:-y} $((1+2))
+cat <<$
+\q$
+$
+
+------------------
+
+0:0  - 9:0    program
+0:0  - 6:7      commands: complete_commands
+0:0  - 0:13       command: complete_command
+0:0  - 0:13         body: list
+0:0  - 0:13           and_or: and_or
+0:0  - 0:13             pipeline: pipeline
+0:0  - 0:13               sequence: pipe_sequence
+0:0  - 0:13                 command: command
+0:0  - 0:13                   body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 0:13                     suffix: cmd_suffix
+0:2  - 0:13                       word: word
+0:2  - 0:13                         literal `abc:def=a~b`
+0:13 - 1:0        separator: newline_list
+0:13 - 1:0          "\n"
+1:0  - 1:8        command: complete_command
+1:0  - 1:8          body: list
+1:0  - 1:8            and_or: and_or
+1:0  - 1:8              pipeline: pipeline
+1:0  - 1:8                sequence: pipe_sequence
+1:0  - 1:8                  command: command
+1:0  - 1:8                    body: simple_command
+1:0  - 1:1                      name: cmd_name
+1:0  - 1:1                        word
+1:0  - 1:1                          literal `:`
+1:1  - 1:8                      suffix: cmd_suffix
+1:2  - 1:8                        word: word
+1:2  - 1:8                          double_quoted
+1:2  - 1:3                            "\""
+1:3  - 1:7                            double_quote_text `a\\q$`
+1:7  - 1:8                            "\""
+1:8  - 2:0        separator: newline_list
+1:8  - 2:0          "\n"
+2:0  - 2:38       command: complete_command
+2:0  - 2:38         body: list
+2:0  - 2:38           and_or: and_or
+2:0  - 2:38             pipeline: pipeline
+2:0  - 2:38               sequence: pipe_sequence
+2:0  - 2:38                 command: command
+2:0  - 2:38                   body: simple_command
+2:0  - 2:1                      name: cmd_name
+2:0  - 2:1                        word
+2:0  - 2:1                          literal `:`
+2:1  - 2:38                     suffix: cmd_suffix
+2:2  - 2:6                        word: word
+2:2  - 2:6                          pattern_bracket_source
+2:2  - 2:3                            "["
+2:3  - 2:4                            negation: pattern_bracket_negation_source `!`
+2:4  - 2:5                            members: pattern_bracket_members_source
+2:4  - 2:5                              member: pattern_bracket_character_source `:`
+2:5  - 2:6                            "]"
+2:7  - 2:18                       word: word
+2:7  - 2:18                         pattern_bracket_source
+2:7  - 2:8                            "["
+2:8  - 2:17                           members: pattern_bracket_members_source
+2:8  - 2:17                             member: pattern_character_class_source
+2:8  - 2:9                                "["
+2:9  - 2:10                               ":"
+2:10 - 2:15                               content: pattern_character_class_content_source `alpha`
+2:15 - 2:16                               ":"
+2:16 - 2:17                               "]"
+2:17 - 2:18                           "]"
+2:19 - 2:28                       word: word
+2:19 - 2:28                         pattern_bracket_source
+2:19 - 2:20                           "["
+2:20 - 2:27                           members: pattern_bracket_members_source
+2:20 - 2:27                             member: pattern_collating_symbol_source
+2:20 - 2:21                               "["
+2:21 - 2:22                               "."
+2:22 - 2:23                               value: pattern_collating_symbol_character_source `a`
+2:23 - 2:24                               value: pattern_collating_symbol_character_source `.`
+2:24 - 2:25                               value: pattern_collating_symbol_character_source `b`
+2:25 - 2:26                               "."
+2:26 - 2:27                               "]"
+2:27 - 2:28                           "]"
+2:29 - 2:38                       word: word
+2:29 - 2:38                         pattern_bracket_source
+2:29 - 2:30                           "["
+2:30 - 2:37                           members: pattern_bracket_members_source
+2:30 - 2:37                             member: pattern_equivalence_class_source
+2:30 - 2:31                               "["
+2:31 - 2:32                               "="
+2:32 - 2:33                               value: pattern_equivalence_class_character_source `a`
+2:33 - 2:34                               value: pattern_equivalence_class_character_source `=`
+2:34 - 2:35                               value: pattern_equivalence_class_character_source `b`
+2:35 - 2:36                               "="
+2:36 - 2:37                               "]"
+2:37 - 2:38                           "]"
+2:38 - 3:0        separator: newline_list
+2:38 - 3:0          "\n"
+3:0  - 3:16       command: complete_command
+3:0  - 3:16         body: list
+3:0  - 3:16           and_or: and_or
+3:0  - 3:16             pipeline: pipeline
+3:0  - 3:16               sequence: pipe_sequence
+3:0  - 3:16                 command: command
+3:0  - 3:16                   body: compound_command
+3:0  - 3:16                     if_clause
+3:0  - 3:2                        if_keyword `if`
+3:2  - 3:5                        condition: compound_list
+3:3  - 3:4                          body: term
+3:3  - 3:4                            and_or: and_or
+3:3  - 3:4                              pipeline: pipeline
+3:3  - 3:4                                sequence: pipe_sequence
+3:3  - 3:4                                  command: command
+3:3  - 3:4                                    body: simple_command
+3:3  - 3:4                                      name: cmd_name
+3:3  - 3:4                                        word
+3:3  - 3:4                                          literal `:`
+3:4  - 3:5                          terminator: separator
+3:4  - 3:5                            operator: separator_op
+3:4  - 3:5                              ";"
+3:6  - 3:10                       then_keyword `then`
+3:10 - 3:13                       consequence: compound_list
+3:11 - 3:12                         body: term
+3:11 - 3:12                           and_or: and_or
+3:11 - 3:12                             pipeline: pipeline
+3:11 - 3:12                               sequence: pipe_sequence
+3:11 - 3:12                                 command: command
+3:11 - 3:12                                   body: simple_command
+3:11 - 3:12                                     name: cmd_name
+3:11 - 3:12                                       word
+3:11 - 3:12                                         literal `:`
+3:12 - 3:13                         terminator: separator
+3:12 - 3:13                           operator: separator_op
+3:12 - 3:13                             ";"
+3:14 - 3:16                       fi_keyword `fi`
+3:16 - 4:0        separator: newline_list
+3:16 - 4:0          "\n"
+4:0  - 4:17       command: complete_command
+4:0  - 4:17         body: list
+4:0  - 4:17           and_or: and_or
+4:0  - 4:1              pipeline: pipeline
+4:0  - 4:1                sequence: pipe_sequence
+4:0  - 4:1                  command: command
+4:0  - 4:1                    body: simple_command
+4:0  - 4:1                      name: cmd_name
+4:0  - 4:1                        word
+4:0  - 4:1                          literal `:`
+4:2  - 4:4              operator: and_if `&&`
+4:5  - 4:6              pipeline: pipeline
+4:5  - 4:6                sequence: pipe_sequence
+4:5  - 4:6                  command: command
+4:5  - 4:6                    body: simple_command
+4:5  - 4:6                      name: cmd_name
+4:5  - 4:6                        word
+4:5  - 4:6                          literal `:`
+4:7  - 4:9              operator: or_if `||`
+4:10 - 4:17             pipeline: pipeline
+4:10 - 4:17               sequence: pipe_sequence
+4:10 - 4:17                 command: command
+4:10 - 4:17                   body: simple_command
+4:10 - 4:11                     name: cmd_name
+4:10 - 4:11                       word
+4:10 - 4:11                         literal `:`
+4:11 - 4:17                     suffix: cmd_suffix
+4:12 - 4:17                       redirect: io_redirect
+4:12 - 4:17                         body: io_file
+4:12 - 4:14                           operator: dgreat `>>`
+4:14 - 4:17                           filename: filename
+4:14 - 4:17                             word: word
+4:14 - 4:17                               literal `out`
+4:17 - 5:0        separator: newline_list
+4:17 - 5:0          "\n"
+5:0  - 5:24       command: complete_command
+5:0  - 5:24         body: list
+5:0  - 5:24           and_or: and_or
+5:0  - 5:24             pipeline: pipeline
+5:0  - 5:24               sequence: pipe_sequence
+5:0  - 5:24                 command: command
+5:0  - 5:24                   body: simple_command
+5:0  - 5:1                      name: cmd_name
+5:0  - 5:1                        word
+5:0  - 5:1                          literal `:`
+5:1  - 5:24                     suffix: cmd_suffix
+5:2  - 5:7                        word: word
+5:2  - 5:7                          parameter_expansion
+5:2  - 5:3                            "$"
+5:3  - 5:4                            "{"
+5:4  - 5:5                            operator: parameter_length_operator `#`
+5:5  - 5:6                            parameter: special_parameter `-`
+5:6  - 5:7                            "}"
+5:8  - 5:15                       word: word
+5:8  - 5:15                         parameter_expansion
+5:8  - 5:9                            "$"
+5:9  - 5:10                           "{"
+5:10 - 5:11                           parameter: variable_name `x`
+5:11 - 5:13                           operator: parameter_value_operator `:-`
+5:13 - 5:14                           word: parameter_word
+5:13 - 5:14                             literal `y`
+5:14 - 5:15                           "}"
+5:16 - 5:24                       word: word
+5:16 - 5:24                         arithmetic_expansion
+5:16 - 5:17                           "$"
+5:17 - 5:18                           "("
+5:18 - 5:19                           "("
+5:19 - 5:22                           expression: arithmetic_binary_expression
+5:19 - 5:20                             left: arithmetic_number `1`
+5:20 - 5:21                             operator: arithmetic_operator `+`
+5:21 - 5:22                             right: arithmetic_number `2`
+5:22 - 5:23                           ")"
+5:23 - 5:24                           ")"
+5:24 - 6:0        separator: newline_list
+5:24 - 6:0          "\n"
+6:0  - 6:7        command: complete_command
+6:0  - 6:7          body: list
+6:0  - 6:7            and_or: and_or
+6:0  - 6:7              pipeline: pipeline
+6:0  - 6:7                sequence: pipe_sequence
+6:0  - 6:7                  command: command
+6:0  - 6:7                    body: simple_command
+6:0  - 6:3                      name: cmd_name
+6:0  - 6:3                        word
+6:0  - 6:3                          literal `cat`
+6:3  - 6:7                      suffix: cmd_suffix
+6:4  - 6:7                        redirect: io_redirect
+6:4  - 6:7                          body: io_here
+6:4  - 6:6                            operator: dless `<<`
+6:6  - 6:7                            end: here_end
+6:6  - 6:7                              word: word
+6:6  - 6:7                                literal `$`
+6:7  - 9:0      trailing: linebreak
+6:7  - 9:0        newline_list
+6:7  - 9:0          here_document_sequence
+6:7  - 7:0            line_end: here_document_line_end
+6:7  - 6:8              `\n`
+7:0  - 9:0            document: here_document
+7:0  - 8:0              body: here_document_body
+7:0  - 7:3                here_document_text `\\q$`
+8:0  - 9:0              end: here_document_end
+8:0  - 8:1                here_document_end_text `$`
+
+==================
+source delimiters
+:cst
+==================
+printf x$x
+echo `inner`
+echo `printf \`nested\` \$name`
+echo ${x} $(x) $((1))
+
+------------------
+
+0:0  - 4:0    program
+0:0  - 3:21     commands: complete_commands
+0:0  - 0:10       command: complete_command
+0:0  - 0:10         body: list
+0:0  - 0:10           and_or: and_or
+0:0  - 0:10             pipeline: pipeline
+0:0  - 0:10               sequence: pipe_sequence
+0:0  - 0:10                 command: command
+0:0  - 0:10                   body: simple_command
+0:0  - 0:6                      name: cmd_name
+0:0  - 0:6                        word
+0:0  - 0:6                          literal `printf`
+0:6  - 0:10                     suffix: cmd_suffix
+0:7  - 0:10                       word: word
+0:7  - 0:8                          literal `x`
+0:8  - 0:10                         parameter_expansion
+0:8  - 0:9                            "$"
+0:9  - 0:10                           parameter: variable_name `x`
+0:10 - 1:0        separator: newline_list
+0:10 - 1:0          "\n"
+1:0  - 1:12       command: complete_command
+1:0  - 1:12         body: list
+1:0  - 1:12           and_or: and_or
+1:0  - 1:12             pipeline: pipeline
+1:0  - 1:12               sequence: pipe_sequence
+1:0  - 1:12                 command: command
+1:0  - 1:12                   body: simple_command
+1:0  - 1:4                      name: cmd_name
+1:0  - 1:4                        word
+1:0  - 1:4                          literal `echo`
+1:4  - 1:12                     suffix: cmd_suffix
+1:5  - 1:12                       word: word
+1:5  - 1:12                         backquote_substitution
+1:5  - 1:6                            "\`"
+1:6  - 1:11                           body: backquote_substitution_body
+1:6  - 1:11                             complete_commands
+1:6  - 1:11                               command: complete_command
+1:6  - 1:11                                 body: list
+1:6  - 1:11                                   and_or: and_or
+1:6  - 1:11                                     pipeline: pipeline
+1:6  - 1:11                                       sequence: pipe_sequence
+1:6  - 1:11                                         command: command
+1:6  - 1:11                                           body: simple_command
+1:6  - 1:11                                             name: cmd_name
+1:6  - 1:11                                               word
+1:6  - 1:11                                                 literal `inner`
+1:11 - 1:12                           "\`"
+1:12 - 2:0        separator: newline_list
+1:12 - 2:0          "\n"
+2:0  - 2:31       command: complete_command
+2:0  - 2:31         body: list
+2:0  - 2:31           and_or: and_or
+2:0  - 2:31             pipeline: pipeline
+2:0  - 2:31               sequence: pipe_sequence
+2:0  - 2:31                 command: command
+2:0  - 2:31                   body: simple_command
+2:0  - 2:4                      name: cmd_name
+2:0  - 2:4                        word
+2:0  - 2:4                          literal `echo`
+2:4  - 2:31                     suffix: cmd_suffix
+2:5  - 2:31                       word: word
+2:5  - 2:31                         backquote_substitution
+2:5  - 2:6                            "\`"
+2:6  - 2:30                           body: backquote_substitution_body
+2:6  - 2:30                             complete_commands
+2:6  - 2:30                               command: complete_command
+2:6  - 2:30                                 body: list
+2:6  - 2:30                                   and_or: and_or
+2:6  - 2:30                                     pipeline: pipeline
+2:6  - 2:30                                       sequence: pipe_sequence
+2:6  - 2:30                                         command: command
+2:6  - 2:30                                           body: simple_command
+2:6  - 2:12                                             name: cmd_name
+2:6  - 2:12                                               word
+2:6  - 2:12                                                 literal `printf`
+2:12 - 2:30                                             suffix: cmd_suffix
+2:13 - 2:23                                               word: word
+2:13 - 2:23                                                 backquote_substitution
+2:14 - 2:15                                                   "\`"
+2:15 - 2:21                                                   body: backquote_substitution_body
+2:15 - 2:21                                                     complete_commands
+2:15 - 2:21                                                       command: complete_command
+2:15 - 2:21                                                         body: list
+2:15 - 2:21                                                           and_or: and_or
+2:15 - 2:21                                                             pipeline: pipeline
+2:15 - 2:21                                                               sequence: pipe_sequence
+2:15 - 2:21                                                                 command: command
+2:15 - 2:21                                                                   body: simple_command
+2:15 - 2:21                                                                     name: cmd_name
+2:15 - 2:21                                                                       word
+2:15 - 2:21                                                                         literal `nested`
+2:22 - 2:23                                                   "\`"
+2:24 - 2:30                                               word: word
+2:24 - 2:30                                                 parameter_expansion
+2:25 - 2:26                                                   "$"
+2:26 - 2:30                                                   parameter: variable_name `name`
+2:30 - 2:31                           "\`"
+2:31 - 3:0        separator: newline_list
+2:31 - 3:0          "\n"
+3:0  - 3:21       command: complete_command
+3:0  - 3:21         body: list
+3:0  - 3:21           and_or: and_or
+3:0  - 3:21             pipeline: pipeline
+3:0  - 3:21               sequence: pipe_sequence
+3:0  - 3:21                 command: command
+3:0  - 3:21                   body: simple_command
+3:0  - 3:4                      name: cmd_name
+3:0  - 3:4                        word
+3:0  - 3:4                          literal `echo`
+3:4  - 3:21                     suffix: cmd_suffix
+3:5  - 3:9                        word: word
+3:5  - 3:9                          parameter_expansion
+3:5  - 3:6                            "$"
+3:6  - 3:7                            "{"
+3:7  - 3:8                            parameter: variable_name `x`
+3:8  - 3:9                            "}"
+3:10 - 3:14                       word: word
+3:10 - 3:14                         command_substitution
+3:10 - 3:11                           "$"
+3:11 - 3:12                           "("
+3:12 - 3:13                           body: command_substitution_body
+3:12 - 3:13                             complete_commands
+3:12 - 3:13                               command: complete_command
+3:12 - 3:13                                 body: list
+3:12 - 3:13                                   and_or: and_or
+3:12 - 3:13                                     pipeline: pipeline
+3:12 - 3:13                                       sequence: pipe_sequence
+3:12 - 3:13                                         command: command
+3:12 - 3:13                                           body: simple_command
+3:12 - 3:13                                             name: cmd_name
+3:12 - 3:13                                               word
+3:12 - 3:13                                                 literal `x`
+3:13 - 3:14                           ")"
+3:15 - 3:21                       word: word
+3:15 - 3:21                         arithmetic_expansion
+3:15 - 3:16                           "$"
+3:16 - 3:17                           "("
+3:17 - 3:18                           "("
+3:18 - 3:19                           expression: arithmetic_number `1`
+3:19 - 3:20                           ")"
+3:20 - 3:21                           ")"
+3:21 - 4:0      trailing: linebreak
+3:21 - 4:0        newline_list
+3:21 - 4:0          "\n"

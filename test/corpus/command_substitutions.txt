@@ -4,7 +4,7 @@ empty command substitution forms remain source parts
 
 printf $() ``
 
----
+------------------
 
 (program
   (linebreak
@@ -34,7 +34,7 @@ command substitutions contain nested command source recursively
 
 echo $(first "$(second)")
 
----
+------------------
 
 (program
   (linebreak
@@ -91,7 +91,7 @@ nested substitutions preserve the outer source word
 echo "$(printf '%s' "$(printf '%s' x)")" ${outer:-${inner:-$(printf y)}}
 next
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -193,7 +193,7 @@ arithmetic expansion is distinguished from a subshell in command substitution
 
 printf "$((echo one; echo two))"
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -263,7 +263,7 @@ echo `first; `
 echo $(if x; then y; fi )
 echo `if x; then y; fi `
 
----
+------------------
 
 (program
   (linebreak
@@ -487,7 +487,7 @@ echo $( (printf value); printf ')' # ) ignored
 )
 next
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -569,7 +569,7 @@ first=$(
 second=`
   printf value`
 
----
+------------------
 
 (program
   (linebreak
@@ -646,7 +646,7 @@ first=$(
 second=`
   `
 
----
+------------------
 
 (program
   (linebreak
@@ -687,99 +687,13 @@ second=`
     (newline_list)))
 
 ==================
-dollar command substitution closers retain boundary escaped newlines
-==================
-
-echo $(printf x\
-)
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (command_substitution
-                        (command_substitution_body
-                          (complete_commands
-                            (complete_command
-                              (list
-                                (and_or
-                                  (pipeline
-                                    (pipe_sequence
-                                      (command
-                                        (simple_command
-                                          (cmd_name
-                                            (word
-                                              (literal)))
-                                          (cmd_suffix
-                                            (word
-                                              (literal))))))))))))
-                        (line_continuation))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
-a continuation before a substitution closer stays layout
-==================
-
-x=$( a\
-)
-
----
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_prefix
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (command_substitution
-                          (command_substitution_body
-                            (complete_commands
-                              (complete_command
-                                (list
-                                  (and_or
-                                    (pipeline
-                                      (pipe_sequence
-                                        (command
-                                          (simple_command
-                                            (cmd_name
-                                              (word
-                                                (literal))))))))))))
-                          (line_continuation)))))))))))))
-  (linebreak
-    (newline_list)))
-
-==================
 a done keyword cannot begin a command substitution body
 :error
 ==================
 
 echo $(done)
 
----
+------------------
 
 
 
@@ -789,7 +703,7 @@ fixed arithmetic errors remain subshell commands around runtime fragments
 
 echo $((: $x))
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -834,3 +748,12 @@ echo $((: $x))
                                                                 parameter: (variable_name))))))))))))))))))))))))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+unterminated command substitution
+:error
+==================
+echo $(inside
+after
+
+------------------

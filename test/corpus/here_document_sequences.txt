@@ -9,7 +9,7 @@ FIRST
 	SECOND
 next
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -81,7 +81,7 @@ body
 EOF
 next
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -155,7 +155,7 @@ body
 EOF
 tr a b
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -201,66 +201,6 @@ tr a b
     (newline_list)))
 
 ==================
-comments and escaped newlines do not trigger body collection early
-==================
-
-cat <<FIRST \
-  middle <<SECOND # declarations finish here
-one
-FIRST
-two
-SECOND
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal)))))
-                    (line_continuation)
-                    word: (word
-                      (literal))
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal))))))))))))))
-  trailing: (linebreak
-    (newline_list
-      (here_document_sequence
-        comment: (comment
-          (comment_text))
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (here_document_body
-            (here_document_text))
-          end: (here_document_end
-            (here_document_end_text)))
-        document: (here_document
-          body: (here_document_body
-            (here_document_text))
-          end: (here_document_end
-            (here_document_end_text)))))))
-
-==================
 a substitution newline does not start an enclosing here-document body
 ==================
 
@@ -269,7 +209,7 @@ y)
 body
 E
 
----
+------------------
 
 (program
   (linebreak
@@ -336,7 +276,7 @@ y`
 body
 E
 
----
+------------------
 
 (program
   (linebreak
@@ -403,7 +343,7 @@ x
 E
 }
 
----
+------------------
 
 (program
   (linebreak
@@ -466,7 +406,7 @@ A
 b
 B
 
----
+------------------
 
 (program
   (linebreak
@@ -539,7 +479,7 @@ if cat <<E; b; then :; fi
 x
 E
 
----
+------------------
 
 (program
   (linebreak
@@ -615,7 +555,7 @@ case x in a) cat <<E; b;; esac
 x
 E
 
----
+------------------
 
 (program
   (linebreak
@@ -686,7 +626,7 @@ an escaped word begins a command after a here-document separator
 x
 E
 
----
+------------------
 
 (program
   (linebreak
@@ -748,7 +688,7 @@ body
 END
 second
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -793,26 +733,16 @@ second
     (newline_list)))
 
 ==================
-a here-document sequence owns continuations before its line end
+here backquote final
 ==================
-
-cat <<EOF; echo first\
-
+cmd <<E `x
+y`
 body
-EOF
-second
-cat <<END; echo third\
- \
+E
 
-body two
-END
-fourth
-
----
+------------------
 
 (program
-  (linebreak
-    (newline_list))
   (complete_commands
     (complete_command
       (list
@@ -830,142 +760,110 @@ fourth
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))
-        (separator_op)
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
+                            (literal)))))
                     (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal))))))))))
-    (line_continuation)
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end
-            (here_document_end_text)))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (literal)))))))))))
-        (separator_op)
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal))))))))))
-    (line_continuation)
-    (newline_list
-      (here_document_sequence
-        (line_continuation)
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end
-            (here_document_end_text)))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal))))))))))
+                            (newline_list)
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))))))))))))))))))))))
   (linebreak
-    (newline_list)))
-
-==================
-a continuation ending a here-document redirect line keeps a following command
-==================
-
-cat <<EOF \
-
-EOF
-echo after
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (literal)))))))))))))
-    separator: (newline_list
+    (newline_list
       (here_document_sequence
-        (line_continuation)
-        line_end: (here_document_line_end)
-        document: (here_document
-          end: (here_document_end
-            (here_document_end_text)))))
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
-                      (literal)))))))))))
-  trailing: (linebreak
-    (newline_list)))
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end
+            (here_document_end_text)))))))
+
+==================
+missing word here document operand before and if
+:error
+==================
+cat <<EOF &&
+body
+EOF
+
+------------------
+
+
+
+==================
+pending document multiple declarations, suffix ""
+:error
+==================
+cat <<FIRST <<SECOND
+------------------
+
+
+
+==================
+pending document multiple declarations, suffix "\n"
+:error
+==================
+cat <<FIRST <<SECOND
+
+------------------
+
+
+
+==================
+pending document multiple declarations, suffix "\nbody"
+:error
+==================
+cat <<FIRST <<SECOND
+body
+------------------
+
+
+
+==================
+pending document multiple declarations, suffix "\nbody\n"
+:error
+==================
+cat <<FIRST <<SECOND
+body
+
+------------------
+
+
+
+==================
+pending document second body
+:error
+==================
+cat <<FIRST <<SECOND
+FIRST
+
+------------------
+
+
+
+==================
+pending document later declaration
+:error
+==================
+cat <<FIRST
+FIRST
+cat <<SECOND
+------------------

@@ -4619,20 +4619,15 @@
       "type": "SEQ",
       "members": [
         {
+          "type": "SYMBOL",
+          "name": "_here_document_sequence_begin"
+        },
+        {
           "type": "CHOICE",
           "members": [
             {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "SYMBOL",
-                  "name": "_here_document_line_layout_begin"
-                },
-                {
-                  "type": "SYMBOL",
-                  "name": "_closing_layout"
-                }
-              ]
+              "type": "SYMBOL",
+              "name": "_closing_layout"
             },
             {
               "type": "BLANK"
@@ -14319,7 +14314,7 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_here_document_line_layout_begin"
+      "name": "_here_document_sequence_begin"
     },
     {
       "type": "SYMBOL",

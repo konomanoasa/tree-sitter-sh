@@ -927,7 +927,7 @@ export default grammar({
       $._word_initial_dollar_sq_dollar,
       $._word_initial_dollar_expansion_start,
       $._word_initial_backquote_start,
-      $._here_document_line_layout_begin,
+      $._here_document_sequence_begin,
       $._parameter_hyphen_begin,
       $._parameter_question_begin,
       $._arithmetic_blank_begin,
@@ -1532,7 +1532,8 @@ export default grammar({
       seq($._word_initial_part, repeat($._word_part)),
     here_document_sequence: ($) =>
       seq(
-        optional(seq($._here_document_line_layout_begin, $._closing_layout)),
+        $._here_document_sequence_begin,
+        optional($._closing_layout),
         optional(boundaryLineComment($, field("comment", $.comment))),
         field("line_end", $.here_document_line_end),
         repeat1(field("document", $.here_document)),

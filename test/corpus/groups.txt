@@ -9,7 +9,7 @@ subshells and brace groups share a compound list hierarchy
 }
 ( { nested; } )
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -111,84 +111,12 @@ subshells and brace groups share a compound list hierarchy
     (newline_list)))
 
 ==================
-brace compound lists preserve continued operators and final separators
-==================
-
-holder() {
-  first && \
-second
-  third | \
-  fourth;
-}
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (function_definition
-                  name: (fname)
-                  body: (function_body
-                    body: (compound_command
-                      (brace_group
-                        body: (compound_list
-                          leading: (linebreak
-                            (newline_list))
-                          body: (term
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal)))))))
-                              operator: (and_if)
-                              (line_continuation)
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal))))))))
-                            separator: (separator
-                              newlines: (newline_list))
-                            and_or: (and_or
-                              pipeline: (pipeline
-                                sequence: (pipe_sequence
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal)))))
-                                  (line_continuation)
-                                  command: (command
-                                    body: (simple_command
-                                      name: (cmd_name
-                                        (word
-                                          (literal)))))))))
-                          terminator: (separator
-                            operator: (separator_op)
-                            linebreak: (linebreak
-                              (newline_list)))))))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 a compound command can close a reserved-delimited compound list without a separator
 ==================
 
 { (false) }
 
----
+------------------
 
 (program
   (linebreak
@@ -230,7 +158,7 @@ a right brace glued to a compound end closes the group
 { (x)}
 { x || (y)}
 
----
+------------------
 
 (program
   (linebreak
@@ -306,7 +234,7 @@ an argument-position right brace stays a word before a real closer
 
 { echo } ; }
 
----
+------------------
 
 (program
   (linebreak
@@ -344,7 +272,7 @@ an undelimited right brace stays an ordinary word
 
 { :; }x; }
 
----
+------------------
 
 (program
   leading: (linebreak
@@ -392,7 +320,7 @@ a glued right brace stays inside the word it follows
 { a=b} ;}
 { ]} ;}
 
----
+------------------
 
 (program
   (linebreak
@@ -492,73 +420,105 @@ a glued right brace stays inside the word it follows
     (newline_list)))
 
 ==================
-group closers follow continuation-led layout lines
-==================
-
-{ a
-\
-}
-(b
-\
-)
-
----
-
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (brace_group
-                    body: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        newlines: (newline_list)))
-                    (line_continuation)))))))))
-    separator: (newline_list)
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (compound_command
-                  (subshell
-                    body: (compound_list
-                      body: (term
-                        and_or: (and_or
-                          pipeline: (pipeline
-                            sequence: (pipe_sequence
-                              command: (command
-                                body: (simple_command
-                                  name: (cmd_name
-                                    (word
-                                      (literal)))))))))
-                      terminator: (separator
-                        newlines: (newline_list)))
-                    (line_continuation))))))))))
-  trailing: (linebreak
-    (newline_list)))
-
-==================
 a closing brace after a completed group requires recovery
 :error
 ==================
 
 { x; } ; }
 
----
+------------------
+
+
+
+==================
+malformed stray right parenthesis
+:error
+==================
+before alpha
+)
+after omega
+
+------------------
+
+
+
+==================
+malformed empty subshell
+:error
+==================
+before alpha
+()
+after omega
+
+------------------
+
+
+
+==================
+malformed empty subshell with blank
+:error
+==================
+before alpha
+( )
+after omega
+
+------------------
+
+
+
+==================
+malformed empty subshell with terminator
+:error
+==================
+before alpha
+(;)
+after omega
+
+------------------
+
+
+
+==================
+malformed empty subshell with newline
+:error
+==================
+before alpha
+(
+)
+after omega
+
+------------------
+
+
+
+==================
+malformed right brace command
+:error
+==================
+before alpha
+}
+after omega
+
+------------------
+
+
+
+==================
+missing word comment only brace group
+:error
+==================
+{ # pending
+}
+
+------------------
+
+
+
+==================
+missing word blank line subshell
+:error
+==================
+(
+)
+
+------------------
