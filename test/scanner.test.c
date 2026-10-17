@@ -1703,6 +1703,136 @@ test_recovery_preserves_reserved_and_punctuation_token_identity(void) {
 }
 
 static void
+test_recovery_parameter_escapes_leave_the_closing_brace_available(void) {
+  const int32_t source[] = {'\\', 'q', '}'};
+  const struct {
+    enum TokenType contexts[3];
+    size_t count;
+    bool quoted;
+  } cases[] = {
+    {{PARAMETER_OPEN}, 1, false},
+    {{PARAMETER_OPEN, PARAMETER_OPEN}, 2, false},
+    {{DQ_OPEN, PARAMETER_OPEN}, 2, true},
+    {{DQ_OPEN, PARAMETER_OPEN, PARAMETER_OPEN}, 3, true},
+    {{DQ_OPEN, COMMAND_OPEN, PARAMETER_OPEN}, 3, false},
+    {{HERE_DOCUMENT_BODY_START, PARAMETER_OPEN}, 2, true},
+    {{HERE_DOCUMENT_BODY_START, COMMAND_OPEN, PARAMETER_OPEN}, 3, false},
+  };
+  bool valid[TOKEN_COUNT];
+  for (size_t token = 0; token < TOKEN_COUNT; token += 1) {
+    valid[token] = true;
+  }
+  for (size_t index = 0; index < ARRAY_LENGTH(cases); index += 1) {
+    struct Scanner scanner = {0};
+    assert(scanner_source_ready(&scanner));
+    for (size_t context = 0; context < cases[index].count; context += 1) {
+      enum TokenType opener = cases[index].contexts[context];
+      if (opener == HERE_DOCUMENT_BODY_START) {
+        assert(
+          append_pending_document(&scanner, make_document("END", false, false))
+        );
+        assert(activate_startable_pending_documents(&scanner));
+      } else if (opener == COMMAND_OPEN) {
+        scanner.substitution_depth += 1;
+      }
+      assert(source_context_push(&scanner, opener));
+    }
+    const enum TokenType symbols[] = {
+      cases[index].quoted ? DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN
+                          : ESCAPED_CHARACTER_BEGIN,
+      cases[index].quoted ? DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN_PIECE
+                          : ESCAPED_CHARACTER_BEGIN_PIECE,
+      cases[index].quoted ? DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN_PIECE
+                          : ESCAPED_CHARACTER_BEGIN_PIECE,
+      PARAMETER_CLOSE,
+      PARAMETER_CLOSE_CHARACTER,
+    };
+    const size_t widths[] = {0, 1, 1, 0, 1};
+    size_t offset = 0;
+    for (size_t step = 0; step < ARRAY_LENGTH(symbols); step += 1) {
+      struct MockLexer lexer;
+      init_mock_lexer(&lexer, source + offset, ARRAY_LENGTH(source) - offset);
+      assert(
+        tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      assert(lexer.lexer.result_symbol == symbols[step]);
+      assert(lexer.mark == widths[step]);
+      offset += lexer.mark;
+      char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+      unsigned length = snapshot_scanner(&scanner, state);
+      tree_sitter_sh_external_scanner_deserialize(&scanner, state, length);
+      assert_scanner_matches_snapshot(&scanner, state, length);
+    }
+    assert(offset == ARRAY_LENGTH(source));
+    size_t depth = 0;
+    for (size_t context = 0; context < scanner.context_count; context += 1) {
+      depth += scanner.contexts[context].count;
+    }
+    assert(depth == cases[index].count - 1);
+    assert(!scanner.emission.active);
+    clear_scanner(&scanner);
+  }
+}
+
+static void
+test_recovery_quote_content_keeps_punctuation_inside_the_quote(void) {
+  const struct {
+    enum TokenType opener;
+    int32_t closer;
+    enum TokenType symbols[4];
+  } cases[] = {
+    {SQ_OPEN,
+      '\'',
+      {SINGLE_QUOTE_CONTENT_BEGIN,
+        SINGLE_QUOTE_CONTENT_BEGIN_PIECE,
+        SQ_CLOSE,
+        SQ_CLOSE_CHARACTER}},
+    {DQ_OPEN,
+      '"',
+      {DOUBLE_QUOTE_TEXT_BEGIN,
+        DOUBLE_QUOTE_TEXT_BEGIN_PIECE,
+        DQ_CLOSE,
+        DQ_CLOSE_CHARACTER}},
+    {DOLLAR_SQ_OPEN,
+      '\'',
+      {DOLLAR_SINGLE_QUOTE_TEXT_BEGIN,
+        DOLLAR_SINGLE_QUOTE_TEXT_BEGIN_PIECE,
+        DOLLAR_SQ_CLOSE,
+        DOLLAR_SQ_CLOSE_CHARACTER}},
+  };
+  const size_t widths[] = {0, 4, 0, 1};
+  bool valid[TOKEN_COUNT];
+  for (size_t token = 0; token < TOKEN_COUNT; token += 1) {
+    valid[token] = true;
+  }
+  for (size_t index = 0; index < ARRAY_LENGTH(cases); index += 1) {
+    struct Scanner scanner = {0};
+    assert(scanner_source_ready(&scanner));
+    assert(source_context_push(&scanner, cases[index].opener));
+    const int32_t source[] = {'x', ';', ')', '}', cases[index].closer};
+    size_t offset = 0;
+    for (size_t step = 0; step < ARRAY_LENGTH(widths); step += 1) {
+      struct MockLexer lexer;
+      init_mock_lexer(&lexer, source + offset, ARRAY_LENGTH(source) - offset);
+      assert(
+        tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      assert(lexer.lexer.result_symbol == cases[index].symbols[step]);
+      assert(lexer.mark == widths[step]);
+      offset += lexer.mark;
+      char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+      unsigned length = snapshot_scanner(&scanner, state);
+      tree_sitter_sh_external_scanner_deserialize(&scanner, state, length);
+      assert_scanner_matches_snapshot(&scanner, state, length);
+    }
+    assert(offset == ARRAY_LENGTH(source));
+    assert(scanner.context_count == 0);
+    assert(!scanner.emission.active);
+    clear_scanner(&scanner);
+  }
+}
+
+static void
 test_parenthesis_recovery_defers_substitution_state_to_grammar(void) {
   const enum TokenType ends[] = {
     COMMAND_SUBSTITUTION_END,
@@ -4108,6 +4238,8 @@ int main(void) {
   test_disabled_and_rejected_recovery_scans_preserve_state();
   test_recovery_emits_newlines_without_reclassifying_continuations();
   test_recovery_preserves_reserved_and_punctuation_token_identity();
+  test_recovery_parameter_escapes_leave_the_closing_brace_available();
+  test_recovery_quote_content_keeps_punctuation_inside_the_quote();
   test_parenthesis_recovery_defers_substitution_state_to_grammar();
   test_state_round_trip();
   test_equal_source_contexts_preserve_each_policy_restore();

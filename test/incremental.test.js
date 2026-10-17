@@ -11,6 +11,7 @@ import {
 import {
   applyEdits,
   assertIncrementalEqualsFresh,
+  assertRepeatedColdParse,
   lines,
   parseRecoveryAfterEdits,
   runParse,
@@ -114,6 +115,111 @@ test("sh: lexical source keeps its token kind through errors and repairs", () =>
       insertion,
       { byte: offset, deleteBytes: stray.length, insert: ` ${removed}` },
     );
+  }
+});
+
+test("sh: repairs restore parameter contexts and nested structures", () => {
+  const fixtures = [
+    ["unquoted parameter", `echo \${x:-value}\n`, ":-", "!"],
+    ["quoted parameter", `echo "\${x:-value}"\n`, ":-", "!"],
+    ["nested parameter", `echo \${outer:-\${x:-value}}\n`, "x:-", "x!"],
+    [
+      "quoted pattern parameter",
+      `echo "\${outer#\${x:-value}}"\n`,
+      "x:-",
+      "x!",
+    ],
+    ["quoted substitution", `echo "$(echo \${x:-value})"\n`, ":-", "!"],
+    [
+      "backquote parameter",
+      `echo \`\${x:-value}\`\n`,
+      ":-value",
+      "!`printf value`",
+    ],
+    ["here parameter", `cat <<END\n\${x:-value}\nEND\n`, ":-", "!"],
+    [
+      "here pattern parameter",
+      `cat <<END\n\${outer%\${x:-value}}\nEND\n`,
+      "x:-",
+      "x!",
+    ],
+    [
+      "here substitution parameter",
+      `cat <<END\n$(echo \${x:-value})\nEND\n`,
+      ":-",
+      "!",
+    ],
+    [
+      "here parameter with unfinished quoted substitution",
+      `cat <<END\n\${x:-$(echo "value")}\nEND\n`,
+      ':-$(echo "value")}',
+      '!$(echo "value)',
+    ],
+  ];
+  const nestingDepth = 3;
+  const hereDelimiters = Array.from(
+    { length: nestingDepth },
+    (_, index) => `END${index}`,
+  );
+  for (const [name, prefix, suffix] of [
+    ...[
+      ["while", "while :; do\n", "done\n"],
+      ["until", "until :; do\n", "done\n"],
+      ["case", "case x\nin\nx)\n", ";; esac\n"],
+      ["assignment", 'x="$(\n', ')"\n'],
+      ["declaration assignment", 'export x="$(\n', ')"\n'],
+      ["word parts", 'echo prefix"quoted"$(\n', ")\n"],
+      ["quoted parts", `echo "one\${x:-a}$(\n`, ')"\n'],
+      ["initial quoted parts", `"one\${x:-a}$(\n`, ')"\n'],
+    ].map(([name, opening, closing]) => [
+      name,
+      opening.repeat(nestingDepth),
+      closing.repeat(nestingDepth),
+    ]),
+    [
+      "here-document",
+      hereDelimiters.map((end) => `cat <<${end} # body\n$(\n`).join(""),
+      hereDelimiters
+        .toReversed()
+        .map((end) => `)\n${end}\n`)
+        .join(""),
+    ],
+  ]) {
+    fixtures.push([
+      `nested ${name}`,
+      `${prefix}echo \${x:-value}\n${suffix}`,
+      `}\n${suffix}`,
+      "\n",
+    ]);
+  }
+  for (const [name, body, removed, inserted] of fixtures) {
+    const contents = `echo BEFORE\n${body}echo AFTER\n`;
+    const offset = contents.indexOf(removed);
+    assert.notEqual(offset, -1, name);
+    const broken =
+      contents.slice(0, offset) +
+      inserted +
+      contents.slice(offset + removed.length);
+    const initial = writeSource(`${name}-valid`, contents);
+    const damaged = writeSource(`${name}-damaged`, broken);
+    assert.equal(
+      runParse({ source: damaged, mode: "recovery" }).recovery,
+      true,
+      name,
+    );
+    assertRepeatedColdParse("recovery", damaged, name);
+    const edit = {
+      byte: Buffer.byteLength(contents.slice(0, offset)),
+      deleteBytes: Buffer.byteLength(removed),
+      insert: inserted,
+    };
+    const repair = {
+      byte: edit.byte,
+      deleteBytes: Buffer.byteLength(inserted),
+      insert: removed,
+    };
+    assertIncrementalEqualsFresh(damaged, initial, name, repair);
+    assertIncrementalEqualsFresh(initial, initial, name, edit, repair);
   }
 });
 

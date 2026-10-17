@@ -8459,14 +8459,22 @@ static bool classify_word_start(
   return false;
 }
 
-static bool recovery_quote_context(const struct Scanner *scanner) {
+static bool recovery_word_context(const struct Scanner *scanner) {
+  enum TokenType opener = scanner->context_count == 0
+    ? TOKEN_COUNT
+    : scanner->contexts[scanner->context_count - 1].opener;
+  return opener == PARAMETER_OPEN ||
+    opener == DQ_OPEN ||
+    opener == SQ_OPEN ||
+    opener == DOLLAR_SQ_OPEN;
+}
+
+static bool recovery_parameter_is_quoted(const struct Scanner *scanner) {
   for (size_t index = scanner->context_count; index > 0; index -= 1) {
     enum TokenType opener = scanner->contexts[index - 1].opener;
-    if (opener == PARAMETER_OPEN) {
-      continue;
+    if (opener != PARAMETER_OPEN) {
+      return opener == DQ_OPEN || opener == HERE_DOCUMENT_BODY_START;
     }
-    return opener == DQ_OPEN ||
-      (index == scanner->context_count && opener == SQ_OPEN);
   }
   return false;
 }
@@ -8531,7 +8539,7 @@ select_recovery_symbols(const struct Scanner *scanner, bool *valid) {
     [WORD_TILDE_START] = true,
   };
   memcpy(valid, base_symbols, sizeof(base_symbols));
-  if (scanner->emission.active || !recovery_quote_context(scanner)) {
+  if (scanner->emission.active || !recovery_word_context(scanner)) {
     return;
   }
   for (size_t index = 0; index < TOKEN_COUNT; index += 1) {
@@ -8545,8 +8553,16 @@ select_recovery_symbols(const struct Scanner *scanner, bool *valid) {
     valid[SINGLE_QUOTE_CONTENT_BEGIN] = true;
     return;
   }
+  if (opener == DOLLAR_SQ_OPEN) {
+    valid[DOLLAR_SQ_CLOSE] = true;
+    valid[DOLLAR_SINGLE_QUOTE_TEXT_BEGIN] = true;
+    valid[DOLLAR_SINGLE_QUOTE_ESCAPE] = true;
+    return;
+  }
+  bool quoted = opener == DQ_OPEN || recovery_parameter_is_quoted(scanner);
   valid[DOLLAR_EXPANSION_START] = true;
-  valid[DOUBLE_QUOTED_BACKQUOTE_START] = true;
+  valid[DOUBLE_QUOTED_BACKQUOTE_START] = quoted;
+  valid[BACKQUOTE_START] = !quoted;
   if (opener == DQ_OPEN) {
     valid[DQ_CLOSE] = true;
     valid[DOUBLE_QUOTE_TEXT_BEGIN] = true;
@@ -8560,8 +8576,12 @@ select_recovery_symbols(const struct Scanner *scanner, bool *valid) {
   valid[PARAMETER_LENGTH_OPERATOR_BEGIN] = true;
   valid[PARAMETER_VALUE_OPERATOR_BEGIN] = true;
   valid[PARAMETER_PATTERN_OPERATOR_BEGIN] = true;
-  valid[DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN] = true;
-  valid[DOUBLE_QUOTED_PARAMETER_ESCAPE_BEGIN] = true;
+  valid[DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN] = quoted;
+  valid[DOUBLE_QUOTED_PARAMETER_ESCAPE_BEGIN] = quoted;
+  valid[PARAMETER_LITERAL_BEGIN] = !quoted;
+  valid[ESCAPED_CHARACTER_BEGIN] = !quoted;
+  valid[SQ_OPEN] = !quoted;
+  valid[DOLLAR_SQ_DOLLAR] = !quoted;
   valid[DQ_OPEN] = true;
 }
 
@@ -8570,7 +8590,7 @@ static bool classify_recovery_source(
   struct LogicalLexer *input,
   const bool *valid
 ) {
-  if (recovery_quote_context(scanner)) {
+  if (recovery_word_context(scanner)) {
     return classify_logical_source(scanner, input, valid);
   }
   const struct LexicalPunctuation reserved_punctuation[] = {

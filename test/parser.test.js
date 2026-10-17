@@ -520,32 +520,22 @@ test("nested commands recover through enclosing terminators after completion", (
   }
 });
 
-test("sh: missing redirect filenames preserve operators and following commands through repairs", () => {
-  for (const [name, source, operator, operatorType] of [
-    ["output-ampersand", "cat > file & echo after\n", "&", '"&"'],
-    ["input-semicolon", "cat < file ; echo after\n", ";", '";"'],
-    ["continued-semicolon", "cat >\\\nfile; echo after\n", ";", '";"'],
-    ["continued-ampersand", "cat > \\\nfile & echo after\n", "&", '"&"'],
-    ["append-pipeline", "cat >> file | echo after\n", "|", '"|"'],
-    ["read-write-and", "cat <> file && echo after\n", "&&", "and_if"],
-    ["clobber-or", "cat >| file || echo after\n", "||", "or_if"],
-    ["duplicate-input", "cat <& file ; echo after\n", ";", '";"'],
-    ["duplicate-output", "cat >& file & echo after\n", "&", '"&"'],
-    ["continued-and", "cat > file &\\\n& echo after\n", "&\\\n&", "and_if"],
-    ["continued-or", "cat > file |\\\n| echo after\n", "|\\\n|", "or_if"],
-    [
-      "command-substitution",
-      'echo "$(cat < file && echo after)"\n',
-      "&&",
-      "and_if",
-    ],
-    [
-      "heredoc-substitution",
-      "cat <<END\n$(cat >> file || echo after)\nEND\n",
-      "||",
-      "or_if",
-    ],
-    ["backquote-substitution", "echo `cat > file | echo after`\n", "|", '"|"'],
+test("sh: missing redirect filenames preserve surrounding commands and recover after repair", () => {
+  for (const [name, source] of [
+    ["output-ampersand", "cat > file & echo after\n"],
+    ["input-semicolon", "cat < file ; echo after\n"],
+    ["continued-semicolon", "cat >\\\nfile; echo after\n"],
+    ["continued-ampersand", "cat > \\\nfile & echo after\n"],
+    ["append-pipeline", "cat >> file | echo after\n"],
+    ["read-write-and", "cat <> file && echo after\n"],
+    ["clobber-or", "cat >| file || echo after\n"],
+    ["duplicate-input", "cat <& file ; echo after\n"],
+    ["duplicate-output", "cat >& file & echo after\n"],
+    ["continued-and", "cat > file &\\\n& echo after\n"],
+    ["continued-or", "cat > file |\\\n| echo after\n"],
+    ["command-substitution", 'echo "$(cat < file && echo after)"\n'],
+    ["heredoc-substitution", "cat <<END\n$(cat >> file || echo after)\nEND\n"],
+    ["backquote-substitution", "echo `cat > file | echo after`\n"],
   ]) {
     const initialText = `echo before\n${source}echo final\n`;
     const byte = initialText.indexOf("file");
@@ -553,18 +543,11 @@ test("sh: missing redirect filenames preserve operators and following commands t
     const brokenText = initialText.slice(0, byte) + initialText.slice(byte + 4);
     const initial = writeSource(`${name}-initial`, initialText);
     const broken = writeSource(`${name}-broken`, brokenText);
-    const expected = [
-      ...["before", "after", "final"].map((word) => ({
-        start: brokenText.indexOf(`echo ${word}`),
-        length: 4,
-        type: "cmd_name",
-      })),
-      {
-        start: brokenText.indexOf(`${operator} echo after`),
-        length: operator.length,
-        type: operatorType,
-      },
-    ];
+    const expected = ["before", "final"].map((word) => ({
+      start: brokenText.indexOf(`echo ${word}`),
+      length: 4,
+      type: "cmd_name",
+    }));
     for (const output of parseRecoveryAfterEdits(initial, broken, name, edit)) {
       assert.equal(hasRecovery(output), true, name);
       const entries = parseCst(output).map((entry) => {

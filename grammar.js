@@ -364,17 +364,18 @@ const singleQuoted = ($, opener) =>
     optional($.single_quote_content),
     physical($, $._sq_close, "'"),
   );
-const doubleQuoted = ($, opener) =>
-  seq(
+const doubleQuoted = ($, prefix) => seq(prefix, physical($, $._dq_close, '"'));
+const doubleQuotedPrefix = ($, prefix, opener) =>
+  choice(
     physical($, opener, '"'),
-    repeat(
+    seq(
+      prefix,
       choice(
         $.double_quote_text,
         $.double_quote_escape,
         ...quotedExpansionParts($),
       ),
     ),
-    physical($, $._dq_close, '"'),
   );
 const dollarSingleQuoted = ($, dollar) =>
   seq(
@@ -600,8 +601,7 @@ const ifClause = ($) =>
     ),
   );
 
-const loopClause = ($, keyword) =>
-  seq(keyword, $._loop_condition, field("body", $.do_group));
+const loopClause = ($, header) => seq(header, field("body", $.do_group));
 
 const separatedForHeader = ($) =>
   seq(
@@ -1310,21 +1310,28 @@ export default grammar({
     _loop_condition: ($) =>
       seq(field("condition", $.compound_list), optional($._closing_layout)),
 
-    while_clause: ($) => loopClause($, $._while_keyword_source),
+    _while_clause_header: ($) =>
+      seq($._while_keyword_source, $._loop_condition),
 
-    until_clause: ($) => loopClause($, $._until_keyword_source),
+    while_clause: ($) => loopClause($, $._while_clause_header),
+
+    _until_clause_header: ($) =>
+      seq($._until_keyword_source, $._loop_condition),
+
+    until_clause: ($) => loopClause($, $._until_clause_header),
 
     _case_selector_header: ($) =>
       seq($._case_keyword_source, $._word_separator, field("word", $.word)),
 
-    case_clause: ($) =>
+    _case_clause_header: ($) =>
       seq(
         $._case_selector_header,
         $._linebreak_layout,
         field("in", $.in),
         optional($._linebreak_layout),
-        caseClauseItems($),
       ),
+
+    case_clause: ($) => seq($._case_clause_header, caseClauseItems($)),
 
     case_list_ns: ($) =>
       choice(
@@ -1530,12 +1537,17 @@ export default grammar({
 
     _here_end_source_word: ($) =>
       seq($._word_initial_part, repeat($._word_part)),
-    here_document_sequence: ($) =>
+    _here_document_sequence_header: ($) =>
       seq(
         $._here_document_sequence_begin,
         optional($._closing_layout),
         optional(boundaryLineComment($, field("comment", $.comment))),
         field("line_end", $.here_document_line_end),
+      ),
+
+    here_document_sequence: ($) =>
+      seq(
+        $._here_document_sequence_header,
         repeat1(field("document", $.here_document)),
         $._here_document_sequence_end,
       ),
@@ -1603,12 +1615,17 @@ export default grammar({
           $._newline,
         ),
       ),
+    _assignment_word_header: ($) =>
+      seq(
+        field("name", alias($._assignment_name_lexeme, $.variable_name)),
+        physical($, $._punct_equals, "="),
+      ),
+
     assignment_word: ($) =>
       prec.dynamic(
         ASSIGNMENT_WORD_PRECEDENCE,
         seq(
-          field("name", alias($._assignment_name_lexeme, $.variable_name)),
-          physical($, $._punct_equals, "="),
+          $._assignment_word_header,
           optional(field("value", $.assignment_value)),
         ),
       ),
@@ -1640,8 +1657,9 @@ export default grammar({
 
     _source_word: ($) =>
       choice(
-        seq($.tilde_expansion, repeat($._word_part)),
-        seq($._word_initial_part, repeat($._word_part)),
+        $.tilde_expansion,
+        $._word_initial_part,
+        seq($._source_word, $._word_part),
       ),
 
     tilde_expansion: ($) =>
@@ -1725,8 +1743,14 @@ export default grammar({
       ),
     _word_initial_single_quoted: ($) =>
       singleQuoted($, $._word_initial_sq_open),
+    _word_initial_double_quoted_prefix: ($) =>
+      doubleQuotedPrefix(
+        $,
+        $._word_initial_double_quoted_prefix,
+        $._word_initial_dq_open,
+      ),
     _word_initial_double_quoted: ($) =>
-      doubleQuoted($, $._word_initial_dq_open),
+      doubleQuoted($, $._word_initial_double_quoted_prefix),
     _word_initial_dollar_single_quoted: ($) =>
       dollarSingleQuoted($, $._word_initial_dollar_sq_dollar),
     _word_initial_braced_parameter_start: ($) =>
@@ -1981,7 +2005,9 @@ export default grammar({
     escaped_character: ($) => lexical($, $._escaped_character_begin),
     single_quoted: ($) => singleQuoted($, $._sq_open),
     single_quote_content: ($) => lexical($, $._single_quote_content_begin),
-    double_quoted: ($) => doubleQuoted($, $._dq_open),
+    _double_quoted_prefix: ($) =>
+      doubleQuotedPrefix($, $._double_quoted_prefix, $._dq_open),
+    double_quoted: ($) => doubleQuoted($, $._double_quoted_prefix),
 
     double_quote_text: ($) => lexical($, $._double_quote_text_begin),
 
