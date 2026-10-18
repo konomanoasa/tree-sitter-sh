@@ -7,6 +7,8 @@
 [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for the
 POSIX.1-2024 Shell Command Language.
 
+For syntax diagnostics, see [tree-sitter-diagnostic-sh](https://github.com/konomanoasa/tree-sitter-diagnostic-sh).
+
 ## Installation
 
 ```sh

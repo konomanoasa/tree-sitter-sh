@@ -1026,7 +1026,8 @@ echo `f() { :; }`
     (newline_list)))
 
 ==================
-a closing backquote can follow the here-document end line
+a closing backquote cannot replace the here-document terminating newline
+:error
 ==================
 
 x=`cat <<EOF
@@ -1037,99 +1038,6 @@ q
 E`" after
 
 ------------------
-
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_prefix
-                    (assignment_word
-                      (variable_name)
-                      (assignment_value
-                        (backquote_substitution
-                          (backquote_substitution_body
-                            (complete_commands
-                              (complete_command
-                                (list
-                                  (and_or
-                                    (pipeline
-                                      (pipe_sequence
-                                        (command
-                                          (simple_command
-                                            (cmd_name
-                                              (word
-                                                (literal)))
-                                            (cmd_suffix
-                                              (io_redirect
-                                                (io_here
-                                                  (dless)
-                                                  (here_end
-                                                    (word
-                                                      (literal))))))))))))))
-                            (linebreak
-                              (newline_list
-                                (here_document_sequence
-                                  (here_document_line_end)
-                                  (here_document
-                                    (here_document_body
-                                      (here_document_text))
-                                    (here_document_end
-                                      (here_document_end_text))))))))))))))))))
-    (newline_list)
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (double_quoted
-                        (backquote_substitution
-                          (backquote_substitution_body
-                            (complete_commands
-                              (complete_command
-                                (list
-                                  (and_or
-                                    (pipeline
-                                      (pipe_sequence
-                                        (command
-                                          (simple_command
-                                            (cmd_name
-                                              (word
-                                                (literal)))
-                                            (cmd_suffix
-                                              (io_redirect
-                                                (io_here
-                                                  (dless)
-                                                  (here_end
-                                                    (word
-                                                      (single_quoted
-                                                        (single_quote_content)))))))))))))))
-                            (linebreak
-                              (newline_list
-                                (here_document_sequence
-                                  (here_document_line_end)
-                                  (here_document
-                                    (quoted_here_document_body
-                                      (quoted_here_document_text))
-                                    (here_document_end
-                                      (here_document_end_text))))))))))
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
 
 ==================
 a comment inside backquotes ends at the closing backtick

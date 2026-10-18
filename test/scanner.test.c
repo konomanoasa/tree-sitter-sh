@@ -1086,35 +1086,59 @@ test_embedded_readers_apply_source_views_before_comments_and_closers(void) {
   }
 }
 
-static void test_here_document_readers_stop_at_backquote_boundaries(void) {
+static void
+test_here_document_readers_require_newlines_at_source_boundaries(void) {
+  const struct {
+    const char *source;
+    const char *delimiter;
+    enum HereDocumentLineKind kind;
+  } fixtures[] = {
+    {"", "END", HERE_DOCUMENT_LINE_END_OF_INPUT},
+    {"", "", HERE_DOCUMENT_LINE_END_OF_INPUT},
+    {"END", "END", HERE_DOCUMENT_LINE_CONTENT},
+    {"END\n", "END", HERE_DOCUMENT_LINE_DELIMITER},
+    {"\n", "", HERE_DOCUMENT_LINE_DELIMITER},
+    {"`tail", "END", HERE_DOCUMENT_LINE_END_OF_INPUT},
+    {"`tail", "", HERE_DOCUMENT_LINE_END_OF_INPUT},
+    {"END`tail", "END", HERE_DOCUMENT_LINE_CONTENT},
+    {"END\n`tail", "END", HERE_DOCUMENT_LINE_DELIMITER},
+    {"\n`tail", "", HERE_DOCUMENT_LINE_DELIMITER},
+  };
   for (unsigned quoted = 0; quoted < 2; quoted += 1) {
     struct SourceStage stages[] = {
       source_stage(SOURCE_REMOVE_CONTINUATIONS),
       source_stage(SOURCE_BACKQUOTE_DECODE),
       source_stage(SOURCE_REMOVE_CONTINUATIONS),
     };
-    struct SourceFixture fixture;
-    init_source_fixture(&fixture, "`tail", stages, 3);
-    struct HereDocument document = {
-      .delimiter = (uint8_t *)"END",
-      .delimiter_length = 3,
-      .quoted = quoted != 0,
-    };
-    assert(fixture.lookahead.lexer.lookahead == SOURCE_BACKQUOTE_BOUNDARY);
-    size_t position = fixture.lookahead.position;
-    struct CommandStart start;
-    assert(
-      read_here_document_line(
-        NULL,
-        &fixture.lookahead.lexer,
-        &document,
-        NULL,
-        &start
-      ) == HERE_DOCUMENT_LINE_END_OF_INPUT
-    );
-    assert(fixture.lookahead.position == position);
-    assert(!fixture.lookahead.failed);
-    clear_source_fixture(&fixture);
+    for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
+      struct SourceFixture fixture;
+      init_source_fixture(&fixture, fixtures[index].source, stages, 3);
+      struct HereDocument document = {
+        .delimiter = (uint8_t *)fixtures[index].delimiter,
+        .delimiter_length = strlen(fixtures[index].delimiter),
+        .quoted = quoted != 0,
+      };
+      size_t position = fixture.lookahead.position;
+      struct CommandStart start;
+      assert(
+        read_here_document_line(
+          NULL,
+          &fixture.lookahead.lexer,
+          &document,
+          NULL,
+          &start
+        ) == fixtures[index].kind
+      );
+      if (fixtures[index].kind == HERE_DOCUMENT_LINE_END_OF_INPUT) {
+        assert(fixture.lookahead.position == position);
+      }
+      assert(
+        fixture.lookahead.lexer.lookahead == SOURCE_BACKQUOTE_BOUNDARY ||
+        lexer_at_eof(&fixture.lookahead.lexer)
+      );
+      assert(!fixture.lookahead.failed);
+      clear_source_fixture(&fixture);
+    }
   }
 }
 
@@ -1717,6 +1741,21 @@ test_recovery_parameter_escapes_leave_the_closing_brace_available(void) {
     {{DQ_OPEN, COMMAND_OPEN, PARAMETER_OPEN}, 3, false},
     {{HERE_DOCUMENT_BODY_START, PARAMETER_OPEN}, 2, true},
     {{HERE_DOCUMENT_BODY_START, COMMAND_OPEN, PARAMETER_OPEN}, 3, false},
+    {{ARITHMETIC_LEFT_PARENTHESIS, PARAMETER_OPEN}, 2, true},
+    {{ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS, PARAMETER_OPEN}, 2, true},
+    {{ARITHMETIC_LEFT_PARENTHESIS, PARAMETER_OPEN, PARAMETER_OPEN}, 3, true},
+    {{ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS, PARAMETER_OPEN, PARAMETER_OPEN},
+      3,
+      true},
+    {{ARITHMETIC_LEFT_PARENTHESIS, COMMAND_OPEN, PARAMETER_OPEN}, 3, false},
+    {{ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS, COMMAND_OPEN, PARAMETER_OPEN},
+      3,
+      false},
+    {{ARITHMETIC_LEFT_PARENTHESIS,
+       DOUBLE_QUOTED_BACKQUOTE_START,
+       PARAMETER_OPEN},
+      3,
+      false},
   };
   bool valid[TOKEN_COUNT];
   for (size_t token = 0; token < TOKEN_COUNT; token += 1) {
@@ -1735,8 +1774,38 @@ test_recovery_parameter_escapes_leave_the_closing_brace_available(void) {
       } else if (opener == COMMAND_OPEN) {
         scanner.substitution_depth += 1;
       }
-      assert(source_context_push(&scanner, opener));
+      if (
+        opener == ARITHMETIC_LEFT_PARENTHESIS ||
+        opener == ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS
+      ) {
+        assert(source_context_push(&scanner, COMMAND_OPEN));
+        const int32_t structured[] = {'(', '1', ')', ')'};
+        const int32_t dynamic[] = {'(', '0', 'x', '$', 'v', ')', ')'};
+        bool opening[TOKEN_COUNT] = {
+          [COMMAND_SUBSTITUTION_BODY_BEGIN] = true,
+          [ARITHMETIC_LEFT_PARENTHESIS] = true,
+          [ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS] = true,
+        };
+        struct MockLexer lexer;
+        if (opener == ARITHMETIC_LEFT_PARENTHESIS) {
+          init_mock_lexer(&lexer, structured, ARRAY_LENGTH(structured));
+        } else {
+          init_mock_lexer(&lexer, dynamic, ARRAY_LENGTH(dynamic));
+        }
+        assert(
+          tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, opening)
+        );
+        assert(lexer.lexer.result_symbol == opener);
+        assert(lexer.mark == 0);
+      } else {
+        assert(source_context_push(&scanner, opener));
+      }
     }
+    char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned length = snapshot_scanner(&scanner, state);
+    clear_scanner(&scanner);
+    tree_sitter_sh_external_scanner_deserialize(&scanner, state, length);
+    assert_scanner_matches_snapshot(&scanner, state, length);
     const enum TokenType symbols[] = {
       cases[index].quoted ? DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN
                           : ESCAPED_CHARACTER_BEGIN,
@@ -1758,8 +1827,8 @@ test_recovery_parameter_escapes_leave_the_closing_brace_available(void) {
       assert(lexer.lexer.result_symbol == symbols[step]);
       assert(lexer.mark == widths[step]);
       offset += lexer.mark;
-      char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
-      unsigned length = snapshot_scanner(&scanner, state);
+      length = snapshot_scanner(&scanner, state);
+      clear_scanner(&scanner);
       tree_sitter_sh_external_scanner_deserialize(&scanner, state, length);
       assert_scanner_matches_snapshot(&scanner, state, length);
     }
@@ -4232,7 +4301,7 @@ int main(void) {
   test_delimiter_source_views_preserve_quotedness_and_bytes();
   test_embedded_readers_apply_source_views_before_comments_and_closers();
   test_here_document_readers_keep_the_owning_source_view();
-  test_here_document_readers_stop_at_backquote_boundaries();
+  test_here_document_readers_require_newlines_at_source_boundaries();
   test_here_document_input_stops_before_nested_source_can_cross_its_end();
   test_here_document_end_restores_its_source_and_serialized_depth();
   test_disabled_and_rejected_recovery_scans_preserve_state();

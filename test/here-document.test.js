@@ -24,6 +24,54 @@ import {
   writeSource,
 } from "./support/parser.js";
 
+test("sh: repairing terminator newlines at source and substitution boundaries matches a fresh parse", () => {
+  for (const [name, prefix, closing] of [
+    ["source-named", "cat <<E\nx\nE", ""],
+    ["source-quoted", "cat <<'E'\nx\nE", ""],
+    ["source-empty", "cat <<''\n", ""],
+    ["source-empty-tabs", "cat <<-''\n\t", ""],
+    ["source-named-tabs", "cat <<-E\nx\n\tE", ""],
+    ["source-empty-after-body", "cat <<''\nx\n", ""],
+    ["source-continuation", "cat <<E\nx\nE\\\n", ""],
+    ["command-named", ": $(cat <<E\nx\nE", ")\n"],
+    ["command-empty", ": $(cat <<''\n", ")\n"],
+    ["command-empty-tabs", ": $(cat <<-''\n\t", ")\n"],
+    ["backquote-named", ": `cat <<E\nx\nE", "`\n"],
+    ["backquote-quoted", ": `cat <<'E'\nx\nE", "`\n"],
+    ["backquote-empty", ": `cat <<''\n", "`\n"],
+    ["backquote-empty-tabs", ": `cat <<-''\n\t", "`\n"],
+    ["backquote-empty-after-body", ": `cat <<''\nx\n", "`\n"],
+  ]) {
+    const broken = writeSource(
+      `${name}-without-terminator-newline`,
+      prefix + closing,
+    );
+    const repaired = writeSource(
+      `${name}-with-terminator-newline`,
+      `${prefix}\n${closing}`,
+    );
+    const byte = prefix.length;
+    const remove = { byte, deleteBytes: 1, insert: "" };
+    const repair = { byte, deleteBytes: 0, insert: "\n" };
+    for (const output of parseRecoveryAfterEdits(
+      repaired,
+      broken,
+      name,
+      remove,
+    )) {
+      assert.equal(hasRecovery(output), true, name);
+    }
+    assertIncrementalEqualsFresh(broken, repaired, `repair-${name}`, repair);
+    assertIncrementalEqualsFresh(
+      repaired,
+      repaired,
+      `roundtrip-${name}`,
+      remove,
+      repair,
+    );
+  }
+});
+
 test("sh: nested here-documents activate at the scanner state capacity", () => {
   const nestedDelimiterBytes = 251;
   const capacityDelimiterBytes = 466;
@@ -156,32 +204,32 @@ test("sh: heredoc lookahead terminates at source boundaries and preserves repair
     {
       name: "empty-tabs-eof",
       source: "cat <<-''\n\t\t",
-      status: 0,
+      status: 1,
     },
     {
       name: "empty-backquote-bracket",
       source: "echo [`cat <<''\n`]\n",
-      status: 0,
+      status: 1,
     },
     {
       name: "empty-backquote-arithmetic",
       source: "echo $((`cat <<''\n`+1))\n",
-      status: 0,
+      status: 1,
     },
     {
       name: "empty-after-body-bracket",
       source: "echo [`cat <<''\nx\n`]\n",
-      status: 0,
+      status: 1,
     },
     {
       name: "empty-after-body-arithmetic",
       source: "echo $((`cat <<''\nx\n`+1))\n",
-      status: 0,
+      status: 1,
     },
     {
       name: "partial-end-backquote",
       source: "echo [`cat <<X\nX`]\n",
-      status: 0,
+      status: 1,
     },
   ]) {
     const output = runParse({
@@ -833,7 +881,7 @@ test("sh: paired here-document backslashes retain the newline before the delimit
 
 test("sh: pending here-documents recover through EOF edits and completion", () => {
   for (const [name, header, ending] of [
-    ["plain", "cat <<EOF", "\nbody\nEOF"],
+    ["plain", "cat <<EOF", "\nbody\nEOF\n"],
     ["quoted", "cat <<'EOF'", "\n$literal\nEOF\n"],
     ["empty-delimiter", "cat <<''", "\nbody\n\n"],
     ["tabs", "cat <<-EOF", "\n\tbody\n\tEOF\n"],

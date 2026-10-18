@@ -118,7 +118,7 @@ const keywordRules = () =>
     ]),
   );
 
-// Reduce each delimiter to one stack entry so recovery can reach the command.
+// Reduce delimiters to limit recovery stack depth.
 const PHYSICAL_RULES = {
   _punct_left_parenthesis: "(",
   _punct_right_parenthesis: ")",
@@ -590,7 +590,6 @@ const conditionalThenBranch = ($, header, tail) =>
     tail,
   );
 
-// Layout before fi lets elif reduce its empty alternative before else.
 const ifClause = ($) =>
   conditionalThenBranch(
     $,

@@ -1220,6 +1220,40 @@ test("sh: parameter errors preserve closing quotes and following commands throug
   }
 });
 
+test("sh: arithmetic parameter repairs restore quote context across edit histories", () => {
+  for (const [name, source] of [
+    ["structured", `echo $((\${v:-\\q}))\necho after\n`],
+    ["dynamic", `echo $((0x\${v:-\\q}))\necho after\n`],
+    ["nested-parameter", `echo $((\${w:-\${v:-\\q}}))\necho after\n`],
+    ["nested-command", `echo $(($(echo \${v:-\\q})))\necho after\n`],
+  ]) {
+    const byte = source.indexOf("v:-") + 1;
+    const damage = { byte, deleteBytes: 2, insert: " @" };
+    const repair = { byte, deleteBytes: 2, insert: ":-" };
+    const initial = writeSource(`arithmetic-parameter-${name}`, source);
+    const broken = writeSource(
+      `arithmetic-parameter-${name}-broken`,
+      applyEdits(source, [damage]),
+    );
+    for (const output of parseRecoveryAfterEdits(
+      initial,
+      broken,
+      name,
+      damage,
+    )) {
+      assert.equal(hasRecovery(output), true, name);
+    }
+    assertIncrementalEqualsFresh(broken, initial, `repair-${name}`, repair);
+    assertIncrementalEqualsFresh(
+      initial,
+      initial,
+      `roundtrip-${name}`,
+      damage,
+      repair,
+    );
+  }
+});
+
 test("sh: repairing an encoded backquote closer restores two nested substitutions", () => {
   const broken = writeSource("backquote-closer-broken", "echo `\\`a`b`\n");
   const repaired = writeSource(
