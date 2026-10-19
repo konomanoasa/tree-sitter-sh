@@ -98,7 +98,7 @@ static enum SourceResult logical_read(void *payload, int32_t *value) {
     int32_t *characters = source_grow(
       native->characters,
       &native->capacity,
-      native->count + 1,
+      native->count,
       sizeof(*characters)
     );
     if (characters == NULL) {

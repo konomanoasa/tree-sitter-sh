@@ -29,6 +29,7 @@ import {
   runQuery,
   writeSource,
 } from "./support/parser.js";
+import { scalingWorkloads } from "./support/workloads.js";
 
 test("sh: folded continuations preserve keyword and function-name classification", () => {
   for (const [name, sourceText, node, range] of [
@@ -3370,3 +3371,133 @@ test("sh: substitution newlines and continuations remain stable", () => {
   assertContains(deepArithmeticOutput, "arithmetic_expansion");
   assertNotContains(deepArithmeticOutput, "command_substitution");
 });
+
+test("sh: parser resource bounds preserve complete roots and deterministic recovery", () => {
+  const completionOnly = { completionOnly: true };
+  const arithmeticDepth = 2_000;
+  const unmatchedBracketCount = 80_000;
+  const bracketMemberCount = 16_000;
+  const bracketGroupCount = 4_000;
+  const incompleteClassCount = 4_000;
+  const continuationCount = 20_000;
+  const bodyParameterCount = 16_000;
+  const pendingDocumentCount = 600;
+  const maximumNestedDocuments = 44;
+  const excessDocumentDepth = 300;
+  const backquoteDepth = 6;
+  const largeValidSources = [
+    [
+      "deep-arithmetic-expansions",
+      `echo ${"$((".repeat(arithmeticDepth)}1${"))".repeat(arithmeticDepth)}\n`,
+    ],
+    ["unmatched-brackets", `printf ${"[".repeat(unmatchedBracketCount)}\n`],
+    ["long-bracket-list", `printf [${"a".repeat(bracketMemberCount)}]\n`],
+    ["repeated-brackets", `printf ${"[abc]".repeat(bracketGroupCount)}\n`],
+    [
+      "repeated-incomplete-special-brackets",
+      `printf [${"[:alpha:]".repeat(incompleteClassCount)}\n`,
+    ],
+    [
+      "continued-blank-lines",
+      `printf value ${"\\\n".repeat(continuationCount)}after\n`,
+    ],
+    [
+      "continued-pipe-linebreak",
+      `first|${"\\\n".repeat(continuationCount)}next\n`,
+    ],
+    [
+      "here-document-dollars",
+      `cat <<EOF\n${"$x".repeat(bodyParameterCount)}\nEOF\nafter\n`,
+    ],
+  ];
+  for (const [name, contents] of largeValidSources) {
+    assertValid(writeSource(name, contents), name, completionOnly);
+  }
+
+  const manyDocuments = writeSource(
+    "many-documents",
+    `cat${" <<X".repeat(pendingDocumentCount)}\n${"body\nX\n".repeat(pendingDocumentCount)}after\n`,
+  );
+  assertRepeatedColdParse(
+    "resource",
+    manyDocuments,
+    "many-documents",
+    completionOnly,
+  );
+
+  function nestedDocuments(depth) {
+    let contents = "cat <<D0\n";
+    for (let counter = 1; counter < depth; counter += 1) {
+      contents += `$(cat <<D${counter}\n`;
+    }
+    contents += "leaf\n";
+    for (let counter = depth - 1; counter >= 0; counter -= 1) {
+      contents += `D${counter}\n`;
+      if (counter > 0) {
+        contents += ")\n";
+      }
+    }
+    return `${contents}after\n`;
+  }
+
+  const deepDocuments = writeSource(
+    "deep-documents",
+    nestedDocuments(maximumNestedDocuments),
+  );
+  assertValid(deepDocuments, "deep-documents", completionOnly);
+  const excessDepth = writeSource(
+    "excess-document-depth",
+    nestedDocuments(maximumNestedDocuments + 1),
+  );
+  assert.equal(
+    runParse({
+      ...completionOnly,
+      source: excessDepth,
+      mode: "resource",
+      description: "nested document metadata exceeds 1024 bytes",
+    }).status,
+    1,
+  );
+  assertRepeatedColdParse(
+    "resource",
+    excessDepth,
+    "excess-document-depth",
+    completionOnly,
+  );
+  const boundedDocuments = writeSource(
+    "deep-documents-bounded",
+    nestedDocuments(excessDocumentDepth),
+  );
+  assertRepeatedColdParse(
+    "resource",
+    boundedDocuments,
+    "deep-documents-bounded",
+    completionOnly,
+  );
+
+  let nestedBackquotes = "echo `level1 ";
+  for (let level = 2; level <= backquoteDepth; level += 1) {
+    nestedBackquotes += `${"\\".repeat(2 ** (level - 1) - 1)}\`level${level} `;
+  }
+  nestedBackquotes += "leaf";
+  for (let level = backquoteDepth; level >= 2; level -= 1) {
+    nestedBackquotes += `${"\\".repeat(2 ** (level - 1) - 1)}\` end${level}`;
+  }
+  nestedBackquotes += "`\n";
+  assertValid(
+    writeSource("nested-backquotes", nestedBackquotes),
+    "nested-backquotes",
+    completionOnly,
+  );
+});
+
+for (const { name, units, source } of scalingWorkloads()) {
+  test(`sh: ${name} parses through EOF at each scale`, () => {
+    for (const factor of [1, 2, 4]) {
+      assertValid(
+        writeSource(`${name}-${factor}`, source(units * factor)),
+        name,
+      );
+    }
+  });
+}

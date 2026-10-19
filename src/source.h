@@ -98,15 +98,15 @@ static inline struct SourceStage source_stage(enum SourceStageKind kind) {
 
 static inline void *
 source_grow(void *data, size_t *capacity, size_t count, size_t width) {
-  if (count <= *capacity) {
+  if (count < *capacity) {
     return data;
   }
-  if (width == 0 || count > SIZE_MAX / width) {
+  if (width == 0 || count >= SIZE_MAX / width) {
     return NULL;
   }
   size_t maximum = SIZE_MAX / width;
   size_t next = *capacity == 0 ? (maximum < 16 ? maximum : 16) : *capacity;
-  while (next < count) {
+  while (next <= count) {
     next = next > maximum / 2 ? maximum : next * 2;
   }
   void *grown = ts_realloc(data, next * width);
@@ -173,13 +173,10 @@ static inline bool source_append_logical(
   struct SourceCursor *cursor,
   struct SourceCharacter character
 ) {
-  if (cursor->logical_count == SIZE_MAX) {
-    return false;
-  }
   struct SourceCharacter *grown = source_grow(
     cursor->logical,
     &cursor->logical_capacity,
-    cursor->logical_count + 1,
+    cursor->logical_count,
     sizeof(*grown)
   );
   if (grown == NULL) {
@@ -197,13 +194,10 @@ static inline bool source_append_removal(
   int64_t slash,
   size_t stage
 ) {
-  if (cursor->removal_count == SIZE_MAX) {
-    return false;
-  }
   struct SourceRemoval *grown = source_grow(
     cursor->removals,
     &cursor->removal_capacity,
-    cursor->removal_count + 1,
+    cursor->removal_count,
     sizeof(*grown)
   );
   if (grown == NULL) {
@@ -322,7 +316,7 @@ static inline bool source_feed(struct SourceCursor *cursor, int32_t value) {
   int32_t *grown = source_grow(
     cursor->raw,
     &cursor->raw_capacity,
-    cursor->raw_count + 1,
+    cursor->raw_count,
     sizeof(*grown)
   );
   if (grown == NULL) {

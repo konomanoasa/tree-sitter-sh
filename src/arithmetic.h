@@ -342,13 +342,10 @@ static bool dynamic_arithmetic_vertex(
 ) {
   position = dynamic_arithmetic_boundary(graph, position);
   if (graph->vertex_ids[position] == SIZE_MAX) {
-    if (graph->vertex_count == SIZE_MAX) {
-      return false;
-    }
     struct DynamicArithmeticVertex *vertices = source_grow(
       graph->vertices,
       &graph->vertex_capacity,
-      graph->vertex_count + 1,
+      graph->vertex_count,
       sizeof(*graph->vertices)
     );
     if (vertices == NULL) {
@@ -370,16 +367,13 @@ static bool dynamic_arithmetic_edge(
   uint16_t tokens
 ) {
   size_t target;
-  if (
-    !dynamic_arithmetic_vertex(graph, position, &target) ||
-    graph->edge_count == SIZE_MAX
-  ) {
+  if (!dynamic_arithmetic_vertex(graph, position, &target)) {
     return false;
   }
   struct DynamicArithmeticEdge *edges = source_grow(
     graph->edges,
     &graph->edge_capacity,
-    graph->edge_count + 1,
+    graph->edge_count,
     sizeof(*graph->edges)
   );
   if (edges == NULL) {
@@ -407,13 +401,10 @@ static bool dynamic_arithmetic_enqueue(
   if ((graph->visited[position] & bit) != 0) {
     return true;
   }
-  if (graph->pending_count == SIZE_MAX) {
-    return false;
-  }
   struct DynamicArithmeticLexItem *pending = source_grow(
     graph->pending,
     &graph->pending_capacity,
-    graph->pending_count + 1,
+    graph->pending_count,
     sizeof(*graph->pending)
   );
   if (pending == NULL) {
@@ -448,13 +439,10 @@ static bool dynamic_arithmetic_emit(
     return true;
   }
   if (graph->emitted[position] == 0) {
-    if (graph->endpoint_count == SIZE_MAX) {
-      return false;
-    }
     size_t *endpoints = source_grow(
       graph->endpoints,
       &graph->endpoint_capacity,
-      graph->endpoint_count + 1,
+      graph->endpoint_count,
       sizeof(*graph->endpoints)
     );
     if (endpoints == NULL) {
@@ -635,13 +623,10 @@ static bool dynamic_arithmetic_project_enqueue(
   if (projection->visited[state] != 0) {
     return true;
   }
-  if (projection->count == SIZE_MAX) {
-    return false;
-  }
   size_t *pending = source_grow(
     projection->pending,
     &projection->capacity,
-    projection->count + 1,
+    projection->count,
     sizeof(*projection->pending)
   );
   if (pending == NULL) {
@@ -945,13 +930,10 @@ static bool dynamic_arithmetic_add_item(
     }
     slot = (slot + 1) & (chart->hash_capacity - 1);
   }
-  if (chart->item_count == SIZE_MAX) {
-    return false;
-  }
   struct DynamicArithmeticItem *items = source_grow(
     chart->items,
     &chart->item_capacity,
-    chart->item_count + 1,
+    chart->item_count,
     sizeof(*chart->items)
   );
   if (items == NULL) {
@@ -961,7 +943,7 @@ static bool dynamic_arithmetic_add_item(
   size_t *pending = source_grow(
     chart->pending,
     &chart->pending_capacity,
-    chart->pending_count + 1,
+    chart->pending_count,
     sizeof(*chart->pending)
   );
   if (pending == NULL) {
@@ -1022,13 +1004,10 @@ static bool dynamic_arithmetic_complete(
     }
     slot = (slot + 1) & (chart->completion_hash_capacity - 1);
   }
-  if (chart->completion_count == SIZE_MAX) {
-    return false;
-  }
   struct DynamicArithmeticCompletion *completions = source_grow(
     chart->completions,
     &chart->completion_capacity,
-    chart->completion_count + 1,
+    chart->completion_count,
     sizeof(*chart->completions)
   );
   if (completions == NULL) {

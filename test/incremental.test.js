@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   assertFreshOutputsEqual,
+  assertOccurrenceCount,
   cstFingerprint,
   hasRecovery,
   nodeIdentity,
@@ -12,11 +13,13 @@ import {
   applyEdits,
   assertIncrementalEqualsFresh,
   assertRepeatedColdParse,
+  compareIncrementalAndFresh,
   lines,
   parseRecoveryAfterEdits,
   runParse,
   writeSource,
 } from "./support/parser.js";
+import { editingWorkloads } from "./support/workloads.js";
 
 test("sh: lexical source keeps its token kind through errors and repairs", () => {
   for (const [name, initial, removed, stray] of [
@@ -366,3 +369,41 @@ test("sh: fixed-seed generated histories converge at every valid final source", 
     `sh: checked ${checked} generated edit states, compared ${compared} valid CSTs`,
   );
 });
+
+for (const {
+  name,
+  source: contents,
+  edit,
+  recovery,
+  reuse,
+  counts = [],
+} of editingWorkloads()) {
+  test(`sh: ${name} preserves structure after editing`, () => {
+    const source = writeSource(`${name}-initial`, contents);
+    const final = writeSource(
+      `${name}-edited`,
+      applyEdits(Buffer.from(contents), [edit]),
+    );
+    if (recovery) {
+      parseRecoveryAfterEdits(source, final, name, edit);
+      return;
+    }
+    const results = compareIncrementalAndFresh(
+      { debug: reuse },
+      source,
+      final,
+      name,
+      edit,
+    );
+    if (reuse)
+      assert.match(
+        results[0].debugOutput,
+        /^reuse_node symbol:complete_command/m,
+        name,
+      );
+    for (const result of results) {
+      for (const [node, count] of counts)
+        assertOccurrenceCount(result.output, node, count);
+    }
+  });
+}

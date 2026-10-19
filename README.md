@@ -7,7 +7,7 @@
 [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) grammar for the
 POSIX.1-2024 Shell Command Language.
 
-For syntax diagnostics, see [tree-sitter-diagnostic-sh](https://github.com/konomanoasa/tree-sitter-diagnostic-sh).
+For syntax error analysis, see [tree-sitter-diagnostic-sh](https://github.com/konomanoasa/tree-sitter-diagnostic-sh).
 
 ## Installation
 
@@ -16,8 +16,6 @@ npm install tree-sitter-sh
 ```
 
 ## Development
-
-Development uses Node.js 24.21.0 or later.
 
 ```sh
 npm install
@@ -31,7 +29,8 @@ npm test
 
 ## Used By
 
-[sh-ts-mode](https://github.com/konomanoasa/sh-ts-mode): Emacs major mode.
+- [sh-ts-mode](https://github.com/konomanoasa/sh-ts-mode)
+- [shellsmith](https://github.com/konomanoasa/shellsmith)
 
 ## License
 
