@@ -922,6 +922,59 @@ test("sh: pending here-documents recover through EOF edits and completion", () =
   }
 });
 
+test("sh: editing escaped delimiter bytes restores UTF-8 terminator matching", () => {
+  for (const [name, unmatchedWord, matchedWord] of [
+    ["hex-byte", "$'\\xFF'", "$'\\xC3\\xBF'"],
+    ["octal-byte", "$'\\377'", "$'\\303\\277'"],
+    ["joined-quotes", "$'\\xC3'", "$'\\xC3'$'\\277'"],
+  ]) {
+    const unmatched = writeSource(
+      `${name}-unmatched`,
+      lines(`cat <<${unmatchedWord}`, "body", "ÿ", "echo AFTER"),
+    );
+    const matched = writeSource(
+      `${name}-matched`,
+      lines(`cat <<${matchedWord}`, "body", "ÿ", "echo AFTER"),
+    );
+    const remove = {
+      byte: 6,
+      deleteBytes: matchedWord.length,
+      insert: unmatchedWord,
+    };
+    const repair = {
+      byte: 6,
+      deleteBytes: unmatchedWord.length,
+      insert: matchedWord,
+    };
+    for (const output of parseRecoveryAfterEdits(
+      matched,
+      unmatched,
+      `${name}-remove-matching-bytes`,
+      remove,
+    )) {
+      assert.equal(hasRecovery(output), true, name);
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      unmatched,
+      matched,
+      `${name}-repair-matching-bytes`,
+      repair,
+    )) {
+      assertCstRange(output, "1:0-2:0", "body: quoted_here_document_body");
+      assertCstRange(output, "2:0-2:2", "here_document_end_text");
+      assertCstRange(output, "2:0-3:0", "end: here_document_end");
+      assertCstRange(output, "3:0-3:10", "command: complete_command");
+    }
+    assertIncrementalEqualsFresh(
+      matched,
+      matched,
+      `${name}-roundtrip`,
+      remove,
+      repair,
+    );
+  }
+});
+
 test("sh: editing substitution delimiter quotes updates matching and restores the CST", () => {
   for (const [
     name,

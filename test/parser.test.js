@@ -64,6 +64,37 @@ test("sh: folded continuations preserve keyword and function-name classification
   }
 });
 
+test("sh: function-name edits enforce special built-in restrictions on logical source", () => {
+  for (const [name, initial] of [
+    ["continued-export", "ex\\\nport_() { :; }\n"],
+    ["continued-readonly", "rea\\\ndonly_ () { :; }\n"],
+    ["command-substitution", "echo $(continue_() { :; })\n"],
+    ["backquote-substitution", ": `un\\\\\nset_() { :; }`\n"],
+    ["here-document-substitution", "cat <<EOF\n$(trap_() { :; })\nEOF\n"],
+  ]) {
+    const byte = initial.indexOf("_");
+    const invalid = initial.slice(0, byte) + initial.slice(byte + 1);
+    const validSource = writeSource(`${name}-valid`, initial);
+    const invalidSource = writeSource(`${name}-invalid`, invalid);
+    for (const output of parseRecoveryAfterEdits(
+      validSource,
+      invalidSource,
+      name,
+      { byte, deleteBytes: 1, insert: "" },
+    )) {
+      assert.equal(hasRecovery(output), true, `${name}\n${output}`);
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      invalidSource,
+      validSource,
+      `${name}-repair`,
+      { byte, deleteBytes: 0, insert: "_" },
+    )) {
+      assertNodeCount(output, "fname", 1);
+    }
+  }
+});
+
 test("sh: realistic function structure remains queryable", () => {
   const functionStructure = [
     "sample_log() {",

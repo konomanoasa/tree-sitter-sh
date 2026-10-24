@@ -1,8 +1,8 @@
 ==================
-a brace group can be a function body
+a brace-group function can extend and call special built-in names
 ==================
 
-brace_body() { :; }
+readonly_() { export; }
 
 ------------------
 
@@ -37,10 +37,10 @@ brace_body() { :; }
     (newline_list)))
 
 ==================
-a subshell can be a function body
+a subshell function can extend and call special built-in names
 ==================
 
-subshell_body() (:)
+exported() (readonly)
 
 ------------------
 
@@ -752,6 +752,135 @@ then() { :; }
 ------------------
 
 
+
+==================
+special built-in break cannot be a function name
+:error
+==================
+
+break() { :; }
+
+------------------
+
+
+==================
+special built-in continue cannot be a function name
+:error
+==================
+
+continue() { :; }
+
+------------------
+
+
+==================
+special built-in eval cannot be a function name
+:error
+==================
+
+eval() { :; }
+
+------------------
+
+
+==================
+special built-in exec cannot be a function name
+:error
+==================
+
+exec() { :; }
+
+------------------
+
+
+==================
+special built-in exit cannot be a function name
+:error
+==================
+
+exit() { :; }
+
+------------------
+
+
+==================
+special built-in export cannot be a function name
+:error
+==================
+
+export() { :; }
+
+------------------
+
+
+==================
+special built-in readonly cannot be a function name
+:error
+==================
+
+readonly() { :; }
+
+------------------
+
+
+==================
+special built-in return cannot be a function name
+:error
+==================
+
+return() { :; }
+
+------------------
+
+
+==================
+special built-in set cannot be a function name
+:error
+==================
+
+set() { :; }
+
+------------------
+
+
+==================
+special built-in shift cannot be a function name
+:error
+==================
+
+shift() { :; }
+
+------------------
+
+
+==================
+special built-in times cannot be a function name
+:error
+==================
+
+times() { :; }
+
+------------------
+
+
+==================
+special built-in trap cannot be a function name
+:error
+==================
+
+trap() { :; }
+
+------------------
+
+
+==================
+special built-in unset cannot be a function name
+:error
+==================
+
+unset() { :; }
+
+------------------
 
 ==================
 function names cannot contain hyphens

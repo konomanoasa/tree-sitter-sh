@@ -21,7 +21,7 @@ import {
 } from "./support/parser.js";
 import { editingWorkloads } from "./support/workloads.js";
 
-test("sh: lexical source keeps its token kind through errors and repairs", () => {
+test("sh: errors preserve source token kinds and repairs restore structure", () => {
   for (const [name, initial, removed, stray] of [
     [
       "greater-than-before-parenthesis",
@@ -40,6 +40,76 @@ test("sh: lexical source keeps its token kind through errors and repairs", () =>
       "",
     ],
     ["empty-while-condition", "while :; do :; done\necho after\n", ":; ", ""],
+    [
+      "empty-if-lines-before-eof",
+      "echo BEFORE\nif\n:; then :;\nfi\n",
+      ":; then :;\n",
+      "",
+    ],
+    [
+      "empty-while-lines-before-eof",
+      "echo BEFORE\nwhile\n:; do :;\ndone\n",
+      ":; do :;\n",
+      "",
+    ],
+    [
+      "empty-until-lines-before-eof",
+      "echo BEFORE\nuntil\n:; do :;\ndone\n",
+      ":; do :;\n",
+      "",
+    ],
+    [
+      "empty-if-inside-nested-functions",
+      lines(
+        "echo BEFORE",
+        "outer() {",
+        "middle() {",
+        "inner() {",
+        "if",
+        ":; then :;",
+        "fi",
+        "}",
+        "}",
+        "}",
+        "echo AFTER",
+      ),
+      ":; then :;\n",
+      "",
+    ],
+    [
+      "unfinished-parameter-after-function-header-layout",
+      lines(
+        "echo BEFORE",
+        "outer()",
+        "{",
+        "middle() # header",
+        "{",
+        "inner() \\",
+        "{",
+        `echo \${x:-w}`,
+        "}",
+        "}",
+        "}",
+      ),
+      "}\n}\n}\n}\n",
+      "",
+    ],
+    [
+      "missing-body-inside-nested-functions",
+      lines(
+        "echo BEFORE",
+        "outer() {",
+        "middle() {",
+        "inner() {",
+        "leaf() { :; }",
+        "}",
+        "}",
+        "}",
+        "echo AFTER",
+      ),
+      "{ :; }",
+      "",
+    ],
     ["empty-for-body", "for x in a; do :; done\necho after\n", ":; ", ""],
     ["redirect-before-ampersand", "cat > file & echo after\n", "file ", ""],
     [

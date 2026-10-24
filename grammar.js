@@ -1208,13 +1208,7 @@ export default grammar({
     _or_if: ($) => alias($._or_if_lexeme, $.or_if),
     bang: ($) => lexical($, $._bang_begin),
     function_definition: ($) =>
-      seq(
-        $._function_definition_header,
-        $._function_body_continuation_boundary,
-        optional(field("linebreak", $.linebreak)),
-        optional($._horizontal_layout),
-        field("body", $.function_body),
-      ),
+      seq($._function_definition_header, field("body", $.function_body)),
 
     _function_definition_header: ($) =>
       seq(
@@ -1223,6 +1217,9 @@ export default grammar({
         physical($, $._punct_left_parenthesis, "("),
         optional($._horizontal_layout),
         physical($, $._punct_right_parenthesis, ")"),
+        $._function_body_continuation_boundary,
+        optional(field("linebreak", $.linebreak)),
+        optional($._horizontal_layout),
       ),
 
     function_body: ($) => $._redirectable_compound_command,

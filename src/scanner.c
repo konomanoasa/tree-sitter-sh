@@ -447,6 +447,30 @@ static const struct ReservedWord *find_reserved_word(const char *word) {
   return NULL;
 }
 
+static bool is_special_builtin_name(const char *word) {
+  static const char *const names[] = {
+    "break",
+    "continue",
+    "eval",
+    "exec",
+    "exit",
+    "export",
+    "readonly",
+    "return",
+    "set",
+    "shift",
+    "times",
+    "trap",
+    "unset",
+  };
+  for (size_t index = 0; index < sizeof(names) / sizeof(names[0]); index += 1) {
+    if (strcmp(word, names[index]) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static void backquote_stages(bool quoted, struct SourceStage *stages) {
   stages[0] = source_stage(SOURCE_REMOVE_CONTINUATIONS);
   stages[0].disabled = !quoted;
@@ -3609,7 +3633,7 @@ scan_name_or_reserved_word(TSLexer *lexer, const bool *valid_symbols) {
 
   if (valid_symbols[FNAME_TOKEN] && reserved_word == NULL) {
     scan_horizontal_blanks(lexer);
-    if (lexer->lookahead == '(') {
+    if (lexer->lookahead == '(' && !is_special_builtin_name(word)) {
       lexer->result_symbol = FNAME_TOKEN;
       return true;
     }
@@ -8485,7 +8509,9 @@ select_recovery_symbols(const struct Scanner *scanner, bool *valid) {
     [WORD_TILDE_START] = true,
   };
   memcpy(valid, base_symbols, sizeof(base_symbols));
-  if (scanner->emission.active || !recovery_word_context(scanner)) {
+  bool word_context = recovery_word_context(scanner);
+  valid[TERM_BOUNDARY] = !word_context;
+  if (scanner->emission.active || !word_context) {
     return;
   }
   for (size_t index = 0; index < TOKEN_COUNT; index += 1) {
@@ -8538,6 +8564,25 @@ static bool classify_recovery_source(
 ) {
   if (recovery_word_context(scanner)) {
     return classify_logical_source(scanner, input, valid);
+  }
+  if (
+    input->lexer.lookahead == '\n' && !has_startable_pending_document(scanner)
+  ) {
+    input->lexer.mark_end(&input->lexer);
+    struct LookaheadLexer lookahead;
+    enum TermContinuation continuation =
+      lookahead_init(&lookahead, &input->lexer)
+      ? finish_term_continuation(scanner, &lookahead.lexer, valid)
+      : TERM_SOURCE_FAILURE;
+    if (lookahead.failed) {
+      continuation = TERM_SOURCE_FAILURE;
+    }
+    lookahead_clear(&lookahead);
+    if (continuation == TERM_SOURCE_END || continuation == TERM_SOURCE_CLOSES) {
+      input->lexer.result_symbol = TERM_BOUNDARY;
+      return true;
+    }
+    logical_rewind(input);
   }
   const struct LexicalPunctuation reserved_punctuation[] = {
     {'{', LEFT_BRACE},

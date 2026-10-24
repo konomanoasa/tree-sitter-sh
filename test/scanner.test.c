@@ -2316,6 +2316,85 @@ static void assert_boundary_scan(
   assert_scanner_matches_snapshot(scanner, before, before_length);
 }
 
+static void test_recovery_newlines_offer_only_confirmed_term_endings(void) {
+  const struct {
+    const char *source;
+    enum TokenType expected;
+    bool pending_document;
+    bool active_document;
+  } cases[] = {
+    {"\n", TERM_BOUNDARY, false, false},
+    {"\n \t# tail\n\n", TERM_BOUNDARY, false, false},
+    {"\nf\\\ni\n", TERM_BOUNDARY, false, false},
+    {"\ndone\n", TERM_BOUNDARY, false, false},
+    {"\n)\n", TERM_BOUNDARY, false, false},
+    {"\n}\n", TERM_BOUNDARY, false, false},
+    {"\nafter\n", LOGICAL_NEWLINE_BEGIN, false, false},
+    {"\nfinally\n", LOGICAL_NEWLINE_BEGIN, false, false},
+    {"\n}word\n", LOGICAL_NEWLINE_BEGIN, false, false},
+    {"\n|\n", LOGICAL_NEWLINE_BEGIN, false, false},
+    {"\n", LOGICAL_NEWLINE_BEGIN, true, false},
+    {"\nEND\n", LOGICAL_NEWLINE_BEGIN, true, false},
+    {"\nEND\nafter\n", TERM_BOUNDARY, true, true},
+    {"\n)\nEND\n", TERM_BOUNDARY, true, true},
+  };
+  for (size_t index = 0; index < ARRAY_LENGTH(cases); index += 1) {
+    struct Scanner scanner = {0};
+    assert(scanner_source_ready(&scanner));
+    if (cases[index].pending_document) {
+      assert(
+        append_pending_document(&scanner, make_document("END", false, false))
+      );
+    }
+    if (cases[index].active_document) {
+      assert(activate_startable_pending_documents(&scanner));
+      assert(source_context_push(&scanner, HERE_DOCUMENT_BODY_START));
+      assert(source_context_push(&scanner, COMMAND_OPEN));
+      scanner.substitution_depth = 1;
+    }
+    int32_t input[64];
+    size_t length = strlen(cases[index].source);
+    assert(length <= ARRAY_LENGTH(input));
+    for (size_t offset = 0; offset < length; offset += 1) {
+      input[offset] = (unsigned char)cases[index].source[offset];
+    }
+    bool valid[TOKEN_COUNT];
+    for (size_t token = 0; token < TOKEN_COUNT; token += 1) {
+      valid[token] = true;
+    }
+    char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned state_length = snapshot_scanner(&scanner, state);
+    struct MockLexer lexer;
+    init_mock_lexer(&lexer, input, length);
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    assert(lexer.lexer.result_symbol == cases[index].expected);
+    assert(lexer.mark == 0);
+    if (cases[index].expected == TERM_BOUNDARY) {
+      assert_scanner_matches_snapshot(&scanner, state, state_length);
+      tree_sitter_sh_external_scanner_deserialize(
+        &scanner,
+        state,
+        state_length
+      );
+      memset(valid, 0, sizeof(valid));
+      valid[LOGICAL_NEWLINE_BEGIN] = true;
+      init_mock_lexer(&lexer, input, length);
+      assert(
+        tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      assert(lexer.lexer.result_symbol == LOGICAL_NEWLINE_BEGIN);
+      assert(lexer.mark == 0);
+    }
+    memset(valid, 0, sizeof(valid));
+    valid[LOGICAL_NEWLINE_BEGIN_CHARACTER] = true;
+    init_mock_lexer(&lexer, input, length);
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    assert(lexer.lexer.result_symbol == LOGICAL_NEWLINE_BEGIN_CHARACTER);
+    assert(lexer.mark == 1);
+    clear_scanner(&scanner);
+  }
+}
+
 static void test_newline_boundaries_require_a_valid_enclosing_terminator(void) {
   const struct {
     const char *source;
@@ -2744,15 +2823,21 @@ static void test_byte_delimiter_matching(void) {
   ));
 
   const uint8_t invalid_ff[] = {0xff};
-  const int32_t bell[] = {0x07, '\n'};
-  assert(!line_matches_document(
-    invalid_ff,
-    sizeof(invalid_ff),
-    true,
-    false,
-    bell,
-    ARRAY_LENGTH(bell)
-  ));
+  const int32_t mismatched_lines[][2] = {
+    {0x07, '\n'},
+    {0xff, '\n'},
+    {0xfffd, '\n'},
+  };
+  for (size_t index = 0; index < ARRAY_LENGTH(mismatched_lines); index += 1) {
+    assert(!line_matches_document(
+      invalid_ff,
+      sizeof(invalid_ff),
+      true,
+      false,
+      mismatched_lines[index],
+      ARRAY_LENGTH(mismatched_lines[index])
+    ));
+  }
 
   const uint8_t truncated[] = {0xc3};
   assert(!line_matches_document(
@@ -3082,71 +3167,60 @@ static void test_dollar_single_quote_escape_units(void) {
   }
 }
 
-static void test_dollar_single_quote_delimiter_bytes(void) {
+static void
+test_dollar_single_quote_delimiter_bytes_survive_serialization(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
 
-  const int32_t control_input[] = {
-    '$',
-    '\'',
-    '\\',
-    'c',
-    '?',
-    '\'',
-    '\n',
+  const struct {
+    const char *source;
+    uint8_t delimiter[4];
+    size_t delimiter_length;
+  } fixtures[] = {
+    {"$'\\c?'\n", {0x7f}, 1},
+    {"$'\\xC3\\xBF'\n", {0xc3, 0xbf}, 2},
+    {"$'\\303\\277'\n", {0xc3, 0xbf}, 2},
+    {"$'\\xC3'$'\\277'\n", {0xc3, 0xbf}, 2},
+    {"$'\\xFF'\n", {0xff}, 1},
+    {"$'\\377'\n", {0xff}, 1},
+    {"$'\\xC3'\n", {0xc3}, 1},
+    {"$'\\277'\n", {0xbf}, 1},
+    {"a$'\\xC3'b\n", {'a', 0xc3, 'b'}, 3},
+    {"$'\\xC0\\xAF'\n", {0xc0, 0xaf}, 2},
+    {"$'\\xED\\xA0\\x80'\n", {0xed, 0xa0, 0x80}, 3},
+    {"$'\\xF4\\x90\\x80\\x80'\n", {0xf4, 0x90, 0x80, 0x80}, 4},
   };
-  assert(
-    scan_delimiter_fixture(scanner, control_input, ARRAY_LENGTH(control_input))
-  );
-  const uint8_t del[] = {0x7f};
-  assert_document_bytes(&scanner->pending_documents[0], del, sizeof(del), true);
-  clear_scanner(scanner);
+  for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
+    size_t length = strlen(fixtures[index].source);
+    int32_t *input = malloc(length * sizeof(*input));
+    assert(input != NULL);
+    for (size_t offset = 0; offset < length; offset += 1) {
+      input[offset] = (unsigned char)fixtures[index].source[offset];
+    }
+    assert(scan_delimiter_fixture(scanner, input, length));
+    free(input);
+    assert(scanner->pending_count == 1);
+    assert_document_bytes(
+      &scanner->pending_documents[0],
+      fixtures[index].delimiter,
+      fixtures[index].delimiter_length,
+      true
+    );
 
-  const int32_t utf8_input[] = {
-    '$',
-    '\'',
-    '\\',
-    'x',
-    'C',
-    '3',
-    '\\',
-    'x',
-    'B',
-    'F',
-    '\'',
-    '\n',
-  };
-  assert(scan_delimiter_fixture(scanner, utf8_input, ARRAY_LENGTH(utf8_input)));
-  const uint8_t utf8_ff[] = {0xc3, 0xbf};
-  assert_document_bytes(
-    &scanner->pending_documents[0],
-    utf8_ff,
-    sizeof(utf8_ff),
-    true
-  );
-  clear_scanner(scanner);
-
-  const int32_t invalid_input[] = {
-    '$',
-    '\'',
-    '\\',
-    'x',
-    'F',
-    'F',
-    '\'',
-    '\n',
-  };
-  assert(
-    scan_delimiter_fixture(scanner, invalid_input, ARRAY_LENGTH(invalid_input))
-  );
-  const uint8_t invalid_ff[] = {0xff};
-  assert_document_bytes(
-    &scanner->pending_documents[0],
-    invalid_ff,
-    sizeof(invalid_ff),
-    true
-  );
-  clear_scanner(scanner);
+    char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned state_length = snapshot_scanner(scanner, state);
+    clear_scanner(scanner);
+    tree_sitter_sh_external_scanner_deserialize(scanner, state, state_length);
+    assert(scanner->pending_count == 1);
+    assert_document_bytes(
+      &scanner->pending_documents[0],
+      fixtures[index].delimiter,
+      fixtures[index].delimiter_length,
+      true
+    );
+    assert_scanner_matches_snapshot(scanner, state, state_length);
+    clear_scanner(scanner);
+  }
 
   const int32_t unspecified_control_input[] = {
     '$',
@@ -4238,47 +4312,64 @@ static void test_comment_boundary_allocation_failures_terminate(void) {
 
 static void
 test_document_boundary_allocation_failures_do_not_close_the_term(void) {
-  const int32_t source[] =
-    {' ', '\n', 'w', 'o', 'r', 'd', '\n', 'E', 'N', 'D', '\n'};
-  bool valid[TOKEN_COUNT] = {false};
-  valid[TERM_CONTINUATION] = true;
-  valid[TERM_BOUNDARY] = true;
-  valid[PRE_NEWLINE_BLANK] = true;
-  struct Scanner scanner = {0};
-  assert(scanner_source_ready(&scanner));
-  assert(append_pending_document(&scanner, make_document("END", false, false)));
-  assert(activate_startable_pending_documents(&scanner));
-  assert(source_context_push(&scanner, HERE_DOCUMENT_BODY_START));
-  assert(source_context_push(&scanner, COMMAND_OPEN));
-  scanner.substitution_depth = 1;
-  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
-  unsigned before_length = snapshot_scanner(&scanner, before);
-  struct MockLexer lexer;
-  init_mock_lexer(&lexer, source, ARRAY_LENGTH(source));
-  size_t first_allocation = reuse_allocation_calls;
-  assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
-  size_t allocation_count = reuse_allocation_calls - first_allocation;
-  assert(allocation_count > 0);
-  assert(lexer.lexer.result_symbol == TERM_CONTINUATION);
-  assert(lexer.mark == 0);
-  assert_scanner_matches_snapshot(&scanner, before, before_length);
-  clear_scanner(&scanner);
-  for (size_t failure = 1; failure <= allocation_count; failure += 1) {
-    tree_sitter_sh_external_scanner_deserialize(
-      &scanner,
-      before,
-      before_length
-    );
-    reuse_fail_allocation_call = reuse_allocation_calls + failure;
-    init_mock_lexer(&lexer, source, ARRAY_LENGTH(source));
+  const struct {
+    int32_t source[11];
+    size_t length;
+    bool recovering;
+    enum TokenType expected;
+  } cases[] = {
+    {{' ', '\n', 'w', 'o', 'r', 'd', '\n', 'E', 'N', 'D', '\n'},
+      11,
+      false,
+      TERM_CONTINUATION},
+    {{'\n', ')', '\n', 'E', 'N', 'D', '\n'}, 7, true, TERM_BOUNDARY},
+  };
+  for (size_t index = 0; index < ARRAY_LENGTH(cases); index += 1) {
+    bool valid[TOKEN_COUNT];
+    for (size_t token = 0; token < TOKEN_COUNT; token += 1) {
+      valid[token] = cases[index].recovering;
+    }
+    valid[TERM_CONTINUATION] = true;
+    valid[TERM_BOUNDARY] = true;
+    valid[PRE_NEWLINE_BLANK] = true;
+    struct Scanner scanner = {0};
+    assert(scanner_source_ready(&scanner));
     assert(
-      !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      append_pending_document(&scanner, make_document("END", false, false))
     );
-    assert(reuse_allocation_calls >= reuse_fail_allocation_call);
-    reuse_fail_allocation_call = 0;
+    assert(activate_startable_pending_documents(&scanner));
+    assert(source_context_push(&scanner, HERE_DOCUMENT_BODY_START));
+    assert(source_context_push(&scanner, COMMAND_OPEN));
+    scanner.substitution_depth = 1;
+    char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+    unsigned before_length = snapshot_scanner(&scanner, before);
+    struct MockLexer lexer;
+    init_mock_lexer(&lexer, cases[index].source, cases[index].length);
+    size_t first_allocation = reuse_allocation_calls;
+    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    size_t allocation_count = reuse_allocation_calls - first_allocation;
+    assert(allocation_count > 0);
+    assert(lexer.lexer.result_symbol == cases[index].expected);
+    assert(lexer.mark == 0);
     assert_scanner_matches_snapshot(&scanner, before, before_length);
     clear_scanner(&scanner);
-    assert(reuse_live_allocations == 0);
+    for (size_t failure = 1; failure <= allocation_count; failure += 1) {
+      tree_sitter_sh_external_scanner_deserialize(
+        &scanner,
+        before,
+        before_length
+      );
+      reuse_fail_allocation_call = reuse_allocation_calls + failure;
+      init_mock_lexer(&lexer, cases[index].source, cases[index].length);
+      assert(
+        !tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      assert(reuse_allocation_calls >= reuse_fail_allocation_call);
+      reuse_fail_allocation_call = 0;
+      assert_scanner_matches_snapshot(&scanner, before, before_length);
+      clear_scanner(&scanner);
+      assert(reuse_live_allocations == 0);
+    }
   }
 }
 #endif
@@ -4316,6 +4407,7 @@ int main(void) {
   test_bracket_chains_round_trip_and_reject_unknown_phases();
   test_here_document_sequence_requires_a_line_boundary();
   test_here_document_line_start_only_emits_valid_tokens();
+  test_recovery_newlines_offer_only_confirmed_term_endings();
   test_newline_boundaries_require_a_valid_enclosing_terminator();
   test_layout_boundaries_do_not_turn_invalid_source_into_end();
   test_document_newline_boundaries_preserve_document_ownership();
@@ -4333,7 +4425,7 @@ int main(void) {
   test_arithmetic_delimiters_preserve_nested_quote_context();
   test_substitution_hash_delimiter_words();
   test_dollar_single_quote_escape_units();
-  test_dollar_single_quote_delimiter_bytes();
+  test_dollar_single_quote_delimiter_bytes_survive_serialization();
   test_delimiter_scan_resource_rollback();
   test_logical_lexical_emission_keeps_individual_physical_pairs();
   test_word_entry_classifies_and_owns_source_in_normal_and_recovery_scans();

@@ -2171,38 +2171,6 @@
           "name": "_function_definition_header"
         },
         {
-          "type": "SYMBOL",
-          "name": "_function_body_continuation_boundary"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "FIELD",
-              "name": "linebreak",
-              "content": {
-                "type": "SYMBOL",
-                "name": "linebreak"
-              }
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "_horizontal_layout"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
           "type": "FIELD",
           "name": "body",
           "content": {
@@ -2254,6 +2222,38 @@
         {
           "type": "SYMBOL",
           "name": "_punct_right_parenthesis_physical"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_function_body_continuation_boundary"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "linebreak",
+              "content": {
+                "type": "SYMBOL",
+                "name": "linebreak"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_horizontal_layout"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         }
       ]
     },
