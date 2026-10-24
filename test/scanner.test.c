@@ -2316,27 +2316,27 @@ static void assert_boundary_scan(
   assert_scanner_matches_snapshot(scanner, before, before_length);
 }
 
-static void test_recovery_newlines_offer_only_confirmed_term_endings(void) {
+static void test_recovery_newlines_decline_only_confirmed_term_endings(void) {
   const struct {
     const char *source;
     enum TokenType expected;
     bool pending_document;
     bool active_document;
   } cases[] = {
-    {"\n", TERM_BOUNDARY, false, false},
-    {"\n \t# tail\n\n", TERM_BOUNDARY, false, false},
-    {"\nf\\\ni\n", TERM_BOUNDARY, false, false},
-    {"\ndone\n", TERM_BOUNDARY, false, false},
-    {"\n)\n", TERM_BOUNDARY, false, false},
-    {"\n}\n", TERM_BOUNDARY, false, false},
+    {"\n", TOKEN_COUNT, false, false},
+    {"\n \t# tail\n\n", TOKEN_COUNT, false, false},
+    {"\nf\\\ni\n", TOKEN_COUNT, false, false},
+    {"\ndone\n", TOKEN_COUNT, false, false},
+    {"\n)\n", TOKEN_COUNT, false, false},
+    {"\n}\n", TOKEN_COUNT, false, false},
     {"\nafter\n", LOGICAL_NEWLINE_BEGIN, false, false},
     {"\nfinally\n", LOGICAL_NEWLINE_BEGIN, false, false},
     {"\n}word\n", LOGICAL_NEWLINE_BEGIN, false, false},
     {"\n|\n", LOGICAL_NEWLINE_BEGIN, false, false},
     {"\n", LOGICAL_NEWLINE_BEGIN, true, false},
     {"\nEND\n", LOGICAL_NEWLINE_BEGIN, true, false},
-    {"\nEND\nafter\n", TERM_BOUNDARY, true, true},
-    {"\n)\nEND\n", TERM_BOUNDARY, true, true},
+    {"\nEND\nafter\n", TOKEN_COUNT, true, true},
+    {"\n)\nEND\n", TOKEN_COUNT, true, true},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(cases); index += 1) {
     struct Scanner scanner = {0};
@@ -2366,16 +2366,15 @@ static void test_recovery_newlines_offer_only_confirmed_term_endings(void) {
     unsigned state_length = snapshot_scanner(&scanner, state);
     struct MockLexer lexer;
     init_mock_lexer(&lexer, input, length);
-    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
-    assert(lexer.lexer.result_symbol == cases[index].expected);
+    bool accepted =
+      tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid);
+    assert(accepted == (cases[index].expected != TOKEN_COUNT));
+    if (accepted) {
+      assert(lexer.lexer.result_symbol == cases[index].expected);
+    }
     assert(lexer.mark == 0);
-    if (cases[index].expected == TERM_BOUNDARY) {
+    if (!accepted) {
       assert_scanner_matches_snapshot(&scanner, state, state_length);
-      tree_sitter_sh_external_scanner_deserialize(
-        &scanner,
-        state,
-        state_length
-      );
       memset(valid, 0, sizeof(valid));
       valid[LOGICAL_NEWLINE_BEGIN] = true;
       init_mock_lexer(&lexer, input, length);
@@ -4311,7 +4310,7 @@ static void test_comment_boundary_allocation_failures_terminate(void) {
 }
 
 static void
-test_document_boundary_allocation_failures_do_not_close_the_term(void) {
+test_document_boundary_allocation_failures_preserve_scanner_state(void) {
   const struct {
     int32_t source[11];
     size_t length;
@@ -4322,7 +4321,7 @@ test_document_boundary_allocation_failures_do_not_close_the_term(void) {
       11,
       false,
       TERM_CONTINUATION},
-    {{'\n', ')', '\n', 'E', 'N', 'D', '\n'}, 7, true, TERM_BOUNDARY},
+    {{'\n', ')', '\n', 'E', 'N', 'D', '\n'}, 7, true, TOKEN_COUNT},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(cases); index += 1) {
     bool valid[TOKEN_COUNT];
@@ -4346,10 +4345,14 @@ test_document_boundary_allocation_failures_do_not_close_the_term(void) {
     struct MockLexer lexer;
     init_mock_lexer(&lexer, cases[index].source, cases[index].length);
     size_t first_allocation = reuse_allocation_calls;
-    assert(tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+    bool accepted =
+      tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid);
+    assert(accepted == (cases[index].expected != TOKEN_COUNT));
     size_t allocation_count = reuse_allocation_calls - first_allocation;
     assert(allocation_count > 0);
-    assert(lexer.lexer.result_symbol == cases[index].expected);
+    if (accepted) {
+      assert(lexer.lexer.result_symbol == cases[index].expected);
+    }
     assert(lexer.mark == 0);
     assert_scanner_matches_snapshot(&scanner, before, before_length);
     clear_scanner(&scanner);
@@ -4407,7 +4410,7 @@ int main(void) {
   test_bracket_chains_round_trip_and_reject_unknown_phases();
   test_here_document_sequence_requires_a_line_boundary();
   test_here_document_line_start_only_emits_valid_tokens();
-  test_recovery_newlines_offer_only_confirmed_term_endings();
+  test_recovery_newlines_decline_only_confirmed_term_endings();
   test_newline_boundaries_require_a_valid_enclosing_terminator();
   test_layout_boundaries_do_not_turn_invalid_source_into_end();
   test_document_newline_boundaries_preserve_document_ownership();
@@ -4446,7 +4449,7 @@ int main(void) {
   test_source_callback_allocation_failures_are_transactional();
   test_reserved_word_allocation_failures_do_not_fall_back_to_word();
   test_comment_boundary_allocation_failures_terminate();
-  test_document_boundary_allocation_failures_do_not_close_the_term();
+  test_document_boundary_allocation_failures_preserve_scanner_state();
   test_source_failures_release_owned_memory();
   test_logical_fork_allocation_failures_preserve_parent();
   test_reuse_allocator_contract();

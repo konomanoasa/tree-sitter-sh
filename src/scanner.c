@@ -2395,6 +2395,61 @@ static bool here_document_source_view(
   );
 }
 
+struct CommandStartScan {
+  size_t word_length;
+  bool has_content;
+  bool has_second_character;
+  bool in_word;
+  bool awaiting_delimiter;
+};
+
+// True while more input can change the classification.
+static bool command_start_feed(
+  struct CommandStart *start,
+  struct CommandStartScan *scan,
+  int32_t current
+) {
+  if (scan->has_content && !scan->has_second_character) {
+    start->second_character = current;
+    scan->has_second_character = true;
+  }
+  if (!scan->has_content) {
+    if (is_horizontal_blank(current)) {
+      return true;
+    }
+    scan->has_content = true;
+    start->first_character = current;
+    scan->in_word = is_lowercase_letter(current);
+    start->first_word_is_reserved_candidate = scan->in_word;
+    scan->awaiting_delimiter = current == '}' || current == ';';
+    if (scan->in_word) {
+      start->first_word[scan->word_length++] = (char)current;
+    }
+    return scan->in_word || scan->awaiting_delimiter;
+  }
+  if (scan->in_word && is_lowercase_letter(current)) {
+    if (scan->word_length < sizeof(start->first_word) - 1) {
+      start->first_word[scan->word_length++] = (char)current;
+    } else {
+      start->first_word_is_reserved_candidate = false;
+    }
+    return true;
+  }
+  scan->in_word = false;
+  scan->awaiting_delimiter = false;
+  start->first_is_delimited = is_token_delimiter_character(current);
+  return false;
+}
+
+static void command_start_finish(
+  struct CommandStart *start,
+  const struct CommandStartScan *scan
+) {
+  if (scan->in_word || scan->awaiting_delimiter) {
+    start->first_is_delimited = true;
+  }
+}
+
 static bool here_document_line_start(
   struct LogicalLexer *input,
   size_t end,
@@ -2412,52 +2467,16 @@ static bool here_document_line_start(
       )) {
     return false;
   }
-  size_t word_length = 0;
-  bool has_content = false;
-  bool has_second_character = false;
-  bool in_word = false;
-  bool awaiting_delimiter = false;
+  struct CommandStartScan scan = {0};
   while (
     view.result == SOURCE_CHARACTER &&
-    view.base + (size_t)view.character.origin.character < end
+    view.base + (size_t)view.character.origin.character < end &&
+    view.lexer.lookahead != '\n' &&
+    command_start_feed(start, &scan, view.lexer.lookahead)
   ) {
-    int32_t current = view.lexer.lookahead;
-    if (current == '\n') {
-      break;
-    }
-    if (has_content && !has_second_character) {
-      start->second_character = current;
-      has_second_character = true;
-    }
-    if (!has_content && !is_horizontal_blank(current)) {
-      has_content = true;
-      start->first_character = current;
-      in_word = is_lowercase_letter(current);
-      start->first_word_is_reserved_candidate = in_word;
-      awaiting_delimiter = !in_word;
-      if (in_word) {
-        start->first_word[word_length++] = (char)current;
-      }
-    } else if (in_word) {
-      if (is_lowercase_letter(current)) {
-        if (word_length < sizeof(start->first_word) - 1) {
-          start->first_word[word_length++] = (char)current;
-        } else {
-          start->first_word_is_reserved_candidate = false;
-        }
-      } else {
-        in_word = false;
-        start->first_is_delimited = is_token_delimiter_character(current);
-      }
-    } else if (awaiting_delimiter) {
-      awaiting_delimiter = false;
-      start->first_is_delimited = is_token_delimiter_character(current);
-    }
     view.lexer.advance(&view.lexer, false);
   }
-  if (in_word || awaiting_delimiter) {
-    start->first_is_delimited = true;
-  }
+  command_start_finish(start, &scan);
   bool valid = view.result != SOURCE_FAILURE;
   logical_clear(&view);
   return valid;
@@ -2842,10 +2861,6 @@ static bool scan_delimiter_double_quoted_character(
 
   if (character == '\\') {
     lexer->advance(lexer, false);
-    if (lexer->lookahead == '\n') {
-      lexer->advance(lexer, false);
-      return true;
-    }
     if (
       lexer->lookahead == '$' ||
       lexer->lookahead == '`' ||
@@ -3863,18 +3878,15 @@ static enum TermContinuation finish_term_continuation(
     if (lexer_at_eof(lexer)) {
       return TERM_SOURCE_END;
     }
-    struct CommandStart start = {
-      .first_character = lexer->lookahead,
-    };
-    if (is_lowercase_letter(start.first_character)) {
-      start.first_word_is_reserved_candidate =
-        read_reserved_word(lexer, start.first_word);
-      start.first_is_delimited = start.first_word_is_reserved_candidate;
-    } else if (start.first_character == '}' || start.first_character == ';') {
+    struct CommandStart start = {0};
+    struct CommandStartScan scan = {0};
+    while (
+      !lexer_at_eof(lexer) &&
+      command_start_feed(&start, &scan, lexer->lookahead)
+    ) {
       lexer->advance(lexer, false);
-      start.second_character = lexer->lookahead;
-      start.first_is_delimited = is_token_delimiter(lexer);
     }
+    command_start_finish(&start, &scan);
     if (lookahead_has_failed(lexer)) {
       return TERM_SOURCE_FAILURE;
     }
@@ -4277,8 +4289,6 @@ scan_arithmetic_boundary(TSLexer *lexer, const bool *valid_symbols) {
 
   return false;
 }
-
-// Validate first so subtree reuse cannot change arithmetic structure.
 
 enum ValidationTokenKind {
   VALIDATION_TOKEN_NUMBER,
@@ -8579,8 +8589,7 @@ static bool classify_recovery_source(
     }
     lookahead_clear(&lookahead);
     if (continuation == TERM_SOURCE_END || continuation == TERM_SOURCE_CLOSES) {
-      input->lexer.result_symbol = TERM_BOUNDARY;
-      return true;
+      return false;
     }
     logical_rewind(input);
   }

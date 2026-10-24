@@ -243,7 +243,6 @@ static inline bool source_feed_stage(
     return source_append_logical(cursor, character);
   }
   if (character.boundary_stage != SIZE_MAX) {
-    /* Pending backslashes cannot pair across this source boundary. */
     return source_flush_pending(cursor, index) &&
       source_append_logical(cursor, character);
   }

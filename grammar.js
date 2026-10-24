@@ -72,7 +72,7 @@ const PATTERN_PRECEDENCE = {
 const lexical = ($, begin) =>
   seq(begin, repeat1(sourceToken($, begin, "lexical", "piece")));
 
-// Alias the token directly so inserted MISSING tokens stay visible.
+// Direct aliases preserve MISSING tokens.
 const wholeSource = ($, begin, lexeme, visible) =>
   choice(
     seq(

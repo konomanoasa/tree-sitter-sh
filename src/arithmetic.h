@@ -483,24 +483,18 @@ dynamic_arithmetic_build_graph(struct DynamicArithmeticGraph *graph) {
     }
     for (size_t index = 0; index < graph->pending_count; index += 1) {
       struct DynamicArithmeticLexItem item = graph->pending[index];
-      if (item.position == graph->length) {
-        if (!dynamic_arithmetic_emit(
-              graph,
-              origin,
-              item.position,
-              item.state
-            )) {
-          return false;
-        }
-      } else if (graph->source[item.position] == -1) {
-        if (!dynamic_arithmetic_emit(
-              graph,
-              origin,
-              item.position,
-              item.state
-            )) {
-          return false;
-        }
+      bool hole =
+        item.position < graph->length && graph->source[item.position] == -1;
+      int next = item.position == graph->length || hole
+        ? DYNAMIC_LEX_STOP
+        : dynamic_arithmetic_lex(item.state, graph->source[item.position]);
+      if (
+        next == DYNAMIC_LEX_STOP &&
+        !dynamic_arithmetic_emit(graph, origin, item.position, item.state)
+      ) {
+        return false;
+      }
+      if (hole) {
         if (
           item.state != DYNAMIC_LEX_START &&
           !dynamic_arithmetic_enqueue(
@@ -512,32 +506,19 @@ dynamic_arithmetic_build_graph(struct DynamicArithmeticGraph *graph) {
           return false;
         }
         for (int32_t character = 1; character < 128; character += 1) {
-          int next = dynamic_arithmetic_lex(item.state, character);
+          int after = dynamic_arithmetic_lex(item.state, character);
           if (
-            next >= 0 &&
-            !dynamic_arithmetic_enqueue(graph, item.position, (uint8_t)next)
+            after >= 0 &&
+            !dynamic_arithmetic_enqueue(graph, item.position, (uint8_t)after)
           ) {
             return false;
           }
         }
-      } else {
-        int next =
-          dynamic_arithmetic_lex(item.state, graph->source[item.position]);
-        if (next == DYNAMIC_LEX_STOP) {
-          if (!dynamic_arithmetic_emit(
-                graph,
-                origin,
-                item.position,
-                item.state
-              )) {
-            return false;
-          }
-        } else if (
-          next >= 0 &&
-          !dynamic_arithmetic_enqueue(graph, item.position + 1, (uint8_t)next)
-        ) {
-          return false;
-        }
+      } else if (
+        next >= 0 &&
+        !dynamic_arithmetic_enqueue(graph, item.position + 1, (uint8_t)next)
+      ) {
+        return false;
       }
       if (graph->valid) {
         return true;
