@@ -19,7 +19,7 @@
     }
   ],
   "metadata": {
-    "version": "0.21.1",
+    "version": "0.21.2",
     "license": "MIT",
     "description": "Tree-sitter grammar for POSIX sh.",
     "links": {
