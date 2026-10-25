@@ -396,6 +396,33 @@ const hereEnd = ($, begin) =>
     field("word", alias($._here_end_source_word, $.word)),
     $._here_end_commit,
   );
+const hereDocumentSequence = ($, document) =>
+  seq(
+    $._here_document_sequence_header,
+    repeat1(field("document", document)),
+    $._here_document_sequence_end,
+  );
+const hereDocumentPrefix = (start, body) =>
+  seq(start, optional(field("body", body)));
+const hereDocumentBody = ($, quoted) =>
+  repeat1(
+    choice(
+      ...(quoted
+        ? [
+            alias(
+              $._quoted_here_document_text_lexeme,
+              $.quoted_here_document_text,
+            ),
+          ]
+        : [
+            $.here_document_text,
+            $.here_document_escape,
+            ...quotedExpansionParts($),
+          ]),
+      $._newline,
+    ),
+  );
+
 const hereDocumentEndSource = (begin, text) => seq(begin, repeat(text));
 const backquoteSubstitution = ($, start) =>
   seq(
@@ -1541,27 +1568,35 @@ export default grammar({
         field("line_end", $.here_document_line_end),
       ),
 
-    here_document_sequence: ($) =>
-      seq(
-        $._here_document_sequence_header,
-        repeat1(field("document", $.here_document)),
-        $._here_document_sequence_end,
-      ),
+    here_document_sequence: ($) => hereDocumentSequence($, $.here_document),
     _here_document_prefix: ($) =>
-      seq(
-        $._here_document_body_start,
-        optional(field("body", $.here_document_body)),
-      ),
-
+      hereDocumentPrefix($._here_document_body_start, $.here_document_body),
     _quoted_here_document_prefix: ($) =>
-      seq(
+      hereDocumentPrefix(
         $._quoted_here_document_body_start,
-        optional(field("body", $.quoted_here_document_body)),
+        $.quoted_here_document_body,
       ),
-
     here_document: ($) =>
       choice(
         seq($._here_document_prefix, field("end", $.here_document_end)),
+        seq($._quoted_here_document_prefix, field("end", $.here_document_end)),
+      ),
+    _separator_here_document_sequence: ($) =>
+      hereDocumentSequence(
+        $,
+        alias($._separator_here_document, $.here_document),
+      ),
+    _separator_here_document_prefix: ($) =>
+      hereDocumentPrefix(
+        $._here_document_body_start,
+        alias($._separator_here_document_body, $.here_document_body),
+      ),
+    _separator_here_document: ($) =>
+      choice(
+        seq(
+          $._separator_here_document_prefix,
+          field("end", $.here_document_end),
+        ),
         seq($._quoted_here_document_prefix, field("end", $.here_document_end)),
       ),
 
@@ -1589,28 +1624,12 @@ export default grammar({
 
     here_document_end_text: ($) => lexical($, $._here_document_end_text_begin),
 
-    here_document_body: ($) =>
-      repeat1(
-        choice(
-          $.here_document_text,
-          $.here_document_escape,
-          ...quotedExpansionParts($),
-          $._newline,
-        ),
-      ),
+    here_document_body: ($) => hereDocumentBody($, false),
     here_document_text: ($) => lexical($, $._here_document_text_begin),
-
     here_document_escape: ($) => lexical($, $._here_document_escape_begin),
-    quoted_here_document_body: ($) =>
-      repeat1(
-        choice(
-          alias(
-            $._quoted_here_document_text_lexeme,
-            $.quoted_here_document_text,
-          ),
-          $._newline,
-        ),
-      ),
+    quoted_here_document_body: ($) => hereDocumentBody($, true),
+    _separator_here_document_body: ($) => hereDocumentBody($, false),
+
     _assignment_word_header: ($) =>
       seq(
         field("name", alias($._assignment_name_lexeme, $.variable_name)),
@@ -2310,7 +2329,10 @@ export default grammar({
       ledNewlineList($, seq($._separator_newline, $._layout_newline)),
 
     _here_document_led_newline_list: ($) =>
-      ledNewlineList($, $.here_document_sequence),
+      ledNewlineList(
+        $,
+        alias($._separator_here_document_sequence, $.here_document_sequence),
+      ),
 
     linebreak: ($) => $.newline_list,
 

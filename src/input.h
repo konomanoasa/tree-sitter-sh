@@ -27,6 +27,7 @@ struct LogicalLexer {
   size_t consumed;
   size_t mark;
   bool bounded;
+  bool skipped_pending;
 };
 
 struct LogicalPosition {
@@ -114,11 +115,13 @@ static enum SourceResult logical_read(void *payload, int32_t *value) {
 }
 
 static void logical_load(struct LogicalLexer *input) {
-  do {
-    input->result = source_next(&input->cursor, &input->character);
-  } while (
+  input->result = source_next(&input->cursor, &input->character);
+  while (
     input->result == SOURCE_CHARACTER && input->character.origin.end <= 0
-  );
+  ) {
+    input->skipped_pending = true;
+    input->result = source_next(&input->cursor, &input->character);
+  }
   input->lexer.lookahead = input->result != SOURCE_CHARACTER ? 0
     : input->character.boundary_stage == SIZE_MAX ? input->character.value
                                                   : SOURCE_BACKQUOTE_BOUNDARY;

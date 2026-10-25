@@ -1040,6 +1040,71 @@ EOF
 3:1  - 4:0          "\n"
 
 ==================
+a backslash-only line in a quoted body inside backquotes does not end an empty delimiter
+:cst
+==================
+: `cat <<''
+\
+]
+
+`
+
+------------------
+
+0:0  - 5:0    program
+0:0  - 4:1      commands: complete_commands
+0:0  - 4:1        command: complete_command
+0:0  - 4:1          body: list
+0:0  - 4:1            and_or: and_or
+0:0  - 4:1              pipeline: pipeline
+0:0  - 4:1                sequence: pipe_sequence
+0:0  - 4:1                  command: command
+0:0  - 4:1                    body: simple_command
+0:0  - 0:1                      name: cmd_name
+0:0  - 0:1                        word
+0:0  - 0:1                          literal `:`
+0:1  - 4:1                      suffix: cmd_suffix
+0:2  - 4:1                        word: word
+0:2  - 4:1                          backquote_substitution
+0:2  - 0:3                            "\`"
+0:3  - 4:0                            body: backquote_substitution_body
+0:3  - 0:11                             complete_commands
+0:3  - 0:11                               command: complete_command
+0:3  - 0:11                                 body: list
+0:3  - 0:11                                   and_or: and_or
+0:3  - 0:11                                     pipeline: pipeline
+0:3  - 0:11                                       sequence: pipe_sequence
+0:3  - 0:11                                         command: command
+0:3  - 0:11                                           body: simple_command
+0:3  - 0:6                                              name: cmd_name
+0:3  - 0:6                                                word
+0:3  - 0:6                                                  literal `cat`
+0:6  - 0:11                                             suffix: cmd_suffix
+0:7  - 0:11                                               redirect: io_redirect
+0:7  - 0:11                                                 body: io_here
+0:7  - 0:9                                                    operator: dless `<<`
+0:9  - 0:11                                                   end: here_end
+0:9  - 0:11                                                     word: word
+0:9  - 0:11                                                       single_quoted
+0:9  - 0:10                                                         "'"
+0:10 - 0:11                                                         "'"
+0:11 - 4:0                              linebreak
+0:11 - 4:0                                newline_list
+0:11 - 4:0                                  here_document_sequence
+0:11 - 1:0                                    line_end: here_document_line_end
+0:11 - 0:12                                     `\n`
+1:0  - 4:0                                    document: here_document
+1:0  - 3:0                                      body: quoted_here_document_body
+1:0  - 1:1                                        quoted_here_document_text `\\`
+2:0  - 2:1                                        quoted_here_document_text `]`
+3:0  - 4:0                                      end: here_document_end
+3:0  - 3:1                                        `\n`
+4:0  - 4:1                            "\`"
+4:1  - 5:0      trailing: linebreak
+4:1  - 5:0        newline_list
+4:1  - 5:0          "\n"
+
+==================
 unterminated here document
 :error
 ==================

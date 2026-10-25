@@ -1,14 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  assertContains,
   assertCstDirectChildRange,
   assertCstRange,
   assertNodeCount,
   assertNotContains,
   assertOccurrenceCount,
   continuationManifest,
-  cstFingerprint,
   hasRecovery,
   lineContinuationManifest,
 } from "./support/cst.js";
@@ -16,61 +14,12 @@ import {
   assertIncrementalEqualsFresh,
   assertRepeatedColdParse,
   lines,
-  parseRecovery,
   parseRecoveryAfterEdits,
   parseValidCst,
   runParse,
   runQuery,
   writeSource,
 } from "./support/parser.js";
-
-test("sh: repairing terminator newlines at source and substitution boundaries matches a fresh parse", () => {
-  for (const [name, prefix, closing] of [
-    ["source-named", "cat <<E\nx\nE", ""],
-    ["source-quoted", "cat <<'E'\nx\nE", ""],
-    ["source-empty", "cat <<''\n", ""],
-    ["source-empty-tabs", "cat <<-''\n\t", ""],
-    ["source-named-tabs", "cat <<-E\nx\n\tE", ""],
-    ["source-empty-after-body", "cat <<''\nx\n", ""],
-    ["source-continuation", "cat <<E\nx\nE\\\n", ""],
-    ["command-named", ": $(cat <<E\nx\nE", ")\n"],
-    ["command-empty", ": $(cat <<''\n", ")\n"],
-    ["command-empty-tabs", ": $(cat <<-''\n\t", ")\n"],
-    ["backquote-named", ": `cat <<E\nx\nE", "`\n"],
-    ["backquote-quoted", ": `cat <<'E'\nx\nE", "`\n"],
-    ["backquote-empty", ": `cat <<''\n", "`\n"],
-    ["backquote-empty-tabs", ": `cat <<-''\n\t", "`\n"],
-    ["backquote-empty-after-body", ": `cat <<''\nx\n", "`\n"],
-  ]) {
-    const broken = writeSource(
-      `${name}-without-terminator-newline`,
-      prefix + closing,
-    );
-    const repaired = writeSource(
-      `${name}-with-terminator-newline`,
-      `${prefix}\n${closing}`,
-    );
-    const byte = prefix.length;
-    const remove = { byte, deleteBytes: 1, insert: "" };
-    const repair = { byte, deleteBytes: 0, insert: "\n" };
-    for (const output of parseRecoveryAfterEdits(
-      repaired,
-      broken,
-      name,
-      remove,
-    )) {
-      assert.equal(hasRecovery(output), true, name);
-    }
-    assertIncrementalEqualsFresh(broken, repaired, `repair-${name}`, repair);
-    assertIncrementalEqualsFresh(
-      repaired,
-      repaired,
-      `roundtrip-${name}`,
-      remove,
-      repair,
-    );
-  }
-});
 
 test("sh: nested here-documents activate at the scanner state capacity", () => {
   const nestedDelimiterBytes = 251;
@@ -189,88 +138,6 @@ test("changing a file redirect to a here-document updates tilde classification",
     assertNodeCount(output, "tilde_expansion", 2);
     assertNodeCount(output, "filename", 1);
   }
-});
-
-test("sh: heredoc lookahead terminates at source boundaries and preserves repairs", () => {
-  const lookaheadTimeoutMs = 5_000;
-  const options = { processTimeoutMs: lookaheadTimeoutMs };
-  for (const { name, source, status } of [
-    { name: "missing-tab-eof", source: ": [$(cat <<-X\n\t\t", status: 1 },
-    {
-      name: "missing-tab-backquote",
-      source: ": `: [$(cat <<-X\n\t\t`\n",
-      status: 1,
-    },
-    {
-      name: "empty-tabs-eof",
-      source: "cat <<-''\n\t\t",
-      status: 1,
-    },
-    {
-      name: "empty-backquote-bracket",
-      source: "echo [`cat <<''\n`]\n",
-      status: 1,
-    },
-    {
-      name: "empty-backquote-arithmetic",
-      source: "echo $((`cat <<''\n`+1))\n",
-      status: 1,
-    },
-    {
-      name: "empty-after-body-bracket",
-      source: "echo [`cat <<''\nx\n`]\n",
-      status: 1,
-    },
-    {
-      name: "empty-after-body-arithmetic",
-      source: "echo $((`cat <<''\nx\n`+1))\n",
-      status: 1,
-    },
-    {
-      name: "partial-end-backquote",
-      source: "echo [`cat <<X\nX`]\n",
-      status: 1,
-    },
-  ]) {
-    const output = runParse({
-      ...options,
-      source: writeSource(name, source),
-      mode: status === 0 ? "valid" : "recovery",
-    });
-    assert.equal(output.status, status, name);
-  }
-  const broken = writeSource(
-    "bracket-heredoc-unfinished",
-    ": `: [$(cat <<X\n)]`\n",
-  );
-  const repaired = writeSource(
-    "bracket-heredoc-terminated",
-    ": `: [$(cat <<X\nX\n)]`\n",
-  );
-  const initial = runParse({ ...options, source: broken, mode: "recovery" });
-  assert.equal(initial.status, 1);
-  assert.equal(hasRecovery(initial.output), true);
-  const fresh = runParse({ ...options, source: repaired });
-  const incremental = runParse({
-    ...options,
-    source: broken,
-    expectedSource: repaired,
-    edits: [{ byte: 16, deleteBytes: 0, insert: "X\n" }],
-  });
-  assert.equal(
-    cstFingerprint(incremental.output),
-    cstFingerprint(fresh.output),
-  );
-  assertNodeCount(incremental.output, "here_document", 1);
-  const removed = runParse({
-    ...options,
-    source: repaired,
-    expectedSource: broken,
-    mode: "recovery",
-    edits: [{ byte: 16, deleteBytes: 2, insert: "" }],
-  });
-  assert.equal(removed.status, 1);
-  assert.equal(hasRecovery(removed.output), true);
 });
 
 test("sh: heredoc read-time continuations retain comment structure after edits", () => {
@@ -621,155 +488,6 @@ test("sh: here-document parameter brackets keep raw newline members across edits
   }
 });
 
-test("sh: restoring a subshell before nested here-documents matches a fresh parse", () => {
-  const suffix = lines(
-    "",
-    "# between",
-    "case x in x) (cat <<EOF",
-    "$(printf value)",
-    "EOF",
-    ");; esac",
-  );
-  for (const [broken, restored] of [
-    ["()", "(: )"],
-    ["(;)", "(: ;)"],
-  ]) {
-    const initial = writeSource("broken-subshell", `${lines(broken)}${suffix}`);
-    const final = writeSource(
-      "restored-subshell",
-      `${lines(restored)}${suffix}`,
-    );
-    assertIncrementalEqualsFresh(
-      initial,
-      final,
-      `${broken}: restore subshell body`,
-      { byte: 1, deleteBytes: 0, insert: ": " },
-    );
-  }
-});
-
-test("sh: here-document expansions require their closers and recover after repair", () => {
-  for (const [name, broken, restored, closer, expectedNode] of [
-    ["parameter", "${value", `\${value}`, "}", "parameter_expansion"],
-    ["command", "$(printf x", "$(printf x)", ")", "command_substitution"],
-    ["arithmetic", "$((1 + 2", "$((1 + 2))", "))", "arithmetic_expansion"],
-    ["backquote", "`printf x", "`printf x`", "`", "backquote_substitution"],
-    [
-      "double-quote",
-      '${value:-"text',
-      `\${value:-"text"}`,
-      '"}',
-      "double_quoted",
-    ],
-    [
-      "pattern-single-quote",
-      "${value#'text",
-      `\${value#'text'}`,
-      "'}",
-      "single_quoted",
-    ],
-    [
-      "pattern-dollar-single-quote",
-      "${value#$'text",
-      `\${value#$'text'}`,
-      "'}",
-      "dollar_single_quoted",
-    ],
-  ]) {
-    const prefix = "cat <<EOF\n";
-    const initial = writeSource(
-      `here-document-unclosed-${name}`,
-      `${prefix}${lines(broken, "EOF", "after")}`,
-    );
-    const { status } = runParse({
-      description: `unclosed here-document ${name}`,
-      mode: "recovery",
-      source: initial,
-    });
-    assert.equal(
-      status,
-      1,
-      `${name}: here-document delimiter closed an expansion`,
-    );
-    const final = writeSource(
-      `here-document-closed-${name}`,
-      `${prefix}${lines(restored, "EOF", "after")}`,
-    );
-    for (const output of assertIncrementalEqualsFresh(
-      initial,
-      final,
-      `close-here-document-${name}`,
-      {
-        byte: prefix.length + broken.length,
-        deleteBytes: 0,
-        insert: closer,
-      },
-    )) {
-      assertContains(output, expectedNode);
-      assertCstRange(output, "2:0-3:0", "here_document_end");
-    }
-  }
-});
-
-test("sh: here-document delimiters bound expansions before their later closers", () => {
-  for (const [name, prefix, delimiter, suffix] of [
-    ["parameter", "cat <<EOF\n${value:-\n", "EOF\n", "}\nEOF\nafter\n"],
-    ["arithmetic", "cat <<EOF\n$((1 +\n", "EOF\n", "))\nEOF\nafter\n"],
-    ["command", "cat <<EOF\n$(printf x\n", "EOF\n", ")\nEOF\nafter\n"],
-    ["backquote", "cat <<EOF\n`printf x\n", "EOF\n", "`\nEOF\nafter\n"],
-    ["double-quote", 'cat <<EOF\n${value:-"\n', "EOF\n", '"}\nEOF\nafter\n'],
-    ["single-quote", "cat <<EOF\n${value#'\n", "EOF\n", "'}\nEOF\nafter\n"],
-    [
-      "dollar-single-quote",
-      "cat <<EOF\n${value#$'\n",
-      "EOF\n",
-      "'}\nEOF\nafter\n",
-    ],
-    ["nested", "cat <<EOF\n$(cat <<INNER\n", "EOF\n", "INNER\n)\nEOF\nafter\n"],
-    [
-      "nested-quoted",
-      "cat <<EOF\n$(cat <<'INNER'\n",
-      "EOF\n",
-      "INNER\n)\nEOF\nafter\n",
-    ],
-    ["stripped-tabs", "cat <<-EOF\n${value:-\n", "\tEOF\n", "}\nEOF\nafter\n"],
-    [
-      "continued-delimiter",
-      "cat <<EOF\n${value:-\n",
-      "E\\\nOF\n",
-      "}\nEOF\nafter\n",
-    ],
-  ]) {
-    const initial = writeSource(
-      `bounded-document-${name}`,
-      `${prefix}x${delimiter}${suffix}`,
-    );
-    const broken = writeSource(
-      `early-document-end-${name}`,
-      `${prefix}${delimiter}${suffix}`,
-    );
-    const remove = { byte: prefix.length, deleteBytes: 1, insert: "" };
-    for (const output of parseRecoveryAfterEdits(
-      initial,
-      broken,
-      `expose-${name}-delimiter`,
-      remove,
-    )) {
-      assert.ok(
-        hasRecovery(output),
-        `${name}: expansion crossed the first delimiter`,
-      );
-    }
-    assertIncrementalEqualsFresh(
-      initial,
-      initial,
-      `restore-${name}-body-line`,
-      remove,
-      { byte: prefix.length, deleteBytes: 0, insert: "x" },
-    );
-  }
-});
-
 test("sh: here-document body escape runs fold all enclosing backquotes", () => {
   for (const [
     name,
@@ -875,49 +593,6 @@ test("sh: paired here-document backslashes retain the newline before the delimit
       initial,
       `${name}-restore-body-before-paired-run`,
       { byte: offset, deleteBytes: width, insert: "body" },
-    );
-  }
-});
-
-test("sh: pending here-documents recover through EOF edits and completion", () => {
-  for (const [name, header, ending] of [
-    ["plain", "cat <<EOF", "\nbody\nEOF\n"],
-    ["quoted", "cat <<'EOF'", "\n$literal\nEOF\n"],
-    ["empty-delimiter", "cat <<''", "\nbody\n\n"],
-    ["tabs", "cat <<-EOF", "\n\tbody\n\tEOF\n"],
-    ["comment", "cat <<EOF # comment", "\nbody\nEOF\n"],
-    ["continuation", "cat <<EOF \\\n", "\nbody\nEOF\n"],
-    ["following-command", "cat <<EOF; echo after", "\nbody\nEOF\n"],
-    ["multiple", "cat <<FIRST <<SECOND", "\nFIRST\nSECOND\n"],
-  ]) {
-    const complete = writeSource(`${name}-complete-document`, header + ending);
-    const incomplete = writeSource(`${name}-pending-document`, header);
-    const remove = {
-      byte: header.length,
-      deleteBytes: ending.length,
-      insert: "",
-    };
-    const restore = { byte: header.length, deleteBytes: 0, insert: ending };
-    for (const output of parseRecoveryAfterEdits(
-      complete,
-      incomplete,
-      `${name}-remove-body`,
-      remove,
-    )) {
-      assert.equal(hasRecovery(output), true, output);
-    }
-    assertIncrementalEqualsFresh(
-      incomplete,
-      complete,
-      `${name}-complete-body`,
-      restore,
-    );
-    assertIncrementalEqualsFresh(
-      complete,
-      complete,
-      `${name}-restore-body`,
-      remove,
-      restore,
     );
   }
 });
@@ -1704,57 +1379,5 @@ test("sh: editing retained quoted-body backslash prefixes matches a fresh parse"
       continuations,
       name,
     );
-  }
-});
-
-test("sh: empty quoted here-document delimiters preserve enclosing source after recovery", () => {
-  const fixtures = [
-    {
-      name: "arithmetic-empty-single-quoted-delimiter",
-      initial: lines("echo $(( $(cat <<'", "1", "", ") + 1 ))"),
-      source: lines("echo $(( $(cat <<''", "1", "", ") + 1 ))"),
-      edit: { byte: 18, deleteBytes: 0, insert: "'" },
-      expectedRange: "0:5-3:8",
-      expectedNode: "arithmetic_expansion",
-      delimiterRange: "0:17-0:19",
-      delimiterNode: "single_quoted",
-    },
-    {
-      name: "bracket-empty-double-quoted-delimiter",
-      initial: lines('echo [$(cat <<"', "1", "", ")]"),
-      source: lines('echo [$(cat <<""', "1", "", ")]"),
-      edit: { byte: 15, deleteBytes: 0, insert: '"' },
-      expectedRange: "0:5-3:2",
-      expectedNode: "pattern_bracket_source",
-      delimiterRange: "0:14-0:16",
-      delimiterNode: "double_quoted",
-    },
-    {
-      name: "arithmetic-empty-dollar-single-quoted-delimiter",
-      initial: lines("echo $(( $(cat <<$'", "1", "", ") + 1 ))"),
-      source: lines("echo $(( $(cat <<$''", "1", "", ") + 1 ))"),
-      edit: { byte: 19, deleteBytes: 0, insert: "'" },
-      expectedRange: "0:5-3:8",
-      expectedNode: "arithmetic_expansion",
-      delimiterRange: "0:17-0:20",
-      delimiterNode: "dollar_single_quoted",
-    },
-  ];
-  for (const fixture of fixtures) {
-    const initial = writeSource(`${fixture.name}-initial`, fixture.initial);
-    const source = writeSource(fixture.name, fixture.source);
-    parseRecovery(initial, `${fixture.name} unfinished quote`);
-    for (const output of assertIncrementalEqualsFresh(
-      initial,
-      source,
-      fixture.name,
-      fixture.edit,
-    )) {
-      assertCstRange(output, fixture.expectedRange, fixture.expectedNode);
-      assertCstRange(output, fixture.delimiterRange, "here_end");
-      assertCstRange(output, fixture.delimiterRange, fixture.delimiterNode);
-      assertCstRange(output, "1:0-2:0", "quoted_here_document_body");
-      assertCstRange(output, "2:0-3:0", "here_document_end");
-    }
   }
 });

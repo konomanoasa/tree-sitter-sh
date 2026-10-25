@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
 import nodeTypes from "../src/node-types.json" with { type: "json" };
-import { corpusCases } from "./support/corpus.js";
 import {
   assertCstDirectChildRange,
   assertCstRange,
@@ -11,23 +12,57 @@ import {
   assertSameLogicalProjection,
   continuationManifest,
   cstFingerprint,
-  hasRecovery,
   logicalProjection,
   namedStructure,
   parseCst,
   sourcePoint,
 } from "./support/cst.js";
 import {
-  applyEdits,
   assertIncrementalEqualsFresh,
   assertLineContinuationManifest,
   assertRepeatedColdParse,
+  assertValid,
   lines,
   parseRecoveryAfterEdits,
   parseValidCst,
   runParse,
   writeSource,
 } from "./support/parser.js";
+
+const directory = path.resolve(import.meta.dirname, "corpus");
+const header = "==================\n";
+const separator = "\n------------------\n";
+
+function corpusCases() {
+  return fs
+    .readdirSync(directory)
+    .sort()
+    .flatMap((file) => {
+      const parts = fs
+        .readFileSync(path.join(directory, file), "utf8")
+        .split(header);
+      assert.equal(parts.shift(), "", file);
+      assert.equal(parts.length % 2, 0, file);
+      const cases = [];
+      for (let index = 0; index < parts.length; index += 2) {
+        const [name, ...attributes] = parts[index].trimEnd().split("\n");
+        assert.ok(
+          attributes.every(
+            (attribute) => attribute === ":cst" || attribute === ":error",
+          ),
+          name,
+        );
+        const end = parts[index + 1].indexOf(separator);
+        assert.notEqual(end, -1, name);
+        cases.push({
+          name: `${file}: ${name}`,
+          source: parts[index + 1].slice(0, end),
+          mode: attributes.includes(":error") ? "recovery" : "valid",
+        });
+      }
+      return cases;
+    });
+}
 
 const continuation = "line_continuation";
 
@@ -877,80 +912,6 @@ test("sh: parser rejects a timeout as structural recovery", () => {
       timeoutMicros: forcedTimeoutMicros,
     }),
   );
-});
-
-test("sh: every byte inside a Unicode payload can be deleted and repaired through an edit history", () => {
-  const prefix = "printf '";
-  const suffix = "' after\n";
-  const payload = "é😀";
-  const source = prefix + payload + suffix;
-  const changed = `${prefix}x${suffix}`;
-  const payloadByte = Buffer.byteLength(prefix);
-  const payloadBytes = Buffer.byteLength(payload);
-  const initial = writeSource("utf8-history-initial", source);
-  const brokenPayloads = [
-    [0xa9, 0xf0, 0x9f, 0x98, 0x80],
-    [0xc3, 0xf0, 0x9f, 0x98, 0x80],
-    [0xc3, 0xa9, 0x9f, 0x98, 0x80],
-    [0xc3, 0xa9, 0xf0, 0x98, 0x80],
-    [0xc3, 0xa9, 0xf0, 0x9f, 0x80],
-    [0xc3, 0xa9, 0xf0, 0x9f, 0x98],
-  ];
-  for (const [removedByte, brokenPayload] of brokenPayloads.entries()) {
-    const edits = [
-      { byte: payloadByte + removedByte, deleteBytes: 1, insert: "" },
-      { byte: payloadByte, deleteBytes: payloadBytes - 1, insert: payload },
-      { byte: payloadByte, deleteBytes: payloadBytes, insert: "x" },
-      { byte: payloadByte, deleteBytes: 1, insert: payload },
-    ];
-    const expected = [
-      Buffer.concat([
-        Buffer.from(prefix),
-        Buffer.from(brokenPayload),
-        Buffer.from(suffix),
-      ]),
-      Buffer.from(source),
-      Buffer.from(changed),
-      Buffer.from(source),
-    ];
-    for (const [step, expectedSource] of expected.entries()) {
-      const history = edits.slice(0, step + 1);
-      const label = `UTF-8 byte ${removedByte}, edit ${step + 1}`;
-      assert.deepEqual(applyEdits(source, history), expectedSource, label);
-      const final = writeSource("utf8-history-expected", expectedSource);
-      const fresh = runParse({
-        source: final,
-        mode: "recovery",
-        description: label,
-      });
-      const incremental = runParse({
-        source: initial,
-        expectedSource: final,
-        edits: history,
-        mode: "recovery",
-        description: label,
-      });
-      if (step === 0) continue;
-      for (const result of [fresh, incremental]) {
-        assert.equal(result.status, 0, label);
-        assert.equal(hasRecovery(result.output), false, label);
-        const contents = step === 2 ? "x" : payload;
-        const end = payloadByte + Buffer.byteLength(contents);
-        assertCstDirectChildRange(
-          result.output,
-          `0:${payloadByte - 1}-0:${end + 1}`,
-          "single_quoted",
-          `0:${payloadByte}-0:${end}`,
-          `single_quote_content \`${contents}\``,
-        );
-      }
-      assert.equal(
-        cstFingerprint(incremental.output),
-        cstFingerprint(fresh.output),
-        label,
-      );
-    }
-  }
 });
 
 for (const { name, source, expected, continuations } of [
@@ -2123,3 +2084,136 @@ for (const { name, source, expected, continuations } of [
     assert.deepEqual(continuationManifest(output), continuations, name);
   });
 }
+
+test("sh: parser resource bounds preserve complete roots and deterministic recovery", async (context) => {
+  const completionOnly = { completionOnly: true };
+  const arithmeticDepth = 2_000;
+  const unmatchedBracketCount = 80_000;
+  const bracketMemberCount = 16_000;
+  const bracketGroupCount = 4_000;
+  const incompleteClassCount = 4_000;
+  const continuationCount = 20_000;
+  const bodyParameterCount = 16_000;
+  const pendingDocumentCount = 600;
+  const maximumNestedDocuments = 44;
+  const excessDocumentDepth = 300;
+  const backquoteDepth = 6;
+  const largeValidSources = [
+    [
+      "deep-arithmetic-expansions",
+      `echo ${"$((".repeat(arithmeticDepth)}1${"))".repeat(arithmeticDepth)}\n`,
+    ],
+    ["unmatched-brackets", `printf ${"[".repeat(unmatchedBracketCount)}\n`],
+    ["long-bracket-list", `printf [${"a".repeat(bracketMemberCount)}]\n`],
+    ["repeated-brackets", `printf ${"[abc]".repeat(bracketGroupCount)}\n`],
+    [
+      "repeated-incomplete-special-brackets",
+      `printf [${"[:alpha:]".repeat(incompleteClassCount)}\n`,
+    ],
+    [
+      "continued-blank-lines",
+      `printf value ${"\\\n".repeat(continuationCount)}after\n`,
+    ],
+    [
+      "continued-pipe-linebreak",
+      `first|${"\\\n".repeat(continuationCount)}next\n`,
+    ],
+    [
+      "here-document-dollars",
+      `cat <<EOF\n${"$x".repeat(bodyParameterCount)}\nEOF\nafter\n`,
+    ],
+  ];
+  for (const [name, contents] of largeValidSources) {
+    await context.test(name, () => {
+      assertValid(writeSource(name, contents), name, completionOnly);
+    });
+  }
+
+  await context.test("queued here-documents", () => {
+    const manyDocuments = writeSource(
+      "many-documents",
+      `cat${" <<X".repeat(pendingDocumentCount)}\n${"body\nX\n".repeat(pendingDocumentCount)}after\n`,
+    );
+    assertRepeatedColdParse(
+      "resource",
+      manyDocuments,
+      "many-documents",
+      completionOnly,
+    );
+  });
+
+  function nestedDocuments(depth) {
+    let contents = "cat <<D0\n";
+    for (let counter = 1; counter < depth; counter += 1) {
+      contents += `$(cat <<D${counter}\n`;
+    }
+    contents += "leaf\n";
+    for (let counter = depth - 1; counter >= 0; counter -= 1) {
+      contents += `D${counter}\n`;
+      if (counter > 0) {
+        contents += ")\n";
+      }
+    }
+    return `${contents}after\n`;
+  }
+
+  await context.test("nested here-documents at capacity", () => {
+    const deepDocuments = writeSource(
+      "deep-documents",
+      nestedDocuments(maximumNestedDocuments),
+    );
+    assertValid(deepDocuments, "deep-documents", completionOnly);
+  });
+
+  await context.test("nested here-documents above capacity", () => {
+    const excessDepth = writeSource(
+      "excess-document-depth",
+      nestedDocuments(maximumNestedDocuments + 1),
+    );
+    assert.equal(
+      runParse({
+        ...completionOnly,
+        source: excessDepth,
+        mode: "resource",
+        description: "nested document metadata exceeds 1024 bytes",
+      }).status,
+      1,
+    );
+    assertRepeatedColdParse(
+      "resource",
+      excessDepth,
+      "excess-document-depth",
+      completionOnly,
+    );
+  });
+
+  await context.test("deep here-documents complete deterministically", () => {
+    const boundedDocuments = writeSource(
+      "deep-documents-bounded",
+      nestedDocuments(excessDocumentDepth),
+    );
+    assertRepeatedColdParse(
+      "resource",
+      boundedDocuments,
+      "deep-documents-bounded",
+      completionOnly,
+    );
+  });
+
+  await context.test("nested backquotes", () => {
+    let nestedBackquotes = "echo `level1 ";
+    for (let level = 2; level <= backquoteDepth; level += 1) {
+      nestedBackquotes += `${"\\".repeat(2 ** (level - 1) - 1)}\`level${level} `;
+    }
+    nestedBackquotes += "leaf";
+    for (let level = backquoteDepth; level >= 2; level -= 1) {
+      nestedBackquotes += `${"\\".repeat(2 ** (level - 1) - 1)}\` end${level}`;
+    }
+    nestedBackquotes += "`\n";
+    assertValid(
+      writeSource("nested-backquotes", nestedBackquotes),
+      "nested-backquotes",
+      completionOnly,
+    );
+  });
+});

@@ -2262,14 +2262,16 @@ static bool here_document_input_init(
     struct HereDocumentBoundary *boundary = &input->boundaries[input->count++];
     boundary->context = index;
     boundary->frame = document_frame;
-    boundary->at_line_start =
-      snapshot.stages[snapshot.stage_count - 1].at_line_start;
     if (
       !copy_document(document, &boundary->document) ||
       !logical_init_at(&boundary->view, native, &snapshot, 0, false)
     ) {
       goto failure;
     }
+    /* A skipped pending backslash prevents a line start. */
+    boundary->at_line_start =
+      snapshot.stages[snapshot.stage_count - 1].at_line_start &&
+      !boundary->view.skipped_pending;
   }
   return true;
 
@@ -2403,7 +2405,6 @@ struct CommandStartScan {
   bool awaiting_delimiter;
 };
 
-// True while more input can change the classification.
 static bool command_start_feed(
   struct CommandStart *start,
   struct CommandStartScan *scan,
@@ -8520,7 +8521,6 @@ select_recovery_symbols(const struct Scanner *scanner, bool *valid) {
   };
   memcpy(valid, base_symbols, sizeof(base_symbols));
   bool word_context = recovery_word_context(scanner);
-  valid[TERM_BOUNDARY] = !word_context;
   if (scanner->emission.active || !word_context) {
     return;
   }

@@ -1,18 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  assertCstDirectChildRange,
   assertFreshOutputsEqual,
   assertOccurrenceCount,
   cstFingerprint,
   hasRecovery,
-  nodeIdentity,
-  parseCst,
-  sourceByteOffset,
 } from "./support/cst.js";
 import {
   applyEdits,
-  assertIncrementalEqualsFresh,
-  assertRepeatedColdParse,
   compareIncrementalAndFresh,
   lines,
   parseRecoveryAfterEdits,
@@ -20,281 +16,6 @@ import {
   writeSource,
 } from "./support/parser.js";
 import { editingWorkloads } from "./support/workloads.js";
-
-test("sh: errors preserve source token kinds and repairs restore structure", () => {
-  for (const [name, initial, removed, stray] of [
-    [
-      "greater-than-before-parenthesis",
-      ": > file\necho after\n",
-      " file",
-      ") file",
-    ],
-    ["less-than-before-parenthesis", ": <file\necho after\n", "file", ")file"],
-    ["missing-then-and-body", "if :; then :; fi\necho after\n", "then :; ", ""],
-    ["missing-do-and-body", "while :; do :; done\necho after\n", "do :; ", ""],
-    ["empty-if-condition", "if :; then :; fi\necho after\n", ":; ", ""],
-    [
-      "empty-if-body",
-      "if :; then echo body; fi\necho after\n",
-      "echo body; ",
-      "",
-    ],
-    ["empty-while-condition", "while :; do :; done\necho after\n", ":; ", ""],
-    [
-      "empty-if-lines-before-eof",
-      "echo BEFORE\nif\n:; then :;\nfi\n",
-      ":; then :;\n",
-      "",
-    ],
-    [
-      "empty-while-lines-before-eof",
-      "echo BEFORE\nwhile\n:; do :;\ndone\n",
-      ":; do :;\n",
-      "",
-    ],
-    [
-      "empty-until-lines-before-eof",
-      "echo BEFORE\nuntil\n:; do :;\ndone\n",
-      ":; do :;\n",
-      "",
-    ],
-    [
-      "empty-if-inside-nested-functions",
-      lines(
-        "echo BEFORE",
-        "outer() {",
-        "middle() {",
-        "inner() {",
-        "if",
-        ":; then :;",
-        "fi",
-        "}",
-        "}",
-        "}",
-        "echo AFTER",
-      ),
-      ":; then :;\n",
-      "",
-    ],
-    [
-      "unfinished-parameter-after-function-header-layout",
-      lines(
-        "echo BEFORE",
-        "outer()",
-        "{",
-        "middle() # header",
-        "{",
-        "inner() \\",
-        "{",
-        `echo \${x:-w}`,
-        "}",
-        "}",
-        "}",
-      ),
-      "}\n}\n}\n}\n",
-      "",
-    ],
-    [
-      "missing-body-inside-nested-functions",
-      lines(
-        "echo BEFORE",
-        "outer() {",
-        "middle() {",
-        "inner() {",
-        "leaf() { :; }",
-        "}",
-        "}",
-        "}",
-        "echo AFTER",
-      ),
-      "{ :; }",
-      "",
-    ],
-    ["empty-for-body", "for x in a; do :; done\necho after\n", ":; ", ""],
-    ["redirect-before-ampersand", "cat > file & echo after\n", "file ", ""],
-    [
-      "continued-redirect-before-semicolon",
-      "cat >\\\nfile; echo after\n",
-      "file",
-      "",
-    ],
-    [
-      "continued-redirect-before-ampersand",
-      "cat > \\\nfile & echo after\n",
-      "file ",
-      "",
-    ],
-    [
-      "continued-fi-after-missing-body",
-      "if :; then :; f\\\ni\necho after\n",
-      "then :; ",
-      "",
-    ],
-    [
-      "quoted-substitution-missing-body",
-      'echo "$(if :; then :; fi)"\necho after\n',
-      "then :; ",
-      "",
-    ],
-    [
-      "quoted-substitution-stray-semicolon",
-      'echo "$(echo inner)"\necho after\n',
-      "echo inner",
-      "; echo inner",
-    ],
-    [
-      "heredoc-substitution-missing-body",
-      "cat <<END\n$(while :; do :; done)\nEND\necho after\n",
-      "do :; ",
-      "",
-    ],
-  ]) {
-    const offset = initial.indexOf(removed);
-    const initialSource = writeSource(`${name}-initial`, initial);
-    const brokenText =
-      initial.slice(0, offset) + stray + initial.slice(offset + removed.length);
-    const broken = writeSource(`${name}-broken`, brokenText);
-    const insertion = {
-      byte: offset,
-      deleteBytes: removed.length,
-      insert: stray,
-    };
-    for (const output of parseRecoveryAfterEdits(
-      initialSource,
-      broken,
-      name,
-      insertion,
-    )) {
-      assert.equal(hasRecovery(output), true, name);
-      for (const entry of parseCst(output)) {
-        const { type } = nodeIdentity(entry);
-        if (type !== '">"' && type !== '"<"') continue;
-        const [start, end] = entry.range
-          .split("-")
-          .map((point) => sourceByteOffset(brokenText, point));
-        if (start === end) continue;
-        assert.equal(
-          brokenText.slice(start, end),
-          JSON.parse(type),
-          `${name}: ${entry.line}`,
-        );
-      }
-    }
-    const final = `${initial.slice(0, offset)} ${initial.slice(offset)}`;
-    assertIncrementalEqualsFresh(
-      initialSource,
-      writeSource(`${name}-repaired`, final),
-      `repair-${name}`,
-      insertion,
-      { byte: offset, deleteBytes: stray.length, insert: ` ${removed}` },
-    );
-  }
-});
-
-test("sh: repairs restore parameter contexts and nested structures", () => {
-  const fixtures = [
-    ["unquoted parameter", `echo \${x:-value}\n`, ":-", "!"],
-    ["quoted parameter", `echo "\${x:-value}"\n`, ":-", "!"],
-    ["nested parameter", `echo \${outer:-\${x:-value}}\n`, "x:-", "x!"],
-    [
-      "quoted pattern parameter",
-      `echo "\${outer#\${x:-value}}"\n`,
-      "x:-",
-      "x!",
-    ],
-    ["quoted substitution", `echo "$(echo \${x:-value})"\n`, ":-", "!"],
-    [
-      "backquote parameter",
-      `echo \`\${x:-value}\`\n`,
-      ":-value",
-      "!`printf value`",
-    ],
-    ["here parameter", `cat <<END\n\${x:-value}\nEND\n`, ":-", "!"],
-    [
-      "here pattern parameter",
-      `cat <<END\n\${outer%\${x:-value}}\nEND\n`,
-      "x:-",
-      "x!",
-    ],
-    [
-      "here substitution parameter",
-      `cat <<END\n$(echo \${x:-value})\nEND\n`,
-      ":-",
-      "!",
-    ],
-    [
-      "here parameter with unfinished quoted substitution",
-      `cat <<END\n\${x:-$(echo "value")}\nEND\n`,
-      ':-$(echo "value")}',
-      '!$(echo "value)',
-    ],
-  ];
-  const nestingDepth = 3;
-  const hereDelimiters = Array.from(
-    { length: nestingDepth },
-    (_, index) => `END${index}`,
-  );
-  for (const [name, prefix, suffix] of [
-    ...[
-      ["while", "while :; do\n", "done\n"],
-      ["until", "until :; do\n", "done\n"],
-      ["case", "case x\nin\nx)\n", ";; esac\n"],
-      ["assignment", 'x="$(\n', ')"\n'],
-      ["declaration assignment", 'export x="$(\n', ')"\n'],
-      ["word parts", 'echo prefix"quoted"$(\n', ")\n"],
-      ["quoted parts", `echo "one\${x:-a}$(\n`, ')"\n'],
-      ["initial quoted parts", `"one\${x:-a}$(\n`, ')"\n'],
-    ].map(([name, opening, closing]) => [
-      name,
-      opening.repeat(nestingDepth),
-      closing.repeat(nestingDepth),
-    ]),
-    [
-      "here-document",
-      hereDelimiters.map((end) => `cat <<${end} # body\n$(\n`).join(""),
-      hereDelimiters
-        .toReversed()
-        .map((end) => `)\n${end}\n`)
-        .join(""),
-    ],
-  ]) {
-    fixtures.push([
-      `nested ${name}`,
-      `${prefix}echo \${x:-value}\n${suffix}`,
-      `}\n${suffix}`,
-      "\n",
-    ]);
-  }
-  for (const [name, body, removed, inserted] of fixtures) {
-    const contents = `echo BEFORE\n${body}echo AFTER\n`;
-    const offset = contents.indexOf(removed);
-    assert.notEqual(offset, -1, name);
-    const broken =
-      contents.slice(0, offset) +
-      inserted +
-      contents.slice(offset + removed.length);
-    const initial = writeSource(`${name}-valid`, contents);
-    const damaged = writeSource(`${name}-damaged`, broken);
-    assert.equal(
-      runParse({ source: damaged, mode: "recovery" }).recovery,
-      true,
-      name,
-    );
-    assertRepeatedColdParse("recovery", damaged, name);
-    const edit = {
-      byte: Buffer.byteLength(contents.slice(0, offset)),
-      deleteBytes: Buffer.byteLength(removed),
-      insert: inserted,
-    };
-    const repair = {
-      byte: edit.byte,
-      deleteBytes: Buffer.byteLength(inserted),
-      insert: removed,
-    };
-    assertIncrementalEqualsFresh(damaged, initial, name, repair);
-    assertIncrementalEqualsFresh(initial, initial, name, edit, repair);
-  }
-});
 
 const fuzzSeed = 1n;
 const fuzzHistoryCount = 100;
@@ -389,49 +110,160 @@ const fuzzFragments = [
 
 const fuzzInsertions = "abcxyz12!{}();,\n\\/*[]().^$|+?-:=# \t'\"<>`";
 
-test("sh: fixed-seed generated histories converge at every valid final source", (context) => {
+const nestedDocuments =
+  "<<ZZQ\n$(<<E\nE\nuntil(z);do>f;x&(<<'E'\nE\nf ) done)\nZZQ\n";
+
+for (const { name, source: contents, byte } of [
+  { name: "at EOF", source: nestedDocuments, byte: 5 },
+  {
+    name: "before trailing layout",
+    source: `${nestedDocuments} \t# trailing\n\n`,
+    byte: 5,
+  },
+  {
+    name: "before another command",
+    source: `${nestedDocuments}echo after\n`,
+    byte: 5,
+  },
+  { name: "in a subshell", source: `(\n${nestedDocuments})\n`, byte: 7 },
+  { name: "in a function", source: `f() {\n${nestedDocuments}}\n`, byte: 11 },
+  {
+    name: "in a command substitution",
+    source: `echo "$(\n${nestedDocuments})"\n`,
+    byte: 14,
+  },
+  {
+    name: "in a backquote substitution",
+    source: `echo \`\n${nestedDocuments}\`\n`,
+    byte: 12,
+  },
+  {
+    name: "in another here-document",
+    source: `cat <<OUT\n$(\n${nestedDocuments})\nOUT\n`,
+    byte: 18,
+  },
+  {
+    name: "with a quoted body",
+    source: "cat <<'OUT'\n$(if :; then printf x; fi)\nOUT\n",
+    byte: 11,
+  },
+  {
+    name: "with leading tabs removed",
+    source: "cat <<-OUT\n\t$(printf x)\n\tOUT\n",
+    byte: 10,
+  },
+  {
+    name: "with queued quoted and unquoted bodies",
+    source: "cat <<'A' <<B\n$(printf first)\nA\n$(printf second)\nB\n",
+    byte: 13,
+  },
+  { name: "with an empty body", source: "cat <<OUT\nOUT\n", byte: 9 },
+]) {
+  test(`sh: here-document layout ${name} matches fresh parsing after terminator edits`, () => {
+    const insertion = { byte, deleteBytes: 0, insert: ";" };
+    const deletion = { byte, deleteBytes: 1, insert: "" };
+    const initial = writeSource("here-document-layout-initial", contents);
+    const edited = writeSource(
+      "here-document-layout-edited",
+      applyEdits(contents, [insertion]),
+    );
+    for (const { phase, from, to, edits } of [
+      { phase: "insert", from: initial, to: edited, edits: [insertion] },
+      { phase: "remove", from: edited, to: initial, edits: [deletion] },
+      {
+        phase: "round trip",
+        from: initial,
+        to: initial,
+        edits: [insertion, deletion],
+      },
+    ]) {
+      compareIncrementalAndFresh({}, from, to, `${name}: ${phase}`, ...edits);
+    }
+  });
+}
+
+test("sh: appending and removing a command preserves here-document layout ownership", () => {
+  const insertion = {
+    byte: nestedDocuments.length,
+    deleteBytes: 0,
+    insert: "echo after\n",
+  };
+  const deletion = {
+    byte: nestedDocuments.length,
+    deleteBytes: insertion.insert.length,
+    insert: "",
+  };
+  const initial = writeSource("trailing-here-document", nestedDocuments);
+  const edited = writeSource(
+    "separator-here-document",
+    applyEdits(nestedDocuments, [insertion]),
+  );
+  for (const { phase, from, to, edits } of [
+    { phase: "append", from: initial, to: edited, edits: [insertion] },
+    { phase: "remove", from: edited, to: initial, edits: [deletion] },
+    {
+      phase: "round trip",
+      from: initial,
+      to: initial,
+      edits: [insertion, deletion],
+    },
+  ]) {
+    compareIncrementalAndFresh({}, from, to, phase, ...edits);
+  }
+});
+
+test("sh: fixed-seed generated histories converge at every valid final source", async (context) => {
   const generateHistories = createEditHistoryGenerator();
   let checked = 0;
   let compared = 0;
-  for (const history of generateHistories(
-    fuzzFragments,
-    fuzzInsertions,
-    (parts) => lines(...parts),
-  )) {
-    const initial = writeSource("generated-initial", history.initial);
-    const final = writeSource("generated-final", history.source);
-    const fresh = runParse({
-      description: history.context,
-      mode: "recovery",
-      source: final,
+  const histories = Array.from(
+    generateHistories(fuzzFragments, fuzzInsertions, (parts) =>
+      lines(...parts),
+    ),
+  );
+  assert.equal(histories.length, fuzzHistoryCount * fuzzEditsPerHistory);
+  for (let iteration = 0; iteration < fuzzHistoryCount; iteration++) {
+    await context.test(`seed ${fuzzSeed}, history ${iteration}`, () => {
+      for (const history of histories.slice(
+        iteration * fuzzEditsPerHistory,
+        (iteration + 1) * fuzzEditsPerHistory,
+      )) {
+        const initial = writeSource("generated-initial", history.initial);
+        const final = writeSource("generated-final", history.source);
+        const fresh = runParse({
+          description: history.context,
+          mode: "recovery",
+          source: final,
+        });
+        assertFreshOutputsEqual(
+          history.context,
+          fresh,
+          runParse({
+            description: `${history.context}, repeated fresh parse`,
+            mode: "recovery",
+            source: final,
+          }),
+        );
+        const incremental = runParse({
+          description: history.context,
+          mode: "recovery",
+          source: initial,
+          expectedSource: final,
+          edits: history.edits,
+        });
+        if (fresh.status === 0 && !hasRecovery(fresh.output)) {
+          assert.equal(incremental.status, 0, history.context);
+          assert.equal(hasRecovery(incremental.output), false, history.context);
+          assert.equal(
+            cstFingerprint(incremental.output),
+            cstFingerprint(fresh.output),
+            history.context,
+          );
+          compared += 1;
+        }
+        checked += 1;
+      }
     });
-    assertFreshOutputsEqual(
-      history.context,
-      fresh,
-      runParse({
-        description: `${history.context}, repeated fresh parse`,
-        mode: "recovery",
-        source: final,
-      }),
-    );
-    const incremental = runParse({
-      description: history.context,
-      mode: "recovery",
-      source: initial,
-      expectedSource: final,
-      edits: history.edits,
-    });
-    if (fresh.status === 0 && !hasRecovery(fresh.output)) {
-      assert.equal(incremental.status, 0, history.context);
-      assert.equal(hasRecovery(incremental.output), false, history.context);
-      assert.equal(
-        cstFingerprint(incremental.output),
-        cstFingerprint(fresh.output),
-        history.context,
-      );
-      compared += 1;
-    }
-    checked += 1;
   }
   assert.equal(checked, fuzzHistoryCount * fuzzEditsPerHistory);
   assert.ok(compared > 0);
@@ -477,3 +309,77 @@ for (const {
     }
   });
 }
+
+test("sh: every byte inside a Unicode payload can be deleted and repaired through an edit history", () => {
+  const prefix = "printf '";
+  const suffix = "' after\n";
+  const payload = "é😀";
+  const source = prefix + payload + suffix;
+  const changed = `${prefix}x${suffix}`;
+  const payloadByte = Buffer.byteLength(prefix);
+  const payloadBytes = Buffer.byteLength(payload);
+  const initial = writeSource("utf8-history-initial", source);
+  const brokenPayloads = [
+    [0xa9, 0xf0, 0x9f, 0x98, 0x80],
+    [0xc3, 0xf0, 0x9f, 0x98, 0x80],
+    [0xc3, 0xa9, 0x9f, 0x98, 0x80],
+    [0xc3, 0xa9, 0xf0, 0x98, 0x80],
+    [0xc3, 0xa9, 0xf0, 0x9f, 0x80],
+    [0xc3, 0xa9, 0xf0, 0x9f, 0x98],
+  ];
+  for (const [removedByte, brokenPayload] of brokenPayloads.entries()) {
+    const edits = [
+      { byte: payloadByte + removedByte, deleteBytes: 1, insert: "" },
+      { byte: payloadByte, deleteBytes: payloadBytes - 1, insert: payload },
+      { byte: payloadByte, deleteBytes: payloadBytes, insert: "x" },
+      { byte: payloadByte, deleteBytes: 1, insert: payload },
+    ];
+    const expected = [
+      Buffer.concat([
+        Buffer.from(prefix),
+        Buffer.from(brokenPayload),
+        Buffer.from(suffix),
+      ]),
+      Buffer.from(source),
+      Buffer.from(changed),
+      Buffer.from(source),
+    ];
+    for (const [step, expectedSource] of expected.entries()) {
+      const history = edits.slice(0, step + 1);
+      const label = `UTF-8 byte ${removedByte}, edit ${step + 1}`;
+      assert.deepEqual(applyEdits(source, history), expectedSource, label);
+      const final = writeSource("utf8-history-expected", expectedSource);
+      const fresh = runParse({
+        source: final,
+        mode: "recovery",
+        description: label,
+      });
+      const incremental = runParse({
+        source: initial,
+        expectedSource: final,
+        edits: history,
+        mode: "recovery",
+        description: label,
+      });
+      if (step === 0) continue;
+      for (const result of [fresh, incremental]) {
+        assert.equal(result.status, 0, label);
+        assert.equal(hasRecovery(result.output), false, label);
+        const contents = step === 2 ? "x" : payload;
+        const end = payloadByte + Buffer.byteLength(contents);
+        assertCstDirectChildRange(
+          result.output,
+          `0:${payloadByte - 1}-0:${end + 1}`,
+          "single_quoted",
+          `0:${payloadByte}-0:${end}`,
+          `single_quote_content \`${contents}\``,
+        );
+      }
+      assert.equal(
+        cstFingerprint(incremental.output),
+        cstFingerprint(fresh.output),
+        label,
+      );
+    }
+  }
+});

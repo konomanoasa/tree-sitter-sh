@@ -1229,7 +1229,6 @@ validate_dynamic_arithmetic(const int32_t *source, size_t length) {
     result = ARITHMETIC_VALIDATION_VALID;
     goto finish;
   }
-  // Reading backward exposes assignment constraints before ambiguous prefixes.
   result = dynamic_arithmetic_reverse_graph(&graph);
   if (result != ARITHMETIC_VALIDATION_VALID) {
     goto finish;

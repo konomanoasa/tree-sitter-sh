@@ -63,8 +63,11 @@ export function scalingWorkloads() {
 }
 
 export function* editingWorkloads() {
+  const commandLineCounts = [1_200, 2_400, 4_800];
+  const arithmeticDepths = [16, 24, 32];
+  const dynamicFragmentCounts = [64, 96, 128];
   const commandLine = "echo aaaa\n";
-  for (const lineCount of [1200, 2400, 4800]) {
+  for (const lineCount of commandLineCounts) {
     for (const row of [0, Math.floor(lineCount / 2), lineCount - 1]) {
       yield {
         name: `commands/${lineCount}/${row}`,
@@ -115,7 +118,7 @@ export function* editingWorkloads() {
   ])
     yield { name, source: `${prefix}${arguments_}\n`, edit };
   for (const leaf of ["1", `\${x:-1}`]) {
-    for (const depth of [16, 24, 32]) {
+    for (const depth of arithmeticDepths) {
       const prefix = `echo ${"$((".repeat(depth)}`;
       yield {
         name: `nested arithmetic/${leaf}/${depth}`,
@@ -156,7 +159,7 @@ export function* editingWorkloads() {
       extraParameters: 0,
     },
   ]) {
-    for (const count of [64, 96, 128]) {
+    for (const count of dynamicFragmentCounts) {
       const source = fixture.source(count, "1");
       yield {
         name: `${fixture.name}/${count}`,
