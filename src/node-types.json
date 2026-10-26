@@ -1643,7 +1643,7 @@
       },
       "end": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "here_document_end",
@@ -2078,7 +2078,7 @@
       },
       "parameter": {
         "multiple": false,
-        "required": false,
+        "required": true,
         "types": [
           {
             "type": "positional_parameter",
@@ -3443,10 +3443,6 @@
     "type": "line_continuation",
     "named": true,
     "extra": true
-  },
-  {
-    "type": "numeric_parameter_source",
-    "named": false
   },
   {
     "type": "{",

@@ -170,6 +170,7 @@ static inline bool logical_init_at(
   struct NativeInput *native,
   const struct SourceSnapshot *snapshot,
   size_t base,
+  size_t fresh,
   bool bounded
 ) {
   *input = (struct LogicalLexer){
@@ -187,6 +188,7 @@ static inline bool logical_init_at(
   if (!source_cursor_resume(&input->cursor, snapshot, logical_read, input)) {
     return false;
   }
+  input->cursor.fresh = fresh;
   logical_load(input);
   if (input->result == SOURCE_FAILURE) {
     source_cursor_clear(&input->cursor);
@@ -199,7 +201,14 @@ static inline bool logical_init(
   struct NativeInput *native,
   const struct SourceSnapshot *snapshot
 ) {
-  return logical_init_at(input, native, snapshot, 0, true);
+  return logical_init_at(
+    input,
+    native,
+    snapshot,
+    0,
+    snapshot->stage_count,
+    true
+  );
 }
 
 static inline bool logical_fork(
@@ -257,8 +266,14 @@ static inline bool logical_fork(
   ts_free(snapshot.stages);
   snapshot.stages = stages;
   snapshot.stage_count = count;
-  bool result =
-    logical_init_at(fork, parent->native, &snapshot, raw_cut, parent->bounded);
+  bool result = logical_init_at(
+    fork,
+    parent->native,
+    &snapshot,
+    raw_cut,
+    inherited_stage_count,
+    parent->bounded
+  );
   source_snapshot_clear(&snapshot);
   return result;
 }

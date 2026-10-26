@@ -763,6 +763,7 @@ break() { :; }
 ------------------
 
 
+
 ==================
 special built-in continue cannot be a function name
 :error
@@ -771,6 +772,7 @@ special built-in continue cannot be a function name
 continue() { :; }
 
 ------------------
+
 
 
 ==================
@@ -783,6 +785,7 @@ eval() { :; }
 ------------------
 
 
+
 ==================
 special built-in exec cannot be a function name
 :error
@@ -791,6 +794,7 @@ special built-in exec cannot be a function name
 exec() { :; }
 
 ------------------
+
 
 
 ==================
@@ -803,6 +807,7 @@ exit() { :; }
 ------------------
 
 
+
 ==================
 special built-in export cannot be a function name
 :error
@@ -811,6 +816,7 @@ special built-in export cannot be a function name
 export() { :; }
 
 ------------------
+
 
 
 ==================
@@ -823,6 +829,7 @@ readonly() { :; }
 ------------------
 
 
+
 ==================
 special built-in return cannot be a function name
 :error
@@ -831,6 +838,7 @@ special built-in return cannot be a function name
 return() { :; }
 
 ------------------
+
 
 
 ==================
@@ -843,6 +851,7 @@ set() { :; }
 ------------------
 
 
+
 ==================
 special built-in shift cannot be a function name
 :error
@@ -851,6 +860,7 @@ special built-in shift cannot be a function name
 shift() { :; }
 
 ------------------
+
 
 
 ==================
@@ -863,6 +873,7 @@ times() { :; }
 ------------------
 
 
+
 ==================
 special built-in trap cannot be a function name
 :error
@@ -873,6 +884,7 @@ trap() { :; }
 ------------------
 
 
+
 ==================
 special built-in unset cannot be a function name
 :error
@@ -881,6 +893,8 @@ special built-in unset cannot be a function name
 unset() { :; }
 
 ------------------
+
+
 
 ==================
 function names cannot contain hyphens

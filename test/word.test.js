@@ -843,7 +843,7 @@ test("sh: bracket ranges consume source endpoints from left to right", () => {
     { name: "repeated-hyphens", pattern: "[-----]", ranges: [[1, 4]] },
     { name: "repeated-endpoints", pattern: "[a-a-a]", ranges: [[1, 4]] },
     { name: "trailing-hyphen", pattern: "[a-]", ranges: [] },
-    { name: "class-after-hyphen", pattern: "[a-[:alpha:]]", ranges: [] },
+    { name: "class-after-hyphen", pattern: "[a-[:alpha:]]", ranges: [[1, 4]] },
     { name: "class-before-hyphen", pattern: "[[:alpha:]-z]", ranges: [] },
     { name: "equivalence-after-hyphen", pattern: "[a-[=x=]]", ranges: [] },
     { name: "collating-endpoint", pattern: "[a-[.ch.]-z]", ranges: [[1, 9]] },
@@ -877,6 +877,63 @@ test("sh: bracket ranges consume source endpoints from left to right", () => {
           "pattern_bracket_range_source",
         );
       }
+    }
+  }
+});
+
+test("sh: right-hand character class shapes and collating symbols own different bracket boundaries", () => {
+  for (const [context, prefix, suffix] of [
+    ["word", "printf ", "\n"],
+    ["assignment", "value=", "\n"],
+    ["parameter", ': "${v#', '}"\n'],
+    ["case", "case v in ", ") :;; esac\n"],
+  ]) {
+    const initialText = `${prefix}[Xa-[:digit:]]${suffix}`;
+    const finalText = `${prefix}[Xa-[.c.]]${suffix}`;
+    const initial = writeSource(`${context}-class-range-end`, initialText);
+    const final = writeSource(`${context}-collating-range-end`, finalText);
+    const edit = {
+      byte: prefix.length + 4,
+      deleteBytes: 9,
+      insert: "[.c.]",
+    };
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `${context}-class-to-collating`,
+      edit,
+    )) {
+      assertOccurrenceCount(output, "pattern_collating_symbol_source", 1);
+      assertCstRange(
+        output,
+        `0:${prefix.length}-0:${prefix.length + 10}`,
+        "pattern_bracket_source",
+      );
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `${context}-collating-to-class`,
+      { byte: prefix.length + 4, deleteBytes: 5, insert: "[:digit:]" },
+    )) {
+      assertOccurrenceCount(output, "pattern_character_class_source", 0);
+      assertCstRange(
+        output,
+        `0:${prefix.length}-0:${prefix.length + 13}`,
+        "pattern_bracket_source",
+      );
+      assertCstDirectChildRange(
+        output,
+        `0:${prefix.length + 2}-0:${prefix.length + 5}`,
+        "member: pattern_bracket_range_source",
+        `0:${prefix.length + 4}-0:${prefix.length + 5}`,
+        "end: pattern_bracket_character_source `[`",
+      );
+      assertCstRange(
+        output,
+        `0:${prefix.length + 13}-0:${prefix.length + 14}`,
+        "literal `]`",
+      );
     }
   }
 });

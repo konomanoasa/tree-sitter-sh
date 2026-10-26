@@ -1546,12 +1546,15 @@ const finalCaptureCases = [
     ],
   },
   {
-    name: "unclassified numeric parameter digits remain uncaptured around a continuation",
+    name: "zero parameter digits retain builtin captures around a continuation",
     source: `: \${0\\\n0}\n`,
     captures: [
       [0, 1, "function.call"],
+      [2, 3, "variable"],
       [3, 4, "punctuation.bracket"],
+      [4, 5, "variable.builtin"],
       [5, 6, "punctuation.special"],
+      [7, 8, "variable.builtin"],
       [8, 9, "punctuation.bracket"],
     ],
   },

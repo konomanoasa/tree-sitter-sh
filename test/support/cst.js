@@ -185,15 +185,7 @@ function assertCstSourceContract(output, source) {
     if (type.startsWith('"') && !isContinuation(entry)) {
       const spelling = JSON.parse(type.replaceAll("\\`", "`"));
       const text = bytes.subarray(start, end).toString();
-      if (spelling === "numeric_parameter_source") {
-        assert.match(
-          text,
-          /^[0-9]$/,
-          `numeric source is not one digit: ${entry.line}`,
-        );
-      } else {
-        assert.equal(text, spelling, `anonymous source differs: ${entry.line}`);
-      }
+      assert.equal(text, spelling, `anonymous source differs: ${entry.line}`);
     }
     while (ancestors.at(-1)?.entry.depth >= entry.depth) ancestors.pop();
     const parent = ancestors.at(-1);

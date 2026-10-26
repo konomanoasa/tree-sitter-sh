@@ -24,7 +24,7 @@ enum SourceStageKind {
 };
 
 struct SourceOrigin {
-  /* Resumed units may have advance ordinals before this callback. */
+  /* Advance ordinals can be negative after resuming. */
   int64_t start;
   int64_t end;
   int64_t character;
@@ -74,6 +74,8 @@ struct SourceCursor {
   struct SourceStage *initial;
   struct SourceStage *stages;
   size_t stage_count;
+  /* Stages from this index must not process characters before the cursor origin. */
+  size_t fresh;
   int32_t *raw;
   size_t raw_count;
   size_t raw_capacity;
@@ -164,6 +166,7 @@ static inline bool source_cursor_init(
     memcpy(cursor->stages, stages, count * sizeof(*stages));
   }
   cursor->stage_count = count;
+  cursor->fresh = count;
   cursor->read = read;
   cursor->payload = payload;
   return true;
@@ -245,6 +248,9 @@ static inline bool source_feed_stage(
   if (character.boundary_stage != SIZE_MAX) {
     return source_flush_pending(cursor, index) &&
       source_append_logical(cursor, character);
+  }
+  if (character.origin.end <= 0 && index >= cursor->fresh) {
+    return source_feed_stage(cursor, index + 1, character);
   }
   struct SourceStage *stage = &cursor->stages[index];
   if (stage->kind == SOURCE_STRIP_LEADING_TABS) {
@@ -435,6 +441,7 @@ static inline bool source_snapshot_at(
       )) {
     return false;
   }
+  replay.fresh = cursor->fresh;
   bool result = true;
   for (size_t index = 0; result && index < raw_position; index += 1) {
     result = source_feed(&replay, cursor->raw[index]);

@@ -402,6 +402,8 @@ const hereDocumentSequence = ($, document) =>
     repeat1(field("document", document)),
     $._here_document_sequence_end,
   );
+const hereDocumentVariant = ($, prefix) =>
+  seq(prefix, choice(field("end", $.here_document_end), $._here_document_eof));
 const hereDocumentPrefix = (start, body) =>
   seq(start, optional(field("body", body)));
 const hereDocumentBody = ($, quoted) =>
@@ -520,12 +522,6 @@ const parameterExpansion = (
     ),
   );
 
-const bracedParameterSource = ($, classifiedParameter) =>
-  choice(
-    field("parameter", classifiedParameter),
-    $._unclassified_numeric_parameter_source,
-  );
-
 const parameterHeaderRules = () =>
   Object.fromEntries(
     ["", "_word_initial"].flatMap((prefix) => {
@@ -537,7 +533,7 @@ const parameterHeaderRules = () =>
             seq(
               $[`${name}_start`],
               choice(
-                bracedParameterSource($, $._braced_parameter),
+                field("parameter", $._braced_parameter),
                 field("parameter", $._special_parameter_hash),
               ),
             ),
@@ -564,7 +560,7 @@ const parameterHeaderRules = () =>
             seq(
               $[`${name}_start`],
               field("operator", $.parameter_length_operator),
-              bracedParameterSource($, $._length_parameter),
+              field("parameter", $._length_parameter),
             ),
         ],
       ];
@@ -734,7 +730,16 @@ const patternBracketRange = ($, endpoint, start = endpoint) =>
   seq(
     field("start", start),
     field("operator", $.pattern_bracket_range_operator_source),
-    field("end", endpoint),
+    field(
+      "end",
+      choice(
+        endpoint,
+        alias(
+          $._pattern_range_end_left_bracket,
+          $.pattern_bracket_character_source,
+        ),
+      ),
+    ),
   );
 
 const patternInitialBracketRange = ($, endpoint) =>
@@ -786,6 +791,7 @@ export default grammar({
       $._quoted_here_document_text_begin,
       $._here_document_end_begin,
       $._here_document_end_commit,
+      $._here_document_eof,
       $._here_document_sequence_end,
       $._here_document_content_line_start,
       $._newline_begin,
@@ -811,7 +817,7 @@ export default grammar({
       $._comment_text_begin,
       $._comment_line_end_begin,
       $._dollar_expansion_start,
-      $._braced_parameter_number_start,
+      $._braced_zero_parameter_begin,
       $._braced_positional_parameter_begin,
       $._backquote_start,
       $._backquote_end,
@@ -925,7 +931,6 @@ export default grammar({
       $._parameter_open,
       $._parameter_close,
       $._command_open,
-      $._numeric_parameter_digit,
       $._word_tilde_start,
       $._assignment_tilde_start,
       $._parameter_tilde_start,
@@ -959,6 +964,7 @@ export default grammar({
       $._arithmetic_blank_begin,
       $._parameter_length_operator_begin,
       $._arithmetic_source_fragment_begin,
+      $._pattern_range_end_left_bracket_begin,
       ...sourceExternals($),
     ];
     const names = new Set();
@@ -1578,8 +1584,8 @@ export default grammar({
       ),
     here_document: ($) =>
       choice(
-        seq($._here_document_prefix, field("end", $.here_document_end)),
-        seq($._quoted_here_document_prefix, field("end", $.here_document_end)),
+        hereDocumentVariant($, $._here_document_prefix),
+        hereDocumentVariant($, $._quoted_here_document_prefix),
       ),
     _separator_here_document_sequence: ($) =>
       hereDocumentSequence(
@@ -1593,11 +1599,8 @@ export default grammar({
       ),
     _separator_here_document: ($) =>
       choice(
-        seq(
-          $._separator_here_document_prefix,
-          field("end", $.here_document_end),
-        ),
-        seq($._quoted_here_document_prefix, field("end", $.here_document_end)),
+        hereDocumentVariant($, $._separator_here_document_prefix),
+        hereDocumentVariant($, $._quoted_here_document_prefix),
       ),
 
     here_document_end: ($) =>
@@ -1942,6 +1945,9 @@ export default grammar({
         parameterPatternCollatingSymbolSource($),
       ),
 
+    _pattern_range_end_left_bracket: ($) =>
+      lexical($, $._pattern_range_end_left_bracket_begin),
+
     pattern_bracket_character_source: ($) =>
       lexical($, $._pattern_bracket_character_begin),
     _parameter_pattern_bracket_character: ($) =>
@@ -2054,6 +2060,7 @@ export default grammar({
 
     _braced_parameter: ($) =>
       choice(
+        alias($._braced_zero_parameter, $.special_parameter),
         $.variable_name,
         $.positional_parameter,
         $._special_parameter_except_hash,
@@ -2074,14 +2081,7 @@ export default grammar({
       lexical($, $._unbraced_positional_parameter_begin),
     positional_parameter: ($) =>
       lexical($, $._braced_positional_parameter_begin),
-    _unclassified_numeric_parameter_source: ($) =>
-      seq(
-        $._braced_parameter_number_start,
-        repeat1(
-          physical($, $._numeric_parameter_digit, "numeric_parameter_source"),
-        ),
-      ),
-
+    _braced_zero_parameter: ($) => lexical($, $._braced_zero_parameter_begin),
     parameter_length_operator: ($) =>
       lexical($, $._parameter_length_operator_begin),
     _parameter_value_operator: ($) =>

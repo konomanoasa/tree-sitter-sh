@@ -1022,8 +1022,8 @@ static void test_delimiter_source_views_preserve_quotedness_and_bytes(void) {
     {"'E\\\nOF' ", "E\\\nOF", true},
     {"\"E\\\nOF\" ", "EOF", true},
     {"a\\ b ", "a b", true},
-    {"`printf \\`x\\`#tag END` ", "`printf `x`#tag END`", true},
-    {"`printf \\\\\nEOF` ", "`printf EOF`", false},
+    {"`printf \\`x\\`#tag END` ", "`printf \\`x\\`#tag END`", false},
+    {"`printf \\\\\nEOF` ", "`printf \\\\\nEOF`", false},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
     struct SourceStage stage = source_stage(SOURCE_REMOVE_CONTINUATIONS);
@@ -1087,7 +1087,7 @@ test_embedded_readers_apply_source_views_before_comments_and_closers(void) {
 }
 
 static void
-test_here_document_readers_require_newlines_at_source_boundaries(void) {
+test_here_document_readers_distinguish_eof_from_substitution_boundaries(void) {
   const struct {
     const char *source;
     const char *delimiter;
@@ -1095,7 +1095,7 @@ test_here_document_readers_require_newlines_at_source_boundaries(void) {
   } fixtures[] = {
     {"", "END", HERE_DOCUMENT_LINE_END_OF_INPUT},
     {"", "", HERE_DOCUMENT_LINE_END_OF_INPUT},
-    {"END", "END", HERE_DOCUMENT_LINE_CONTENT},
+    {"END", "END", HERE_DOCUMENT_LINE_DELIMITER},
     {"END\n", "END", HERE_DOCUMENT_LINE_DELIMITER},
     {"\n", "", HERE_DOCUMENT_LINE_DELIMITER},
     {"`tail", "END", HERE_DOCUMENT_LINE_END_OF_INPUT},
@@ -1536,7 +1536,6 @@ static void test_disabled_and_rejected_recovery_scans_preserve_state(void) {
   } inputs[] = {
     {{'2', '>', 'x'}, 3},
     {{'>'}, 1},
-    {{'\\'}, 1},
     {{0}, 0},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(inputs); index += 1) {
@@ -2169,12 +2168,12 @@ static void test_here_document_sequence_requires_a_line_boundary(void) {
     bool enabled;
     bool accepted;
   } cases[] = {
-    {"", true, true},
-    {" ", true, true},
+    {"", true, false},
+    {" ", true, false},
     {"\n", true, true},
     {" \n", true, true},
     {"\t \n", true, true},
-    {"#comment", true, true},
+    {"#comment", true, false},
     {" #comment\n", true, true},
     {";", true, false},
     {" argument\n", true, false},
@@ -2980,12 +2979,14 @@ static void test_double_quoted_parameter_delimiters(void) {
     {"\"${x:-\"ab\"}\"\n", "${x:-ab}"},
     {"\"${x:-\"a}b\"}tail\"\n", "${x:-a}b}tail"},
     {"\"${x:-\"${y:-\"ab\"}\"}\"\n", "${x:-${y:-ab}}"},
-    {"\"${x:-\"$(printf 'ab')\"}\"\n", "${x:-$(printf 'ab')}"},
+    {"\"${x:-\"$(printf 'ab')\"}\"\n", "${x:-$(printf ab)}"},
     {"\"${x:-\"\"}\"\n", "${x:-}"},
     {"\"${x:-'EOF'}\"\n", "${x:-'EOF'}"},
     {"\"${x:-'}\"\n", "${x:-'}"},
     {"\"${x:-a\\qb}\"\n", "${x:-a\\qb}"},
-    {"\"${x:-a\\}b}\"\n", "${x:-a}b}"},
+    {"\"${x:-a\\}b}\"\n", "${x:-a\\}b}"},
+    {"\"${x:-\"'ab'\"}\"\n", "${x:-ab}"},
+    {"\"${x#\"'ab'\"}\"\n", "${x#ab}"},
     {"\"${x:-${y:-'EOF'}}\"\n", "${x:-${y:-'EOF'}}"},
     {"\"${x:-$(printf 'EOF')}\"\n", "${x:-$(printf 'EOF')}"},
     {"\"${x#'EOF'}\"\n", "${x#'EOF'}"},
@@ -3020,8 +3021,12 @@ static void test_double_quoted_substitution_delimiter_spelling(void) {
     {"pre\"$(printf 'ab')\"post\n", "pre$(printf 'ab')post"},
     {"\"$(printf 'ab')\"'tail'\n", "$(printf 'ab')tail"},
     {"\"$(printf 'ab')\"$(printf 'cd')\n", "$(printf 'ab')$(printf cd)"},
-    {"$(printf 'ab')\n", "$(printf ab)"},
-    {"${x#'ab'}\n", "${x#ab}"},
+    {"$(printf 'ab')\"tail\"\n", "$(printf ab)tail"},
+    {"\"`printf \\\"ab\\\"`\"\n", "`printf \"ab\"`"},
+    {"\"`printf $'ab'`\"\n", "`printf $'ab'`"},
+    {"\"$(printf $'a\\x62')\"\n", "$(printf 'ab')"},
+    {"\"$(printf \"'ab'\")\"\n", "$(printf ab)"},
+    {"\"$(printf '\"')\"\n", "$(printf ')\""},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
     assert_text_delimiter_fixture(
@@ -3029,6 +3034,20 @@ static void test_double_quoted_substitution_delimiter_spelling(void) {
       fixtures[index][0],
       fixtures[index][1],
       true
+    );
+  }
+  const char *unquoted[][2] = {
+    {"$(printf 'ab')\n", "$(printf 'ab')"},
+    {"${x#'ab'}\n", "${x#'ab'}"},
+    {"$(printf $'a\\x62')\n", "$(printf 'ab')"},
+    {"$(printf $'a\\'b')\n", "$(printf 'a'\\''b')"},
+  };
+  for (size_t index = 0; index < ARRAY_LENGTH(unquoted); index += 1) {
+    assert_text_delimiter_fixture(
+      scanner,
+      unquoted[index][0],
+      unquoted[index][1],
+      false
     );
   }
   tree_sitter_sh_external_scanner_destroy(scanner);
@@ -3046,12 +3065,12 @@ static void test_arithmetic_delimiters_preserve_nested_quote_context(void) {
     {"$((1+${x:-'2'}))\n", "$((1+${x:-'2'}))", false},
     {"$((1+${x:-'}))\n", "$((1+${x:-'}))", false},
     {"$((1+${x:-a\\qb}))\n", "$((1+${x:-a\\qb}))", false},
-    {"$((1+${x:-a\\}b}))\n", "$((1+${x:-a}b}))", true},
-    {"$((1+${x:-\\$y}))\n", "$((1+${x:-$y}))", true},
-    {"$((1+${x#'2'}))\n", "$((1+${x#2}))", true},
+    {"$((1+${x:-a\\}b}))\n", "$((1+${x:-a\\}b}))", false},
+    {"$((1+${x:-\\$y}))\n", "$((1+${x:-\\$y}))", false},
+    {"$((1+${x#'2'}))\n", "$((1+${x#'2'}))", false},
     {"$((1+$((2+${x:-'3'}))))\n", "$((1+$((2+${x:-'3'}))))", false},
-    {"$((1+$(printf '2')))\n", "$((1+$(printf 2)))", true},
-    {"$((1+`printf \\\"2\\\"`))\n", "$((1+`printf 2`))", true},
+    {"$((1+$(printf '2')))\n", "$((1+$(printf '2')))", false},
+    {"$((1+`printf \\\"2\\\"`))\n", "$((1+`printf \\\"2\\\"`))", false},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
     assert_text_delimiter_fixture(
@@ -3095,14 +3114,14 @@ static void test_substitution_hash_delimiter_words(void) {
   assert_text_delimiter_fixture(
     scanner,
     "`printf $'x'#tag END`\n",
-    "`printf x#tag END`",
-    true
+    "`printf $'x'#tag END`",
+    false
   );
   assert_text_delimiter_fixture(
     scanner,
     "`printf \\`x\\`#tag END`\n",
-    "`printf `x`#tag END`",
-    true
+    "`printf \\`x\\`#tag END`",
+    false
   );
 
   assert_text_delimiter_fixture(
@@ -3126,8 +3145,8 @@ static void test_substitution_hash_delimiter_words(void) {
   assert_text_delimiter_fixture(
     scanner,
     "`printf \\`x\\`\\\n#tag END`\n",
-    "`printf `x`#tag END`",
-    true
+    "`printf \\`x\\`#tag END`",
+    false
   );
 
   assert_text_delimiter_fixture(
@@ -3695,6 +3714,7 @@ test_word_entry_classifies_and_owns_source_in_normal_and_recovery_scans(void) {
       WORD_INITIAL_ESCAPED_CHARACTER_BEGIN_PIECE,
       2,
       1},
+    {"\\", WORD_INITIAL_LITERAL_BEGIN, WORD_INITIAL_LITERAL_BEGIN_WHOLE, 1, 1},
     {"* ",
       WORD_INITIAL_PATTERN_STAR_BEGIN,
       WORD_INITIAL_PATTERN_STAR_BEGIN_PIECE,
@@ -4395,7 +4415,7 @@ int main(void) {
   test_delimiter_source_views_preserve_quotedness_and_bytes();
   test_embedded_readers_apply_source_views_before_comments_and_closers();
   test_here_document_readers_keep_the_owning_source_view();
-  test_here_document_readers_require_newlines_at_source_boundaries();
+  test_here_document_readers_distinguish_eof_from_substitution_boundaries();
   test_here_document_input_stops_before_nested_source_can_cross_its_end();
   test_here_document_end_restores_its_source_and_serialized_depth();
   test_disabled_and_rejected_recovery_scans_preserve_state();

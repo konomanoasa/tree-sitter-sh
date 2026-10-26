@@ -1657,6 +1657,8 @@ after omega
 
 ------------------
 
+
+
 ==================
 a command substitution closer cannot replace a named here-document terminating newline
 :error
@@ -1667,6 +1669,8 @@ E)
 
 ------------------
 
+
+
 ==================
 a command substitution closer cannot terminate an empty-delimiter here-document
 :error
@@ -1676,6 +1680,8 @@ a command substitution closer cannot terminate an empty-delimiter here-document
 
 ------------------
 
+
+
 ==================
 a command substitution closer after stripped tabs cannot terminate an empty-delimiter here-document
 :error
@@ -1684,6 +1690,8 @@ a command substitution closer after stripped tabs cannot terminate an empty-deli
 	)
 
 ------------------
+
+
 
 ==================
 a delimiter prefix followed by a parenthesis remains here-document body text

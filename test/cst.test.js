@@ -7,7 +7,6 @@ import {
   assertCstDirectChildRange,
   assertCstRange,
   assertCstSourceContract,
-  assertNodeCount,
   assertNotContains,
   assertSameLogicalProjection,
   continuationManifest,
@@ -211,7 +210,7 @@ test("source contracts use UTF-8 byte coordinates", () => {
   );
 });
 
-test("anonymous punctuation and unclassified numeric digits retain exact source", () => {
+test("anonymous punctuation retains exact source", () => {
   assertCstSourceContract(
     ["0:0 - 0:1   program", '0:0 - 0:1     "\\`"'].join("\n"),
     "`",
@@ -223,15 +222,13 @@ test("anonymous punctuation and unclassified numeric digits retain exact source"
     `0:2 - 0:3     "'"`,
     '0:3 - 0:4     "$"',
     '0:4 - 0:5     "{"',
-    '0:5 - 0:6     "numeric_parameter_source"',
-    '0:6 - 0:7     "numeric_parameter_source"',
+    "0:5 - 0:7     special_parameter",
     '0:7 - 0:8     "}"',
   ].join("\n");
   const source = `$''\${00}`;
   assertCstSourceContract(output, source);
   for (const changed of [
     output.replace("0:0 - 0:1", "0:0 - 0:2"),
-    output.replace("0:5 - 0:6", "0:5 - 0:7"),
     output.replace('"{"', '"("'),
   ])
     assert.throws(() => assertCstSourceContract(changed, source));
@@ -279,13 +276,13 @@ test("sh: public fields retain optional roots and singular source owners", () =>
     {
       type: "here_document",
       field: "end",
-      required: true,
+      required: false,
       types: ["here_document_end"],
     },
     {
       type: "parameter_expansion",
       field: "parameter",
-      required: false,
+      required: true,
       types: ["positional_parameter", "special_parameter", "variable_name"],
     },
   ]) {
@@ -526,9 +523,9 @@ const fixtures = [
     expectedNodes: [{ type: "variable_name", spelling: "var" }],
   },
   {
-    name: "numeric parameter spelling",
+    name: "zero parameter spelling",
     marked: `: \${0§0}\n`,
-    expectedNodes: [],
+    expectedNodes: [{ type: "special_parameter", spelling: "00" }],
   },
   {
     name: "positional parameter",
@@ -628,18 +625,6 @@ for (const { name, marked, expectedNodes } of fixtures) {
       const output = parseValidCst(physical);
       assertSameLogicalProjection(name, logicalOutput, output);
       assert.deepEqual(continuationManifest(output), variant.slashes, name);
-      if (name === "numeric parameter spelling") {
-        assertNodeCount(output, '"numeric_parameter_source"', 2);
-        assertNodeCount(output, "positional_parameter", 0);
-        for (const digit of [0, 1]) {
-          const offset = variant.logical.indexOf("00") + digit;
-          assertCstRange(
-            output,
-            variant.mappedRange(offset, offset + 1),
-            '"numeric_parameter_source"',
-          );
-        }
-      }
       for (const { type, spelling, occurrence = 0 } of expectedNodes) {
         let offset = -1;
         for (let index = 0; index <= occurrence; index += 1) {

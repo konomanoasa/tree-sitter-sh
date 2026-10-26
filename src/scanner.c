@@ -13,7 +13,7 @@
 #define TREE_SITTER_SERIALIZATION_BUFFER_SIZE 1024
 #endif
 
-#define SCANNER_SERIALIZATION_VERSION 34
+#define SCANNER_SERIALIZATION_VERSION 35
 #define SCANNER_STATE_CAPACITY (TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 1)
 
 enum TokenType {
@@ -45,6 +45,7 @@ enum TokenType {
   QUOTED_HERE_DOCUMENT_TEXT,
   HERE_DOCUMENT_END_BEGIN,
   HERE_DOCUMENT_END_COMMIT,
+  HERE_DOCUMENT_EOF,
   HERE_DOCUMENT_SEQUENCE_END,
   HERE_DOCUMENT_CONTENT_LINE_START,
   NEWLINE,
@@ -70,7 +71,7 @@ enum TokenType {
   COMMENT_START,
   COMMENT_LINE_END,
   DOLLAR_EXPANSION_START,
-  BRACED_PARAMETER_NUMBER_START,
+  BRACED_ZERO_PARAMETER_START,
   BRACED_POSITIONAL_PARAMETER_START,
   BACKQUOTE_START,
   BACKQUOTE_END,
@@ -184,7 +185,6 @@ enum TokenType {
   PARAMETER_OPEN,
   PARAMETER_CLOSE,
   COMMAND_OPEN,
-  NUMERIC_PARAMETER_DIGIT,
   WORD_TILDE_START,
   ASSIGNMENT_TILDE_START,
   PARAMETER_TILDE_START,
@@ -218,6 +218,7 @@ enum TokenType {
   ARITHMETIC_BLANK_BEGIN,
   PARAMETER_LENGTH_OPERATOR_BEGIN,
   ARITHMETIC_SOURCE_FRAGMENT_BEGIN,
+  PATTERN_RANGE_END_LEFT_BRACKET_BEGIN,
 #define LEXICAL_SOURCE_ENUM(begin, piece) piece,
   SH_LEXICAL_SOURCE_TOKENS(LEXICAL_SOURCE_ENUM)
 #undef LEXICAL_SOURCE_ENUM
@@ -361,14 +362,14 @@ struct SourceContext {
   size_t stage_count;
   size_t count;
   size_t substitution_depth;
-  uint16_t bracket_chains;
+  uint32_t bracket_chains;
   bool local_disabled;
 };
 
 struct LexicalEmission {
   enum TokenType symbol;
   size_t remaining;
-  uint16_t bracket_chains;
+  uint32_t bracket_chains;
   bool active;
   bool removed_newline;
   bool ends_assignment_colon;
@@ -1626,10 +1627,12 @@ struct CommandTracker {
 
 struct DelimiterGroupFrame {
   struct LookaheadContext source_context;
+  struct LogicalLexer *spelling;
+  size_t spelling_start;
   int32_t closing;
   enum DelimiterGroupKind kind;
   enum DelimiterQuote parent_quote;
-  size_t quoted_spelling_depth;
+  size_t unquoted_substitution_depth;
   enum ParameterQuoteState parameter_quote_state;
   struct CommandTracker command;
 };
@@ -1838,16 +1841,14 @@ static bool push_delimiter_group(
     return false;
   }
   groups->data = data;
-  size_t quoted_spelling_depth = parent_quote == DELIMITER_DOUBLE_QUOTED
-    ? groups->length + 1
-    : groups->length > 0
-    ? groups->data[groups->length - 1].quoted_spelling_depth
+  size_t unquoted_substitution_depth = groups->length > 0
+    ? groups->data[groups->length - 1].unquoted_substitution_depth
     : 0;
   groups->data[groups->length] = (struct DelimiterGroupFrame){
     .closing = closing,
     .kind = kind,
     .parent_quote = parent_quote,
-    .quoted_spelling_depth = quoted_spelling_depth,
+    .unquoted_substitution_depth = unquoted_substitution_depth,
     .command = {.word = {.candidate = true, .digits = true, .name = true}},
   };
   groups->length += 1;
@@ -2118,6 +2119,42 @@ scan_dollar_single_quote_escape(TSLexer *lexer, struct ByteBuffer *delimiter) {
   return append_quoted_escape(delimiter, character);
 }
 
+static size_t remove_delimiter_quotes(uint8_t *bytes, size_t length) {
+  enum DelimiterQuote quote = DELIMITER_UNQUOTED;
+  size_t output = 0;
+  for (size_t index = 0; index < length; index += 1) {
+    uint8_t byte = bytes[index];
+    if (quote == DELIMITER_SINGLE_QUOTED) {
+      if (byte == '\'') quote = DELIMITER_UNQUOTED;
+      else bytes[output++] = byte;
+      continue;
+    }
+    if (byte == '"') {
+      quote = quote == DELIMITER_DOUBLE_QUOTED ? DELIMITER_UNQUOTED
+                                               : DELIMITER_DOUBLE_QUOTED;
+      continue;
+    }
+    if (quote == DELIMITER_UNQUOTED && byte == '\'') {
+      quote = DELIMITER_SINGLE_QUOTED;
+      continue;
+    }
+    if (byte == '\\' && index + 1 < length) {
+      uint8_t next = bytes[index + 1];
+      if (
+        quote == DELIMITER_UNQUOTED ||
+        next == '$' ||
+        next == '`' ||
+        next == '"' ||
+        next == '\\'
+      ) {
+        byte = bytes[++index];
+      }
+    }
+    bytes[output++] = byte;
+  }
+  return output;
+}
+
 static bool append_nested_here_document(
   struct HereDocument **documents,
   size_t *count,
@@ -2140,6 +2177,8 @@ static bool append_nested_here_document(
       return false;
     }
     memcpy(delimiter, source->data + delimiter_start, delimiter_length);
+    if (quoted)
+      delimiter_length = remove_delimiter_quotes(delimiter, delimiter_length);
   }
 
   struct HereDocument document = {
@@ -2264,11 +2303,17 @@ static bool here_document_input_init(
     boundary->frame = document_frame;
     if (
       !copy_document(document, &boundary->document) ||
-      !logical_init_at(&boundary->view, native, &snapshot, 0, false)
+      !logical_init_at(
+        &boundary->view,
+        native,
+        &snapshot,
+        0,
+        snapshot.stage_count,
+        false
+      )
     ) {
       goto failure;
     }
-    /* A skipped pending backslash prevents a line start. */
     boundary->at_line_start =
       snapshot.stages[snapshot.stage_count - 1].at_line_start &&
       !boundary->view.skipped_pending;
@@ -2278,6 +2323,13 @@ static bool here_document_input_init(
 failure:
   here_document_input_clear(input);
   return false;
+}
+
+static bool logical_source_eof(const struct LogicalLexer *input) {
+  return input != NULL &&
+    input->result == SOURCE_END &&
+    input->read_position == input->native->count &&
+    input->native->lexer->eof(input->native->lexer);
 }
 
 static void here_document_boundary_advance(struct HereDocumentBoundary *bound) {
@@ -2317,7 +2369,8 @@ static enum SourceResult here_document_boundary_read(
       if (
         matches &&
         offset == bound->document.delimiter_length &&
-        view->lexer.lookahead == '\n'
+        (view->lexer.lookahead == '\n' ||
+          (offset > 0 && logical_source_eof(view)))
       ) {
         bound->end = start;
         bound->matched = true;
@@ -2534,6 +2587,7 @@ static enum HereDocumentLineKind read_here_document_line(
       break;
     }
   }
+  terminated |= delimiter_offset > 0 && logical_source_eof(&view);
   size_t end = view.consumed;
   bool valid = view.result != SOURCE_FAILURE &&
     (start == NULL || here_document_line_start(input, end, start));
@@ -2685,10 +2739,33 @@ enum DelimiterStep {
   DELIMITER_STEP_END,
 };
 
+static bool
+delimiter_in_unquoted_substitution(const struct DelimiterReader *reader) {
+  size_t base = reader->collecting_nested_delimiter
+    ? reader->nested_delimiter_group_depth
+    : 0;
+  return reader->groups.length > base &&
+    reader->groups.data[reader->groups.length - 1].unquoted_substitution_depth >
+    base;
+}
+
+static void delimiter_begin_substitution(struct DelimiterReader *reader) {
+  size_t base = reader->collecting_nested_delimiter
+    ? reader->nested_delimiter_group_depth
+    : 0;
+  if (
+    reader->groups.length == base + 1 && reader->quote == DELIMITER_UNQUOTED
+  ) {
+    reader->groups.data[base].unquoted_substitution_depth = base + 1;
+  }
+}
+
 static void delimiter_mark_quoted(struct DelimiterReader *reader) {
-  reader->quoted = true;
+  if (delimiter_in_unquoted_substitution(reader)) return;
   if (reader->collecting_nested_delimiter) {
     reader->nested_delimiter_quoted = true;
+  } else {
+    reader->quoted = true;
   }
 }
 
@@ -2708,6 +2785,10 @@ static void pop_delimiter_group(struct DelimiterReader *reader) {
   enum DelimiterGroupKind kind = groups->data[group_depth - 1].kind;
   reader->quote = groups->data[group_depth - 1].parent_quote;
   pop_case_trackers_at_depth(&reader->cases, group_depth);
+  if (groups->data[group_depth - 1].spelling != NULL) {
+    logical_clear(groups->data[group_depth - 1].spelling);
+    ts_free(groups->data[group_depth - 1].spelling);
+  }
   groups->length -= 1;
   if (kind == DELIMITER_GROUP_COMMAND || kind == DELIMITER_GROUP_BACKQUOTE) {
     discard_documents_above(
@@ -2742,6 +2823,26 @@ static bool push_backquote_delimiter_group(struct DelimiterReader *reader) {
       )) {
     return false;
   }
+  delimiter_begin_substitution(reader);
+  struct DelimiterGroupFrame *group = delimiter_top_group(reader);
+  struct LogicalLexer *input = lookahead_input(reader->lexer);
+  group->spelling = ts_calloc(1, sizeof(*group->spelling));
+  group->spelling_start = reader->delimiter.length;
+  if (
+    group->spelling == NULL ||
+    input == NULL ||
+    !logical_fork(
+      group->spelling,
+      input,
+      input->consumed,
+      input->cursor.stage_count,
+      NULL,
+      0
+    )
+  ) {
+    reader->groups.failed = true;
+    return false;
+  }
   if (!lookahead_backquote_begin(
         reader->lexer,
         delimiter_quote_is_double(reader->quote),
@@ -2767,6 +2868,7 @@ static bool push_dollar_delimiter_group(struct DelimiterReader *reader) {
   ) {
     return false;
   }
+  delimiter_begin_substitution(reader);
   lexer->advance(lexer, false);
   reader->quote = opening == '{' && delimiter_quote_is_double(parent_quote)
     ? DELIMITER_PARAMETER_DOUBLE_QUOTED
@@ -2819,6 +2921,7 @@ static bool scan_delimiter_double_quoted_character(
   }
 
   if (character == '"') {
+    if (!append_byte(delimiter, '"')) return false;
     if (reader->quote == DELIMITER_PARAMETER_DOUBLE_QUOTED) {
       if (!push_delimiter_group(
             &reader->groups,
@@ -2871,6 +2974,7 @@ static bool scan_delimiter_double_quoted_character(
         lexer->lookahead == '}')
     ) {
       *escaped = true;
+      if (!append_byte(delimiter, '\\')) return false;
       if (!append_codepoint(delimiter, lexer->lookahead)) {
         return false;
       }
@@ -2942,6 +3046,23 @@ delimiter_backquote_boundary(struct DelimiterReader *reader) {
   ) {
     delimiter_complete_nested_delimiter(reader, reader->groups.length);
   }
+  struct DelimiterGroupFrame *group = delimiter_top_group(reader);
+  if (group->spelling != NULL) {
+    struct LogicalLexer *current = lookahead_input(lexer);
+    size_t end = current->base + (size_t)current->character.origin.character;
+    reader->delimiter.length = group->spelling_start;
+    while (
+      group->spelling->result == SOURCE_CHARACTER &&
+      group->spelling->base +
+          (size_t)group->spelling->character.origin.character <
+        end
+    ) {
+      reader->valid = reader->valid &&
+        advance_source(&group->spelling->lexer, &reader->delimiter);
+      if (!reader->valid) break;
+    }
+    reader->valid &= group->spelling->result != SOURCE_FAILURE;
+  }
   reader->valid = reader->valid && append_byte(&reader->delimiter, '`');
   lexer->advance(lexer, false);
   reader->valid = reader->valid &&
@@ -2972,28 +3093,24 @@ static bool delimiter_parameter_quote_step(
 }
 
 static void delimiter_single_quoted_step(struct DelimiterReader *reader) {
-  size_t spelling_depth = reader->groups.length > 0
-    ? delimiter_top_group(reader)->quoted_spelling_depth
-    : 0;
-  bool preserve = reader->quote == DELIMITER_SINGLE_QUOTED &&
-    spelling_depth > (reader->collecting_nested_delimiter
-                         ? reader->nested_delimiter_group_depth
-                         : 0);
-  if (preserve && !append_byte(&reader->delimiter, '\'')) {
-    reader->valid = false;
-    return;
+  bool dollar = reader->quote == DELIMITER_DOLLAR_SINGLE_QUOTED;
+  struct ByteBuffer decoded = {0};
+  reader->valid = append_byte(&reader->delimiter, '\'') &&
+    scan_delimiter_single_quoted_segment(
+      reader->lexer,
+      dollar ? &decoded : &reader->delimiter,
+      dollar
+    );
+  for (size_t index = 0; reader->valid && index < decoded.length; index += 1) {
+    uint8_t byte = (uint8_t)decoded.data[index];
+    reader->valid = byte == '\''
+      ? append_bytes(&reader->delimiter, (const uint8_t *)"'\\''", 4)
+      : append_byte(&reader->delimiter, byte);
   }
-  reader->valid = scan_delimiter_single_quoted_segment(
-    reader->lexer,
-    &reader->delimiter,
-    reader->quote == DELIMITER_DOLLAR_SINGLE_QUOTED
-  );
-  if (reader->valid && preserve) {
-    reader->valid = append_byte(&reader->delimiter, '\'');
-  }
-  if (reader->valid) {
-    reader->quote = DELIMITER_UNQUOTED;
-  }
+  reader->delimiter.failed |= decoded.failed;
+  ts_free(decoded.data);
+  reader->valid = reader->valid && append_byte(&reader->delimiter, '\'');
+  if (reader->valid) reader->quote = DELIMITER_UNQUOTED;
 }
 
 static void delimiter_double_quoted_step(struct DelimiterReader *reader) {
@@ -3134,11 +3251,16 @@ static void delimiter_backslash(struct DelimiterReader *reader) {
   TSLexer *lexer = reader->lexer;
   lexer->advance(lexer, false);
   if (lexer_at_eof(lexer)) {
-    reader->valid = false;
+    reader->valid = logical_source_eof(lookahead_input(lexer)) &&
+      append_byte(&reader->delimiter, '\\');
     return;
   }
   if (lexer->lookahead == SOURCE_BACKQUOTE_BOUNDARY) {
     reader->valid = append_byte(&reader->delimiter, '\\');
+    return;
+  }
+  if (!append_byte(&reader->delimiter, '\\')) {
+    reader->valid = false;
     return;
   }
   delimiter_mark_quoted(reader);
@@ -3245,6 +3367,10 @@ static bool delimiter_structured_start(
     character
   );
   if (quote) {
+    if (character == '"' && !append_byte(&reader->delimiter, '"')) {
+      reader->valid = false;
+      return true;
+    }
     delimiter_mark_quoted(reader);
     reader->quote =
       character == '\'' ? DELIMITER_SINGLE_QUOTED : DELIMITER_DOUBLE_QUOTED;
@@ -3449,7 +3575,6 @@ static enum DelimiterReadResult read_here_document_delimiter(
   struct DelimiterReader reader = {
     .lexer = lexer,
     .scanner = scanner,
-    .delimiter = {.limit = SCANNER_STATE_CAPACITY},
     .outer_backquote_depth = backquote_depth,
     .backquote_depth = backquote_depth,
     .inherited_strip_tabs = scanner != NULL &&
@@ -3485,6 +3610,12 @@ static enum DelimiterReadResult read_here_document_delimiter(
     !reader.expecting_nested_delimiter &&
     !reader.collecting_nested_delimiter &&
     reader.nested_document_count == 0;
+  for (size_t index = 0; index < reader.groups.length; index += 1) {
+    if (reader.groups.data[index].spelling != NULL) {
+      logical_clear(reader.groups.data[index].spelling);
+      ts_free(reader.groups.data[index].spelling);
+    }
+  }
   ts_free(reader.groups.data);
   ts_free(reader.cases.data);
   logical_clear(&reader.ambient);
@@ -3498,6 +3629,17 @@ static enum DelimiterReadResult read_here_document_delimiter(
     }
     return lexer_at_eof(lexer) ? DELIMITER_READ_INCOMPLETE
                                : DELIMITER_READ_INVALID;
+  }
+
+  if (reader.quoted) {
+    reader.delimiter.length = remove_delimiter_quotes(
+      (uint8_t *)reader.delimiter.data,
+      reader.delimiter.length
+    );
+  }
+  if (reader.delimiter.length > SCANNER_STATE_CAPACITY) {
+    ts_free(reader.delimiter.data);
+    return DELIMITER_READ_RESOURCE_FAILURE;
   }
 
   *document = (struct HereDocument){
@@ -5088,6 +5230,7 @@ enum BracketInput {
   BRACKET_INPUT_OPEN,
   BRACKET_INPUT_CLOSE,
   BRACKET_INPUT_NEGATION,
+  BRACKET_INPUT_HYPHEN,
   BRACKET_INPUT_MEMBER,
 };
 
@@ -5103,9 +5246,13 @@ enum BracketPhase {
   BRACKET_PHASE_FIRST,
   BRACKET_PHASE_MEMBERS,
   BRACKET_PHASE_OPENED,
+  BRACKET_PHASE_ENDPOINT,
+  BRACKET_PHASE_RANGE_END,
+  BRACKET_PHASE_RANGE_OPENED,
   BRACKET_PHASE_CLASS,
-  BRACKET_PHASE_COUNT = BRACKET_PHASE_CLASS +
+  BRACKET_PHASE_RANGE_SYMBOL = BRACKET_PHASE_CLASS +
     (BRACKET_INPUT_EQUALS + 1) * BRACKET_CLASS_STAGE_COUNT,
+  BRACKET_PHASE_COUNT = BRACKET_PHASE_RANGE_SYMBOL + BRACKET_CLASS_STAGE_COUNT,
   BRACKET_PHASE_INCOMPLETE = BRACKET_PHASE_COUNT,
   BRACKET_PHASE_COMPLETE,
 };
@@ -5126,6 +5273,8 @@ static enum BracketInput bracket_input(int32_t character) {
       return BRACKET_INPUT_CLOSE;
     case '!':
       return BRACKET_INPUT_NEGATION;
+    case '-':
+      return BRACKET_INPUT_HYPHEN;
     default:
       return BRACKET_INPUT_MEMBER;
   }
@@ -5133,55 +5282,73 @@ static enum BracketInput bracket_input(int32_t character) {
 
 static unsigned bracket_phase_after(unsigned phase, enum BracketInput input) {
   if (phase >= BRACKET_PHASE_CLASS) {
-    unsigned marker = (phase - BRACKET_PHASE_CLASS) / BRACKET_CLASS_STAGE_COUNT;
-    unsigned stage = (phase - BRACKET_PHASE_CLASS) % BRACKET_CLASS_STAGE_COUNT;
+    bool range_end = phase >= BRACKET_PHASE_RANGE_SYMBOL;
+    unsigned base =
+      range_end ? BRACKET_PHASE_RANGE_SYMBOL : BRACKET_PHASE_CLASS;
+    unsigned marker = range_end ? BRACKET_INPUT_DOT
+                                : (phase - base) / BRACKET_CLASS_STAGE_COUNT;
+    unsigned stage = (phase - base) % BRACKET_CLASS_STAGE_COUNT;
     if (input == BRACKET_INPUT_CLOSE) {
       if (stage == BRACKET_CLASS_MARKED) {
-        return BRACKET_PHASE_MEMBERS;
+        return !range_end && marker == BRACKET_INPUT_DOT
+          ? BRACKET_PHASE_ENDPOINT
+          : BRACKET_PHASE_MEMBERS;
       }
-      if (marker != BRACKET_INPUT_DOT) {
-        return BRACKET_PHASE_INCOMPLETE;
-      }
+      if (marker != BRACKET_INPUT_DOT) return BRACKET_PHASE_INCOMPLETE;
     }
-    return BRACKET_PHASE_CLASS +
-      marker * BRACKET_CLASS_STAGE_COUNT +
+    return base +
+      (range_end ? 0 : marker * BRACKET_CLASS_STAGE_COUNT) +
       (stage != BRACKET_CLASS_EMPTY && input == marker ? BRACKET_CLASS_MARKED
                                                        : BRACKET_CLASS_FILLED);
+  }
+  if (phase == BRACKET_PHASE_RANGE_END && input != BRACKET_INPUT_CLOSE) {
+    return input == BRACKET_INPUT_OPEN ? BRACKET_PHASE_RANGE_OPENED
+                                       : BRACKET_PHASE_MEMBERS;
+  }
+  if (phase == BRACKET_PHASE_RANGE_OPENED) {
+    if (input == BRACKET_INPUT_DOT) return BRACKET_PHASE_RANGE_SYMBOL;
+    if (input == BRACKET_INPUT_EQUALS)
+      return BRACKET_PHASE_CLASS + input * BRACKET_CLASS_STAGE_COUNT;
   }
   switch (input) {
     case BRACKET_INPUT_OPEN:
       return BRACKET_PHASE_OPENED;
     case BRACKET_INPUT_CLOSE:
       return phase == BRACKET_PHASE_NEGATION || phase == BRACKET_PHASE_FIRST
-        ? BRACKET_PHASE_MEMBERS
+        ? BRACKET_PHASE_ENDPOINT
         : BRACKET_PHASE_COMPLETE;
     case BRACKET_INPUT_NEGATION:
       return phase == BRACKET_PHASE_NEGATION ? BRACKET_PHASE_FIRST
-                                             : BRACKET_PHASE_MEMBERS;
+                                             : BRACKET_PHASE_ENDPOINT;
+    case BRACKET_INPUT_HYPHEN:
+      if (phase == BRACKET_PHASE_ENDPOINT) return BRACKET_PHASE_RANGE_END;
+      return phase == BRACKET_PHASE_NEGATION || phase == BRACKET_PHASE_FIRST
+        ? BRACKET_PHASE_ENDPOINT
+        : BRACKET_PHASE_MEMBERS;
     case BRACKET_INPUT_MEMBER:
-      return BRACKET_PHASE_MEMBERS;
+      return BRACKET_PHASE_ENDPOINT;
     default:
       return phase == BRACKET_PHASE_OPENED
         ? BRACKET_PHASE_CLASS + input * BRACKET_CLASS_STAGE_COUNT
-        : BRACKET_PHASE_MEMBERS;
+        : BRACKET_PHASE_ENDPOINT;
   }
 }
 
-static uint16_t bracket_chains_after(uint16_t chains, enum BracketInput input) {
-  uint16_t next = 0;
+static uint32_t bracket_chains_after(uint32_t chains, enum BracketInput input) {
+  uint32_t next = 0;
   for (unsigned phase = 0; phase < BRACKET_PHASE_COUNT; phase += 1) {
     if ((chains & (1u << phase)) != 0) {
       unsigned after = bracket_phase_after(phase, input);
       if (after < BRACKET_PHASE_COUNT) {
-        next |= (uint16_t)(1u << after);
+        next |= (uint32_t)(1u << after);
       }
     }
   }
   return next;
 }
 
-static uint16_t
-bracket_chains_after_literal(uint16_t chains, int32_t character) {
+static uint32_t
+bracket_chains_after_literal(uint32_t chains, int32_t character) {
   chains = bracket_chains_after(chains, bracket_input(character));
   return character == '[' ? chains | (1u << BRACKET_PHASE_NEGATION) : chains;
 }
@@ -5199,7 +5366,7 @@ static bool in_bracket_fallback(const struct Scanner *scanner) {
     );
 }
 
-static uint16_t fallback_chains(const struct Scanner *scanner) {
+static uint32_t fallback_chains(const struct Scanner *scanner) {
   return in_bracket_fallback(scanner)
     ? scanner->contexts[scanner->context_count - 1].bracket_chains
     : 0;
@@ -5209,7 +5376,7 @@ static bool scan_pattern_bracket(
   const struct Scanner *scanner,
   TSLexer *lexer,
   enum PatternMode mode,
-  uint16_t *chains,
+  uint32_t *chains,
   bool *complete
 ) {
   if (lexer->lookahead != '[') {
@@ -5264,7 +5431,7 @@ static bool scan_pattern_bracket_hyphen(TSLexer *lexer, const bool *valid) {
     bool endpoint = true;
     if (lexer->lookahead == '[') {
       lexer->advance(lexer, false);
-      endpoint = !is_one_of(lexer->lookahead, ":=");
+      endpoint = lexer->lookahead != '=';
     }
     if (endpoint) {
       symbol = PATTERN_BRACKET_RANGE_OPERATOR;
@@ -5916,34 +6083,16 @@ scan_braced_numeric_parameter_start(TSLexer *lexer, const bool *valid_symbols) {
     return false;
   }
 
-  lexer->mark_end(lexer);
-  bool has_digit = false;
-  bool has_multiple_digits = false;
   bool has_nonzero_digit = false;
-
-  while (is_decimal_digit(lexer->lookahead)) {
-    if (has_digit) {
-      has_multiple_digits = true;
-    }
-    has_digit = true;
-    if (lexer->lookahead != '0') {
-      has_nonzero_digit = true;
-    }
+  do {
+    has_nonzero_digit |= lexer->lookahead != '0';
     lexer->advance(lexer, false);
-  }
-
-  if (has_nonzero_digit && valid_symbols[BRACED_POSITIONAL_PARAMETER_START]) {
+  } while (is_decimal_digit(lexer->lookahead));
+  enum TokenType symbol = has_nonzero_digit ? BRACED_POSITIONAL_PARAMETER_START
+                                            : BRACED_ZERO_PARAMETER_START;
+  if (valid_symbols[symbol]) {
     lexer->mark_end(lexer);
-    lexer->result_symbol = BRACED_POSITIONAL_PARAMETER_START;
-    return true;
-  }
-
-  if (
-    !has_nonzero_digit &&
-    has_multiple_digits &&
-    valid_symbols[BRACED_PARAMETER_NUMBER_START]
-  ) {
-    lexer->result_symbol = BRACED_PARAMETER_NUMBER_START;
+    lexer->result_symbol = (TSSymbol)symbol;
     return true;
   }
 
@@ -5974,7 +6123,12 @@ static bool here_document_end_is_ready(const struct Scanner *scanner) {
 
 static bool
 scan_here_document_end_commit(struct Scanner *scanner, TSLexer *lexer) {
-  if (!here_document_end_is_ready(scanner)) {
+  if (
+    !here_document_end_is_ready(scanner) &&
+    !(scanner->active_frame.count > 0 &&
+      scanner->active_frame.documents[0].ending &&
+      logical_source_eof(lookahead_input(lexer)))
+  ) {
     return false;
   }
   scanner->here_document_end_line_consumed = false;
@@ -6516,7 +6670,7 @@ static bool deserialize_source_contexts(
       .stage_count = stage_count,
       .count = repeat,
       .substitution_depth = substitution_depth,
-      .bracket_chains = (uint16_t)chains,
+      .bracket_chains = (uint32_t)chains,
       .local_disabled = disabled != 0,
     };
     depth += repeat;
@@ -6559,7 +6713,7 @@ static bool deserialize_emission(
   ) {
     return false;
   }
-  scanner->emission.bracket_chains = (uint16_t)chains;
+  scanner->emission.bracket_chains = (uint32_t)chains;
   return true;
 }
 
@@ -6685,7 +6839,7 @@ static bool scan_here_document_sequence_begin(TSLexer *lexer) {
   if (lexer->lookahead == '#') {
     advance_to_comment_end(lexer, NULL);
   }
-  if (lexer->lookahead == '\n' || lexer_at_eof(lexer)) {
+  if (lexer->lookahead == '\n') {
     lexer->result_symbol = HERE_DOCUMENT_SEQUENCE_BEGIN;
     return true;
   }
@@ -6859,7 +7013,7 @@ scan_dispatch(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
   }
   if (
     is_decimal_digit(lexer->lookahead) &&
-    (valid[BRACED_PARAMETER_NUMBER_START] ||
+    (valid[BRACED_ZERO_PARAMETER_START] ||
       valid[BRACED_POSITIONAL_PARAMETER_START])
   ) {
     return scan_braced_numeric_parameter_start(lexer, valid);
@@ -7220,8 +7374,8 @@ source_context_commit(struct Scanner *scanner, enum TokenType symbol) {
   }
 }
 
-static uint16_t
-bracket_chains_after_token(const struct LogicalLexer *input, uint16_t chains) {
+static uint32_t
+bracket_chains_after_token(const struct LogicalLexer *input, uint32_t chains) {
   for (size_t index = 0; index < input->cursor.logical_count; index += 1) {
     const struct SourceCharacter *character = &input->cursor.logical[index];
     if (character->origin.end <= 0) {
@@ -7458,7 +7612,7 @@ finish_lexical_emission(struct Scanner *scanner, enum TokenType completed) {
     scanner->contexts[scanner->context_count - 1].bracket_chains =
       emission->bracket_chains;
   }
-  uint16_t chains = emission->bracket_chains;
+  uint32_t chains = emission->bracket_chains;
   *emission = (struct LexicalEmission){0};
   if (!source_context_commit(scanner, completed)) {
     return false;
@@ -7847,9 +8001,6 @@ static bool lexical_punctuation(TSLexer *lexer, const bool *valid) {
     return accept_character(lexer, DOLLAR_SQ_DOLLAR) &&
       lexer->lookahead == '\'';
   }
-  if (valid[NUMERIC_PARAMETER_DIGIT] && is_decimal_digit(lexer->lookahead)) {
-    return accept_character(lexer, NUMERIC_PARAMETER_DIGIT);
-  }
   return false;
 }
 
@@ -7972,19 +8123,17 @@ static bool lexical_classify(struct LogicalLexer *input, const bool *valid) {
     }
   }
   if (
-    (valid[SPECIAL_PARAMETER_BEGIN] &&
-      is_special_parameter_character(lexer->lookahead)) ||
-    (valid[UNBRACED_POSITIONAL_PARAMETER_BEGIN] &&
-      lexer->lookahead >= '1' &&
-      lexer->lookahead <= '9')
+    valid[SPECIAL_PARAMETER_BEGIN] &&
+    is_special_parameter_character(lexer->lookahead)
   ) {
-    return accept_character(
-      lexer,
-      valid[SPECIAL_PARAMETER_BEGIN] &&
-          is_special_parameter_character(lexer->lookahead)
-        ? SPECIAL_PARAMETER_BEGIN
-        : UNBRACED_POSITIONAL_PARAMETER_BEGIN
-    );
+    return accept_character(lexer, SPECIAL_PARAMETER_BEGIN);
+  }
+  if (
+    valid[UNBRACED_POSITIONAL_PARAMETER_BEGIN] &&
+    lexer->lookahead >= '1' &&
+    lexer->lookahead <= '9'
+  ) {
+    return accept_character(lexer, UNBRACED_POSITIONAL_PARAMETER_BEGIN);
   }
   const enum TokenType texts[] = {
     SINGLE_QUOTE_CONTENT_BEGIN,
@@ -8007,7 +8156,12 @@ static bool lexical_classify(struct LogicalLexer *input, const bool *valid) {
 static bool pattern_structured_start(struct LogicalLexer *input) {
   int32_t character = input->lexer.lookahead;
   if (character == '\\') {
-    return logical_peek(input) != SOURCE_BACKQUOTE_BOUNDARY;
+    struct LogicalPosition position = logical_position(input);
+    input->lexer.advance(&input->lexer, false);
+    bool structured = input->lexer.lookahead != SOURCE_BACKQUOTE_BOUNDARY &&
+      !logical_source_eof(input);
+    logical_restore_position(input, &position);
+    return structured;
   }
   if (character != '$') {
     return character == '\'' || character == '"' || character == '`';
@@ -8035,7 +8189,7 @@ static bool lexical_pattern_probe(
   const struct Scanner *scanner,
   struct LogicalLexer *input,
   enum TokenType literal_symbol,
-  uint16_t *chains,
+  uint32_t *chains,
   bool *complete
 ) {
   struct LogicalPosition position = logical_position(input);
@@ -8119,7 +8273,7 @@ static bool lexical_pattern_literal(
                                              : WORD_FALLBACK_LITERAL_BEGIN;
   bool tilde = is_tilde_context(pattern_context(scanner));
   bool consumed = false;
-  uint16_t chains = fallback_chains(scanner);
+  uint32_t chains = fallback_chains(scanner);
   bool enters_fallback = false;
   while (
     !pattern_boundary(lexer, parameter) && !pattern_structured_start(input)
@@ -8133,7 +8287,7 @@ static bool lexical_pattern_literal(
       break;
     }
     if (character == '[') {
-      uint16_t after = chains;
+      uint32_t after = chains;
       bool complete;
       if (
         !lexical_pattern_probe(scanner, input, symbol, &after, &complete) ||
@@ -8223,7 +8377,7 @@ static bool lexical_pattern_classify(
       ? PARAMETER_LITERAL_BEGIN
       : valid[ASSIGNMENT_LITERAL_BEGIN] ? ASSIGNMENT_LITERAL_BEGIN
                                         : LITERAL_BEGIN;
-    uint16_t chains = fallback_chains(scanner);
+    uint32_t chains = fallback_chains(scanner);
     bool complete;
     if (!lexical_pattern_probe(scanner, input, literal, &chains, &complete)) {
       return false;
@@ -8324,6 +8478,16 @@ static bool classify_logical_source(
   struct LogicalLexer *input,
   const bool *valid
 ) {
+  if (
+    valid[PATTERN_RANGE_END_LEFT_BRACKET_BEGIN] &&
+    input->lexer.lookahead == '[' &&
+    logical_peek(input) == ':'
+  ) {
+    return accept_character(
+      &input->lexer,
+      PATTERN_RANGE_END_LEFT_BRACKET_BEGIN
+    );
+  }
   if (valid[HERE_DOCUMENT_END_LINE_END] && input->lexer.lookahead == '\n') {
     input->lexer.advance(&input->lexer, false);
     input->lexer.mark_end(&input->lexer);
@@ -8649,7 +8813,7 @@ static bool track_bracket_fallback(
   if (!valid[literal]) {
     return true;
   }
-  uint16_t chains = fallback_chains(scanner);
+  uint32_t chains = fallback_chains(scanner);
   switch (symbol) {
     case LITERAL_BEGIN:
     case ASSIGNMENT_LITERAL_BEGIN:
@@ -8758,7 +8922,20 @@ static bool scan_source(
   }
   size_t leading = logical_raw_position(&input);
   bool accepted = false;
-  if (documents.end != NULL && documents.end->end == 0) {
+  if (
+    native.count == 0 &&
+    lexer->eof(lexer) &&
+    valid[HERE_DOCUMENT_EOF] &&
+    scanner->active_frame.count > 0 &&
+    scanner->context_count > 0 &&
+    is_here_document_context(
+      scanner->contexts[scanner->context_count - 1].opener
+    )
+  ) {
+    lexer->result_symbol = HERE_DOCUMENT_EOF;
+    accepted = source_context_pop(scanner);
+    if (accepted) finish_active_document(scanner);
+  } else if (documents.end != NULL && documents.end->end == 0) {
     accepted = begin_here_document_end(scanner, lexer, documents.end, valid);
   } else if (
     leading > 0 &&

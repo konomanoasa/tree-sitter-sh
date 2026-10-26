@@ -427,6 +427,14 @@
     {
       "begin": "_arithmetic_source_fragment_begin",
       "scanner": "ARITHMETIC_SOURCE_FRAGMENT_BEGIN"
+    },
+    {
+      "begin": "_braced_zero_parameter_begin",
+      "scanner": "BRACED_ZERO_PARAMETER_START"
+    },
+    {
+      "begin": "_pattern_range_end_left_bracket_begin",
+      "scanner": "PATTERN_RANGE_END_LEFT_BRACKET_BEGIN"
     }
   ],
   "physical": [
@@ -557,10 +565,6 @@
     {
       "begin": "_command_open",
       "scanner": "COMMAND_OPEN"
-    },
-    {
-      "begin": "_numeric_parameter_digit",
-      "scanner": "NUMERIC_PARAMETER_DIGIT"
     },
     {
       "begin": "_word_tilde_start",

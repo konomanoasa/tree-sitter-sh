@@ -2,7 +2,7 @@
 parameter names and positions have explicit POSIX structure
 ==================
 
-printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${#name}"
+printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${000}" "${#name}"
 
 ------------------
 
@@ -56,7 +56,8 @@ printf "$name" "$10" "$0" "$@" "${name}" "${0}" "${10}" "${001}" "${00}" "${#nam
                           (positional_parameter))))
                     (word
                       (double_quoted
-                        (parameter_expansion)))
+                        (parameter_expansion
+                          (special_parameter))))
                     (word
                       (double_quoted
                         (parameter_expansion
@@ -251,7 +252,7 @@ printf "${#}" "${#:-word}" "${#-word}" "${#%x}" "${##x}"
     (newline_list)))
 
 ==================
-unclassified numeric parameter source stays anonymous
+all-zero braced parameters retain special-parameter structure
 ==================
 
 printf ${00:-x} "${#00}"
@@ -275,13 +276,15 @@ printf ${00:-x} "${#00}"
                   (cmd_suffix
                     (word
                       (parameter_expansion
+                        (special_parameter)
                         (parameter_value_operator)
                         (parameter_word
                           (literal))))
                     (word
                       (double_quoted
                         (parameter_expansion
-                          (parameter_length_operator)))))))))))))
+                          (parameter_length_operator)
+                          (special_parameter)))))))))))))
   (linebreak
     (newline_list)))
 
@@ -1461,7 +1464,7 @@ echo [${x:-$$(}] "$(( ${x:-$$(} + 1 ))" "}"
     (newline_list)))
 
 ==================
-unclassified numeric parameter source
+all-zero parameter source retains its spelling
 :cst
 ==================
 : ${00}
@@ -1487,8 +1490,7 @@ unclassified numeric parameter source
 0:2  - 0:7                          parameter_expansion
 0:2  - 0:3                            "$"
 0:3  - 0:4                            "{"
-0:4  - 0:5                            "numeric_parameter_source"
-0:5  - 0:6                            "numeric_parameter_source"
+0:4  - 0:6                            parameter: special_parameter `00`
 0:6  - 0:7                            "}"
 0:7  - 1:0        separator: newline_list
 0:7  - 1:0          "\n"
@@ -1509,8 +1511,7 @@ unclassified numeric parameter source
 1:3  - 1:11                           parameter_expansion
 1:3  - 1:4                              "$"
 1:4  - 1:5                              "{"
-1:5  - 1:6                              "numeric_parameter_source"
-1:6  - 1:7                              "numeric_parameter_source"
+1:5  - 1:7                              parameter: special_parameter `00`
 1:7  - 1:9                              operator: parameter_value_operator `:-`
 1:9  - 1:10                             word: parameter_word
 1:9  - 1:10                               double_quote_text `x`
@@ -1536,8 +1537,7 @@ unclassified numeric parameter source
 2:3  - 2:4                              "$"
 2:4  - 2:5                              "{"
 2:5  - 2:6                              operator: parameter_length_operator `#`
-2:6  - 2:7                              "numeric_parameter_source"
-2:7  - 2:8                              "numeric_parameter_source"
+2:6  - 2:8                              parameter: special_parameter `00`
 2:8  - 2:9                              "}"
 2:9  - 2:10                           "\""
 2:10 - 3:0      trailing: linebreak

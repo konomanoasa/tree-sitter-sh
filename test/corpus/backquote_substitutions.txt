@@ -1039,6 +1039,8 @@ E`" after
 
 ------------------
 
+
+
 ==================
 a comment inside backquotes ends at the closing backtick
 ==================
@@ -1198,6 +1200,145 @@ echo `echo a # \` x`
                           (comment
                             (comment_text))))))))))))))
   (linebreak
+    (newline_list)))
+
+==================
+a comment ending in a backslash inside unquoted backquotes ends at the raw newline
+==================
+
+`a #\
+`
+x=`cat <<E #\\\
+body
+E
+`
+echo `cat <<E #\
+body
+E
+` after
+
+------------------
+
+(program
+  leading: (linebreak
+    (newline_list))
+  commands: (complete_commands
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))))))))))
+                          (linebreak
+                            (newline_list
+                              (comment
+                                (comment_text)))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  prefix: (cmd_prefix
+                    assignment: (assignment_word
+                      name: (variable_name)
+                      value: (assignment_value
+                        (backquote_substitution
+                          body: (backquote_substitution_body
+                            (complete_commands
+                              command: (complete_command
+                                body: (list
+                                  and_or: (and_or
+                                    pipeline: (pipeline
+                                      sequence: (pipe_sequence
+                                        command: (command
+                                          body: (simple_command
+                                            name: (cmd_name
+                                              (word
+                                                (literal)))
+                                            suffix: (cmd_suffix
+                                              redirect: (io_redirect
+                                                body: (io_here
+                                                  operator: (dless)
+                                                  end: (here_end
+                                                    word: (word
+                                                      (literal))))))))))))))
+                            (linebreak
+                              (newline_list
+                                (here_document_sequence
+                                  comment: (comment
+                                    (comment_text))
+                                  line_end: (here_document_line_end)
+                                  document: (here_document
+                                    body: (here_document_body
+                                      (here_document_text))
+                                    end: (here_document_end
+                                      (here_document_end_text))))))))))))))))))
+    separator: (newline_list)
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))
+                  suffix: (cmd_suffix
+                    word: (word
+                      (backquote_substitution
+                        body: (backquote_substitution_body
+                          (complete_commands
+                            command: (complete_command
+                              body: (list
+                                and_or: (and_or
+                                  pipeline: (pipeline
+                                    sequence: (pipe_sequence
+                                      command: (command
+                                        body: (simple_command
+                                          name: (cmd_name
+                                            (word
+                                              (literal)))
+                                          suffix: (cmd_suffix
+                                            redirect: (io_redirect
+                                              body: (io_here
+                                                operator: (dless)
+                                                end: (here_end
+                                                  word: (word
+                                                    (literal))))))))))))))
+                          (linebreak
+                            (newline_list
+                              (here_document_sequence
+                                comment: (comment
+                                  (comment_text))
+                                line_end: (here_document_line_end)
+                                document: (here_document
+                                  body: (here_document_body
+                                    (here_document_text))
+                                  end: (here_document_end
+                                    (here_document_end_text)))))))))
+                    word: (word
+                      (literal)))))))))))
+  trailing: (linebreak
     (newline_list)))
 
 ==================

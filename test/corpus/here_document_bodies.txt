@@ -1105,8 +1105,7 @@ a backslash-only line in a quoted body inside backquotes does not end an empty d
 4:1  - 5:0          "\n"
 
 ==================
-unterminated here document
-:error
+a here-document without a terminator retains all source through EOF
 ==================
 cat <<EOF
 body
@@ -1114,535 +1113,1967 @@ after
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)
+            (here_document_text)))))))
 
 ==================
-pending document declaration, suffix ""
-:error
+EOF accepts an unstarted document: declaration, suffix ""
 ==================
 cat <<EOF
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)))))))))))))))
 
 ==================
-pending document declaration, suffix "\n"
-:error
+EOF accepts a started document: declaration, suffix "\n"
 ==================
 cat <<EOF
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
 
 ==================
-pending document declaration, suffix "\nbody"
-:error
+EOF accepts a started document: declaration, suffix "\nbody"
 ==================
 cat <<EOF
 body
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document declaration, suffix "\nbody\n"
-:error
+EOF accepts a started document: declaration, suffix "\nbody\n"
 ==================
 cat <<EOF
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document trailing blank, suffix ""
-:error
+EOF accepts an unstarted document: trailing blank, suffix ""
 ==================
 cat <<EOF 	
 ------------------
 
-
-
-==================
-pending document trailing blank, suffix "\n"
-:error
-==================
-cat <<EOF 	
-
-------------------
-
-
-
-==================
-pending document trailing blank, suffix "\nbody"
-:error
-==================
-cat <<EOF 	
-body
-------------------
-
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)))))))))))))))
 
 ==================
-pending document trailing blank, suffix "\nbody\n"
-:error
+EOF accepts a started document: trailing blank, suffix "\n"
 ==================
 cat <<EOF 	
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
+
+==================
+EOF accepts a started document: trailing blank, suffix "\nbody"
+==================
+cat <<EOF 	
+body
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
+
+==================
+EOF accepts a started document: trailing blank, suffix "\nbody\n"
+==================
+cat <<EOF 	
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document trailing comment, suffix ""
-:error
+EOF accepts an unstarted document: trailing comment, suffix ""
 ==================
 cat <<EOF # comment
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (comment
+    (comment_text)))
 
 ==================
-pending document trailing comment, suffix "\n"
-:error
+EOF accepts a started document: trailing comment, suffix "\n"
 ==================
 cat <<EOF # comment
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (comment
+          (comment_text))
+        (here_document_line_end)
+        (here_document)))))
 
 ==================
-pending document trailing comment, suffix "\nbody"
-:error
+EOF accepts a started document: trailing comment, suffix "\nbody"
 ==================
 cat <<EOF # comment
 body
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (comment
+          (comment_text))
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document trailing comment, suffix "\nbody\n"
-:error
+EOF accepts a started document: trailing comment, suffix "\nbody\n"
 ==================
 cat <<EOF # comment
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (comment
+          (comment_text))
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document trailing continuation, suffix ""
-:error
+EOF accepts an unstarted document: trailing continuation, suffix ""
 ==================
 cat <<EOF \
 
 ------------------
 
-
-
-==================
-pending document trailing continuation, suffix "\n"
-:error
-==================
-cat <<EOF \
-
-
-------------------
-
-
-
-==================
-pending document trailing continuation, suffix "\nbody"
-:error
-==================
-cat <<EOF \
-
-body
-------------------
-
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (line_continuation))
 
 ==================
-pending document trailing continuation, suffix "\nbody\n"
-:error
+EOF accepts a started document: trailing continuation, suffix "\n"
 ==================
 cat <<EOF \
 
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (line_continuation)
+        (here_document_line_end)
+        (here_document)))))
+
+==================
+EOF accepts a started document: trailing continuation, suffix "\nbody"
+==================
+cat <<EOF \
+
+body
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (line_continuation)
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
+
+==================
+EOF accepts a started document: trailing continuation, suffix "\nbody\n"
+==================
+cat <<EOF \
+
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (line_continuation)
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document quoted delimiter, suffix ""
-:error
+EOF accepts an unstarted document: quoted delimiter, suffix ""
 ==================
 cat <<'EOF'
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (single_quoted
+                              (single_quote_content))))))))))))))))
 
 ==================
-pending document quoted delimiter, suffix "\n"
-:error
-==================
-cat <<'EOF'
-
-------------------
-
-
-
-==================
-pending document quoted delimiter, suffix "\nbody"
-:error
-==================
-cat <<'EOF'
-body
-------------------
-
-
-
-==================
-pending document quoted delimiter, suffix "\nbody\n"
-:error
+EOF accepts a started document: quoted delimiter, suffix "\n"
 ==================
 cat <<'EOF'
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (single_quoted
+                              (single_quote_content)))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
+
+==================
+EOF accepts a started document: quoted delimiter, suffix "\nbody"
+==================
+cat <<'EOF'
+body
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (single_quoted
+                              (single_quote_content)))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (quoted_here_document_body
+            (quoted_here_document_text)))))))
+
+==================
+EOF accepts a started document: quoted delimiter, suffix "\nbody\n"
+==================
+cat <<'EOF'
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (single_quoted
+                              (single_quote_content)))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (quoted_here_document_body
+            (quoted_here_document_text)))))))
 
 ==================
-pending document tab stripping, suffix ""
-:error
+EOF accepts an unstarted document: tab stripping, suffix ""
 ==================
 cat <<-EOF
 ------------------
 
-
-
-==================
-pending document tab stripping, suffix "\n"
-:error
-==================
-cat <<-EOF
-
-------------------
-
-
-
-==================
-pending document tab stripping, suffix "\nbody"
-:error
-==================
-cat <<-EOF
-body
-------------------
-
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dlessdash)
+                        (here_end
+                          (word
+                            (literal)))))))))))))))
 
 ==================
-pending document tab stripping, suffix "\nbody\n"
-:error
+EOF accepts a started document: tab stripping, suffix "\n"
 ==================
 cat <<-EOF
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dlessdash)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
+
+==================
+EOF accepts a started document: tab stripping, suffix "\nbody"
+==================
+cat <<-EOF
+body
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dlessdash)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
+
+==================
+EOF accepts a started document: tab stripping, suffix "\nbody\n"
+==================
+cat <<-EOF
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dlessdash)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document following command, suffix ""
-:error
+EOF accepts an unstarted document: following command, suffix ""
 ==================
 cat <<EOF; echo after
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)))))))))))
+        (separator_op)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal))))))))))))
 
 ==================
-pending document following command, suffix "\n"
-:error
+EOF accepts a started document: following command, suffix "\n"
 ==================
 cat <<EOF; echo after
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)))))))))))
+        (separator_op)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
 
 ==================
-pending document following command, suffix "\nbody"
-:error
+EOF accepts a started document: following command, suffix "\nbody"
 ==================
 cat <<EOF; echo after
 body
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)))))))))))
+        (separator_op)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document following command, suffix "\nbody\n"
-:error
+EOF accepts a started document: following command, suffix "\nbody\n"
 ==================
 cat <<EOF; echo after
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal)))))))))))
+        (separator_op)
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document background command, suffix ""
-:error
+EOF accepts an unstarted document: background command, suffix ""
 ==================
 cat <<EOF &
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))
+      (separator_op))))
 
 ==================
-pending document background command, suffix "\n"
-:error
-==================
-cat <<EOF &
-
-------------------
-
-
-
-==================
-pending document background command, suffix "\nbody"
-:error
-==================
-cat <<EOF &
-body
-------------------
-
-
-
-==================
-pending document background command, suffix "\nbody\n"
-:error
+EOF accepts a started document: background command, suffix "\n"
 ==================
 cat <<EOF &
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))
+      (separator_op)))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
+
+==================
+EOF accepts a started document: background command, suffix "\nbody"
+==================
+cat <<EOF &
+body
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))
+      (separator_op)))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
+
+==================
+EOF accepts a started document: background command, suffix "\nbody\n"
+==================
+cat <<EOF &
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))
+      (separator_op)))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document pipeline, suffix ""
-:error
+EOF accepts an unstarted document: pipeline, suffix ""
 ==================
 cat <<EOF | cat
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal))))))))))))
 
 ==================
-pending document pipeline, suffix "\n"
-:error
+EOF accepts a started document: pipeline, suffix "\n"
 ==================
 cat <<EOF | cat
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
 
 ==================
-pending document pipeline, suffix "\nbody"
-:error
+EOF accepts a started document: pipeline, suffix "\nbody"
 ==================
 cat <<EOF | cat
 body
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document pipeline, suffix "\nbody\n"
-:error
+EOF accepts a started document: pipeline, suffix "\nbody\n"
 ==================
 cat <<EOF | cat
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document and list, suffix ""
-:error
+EOF accepts an unstarted document: and list, suffix ""
 ==================
 cat <<EOF && echo after
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))
+          (and_if)
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal))))))))))))
 
 ==================
-pending document and list, suffix "\n"
-:error
+EOF accepts a started document: and list, suffix "\n"
 ==================
 cat <<EOF && echo after
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))
+          (and_if)
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
 
 ==================
-pending document and list, suffix "\nbody"
-:error
+EOF accepts a started document: and list, suffix "\nbody"
 ==================
 cat <<EOF && echo after
 body
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))
+          (and_if)
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document and list, suffix "\nbody\n"
-:error
+EOF accepts a started document: and list, suffix "\nbody\n"
 ==================
 cat <<EOF && echo after
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))
+          (and_if)
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document brace group, suffix ""
-:error
+EOF accepts an unstarted document: brace group, suffix ""
 ==================
 { cat <<EOF; }
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (brace_group
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))
+                                  (cmd_suffix
+                                    (io_redirect
+                                      (io_here
+                                        (dless)
+                                        (here_end
+                                          (word
+                                            (literal))))))))))))
+                      (separator
+                        (separator_op)))))))))))))
 
 ==================
-pending document brace group, suffix "\n"
-:error
+EOF accepts a started document: brace group, suffix "\n"
 ==================
 { cat <<EOF; }
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (brace_group
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))
+                                  (cmd_suffix
+                                    (io_redirect
+                                      (io_here
+                                        (dless)
+                                        (here_end
+                                          (word
+                                            (literal))))))))))))
+                      (separator
+                        (separator_op))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
 
 ==================
-pending document brace group, suffix "\nbody"
-:error
+EOF accepts a started document: brace group, suffix "\nbody"
 ==================
 { cat <<EOF; }
 body
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (brace_group
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))
+                                  (cmd_suffix
+                                    (io_redirect
+                                      (io_here
+                                        (dless)
+                                        (here_end
+                                          (word
+                                            (literal))))))))))))
+                      (separator
+                        (separator_op))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document brace group, suffix "\nbody\n"
-:error
+EOF accepts a started document: brace group, suffix "\nbody\n"
 ==================
 { cat <<EOF; }
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (brace_group
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))
+                                  (cmd_suffix
+                                    (io_redirect
+                                      (io_here
+                                        (dless)
+                                        (here_end
+                                          (word
+                                            (literal))))))))))))
+                      (separator
+                        (separator_op))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document subshell, suffix ""
-:error
+EOF accepts an unstarted document: subshell, suffix ""
 ==================
 (cat <<EOF)
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (subshell
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))
+                                  (cmd_suffix
+                                    (io_redirect
+                                      (io_here
+                                        (dless)
+                                        (here_end
+                                          (word
+                                            (literal)))))))))))))))))))))))
 
 ==================
-pending document subshell, suffix "\n"
-:error
+EOF accepts a started document: subshell, suffix "\n"
 ==================
 (cat <<EOF)
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (subshell
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))
+                                  (cmd_suffix
+                                    (io_redirect
+                                      (io_here
+                                        (dless)
+                                        (here_end
+                                          (word
+                                            (literal))))))))))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
 
 ==================
-pending document subshell, suffix "\nbody"
-:error
+EOF accepts a started document: subshell, suffix "\nbody"
 ==================
 (cat <<EOF)
 body
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (subshell
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))
+                                  (cmd_suffix
+                                    (io_redirect
+                                      (io_here
+                                        (dless)
+                                        (here_end
+                                          (word
+                                            (literal))))))))))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document subshell, suffix "\nbody\n"
-:error
+EOF accepts a started document: subshell, suffix "\nbody\n"
 ==================
 (cat <<EOF)
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (subshell
+                    (compound_list
+                      (term
+                        (and_or
+                          (pipeline
+                            (pipe_sequence
+                              (command
+                                (simple_command
+                                  (cmd_name
+                                    (word
+                                      (literal)))
+                                  (cmd_suffix
+                                    (io_redirect
+                                      (io_here
+                                        (dless)
+                                        (here_end
+                                          (word
+                                            (literal))))))))))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document function, suffix ""
-:error
+EOF accepts an unstarted document: function, suffix ""
 ==================
 f() { cat <<EOF; }
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (function_definition
+                  (fname)
+                  (function_body
+                    (compound_command
+                      (brace_group
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))
+                                      (cmd_suffix
+                                        (io_redirect
+                                          (io_here
+                                            (dless)
+                                            (here_end
+                                              (word
+                                                (literal))))))))))))
+                          (separator
+                            (separator_op)))))))))))))))
 
 ==================
-pending document function, suffix "\n"
-:error
+EOF accepts a started document: function, suffix "\n"
 ==================
 f() { cat <<EOF; }
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (function_definition
+                  (fname)
+                  (function_body
+                    (compound_command
+                      (brace_group
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))
+                                      (cmd_suffix
+                                        (io_redirect
+                                          (io_here
+                                            (dless)
+                                            (here_end
+                                              (word
+                                                (literal))))))))))))
+                          (separator
+                            (separator_op))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
 
 ==================
-pending document function, suffix "\nbody"
-:error
+EOF accepts a started document: function, suffix "\nbody"
 ==================
 f() { cat <<EOF; }
 body
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (function_definition
+                  (fname)
+                  (function_body
+                    (compound_command
+                      (brace_group
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))
+                                      (cmd_suffix
+                                        (io_redirect
+                                          (io_here
+                                            (dless)
+                                            (here_end
+                                              (word
+                                                (literal))))))))))))
+                          (separator
+                            (separator_op))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document function, suffix "\nbody\n"
-:error
+EOF accepts a started document: function, suffix "\nbody\n"
 ==================
 f() { cat <<EOF; }
 body
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (function_definition
+                  (fname)
+                  (function_body
+                    (compound_command
+                      (brace_group
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal)))
+                                      (cmd_suffix
+                                        (io_redirect
+                                          (io_here
+                                            (dless)
+                                            (here_end
+                                              (word
+                                                (literal))))))))))))
+                          (separator
+                            (separator_op))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text)))))))
 
 ==================
-pending document empty delimiter
-:error
+EOF accepts an unstarted document: empty delimiter
 ==================
 cat <<''
 ------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (single_quoted)))))))))))))))

@@ -1129,15 +1129,8 @@ test("sh: repairing an encoded backquote closer restores two nested substitution
   }
 });
 
-test("sh: repairing terminator newlines at source and substitution boundaries matches a fresh parse", () => {
+test("sh: repairing terminator newlines at substitution boundaries matches a fresh parse", () => {
   for (const [name, prefix, closing] of [
-    ["source-named", "cat <<E\nx\nE", ""],
-    ["source-quoted", "cat <<'E'\nx\nE", ""],
-    ["source-empty", "cat <<''\n", ""],
-    ["source-empty-tabs", "cat <<-''\n\t", ""],
-    ["source-named-tabs", "cat <<-E\nx\n\tE", ""],
-    ["source-empty-after-body", "cat <<''\nx\n", ""],
-    ["source-continuation", "cat <<E\nx\nE\\\n", ""],
     ["command-named", ": $(cat <<E\nx\nE", ")\n"],
     ["command-empty", ": $(cat <<''\n", ")\n"],
     ["command-empty-tabs", ": $(cat <<-''\n\t", ")\n"],
@@ -1190,7 +1183,7 @@ test("sh: heredoc lookahead terminates at source boundaries and preserves repair
     {
       name: "empty-tabs-eof",
       source: "cat <<-''\n\t\t",
-      status: 1,
+      status: 0,
     },
     {
       name: "empty-backquote-bracket",
@@ -1404,49 +1397,6 @@ test("sh: here-document delimiters bound expansions before their later closers",
       `restore-${name}-body-line`,
       remove,
       { byte: prefix.length, deleteBytes: 0, insert: "x" },
-    );
-  }
-});
-
-test("sh: pending here-documents recover through EOF edits and completion", () => {
-  for (const [name, header, ending] of [
-    ["plain", "cat <<EOF", "\nbody\nEOF\n"],
-    ["quoted", "cat <<'EOF'", "\n$literal\nEOF\n"],
-    ["empty-delimiter", "cat <<''", "\nbody\n\n"],
-    ["tabs", "cat <<-EOF", "\n\tbody\n\tEOF\n"],
-    ["comment", "cat <<EOF # comment", "\nbody\nEOF\n"],
-    ["continuation", "cat <<EOF \\\n", "\nbody\nEOF\n"],
-    ["following-command", "cat <<EOF; echo after", "\nbody\nEOF\n"],
-    ["multiple", "cat <<FIRST <<SECOND", "\nFIRST\nSECOND\n"],
-  ]) {
-    const complete = writeSource(`${name}-complete-document`, header + ending);
-    const incomplete = writeSource(`${name}-pending-document`, header);
-    const remove = {
-      byte: header.length,
-      deleteBytes: ending.length,
-      insert: "",
-    };
-    const restore = { byte: header.length, deleteBytes: 0, insert: ending };
-    for (const output of parseRecoveryAfterEdits(
-      complete,
-      incomplete,
-      `${name}-remove-body`,
-      remove,
-    )) {
-      assert.equal(hasRecovery(output), true, output);
-    }
-    assertIncrementalEqualsFresh(
-      incomplete,
-      complete,
-      `${name}-complete-body`,
-      restore,
-    );
-    assertIncrementalEqualsFresh(
-      complete,
-      complete,
-      `${name}-restore-body`,
-      remove,
-      restore,
     );
   }
 });

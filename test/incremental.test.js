@@ -110,6 +110,54 @@ const fuzzFragments = [
 
 const fuzzInsertions = "abcxyz12!{}();,\n\\/*[]().^$|+?-:=# \t'\"<>`";
 
+for (const { name, source, edit } of [
+  {
+    name: "zero parameter becomes positional",
+    source: `echo \${00}\n`,
+    edit: { byte: 8, deleteBytes: 1, insert: "1" },
+  },
+  {
+    name: "zero parameter gains a continuation",
+    source: `echo \${00}\n`,
+    edit: { byte: 8, deleteBytes: 0, insert: "\\\n" },
+  },
+  {
+    name: "EOF backslash gains an escaped character",
+    source: "echo abc\\",
+    edit: { byte: 9, deleteBytes: 0, insert: "x" },
+  },
+  {
+    name: "EOF backslash becomes a line continuation",
+    source: "echo abc\\",
+    edit: { byte: 9, deleteBytes: 0, insert: "\nnext\n" },
+  },
+  {
+    name: "EOF backslash after a continuation gains an escaped character",
+    source: "echo \\\n\\",
+    edit: { byte: 8, deleteBytes: 0, insert: "x" },
+  },
+]) {
+  test(`sh: ${name} matches fresh parsing in both directions`, () => {
+    const initial = writeSource(name, source);
+    const final = writeSource(`${name}-edited`, applyEdits(source, [edit]));
+    const reverse = {
+      byte: edit.byte,
+      deleteBytes: Buffer.byteLength(edit.insert),
+      insert: source.slice(edit.byte, edit.byte + edit.deleteBytes),
+    };
+    compareIncrementalAndFresh({}, initial, final, name, edit);
+    compareIncrementalAndFresh({}, final, initial, `${name}: reverse`, reverse);
+    compareIncrementalAndFresh(
+      {},
+      initial,
+      initial,
+      `${name}: round trip`,
+      edit,
+      reverse,
+    );
+  });
+}
+
 const nestedDocuments =
   "<<ZZQ\n$(<<E\nE\nuntil(z);do>f;x&(<<'E'\nE\nf ) done)\nZZQ\n";
 

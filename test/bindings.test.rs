@@ -137,21 +137,23 @@ fn reused_parsers_reset_recovery_and_resource_state() {
   let expected_repair = parser().parse(&repaired, None).unwrap();
   assert!(!expected_repair.root_node().has_error());
   let mut reused = parser();
-  for (name, prefix) in [
-    ("invalid-parameter", "echo \"${x @}\"\n".to_owned()),
+  for (name, prefix, recovery) in [
+    ("invalid-parameter", "echo \"${x @}\"\n".to_owned(), true),
     (
-      "unterminated-heredoc",
+      "eof-heredoc",
       "cat <<'END'\nunterminated\n".to_owned(),
+      false,
     ),
     (
       "delimiter-capacity",
       format!("cat <<{delimiter}\nbody\n{delimiter}\n"),
+      true,
     ),
-    ("suspended-heredoc-capacity", suspended),
+    ("suspended-heredoc-capacity", suspended, true),
   ] {
     let source = prefix.clone() + suffix;
     let cold = parser().parse(&source, None).unwrap();
-    assert!(cold.root_node().has_error(), "{name}");
+    assert_eq!(cold.root_node().has_error(), recovery, "{name}");
     let mut tree = reused.parse(&source, None).unwrap();
     assert_eq!(
       cst_snapshot(&cold, false),

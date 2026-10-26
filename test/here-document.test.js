@@ -21,6 +21,133 @@ import {
   writeSource,
 } from "./support/parser.js";
 
+for (const { name, source, suffix, endingCount, initialEndings = 0 } of [
+  {
+    name: "named",
+    source: "cat <<E\nx\nE",
+    suffix: "\n",
+    endingCount: 1,
+    initialEndings: 1,
+  },
+  {
+    name: "quoted",
+    source: "cat <<'E'\nx\nE",
+    suffix: "\n",
+    endingCount: 1,
+    initialEndings: 1,
+  },
+  { name: "empty", source: "cat <<''\n", suffix: "\n", endingCount: 1 },
+  { name: "empty tabs", source: "cat <<-''\n\t", suffix: "\n", endingCount: 1 },
+  {
+    name: "named tabs",
+    source: "cat <<-E\nx\n\tE",
+    suffix: "\n",
+    endingCount: 1,
+    initialEndings: 1,
+  },
+  {
+    name: "empty after body",
+    source: "cat <<''\nx\n",
+    suffix: "\n",
+    endingCount: 1,
+  },
+  {
+    name: "continued delimiter",
+    source: "cat <<E\nx\nE\\\n",
+    suffix: "\n",
+    endingCount: 1,
+    initialEndings: 1,
+  },
+  {
+    name: "body without newline",
+    source: "cat <<E\nx",
+    suffix: "\nE\necho after\n",
+    endingCount: 1,
+  },
+  {
+    name: "queued named bodies",
+    source: "cat <<A <<B\nx",
+    suffix: "\nA\ny\nB\n",
+    endingCount: 2,
+  },
+  {
+    name: "queued empty bodies",
+    source: "cat <<'' <<''\n",
+    suffix: "\n\n",
+    endingCount: 2,
+  },
+  {
+    name: "unstarted empty delimiter",
+    source: "cat <<''",
+    suffix: "\nbody\n\n",
+    endingCount: 1,
+  },
+  {
+    name: "unstarted continued header",
+    source: "cat <<E \\\n",
+    suffix: "\nbody\nE\n",
+    endingCount: 1,
+  },
+  {
+    name: "unstarted following command",
+    source: "cat <<E; echo after",
+    suffix: "\nbody\nE\n",
+    endingCount: 1,
+  },
+  {
+    name: "unstarted declaration",
+    source: "cat <<E",
+    suffix: "\nx\nE\n",
+    endingCount: 1,
+  },
+  {
+    name: "unstarted declaration with trailing backslash",
+    source: "cat <<E\\",
+    suffix: "\n\nx\nE\n",
+    endingCount: 1,
+  },
+  {
+    name: "unstarted quoted queue with comment",
+    source: "cat <<'A' <<-B # pending",
+    suffix: "\nx\nA\ny\n\tB\n",
+    endingCount: 2,
+  },
+]) {
+  test(`sh: ${name} switches between EOF and real here-document endings after edits`, () => {
+    const initial = writeSource(`${name}-eof-body`, source);
+    const final = writeSource(`${name}-terminated-body`, source + suffix);
+    const append = { byte: source.length, deleteBytes: 0, insert: suffix };
+    const remove = {
+      byte: source.length,
+      deleteBytes: suffix.length,
+      insert: "",
+    };
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `${name}: append terminators`,
+      append,
+    )) {
+      assertNodeCount(output, "here_document_end", endingCount);
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `${name}: remove terminators`,
+      remove,
+    )) {
+      assertNodeCount(output, "here_document_end", initialEndings);
+    }
+    assertIncrementalEqualsFresh(
+      initial,
+      initial,
+      `${name}: round trip`,
+      append,
+      remove,
+    );
+  });
+}
+
 test("sh: nested here-documents activate at the scanner state capacity", () => {
   const nestedDelimiterBytes = 251;
   const capacityDelimiterBytes = 466;
@@ -621,13 +748,15 @@ test("sh: editing escaped delimiter bytes restores UTF-8 terminator matching", (
       deleteBytes: unmatchedWord.length,
       insert: matchedWord,
     };
-    for (const output of parseRecoveryAfterEdits(
+    for (const output of assertIncrementalEqualsFresh(
       matched,
       unmatched,
       `${name}-remove-matching-bytes`,
       remove,
     )) {
-      assert.equal(hasRecovery(output), true, name);
+      assertCstRange(output, "1:0-4:0", "body: quoted_here_document_body");
+      assertNodeCount(output, "here_document_end", 0);
+      assertNodeCount(output, "complete_command", 1);
     }
     for (const output of assertIncrementalEqualsFresh(
       unmatched,
@@ -651,41 +780,54 @@ test("sh: editing escaped delimiter bytes restores UTF-8 terminator matching", (
 });
 
 test("sh: editing substitution delimiter quotes updates matching and restores the CST", () => {
-  for (const [
+  for (const {
     name,
     initialWord,
     initialDelimiter,
     finalWord,
     finalDelimiter,
-  ] of [
-    [
-      "parameter-inner-quotes",
-      `"\${x:-"ab"}"`,
-      `\${x:-ab}`,
-      `"\${x:-'ab'}"`,
-      `\${x:-'ab'}`,
-    ],
-    [
-      "pattern-outer-quotes",
-      `"\${x#'ab'}"`,
-      `\${x#'ab'}`,
-      `\${x#'ab'}`,
-      `\${x#ab}`,
-    ],
-    [
-      "command-outer-quotes",
-      "\"$(printf 'ab')\"",
-      "$(printf 'ab')",
-      "$(printf 'ab')",
-      "$(printf ab)",
-    ],
-    [
-      "command-inner-quotes",
-      "\"$(printf 'ab')\"",
-      "$(printf 'ab')",
-      '"$(printf "ab")"',
-      "$(printf ab)",
-    ],
+    finalQuoted,
+  } of [
+    {
+      name: "parameter-inner-quotes",
+      initialWord: `"\${x:-"ab"}"`,
+      initialDelimiter: `\${x:-ab}`,
+      finalWord: `"\${x:-'ab'}"`,
+      finalDelimiter: `\${x:-'ab'}`,
+      finalQuoted: true,
+    },
+    {
+      name: "pattern-outer-quotes",
+      initialWord: `"\${x#'ab'}"`,
+      initialDelimiter: `\${x#'ab'}`,
+      finalWord: `\${x#'ab'}`,
+      finalDelimiter: `\${x#'ab'}`,
+      finalQuoted: false,
+    },
+    {
+      name: "command-outer-quotes",
+      initialWord: "\"$(printf 'ab')\"",
+      initialDelimiter: "$(printf 'ab')",
+      finalWord: "$(printf 'ab')",
+      finalDelimiter: "$(printf 'ab')",
+      finalQuoted: false,
+    },
+    {
+      name: "command-inner-quotes",
+      initialWord: "\"$(printf 'ab')\"",
+      initialDelimiter: "$(printf 'ab')",
+      finalWord: '"$(printf "ab")"',
+      finalDelimiter: "$(printf ab)",
+      finalQuoted: true,
+    },
+    {
+      name: "trailing-outer-quote",
+      initialWord: "\"$(printf 'ab')\"",
+      initialDelimiter: "$(printf 'ab')",
+      finalWord: "$(printf 'ab')\"tail\"",
+      finalDelimiter: "$(printf ab)tail",
+      finalQuoted: true,
+    },
   ]) {
     const initialText = lines(
       `cat <<${initialWord}`,
@@ -712,6 +854,18 @@ test("sh: editing substitution delimiter quotes updates matching and restores th
       },
       { byte: 6, deleteBytes: initialWord.length, insert: finalWord },
     )) {
+      assertCstRange(
+        output,
+        "1:0-2:0",
+        finalQuoted
+          ? "body: quoted_here_document_body"
+          : "body: here_document_body",
+      );
+      assertCstRange(
+        output,
+        "1:0-1:8",
+        finalQuoted ? "quoted_here_document_text" : "parameter_expansion",
+      );
       assertCstRange(output, "2:0-3:0", "end: here_document_end");
       assertCstRange(output, "3:0-3:10", "command: complete_command");
     }

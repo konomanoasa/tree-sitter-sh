@@ -644,7 +644,7 @@ delimiter command substitutions retain quoted parentheses inside case brackets
 
 cat <<$(case x in [')']) printf END;; esac)
 body
-$(case x in [)]) printf END;; esac)
+$(case x in [')']) printf END;; esac)
 after
 
 ------------------
@@ -712,8 +712,8 @@ after
       (here_document_sequence
         (here_document_line_end)
         (here_document
-          (quoted_here_document_body
-            (quoted_here_document_text))
+          (here_document_body
+            (here_document_text))
           (here_document_end
             (here_document_end_text)))))
     (complete_command
@@ -735,7 +735,7 @@ delimiter command substitutions retain parentheses inside functions
 
 cat <<$(f() { printf ')'; }; f)
 body
-$(f() { printf ); }; f)
+$(f() { printf ')'; }; f)
 after
 
 ------------------
@@ -803,8 +803,8 @@ after
       (here_document_sequence
         (here_document_line_end)
         (here_document
-          (quoted_here_document_body
-            (quoted_here_document_text))
+          (here_document_body
+            (here_document_text))
           (here_document_end
             (here_document_end_text)))))
     (complete_command
@@ -821,12 +821,13 @@ after
     (newline_list)))
 
 ==================
-single quotes in a double-quoted delimiter substitution preserve literal quotes
+substitution syntax quotes do not reset delimiter quote removal
 ==================
 
 cat <<"$(printf '"')"
 body
 $(printf '"')
+$(printf ')"
 
 ------------------
 
@@ -874,6 +875,7 @@ $(printf '"')
         line_end: (here_document_line_end)
         document: (here_document
           body: (quoted_here_document_body
+            (quoted_here_document_text)
             (quoted_here_document_text))
           end: (here_document_end
             (here_document_end_text)))))))
@@ -1604,7 +1606,6 @@ first
 
 ==================
 a double-quoted delimiter newline keeps the captured document
-:error
 ==================
 
 cat <<"B
@@ -1614,7 +1615,36 @@ echo after
 
 ------------------
 
-
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (double_quoted
+                              (double_quote_text)))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (quoted_here_document_body
+            (quoted_here_document_text)
+            (quoted_here_document_text)))))))
 
 ==================
 here-document delimiter tildes remain literal outside embedded expansions
@@ -1684,7 +1714,7 @@ cat <<~root/path <<-~"user" <<~${value:-~fallback}
             (here_document_end_text)))))))
 
 ==================
-arithmetic here-document delimiters retain parameter value quoting and remove pattern quoting
+arithmetic here-document delimiters distinguish outer quoting from nested quoting
 ==================
 
 : <<"$((1+${x:-'2'}))" <<$((1+${x:-a\qb})) <<$((1+${x#'2'}))
@@ -1693,7 +1723,7 @@ $((1+${x:-'2'}))
 $unquoted
 $((1+${x:-a\qb}))
 $pattern
-$((1+${x#2}))
+$((1+${x#'2'}))
 : after
 
 ------------------
@@ -1772,8 +1802,9 @@ $((1+${x#2}))
           end: (here_document_end
             (here_document_end_text)))
         document: (here_document
-          body: (quoted_here_document_body
-            (quoted_here_document_text))
+          body: (here_document_body
+            (parameter_expansion
+              parameter: (variable_name)))
           end: (here_document_end
             (here_document_end_text)))))
     command: (complete_command
@@ -2288,8 +2319,8 @@ parameter quoted command
 ==================
 cat <<"${x:-"$(printf 'ab')"}"
 $literal
-${x:-$(printf ab)}
 ${x:-$(printf 'ab')}
+${x:-$(printf ab)}
 echo after
 
 ------------------
@@ -2354,9 +2385,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:18               quoted_here_document_text `${x:-$(printf ab)}`
+2:0  - 2:20               quoted_here_document_text `${x:-$(printf 'ab')}`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:20               here_document_end_text `${x:-$(printf 'ab')}`
+3:0  - 3:18               here_document_end_text `${x:-$(printf ab)}`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -4378,13 +4409,39 @@ after
 3:5 - 4:0         "\n"
 
 ==================
-a tab-stripped terminator requires a newline at EOF
-:error
+tab stripping retains body source through EOF without an end node
 ==================
 cat <<-''
 body
 		
 ------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dlessdash)
+                        (here_end
+                          (word
+                            (single_quoted))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (quoted_here_document_body
+            (quoted_here_document_text)))))))
 
 ==================
 terminator quoted backslash
@@ -4555,13 +4612,42 @@ after
 3:5  - 4:0          "\n"
 
 ==================
-a Unicode terminator requires a newline at EOF
-:error
+a Unicode delimiter at EOF ends the document
 ==================
 cat <<'𠮷'
 body
 𠮷
 ------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (single_quoted
+                              (single_quote_content)))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (quoted_here_document_body
+            (quoted_here_document_text))
+          (here_document_end
+            (here_document_end_text)))))))
 
 ==================
 a quoted here-document delimiter requires a newline before a closing backquote
@@ -4573,6 +4659,8 @@ EOF`
 after
 
 ------------------
+
+
 
 ==================
 delimiter outer raw escaping
@@ -5169,12 +5257,36 @@ after
 4:5  - 5:0          "\n"
 
 ==================
-an empty tab-stripped terminator requires a newline at EOF
-:error
+tabs before EOF do not create an empty terminator
 ==================
 cat <<-''
 		
 ------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dlessdash)
+                        (here_end
+                          (word
+                            (single_quoted))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
 
 ==================
 an empty delimiter requires a newline before a closing backquote in a bracket
@@ -5185,6 +5297,8 @@ echo [`cat <<''
 
 ------------------
 
+
+
 ==================
 an empty delimiter requires a newline before a closing backquote in arithmetic
 :error
@@ -5193,6 +5307,8 @@ echo $((`cat <<''
 `+1))
 
 ------------------
+
+
 
 ==================
 an empty delimiter after body text requires a newline before a closing backquote in a bracket
@@ -5204,6 +5320,8 @@ x
 
 ------------------
 
+
+
 ==================
 an empty delimiter after body text requires a newline before a closing backquote in arithmetic
 :error
@@ -5214,6 +5332,8 @@ x
 
 ------------------
 
+
+
 ==================
 a named delimiter requires a newline before a closing backquote in a bracket
 :error
@@ -5223,29 +5343,112 @@ X`]
 
 ------------------
 
+
+
 ==================
-a named terminator at EOF requires its newline
-:error
+a named delimiter at EOF ends the document
 ==================
 cat <<E
 x
 E
 ------------------
 
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end
+            (here_document_end_text)))))))
+
 ==================
-an empty delimiter at EOF still requires a terminating line
-:error
+an empty body accepts EOF without inventing a terminating line
 ==================
 cat <<''
 
 ------------------
 
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (single_quoted))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document)))))
+
 ==================
-a continued newline after the delimiter does not terminate the document
-:error
+a delimiter followed only by a line continuation ends at EOF
 ==================
 cat <<E
 x
 E\
 
 ------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (literal))))))))))))))
+  (linebreak
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end
+            (here_document_end_text)
+            (line_continuation)))))))
