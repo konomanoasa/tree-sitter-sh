@@ -5733,3 +5733,128 @@ E\
           (here_document_end
             (here_document_end_text)
             (line_continuation)))))))
+
+==================
+substitution delimiter operand backslashes follow the enclosing form
+:cst
+==================
+cat <<$(printf ${x:-a\qb}) <<`printf "${x#a\qb}"`
+$(printf ${x:-aqb})
+$(printf ${x:-a\qb})
+`printf ${x#a\qb}`
+`printf ${x#aqb}`
+echo after
+
+------------------
+
+0:0  - 6:0    program
+0:0  - 5:10     commands: complete_commands
+0:0  - 0:49       command: complete_command
+0:0  - 0:49         body: list
+0:0  - 0:49           and_or: and_or
+0:0  - 0:49             pipeline: pipeline
+0:0  - 0:49               sequence: pipe_sequence
+0:0  - 0:49                 command: command
+0:0  - 0:49                   body: simple_command
+0:0  - 0:3                      name: cmd_name
+0:0  - 0:3                        word
+0:0  - 0:3                          literal `cat`
+0:3  - 0:49                     suffix: cmd_suffix
+0:4  - 0:26                       redirect: io_redirect
+0:4  - 0:26                         body: io_here
+0:4  - 0:6                            operator: dless `<<`
+0:6  - 0:26                           end: here_end
+0:6  - 0:26                             word: word
+0:6  - 0:26                               command_substitution
+0:6  - 0:7                                  "$"
+0:7  - 0:8                                  "("
+0:8  - 0:25                                 body: command_substitution_body
+0:8  - 0:25                                   complete_commands
+0:8  - 0:25                                     command: complete_command
+0:8  - 0:25                                       body: list
+0:8  - 0:25                                         and_or: and_or
+0:8  - 0:25                                           pipeline: pipeline
+0:8  - 0:25                                             sequence: pipe_sequence
+0:8  - 0:25                                               command: command
+0:8  - 0:25                                                 body: simple_command
+0:8  - 0:14                                                   name: cmd_name
+0:8  - 0:14                                                     word
+0:8  - 0:14                                                       literal `printf`
+0:14 - 0:25                                                   suffix: cmd_suffix
+0:15 - 0:25                                                     word: word
+0:15 - 0:25                                                       parameter_expansion
+0:15 - 0:16                                                         "$"
+0:16 - 0:17                                                         "{"
+0:17 - 0:18                                                         parameter: variable_name `x`
+0:18 - 0:20                                                         operator: parameter_value_operator `:-`
+0:20 - 0:24                                                         word: parameter_word
+0:20 - 0:21                                                           literal `a`
+0:21 - 0:23                                                           escaped_character `\\q`
+0:23 - 0:24                                                           literal `b`
+0:24 - 0:25                                                         "}"
+0:25 - 0:26                                 ")"
+0:27 - 0:49                       redirect: io_redirect
+0:27 - 0:49                         body: io_here
+0:27 - 0:29                           operator: dless `<<`
+0:29 - 0:49                           end: here_end
+0:29 - 0:49                             word: word
+0:29 - 0:49                               backquote_substitution
+0:29 - 0:30                                 "\`"
+0:30 - 0:48                                 body: backquote_substitution_body
+0:30 - 0:48                                   complete_commands
+0:30 - 0:48                                     command: complete_command
+0:30 - 0:48                                       body: list
+0:30 - 0:48                                         and_or: and_or
+0:30 - 0:48                                           pipeline: pipeline
+0:30 - 0:48                                             sequence: pipe_sequence
+0:30 - 0:48                                               command: command
+0:30 - 0:48                                                 body: simple_command
+0:30 - 0:36                                                   name: cmd_name
+0:30 - 0:36                                                     word
+0:30 - 0:36                                                       literal `printf`
+0:36 - 0:48                                                   suffix: cmd_suffix
+0:37 - 0:48                                                     word: word
+0:37 - 0:48                                                       double_quoted
+0:37 - 0:38                                                         "\""
+0:38 - 0:47                                                         parameter_expansion
+0:38 - 0:39                                                           "$"
+0:39 - 0:40                                                           "{"
+0:40 - 0:41                                                           parameter: variable_name `x`
+0:41 - 0:42                                                           operator: parameter_pattern_operator `#`
+0:42 - 0:46                                                           pattern: parameter_pattern
+0:42 - 0:43                                                             literal `a`
+0:43 - 0:45                                                             escaped_character `\\q`
+0:45 - 0:46                                                             literal `b`
+0:46 - 0:47                                                           "}"
+0:47 - 0:48                                                         "\""
+0:48 - 0:49                                 "\`"
+0:49 - 5:0        separator: newline_list
+0:49 - 5:0          here_document_sequence
+0:49 - 1:0            line_end: here_document_line_end
+0:49 - 0:50             `\n`
+1:0  - 3:0            document: here_document
+1:0  - 2:0              body: quoted_here_document_body
+1:0  - 1:19               quoted_here_document_text `$(printf ${x:-aqb})`
+2:0  - 3:0              end: here_document_end
+2:0  - 2:20               here_document_end_text `$(printf ${x:-a\\qb})`
+3:0  - 5:0            document: here_document
+3:0  - 4:0              body: quoted_here_document_body
+3:0  - 3:18               quoted_here_document_text `\`printf ${x#a\\qb}\``
+4:0  - 5:0              end: here_document_end
+4:0  - 4:17               here_document_end_text `\`printf ${x#aqb}\``
+5:0  - 5:10       command: complete_command
+5:0  - 5:10         body: list
+5:0  - 5:10           and_or: and_or
+5:0  - 5:10             pipeline: pipeline
+5:0  - 5:10               sequence: pipe_sequence
+5:0  - 5:10                 command: command
+5:0  - 5:10                   body: simple_command
+5:0  - 5:4                      name: cmd_name
+5:0  - 5:4                        word
+5:0  - 5:4                          literal `echo`
+5:4  - 5:10                     suffix: cmd_suffix
+5:5  - 5:10                       word: word
+5:5  - 5:10                         literal `after`
+5:10 - 6:0      trailing: linebreak
+5:10 - 6:0        newline_list
+5:10 - 6:0          "\n"

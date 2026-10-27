@@ -2596,6 +2596,20 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "double_quoted",
+          "named": true
+        },
+        {
+          "type": "single_quoted",
+          "named": true
+        }
+      ]
     }
   },
   {

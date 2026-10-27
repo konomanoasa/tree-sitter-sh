@@ -106,7 +106,7 @@ FILES=src/*.c printf value >out?.txt
     (newline_list)))
 
 ==================
-pattern nodes retain source shape without asserting runtime validity
+filename slash boundaries are static while class names remain source
 ==================
 
 printf a[b/c]d [[:not_a_posix_name:]]
@@ -129,17 +129,137 @@ printf a[b/c]d [[:not_a_posix_name:]]
                       (literal)))
                   (cmd_suffix
                     (word
-                      (literal)
-                      (pattern_bracket_source
-                        (pattern_bracket_members_source
-                          (pattern_bracket_character_source)
-                          (pattern_bracket_character_source)
-                          (pattern_bracket_character_source)))
                       (literal))
                     (word
                       (pattern_bracket_source
                         (pattern_bracket_members_source
                           (pattern_character_class_source
                             (pattern_character_class_content_source))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+filename slashes invalidate crossing brackets and preserve later wildcards
+==================
+: [a*/b[xy] [a*"/"b[xy] [a*\/b[xy] [a*$'\x2f'b[xy] [a*/b?] [a*]/b[xy]
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (pattern_star_source)
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (pattern_star_source)
+                      (double_quoted
+                        (double_quote_text))
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (pattern_star_source)
+                      (escaped_character)
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (pattern_star_source)
+                      (dollar_single_quoted
+                        (dollar_single_quote_escape))
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal)
+                      (pattern_star_source)
+                      (literal)
+                      (pattern_question_source)
+                      (literal))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)))
+                      (literal)
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+an incomplete bracket preserves wildcards and quoted closers
+==================
+: [a* [a\]* [a"]"* [a]*[ [a"*" a*[/b*
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (pattern_star_source))
+                    (word
+                      (literal)
+                      (escaped_character)
+                      (pattern_star_source))
+                    (word
+                      (literal)
+                      (double_quoted
+                        (double_quote_text))
+                      (pattern_star_source))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)))
+                      (pattern_star_source)
+                      (literal))
+                    (word
+                      (literal)
+                      (double_quoted
+                        (double_quote_text)))
+                    (word
+                      (literal)
+                      (pattern_star_source)
+                      (literal)
+                      (pattern_star_source)))))))))))
   (linebreak
     (newline_list)))

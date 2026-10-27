@@ -1830,7 +1830,7 @@ test("sh: a newline edit preserves dynamic arithmetic layout", () => {
   assertCstRange(dynamicOutput, "0:6-1:1", "arithmetic_dynamic_expression");
 });
 
-test("sh: parameter tilde prefixes retain shell separators after structured source", () => {
+test("sh: dynamic parameter words keep tilde literal across separator edits", () => {
   const initial = writeSource("parameter-tilde-slash", `echo \${x:-~$u/b}\n`);
   for (const [name, separator, end] of [
     ["space", " ", "0:15"],
@@ -1846,8 +1846,9 @@ test("sh: parameter tilde prefixes retain shell separators after structured sour
       `replace-tilde-slash-with-${name}`,
       { byte: 13, deleteBytes: 1, insert: separator },
     )) {
-      assertCstRange(output, `0:10-${end}`, "tilde_expansion");
-      assertCstRange(output, `0:11-${end}`, "user: tilde_user");
+      assertNodeCount(output, "tilde_expansion", 0);
+      assertCstRange(output, `0:10-${end}`, "word: parameter_word");
+      assertCstRange(output, "0:11-0:13", "parameter_expansion");
     }
     for (const output of assertIncrementalEqualsFresh(
       final,
@@ -1855,8 +1856,9 @@ test("sh: parameter tilde prefixes retain shell separators after structured sour
       `replace-tilde-${name}-with-slash`,
       { byte: 13, deleteBytes: 1, insert: "/" },
     )) {
-      assertCstRange(output, "0:10-0:13", "tilde_expansion");
-      assertCstRange(output, "0:11-0:13", "user: tilde_user");
+      assertNodeCount(output, "tilde_expansion", 0);
+      assertCstRange(output, "0:10-0:15", "word: parameter_word");
+      assertCstRange(output, "0:11-0:13", "parameter_expansion");
     }
   }
 });
@@ -3105,4 +3107,88 @@ test("sh: adjacent comment continuations retain raw prefixes across edits", () =
     "shorten-adjacent-comment-run",
     { byte: prefix.length + 2, deleteBytes: 2, insert: "" },
   );
+});
+
+test("sh: word classification stays fresh-equivalent when static boundaries change", () => {
+  for (const fixture of [
+    {
+      name: "quoted declaration name",
+      source: '"exporx" X=~\n',
+      edit: { byte: 6, deleteBytes: 1, insert: "t" },
+      nodes: [
+        ["assignment_value", 0, 1],
+        ["tilde_expansion", 0, 1],
+      ],
+    },
+    {
+      name: "empty quote after tilde user",
+      source: ": ~root/tail\n",
+      edit: { byte: 7, deleteBytes: 0, insert: '""' },
+      nodes: [["tilde_expansion", 1, 0]],
+    },
+    {
+      name: "caret negation after empty quotes",
+      source: ": [''^a]\n",
+      edit: { byte: 3, deleteBytes: 2, insert: "" },
+      nodes: [["pattern_bracket_negation_source", 1, 1]],
+    },
+    {
+      name: "single quoted continuation is content rather than an empty quote",
+      source: ": ['\\\n'^a]\n",
+      edit: { byte: 4, deleteBytes: 2, insert: "" },
+      nodes: [["pattern_bracket_negation_source", 0, 1]],
+    },
+    {
+      name: "filename slash replaces a range operator",
+      source: ": [a-b]\n",
+      edit: { byte: 4, deleteBytes: 1, insert: "/" },
+      nodes: [["pattern_bracket_source", 1, 0]],
+    },
+    {
+      name: "quoted slash exposes filename wildcard",
+      source: ': [a*"x"b[xy]\n',
+      edit: { byte: 6, deleteBytes: 1, insert: "/" },
+      nodes: [
+        ["pattern_bracket_source", 1, 1],
+        ["pattern_star_source", 0, 1],
+      ],
+    },
+    {
+      name: "case pattern and nested command use separate slash contexts",
+      source: "case x in $(printf [a-b])[a/b]) :;; esac\n",
+      edit: { byte: 20, deleteBytes: 1, insert: "/" },
+      nodes: [["pattern_bracket_source", 2, 1]],
+    },
+  ]) {
+    const initial = writeSource(`${fixture.name}-before`, fixture.source);
+    const final = writeSource(
+      `${fixture.name}-after`,
+      applyEdits(fixture.source, [fixture.edit]).toString(),
+    );
+    const inverse = {
+      byte: fixture.edit.byte,
+      deleteBytes: Buffer.byteLength(fixture.edit.insert),
+      insert: Buffer.from(fixture.source)
+        .subarray(
+          fixture.edit.byte,
+          fixture.edit.byte + fixture.edit.deleteBytes,
+        )
+        .toString(),
+    };
+    for (const { before, after, edit, expectedIndex } of [
+      { before: initial, after: final, edit: fixture.edit, expectedIndex: 2 },
+      { before: final, after: initial, edit: inverse, expectedIndex: 1 },
+    ]) {
+      for (const output of assertIncrementalEqualsFresh(
+        before,
+        after,
+        fixture.name,
+        edit,
+      )) {
+        for (const nodes of fixture.nodes) {
+          assertNodeCount(output, nodes[0], nodes[expectedIndex]);
+        }
+      }
+    }
+  }
 });

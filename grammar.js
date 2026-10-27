@@ -700,7 +700,7 @@ const patternBracketExpression = ($, list, opener) =>
       2,
       seq(
         physical($, opener, "["),
-        optional(field("negation", $.pattern_bracket_negation_source)),
+        optional($._pattern_bracket_prefix),
         field("members", list),
         physical($, $._punct_right_bracket, "]"),
       ),
@@ -836,8 +836,10 @@ export default grammar({
       $._assignment_tilde_end,
       $._assignment_name_begin,
       $._fname_begin,
-      $._declaration_name_begin,
-      $._forwarding_name_begin,
+      $._declaration_word_start,
+      $._forwarding_word_start,
+      $._case_pattern_start,
+      $._case_pattern_end,
       $._and_or_continuation,
       $._word_separator_begin,
       $._term_continuation,
@@ -904,6 +906,7 @@ export default grammar({
       $._pattern_star_begin,
       $._pattern_question_begin,
       $._pattern_negation_begin,
+      $._pattern_empty_quote_start,
       $._pattern_class_content_begin,
       $._parameter_pattern_class_content_begin,
       $._pattern_collating_character_begin,
@@ -1412,14 +1415,22 @@ export default grammar({
               optional($._horizontal_layout),
             ),
           ),
-          field("word", $.word),
+          seq(
+            $._case_pattern_start,
+            field("word", $.word),
+            $._case_pattern_end,
+          ),
           repeat(
             seq(
               $._pattern_continuation,
               optional($._horizontal_layout),
               physical($, $._punct_pipe, "|"),
               optional($._horizontal_layout),
-              field("word", $.word),
+              seq(
+                $._case_pattern_start,
+                field("word", $.word),
+                $._case_pattern_end,
+              ),
             ),
           ),
         ),
@@ -1460,13 +1471,9 @@ export default grammar({
 
     _forwarding_command_name: ($) => alias($._forwarding_word, $.word),
 
-    _declaration_word: ($) => alias($._declaration_name, $.literal),
+    _declaration_word: ($) => seq($._declaration_word_start, $._source_word),
 
-    _forwarding_word: ($) => alias($._forwarding_name, $.literal),
-
-    _declaration_name: ($) => lexical($, $._declaration_name_begin),
-
-    _forwarding_name: ($) => lexical($, $._forwarding_name_begin),
+    _forwarding_word: ($) => seq($._forwarding_word_start, $._source_word),
 
     cmd_suffix: ($) => $._cmd_suffix,
 
@@ -1870,6 +1877,21 @@ export default grammar({
         ),
         $._parameter_pattern_bracket_open,
       ),
+    _pattern_bracket_prefix: ($) =>
+      choice(
+        repeat1($._pattern_empty_quote),
+        seq(
+          repeat($._pattern_empty_quote),
+          field("negation", $.pattern_bracket_negation_source),
+          repeat($._pattern_empty_quote),
+        ),
+      ),
+    _pattern_empty_quote: ($) =>
+      seq(
+        $._pattern_empty_quote_start,
+        choice($.single_quoted, $.double_quoted),
+      ),
+
     pattern_bracket_negation_source: ($) =>
       prec(1, lexical($, $._pattern_negation_begin)),
     pattern_bracket_members_source: ($) =>

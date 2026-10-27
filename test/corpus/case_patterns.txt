@@ -269,3 +269,49 @@ esac
                     (esac_keyword))))))))))
   trailing: (linebreak
     (newline_list)))
+
+==================
+case brackets keep slashes as members
+==================
+case x in [a/b]) :;; esac
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (compound_command
+                  (case_clause
+                    (case_keyword)
+                    (word
+                      (literal))
+                    (in
+                      (in_keyword))
+                    (case_list
+                      (case_item
+                        (pattern_list
+                          (word
+                            (pattern_bracket_source
+                              (pattern_bracket_members_source
+                                (pattern_bracket_character_source)
+                                (pattern_bracket_character_source)
+                                (pattern_bracket_character_source)))))
+                        (compound_list
+                          (term
+                            (and_or
+                              (pipeline
+                                (pipe_sequence
+                                  (command
+                                    (simple_command
+                                      (cmd_name
+                                        (word
+                                          (literal))))))))))
+                        (dsemi)))
+                    (esac_keyword))))))))))
+  (linebreak
+    (newline_list)))

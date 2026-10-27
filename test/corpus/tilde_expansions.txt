@@ -1,5 +1,5 @@
 ==================
-parameter tilde users retain shell separators after structured source
+structured parameter words keep tilde literal across shell separators
 ==================
 
 echo ${x:-~'a' b} ${x#~$u;b} ${x:-~$(echo a)
@@ -8,65 +8,62 @@ b}
 ------------------
 
 (program
-  leading: (linebreak
+  (linebreak
     (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
                     (word
                       (literal)))
-                  suffix: (cmd_suffix
-                    word: (word
+                  (cmd_suffix
+                    (word
                       (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_value_operator)
-                        word: (parameter_word
-                          (tilde_expansion
-                            user: (tilde_user
-                              (single_quoted
-                                (single_quote_content))
-                              (literal))))))
-                    word: (word
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal)
+                          (single_quoted
+                            (single_quote_content))
+                          (literal))))
+                    (word
                       (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_pattern_operator)
-                        pattern: (parameter_pattern
-                          (tilde_expansion
-                            user: (tilde_user
-                              (parameter_expansion
-                                parameter: (variable_name))
-                              (literal))))))
-                    word: (word
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal)
+                          (parameter_expansion
+                            (variable_name))
+                          (literal))))
+                    (word
                       (parameter_expansion
-                        parameter: (variable_name)
-                        operator: (parameter_value_operator)
-                        word: (parameter_word
-                          (tilde_expansion
-                            user: (tilde_user
-                              (command_substitution
-                                body: (command_substitution_body
-                                  (complete_commands
-                                    command: (complete_command
-                                      body: (list
-                                        and_or: (and_or
-                                          pipeline: (pipeline
-                                            sequence: (pipe_sequence
-                                              command: (command
-                                                body: (simple_command
-                                                  name: (cmd_name
-                                                    (word
-                                                      (literal)))
-                                                  suffix: (cmd_suffix
-                                                    word: (word
-                                                      (literal)))))))))))))
-                              (literal)))))))))))))))
-  trailing: (linebreak
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal)
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (word
+                                                  (literal)))))))))))))
+                          (literal)))))))))))))
+  (linebreak
     (newline_list)))
 
 ==================
@@ -151,7 +148,7 @@ printf "${value:-~fallback}"
     (newline_list)))
 
 ==================
-tilde users retain every structured candidate before the formal delimiter
+quoted and dynamic tilde prefixes remain ordinary word source
 ==================
 
 printf ~"$name/quoted"/tail ~'single/name'/tail ~$'dollar/name'/tail ~\/escaped/tail ~$name/tail ~${name}/tail ~$(printf command/name)/tail ~$((1 / 2))/tail ~`printf backquote/name`/tail ~日本%+/tail
@@ -176,91 +173,81 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
                       (literal)))
                   (cmd_suffix
                     (word
-                      (tilde_expansion
-                        (tilde_user
-                          (double_quoted
-                            (parameter_expansion
-                              (variable_name))
-                            (double_quote_text))))
+                      (literal)
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name))
+                        (double_quote_text))
                       (literal))
                     (word
-                      (tilde_expansion
-                        (tilde_user
-                          (single_quoted
-                            (single_quote_content))))
+                      (literal)
+                      (single_quoted
+                        (single_quote_content))
                       (literal))
                     (word
-                      (tilde_expansion
-                        (tilde_user
-                          (dollar_single_quoted
-                            (dollar_single_quote_text))))
+                      (literal)
+                      (dollar_single_quoted
+                        (dollar_single_quote_text))
                       (literal))
                     (word
-                      (tilde_expansion
-                        (tilde_user
-                          (escaped_character)
-                          (literal)))
+                      (literal)
+                      (escaped_character)
                       (literal))
                     (word
-                      (tilde_expansion
-                        (tilde_user
-                          (parameter_expansion
-                            (variable_name))))
+                      (literal)
+                      (parameter_expansion
+                        (variable_name))
                       (literal))
                     (word
-                      (tilde_expansion
-                        (tilde_user
-                          (parameter_expansion
-                            (variable_name))))
+                      (literal)
+                      (parameter_expansion
+                        (variable_name))
                       (literal))
                     (word
-                      (tilde_expansion
-                        (tilde_user
-                          (command_substitution
-                            (command_substitution_body
-                              (complete_commands
-                                (complete_command
-                                  (list
-                                    (and_or
-                                      (pipeline
-                                        (pipe_sequence
-                                          (command
-                                            (simple_command
-                                              (cmd_name
-                                                (word
-                                                  (literal)))
-                                              (cmd_suffix
-                                                (word
-                                                  (literal)))))))))))))))
+                      (literal)
+                      (command_substitution
+                        (command_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (literal)))))))))))))
                       (literal))
                     (word
-                      (tilde_expansion
-                        (tilde_user
-                          (arithmetic_expansion
-                            (arithmetic_binary_expression
-                              (arithmetic_number)
-                              (arithmetic_operator)
-                              (arithmetic_number)))))
+                      (literal)
+                      (arithmetic_expansion
+                        (arithmetic_binary_expression
+                          (arithmetic_number)
+                          (arithmetic_operator)
+                          (arithmetic_number)))
                       (literal))
                     (word
-                      (tilde_expansion
-                        (tilde_user
-                          (backquote_substitution
-                            (backquote_substitution_body
-                              (complete_commands
-                                (complete_command
-                                  (list
-                                    (and_or
-                                      (pipeline
-                                        (pipe_sequence
-                                          (command
-                                            (simple_command
-                                              (cmd_name
-                                                (word
-                                                  (literal)))
-                                              (cmd_suffix
-                                                (word
-                                                  (literal)))))))))))))))
+                      (literal)
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (word
+                                              (literal)))))))))))))
                       (literal))
                     (word
                       (tilde_expansion
@@ -279,29 +266,26 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
                     (assignment_word
                       (variable_name)
                       (assignment_value
-                        (tilde_expansion
-                          (tilde_user
-                            (command_substitution
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (simple_command
-                                                (cmd_name
-                                                  (word
-                                                    (literal)))
-                                                (cmd_suffix
-                                                  (word
-                                                    (literal)))))))))))))))
                         (literal)
-                        (tilde_expansion
-                          (tilde_user
-                            (double_quoted
-                              (double_quote_text))))
+                        (command_substitution
+                          (command_substitution_body
+                            (complete_commands
+                              (complete_command
+                                (list
+                                  (and_or
+                                    (pipeline
+                                      (pipe_sequence
+                                        (command
+                                          (simple_command
+                                            (cmd_name
+                                              (word
+                                                (literal)))
+                                            (cmd_suffix
+                                              (word
+                                                (literal)))))))))))))
+                        (literal)
+                        (double_quoted
+                          (double_quote_text))
                         (literal))))
                   (cmd_word
                     (word
@@ -323,48 +307,46 @@ printf ${value:-~$(printf parameter/name)/tail} ${value:-~$(printf terminal/name
                         (variable_name)
                         (parameter_value_operator)
                         (parameter_word
-                          (tilde_expansion
-                            (tilde_user
-                              (command_substitution
-                                (command_substitution_body
-                                  (complete_commands
-                                    (complete_command
-                                      (list
-                                        (and_or
-                                          (pipeline
-                                            (pipe_sequence
-                                              (command
-                                                (simple_command
-                                                  (cmd_name
-                                                    (word
-                                                      (literal)))
-                                                  (cmd_suffix
-                                                    (word
-                                                      (literal)))))))))))))))
+                          (literal)
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (word
+                                                  (literal)))))))))))))
                           (literal))))
                     (word
                       (parameter_expansion
                         (variable_name)
                         (parameter_value_operator)
                         (parameter_word
-                          (tilde_expansion
-                            (tilde_user
-                              (command_substitution
-                                (command_substitution_body
-                                  (complete_commands
-                                    (complete_command
-                                      (list
-                                        (and_or
-                                          (pipeline
-                                            (pipe_sequence
-                                              (command
-                                                (simple_command
-                                                  (cmd_name
-                                                    (word
-                                                      (literal)))
-                                                  (cmd_suffix
-                                                    (word
-                                                      (literal)))))))))))))))))))))))))))
+                          (literal)
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (word
+                                                  (literal)))))))))))))))))))))))))
   (linebreak
     (newline_list)))
 
@@ -577,143 +559,114 @@ nested backquote closers end assignment and argument tilde prefixes
 
 ==================
 single quote space
-:cst
 ==================
 echo ${x:-~'a' b}
 
 ------------------
 
-0:0  - 1:0    program
-0:0  - 0:17     commands: complete_commands
-0:0  - 0:17       command: complete_command
-0:0  - 0:17         body: list
-0:0  - 0:17           and_or: and_or
-0:0  - 0:17             pipeline: pipeline
-0:0  - 0:17               sequence: pipe_sequence
-0:0  - 0:17                 command: command
-0:0  - 0:17                   body: simple_command
-0:0  - 0:4                      name: cmd_name
-0:0  - 0:4                        word
-0:0  - 0:4                          literal `echo`
-0:4  - 0:17                     suffix: cmd_suffix
-0:5  - 0:17                       word: word
-0:5  - 0:17                         parameter_expansion
-0:5  - 0:6                            "$"
-0:6  - 0:7                            "{"
-0:7  - 0:8                            parameter: variable_name `x`
-0:8  - 0:10                           operator: parameter_value_operator `:-`
-0:10 - 0:16                           word: parameter_word
-0:10 - 0:16                             tilde_expansion
-0:10 - 0:11                               "~"
-0:11 - 0:16                               user: tilde_user
-0:11 - 0:14                                 single_quoted
-0:11 - 0:12                                   "'"
-0:12 - 0:13                                   single_quote_content `a`
-0:13 - 0:14                                   "'"
-0:14 - 0:16                                 literal ` b`
-0:16 - 0:17                           "}"
-0:17 - 1:0      trailing: linebreak
-0:17 - 1:0        newline_list
-0:17 - 1:0          "\n"
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal)
+                          (single_quoted
+                            (single_quote_content))
+                          (literal)))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 parameter pattern semicolon
-:cst
 ==================
 echo ${x#~$u;b}
 
 ------------------
 
-0:0  - 1:0    program
-0:0  - 0:15     commands: complete_commands
-0:0  - 0:15       command: complete_command
-0:0  - 0:15         body: list
-0:0  - 0:15           and_or: and_or
-0:0  - 0:15             pipeline: pipeline
-0:0  - 0:15               sequence: pipe_sequence
-0:0  - 0:15                 command: command
-0:0  - 0:15                   body: simple_command
-0:0  - 0:4                      name: cmd_name
-0:0  - 0:4                        word
-0:0  - 0:4                          literal `echo`
-0:4  - 0:15                     suffix: cmd_suffix
-0:5  - 0:15                       word: word
-0:5  - 0:15                         parameter_expansion
-0:5  - 0:6                            "$"
-0:6  - 0:7                            "{"
-0:7  - 0:8                            parameter: variable_name `x`
-0:8  - 0:9                            operator: parameter_pattern_operator `#`
-0:9  - 0:14                           pattern: parameter_pattern
-0:9  - 0:14                             tilde_expansion
-0:9  - 0:10                               "~"
-0:10 - 0:14                               user: tilde_user
-0:10 - 0:12                                 parameter_expansion
-0:10 - 0:11                                   "$"
-0:11 - 0:12                                   parameter: variable_name `u`
-0:12 - 0:14                                 literal `;b`
-0:14 - 0:15                           "}"
-0:15 - 1:0      trailing: linebreak
-0:15 - 1:0        newline_list
-0:15 - 1:0          "\n"
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_pattern_operator)
+                        (parameter_pattern
+                          (literal)
+                          (parameter_expansion
+                            (variable_name))
+                          (literal)))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 command substitution newline
-:cst
 ==================
 echo ${x:-~$(echo a)
 b}
 
 ------------------
 
-0:0  - 2:0    program
-0:0  - 1:2      commands: complete_commands
-0:0  - 1:2        command: complete_command
-0:0  - 1:2          body: list
-0:0  - 1:2            and_or: and_or
-0:0  - 1:2              pipeline: pipeline
-0:0  - 1:2                sequence: pipe_sequence
-0:0  - 1:2                  command: command
-0:0  - 1:2                    body: simple_command
-0:0  - 0:4                      name: cmd_name
-0:0  - 0:4                        word
-0:0  - 0:4                          literal `echo`
-0:4  - 1:2                      suffix: cmd_suffix
-0:5  - 1:2                        word: word
-0:5  - 1:2                          parameter_expansion
-0:5  - 0:6                            "$"
-0:6  - 0:7                            "{"
-0:7  - 0:8                            parameter: variable_name `x`
-0:8  - 0:10                           operator: parameter_value_operator `:-`
-0:10 - 1:1                            word: parameter_word
-0:10 - 1:1                              tilde_expansion
-0:10 - 0:11                               "~"
-0:11 - 1:1                                user: tilde_user
-0:11 - 0:20                                 command_substitution
-0:11 - 0:12                                   "$"
-0:12 - 0:13                                   "("
-0:13 - 0:19                                   body: command_substitution_body
-0:13 - 0:19                                     complete_commands
-0:13 - 0:19                                       command: complete_command
-0:13 - 0:19                                         body: list
-0:13 - 0:19                                           and_or: and_or
-0:13 - 0:19                                             pipeline: pipeline
-0:13 - 0:19                                               sequence: pipe_sequence
-0:13 - 0:19                                                 command: command
-0:13 - 0:19                                                   body: simple_command
-0:13 - 0:17                                                     name: cmd_name
-0:13 - 0:17                                                       word
-0:13 - 0:17                                                         literal `echo`
-0:17 - 0:19                                                     suffix: cmd_suffix
-0:18 - 0:19                                                       word: word
-0:18 - 0:19                                                         literal `a`
-0:19 - 0:20                                   ")"
-0:20 - 1:1                                  literal
-0:20 - 0:21                                   `\n`
-1:20 - 1:1                                    `b`
-1:1  - 1:2                            "}"
-1:2  - 2:0      trailing: linebreak
-1:2  - 2:0        newline_list
-1:2  - 2:0          "\n"
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal)
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (word
+                                                  (literal)))))))))))))
+                          (literal)))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 pattern source space
@@ -755,41 +708,34 @@ echo ${x:-~* b}
 
 ==================
 escape tab
-:cst
 ==================
 echo ${x:-~\a	b}
 
 ------------------
 
-0:0  - 1:0    program
-0:0  - 0:16     commands: complete_commands
-0:0  - 0:16       command: complete_command
-0:0  - 0:16         body: list
-0:0  - 0:16           and_or: and_or
-0:0  - 0:16             pipeline: pipeline
-0:0  - 0:16               sequence: pipe_sequence
-0:0  - 0:16                 command: command
-0:0  - 0:16                   body: simple_command
-0:0  - 0:4                      name: cmd_name
-0:0  - 0:4                        word
-0:0  - 0:4                          literal `echo`
-0:4  - 0:16                     suffix: cmd_suffix
-0:5  - 0:16                       word: word
-0:5  - 0:16                         parameter_expansion
-0:5  - 0:6                            "$"
-0:6  - 0:7                            "{"
-0:7  - 0:8                            parameter: variable_name `x`
-0:8  - 0:10                           operator: parameter_value_operator `:-`
-0:10 - 0:15                           word: parameter_word
-0:10 - 0:15                             tilde_expansion
-0:10 - 0:11                               "~"
-0:11 - 0:15                               user: tilde_user
-0:11 - 0:13                                 escaped_character `\\a`
-0:13 - 0:15                                 literal `\tb`
-0:15 - 0:16                           "}"
-0:16 - 1:0      trailing: linebreak
-0:16 - 1:0        newline_list
-0:16 - 1:0          "\n"
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (parameter_expansion
+                        (variable_name)
+                        (parameter_value_operator)
+                        (parameter_word
+                          (literal)
+                          (escaped_character)
+                          (literal)))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 tilde bracket delimiter : ~[a/b]
@@ -1037,166 +983,130 @@ tilde bracket delimiter : ~[a:b]
 
 ==================
 tilde bracket delimiter : ~[a\/b]
-:cst
 ==================
 : ~[a\/b]
 
 ------------------
 
-0:0 - 1:0   program
-0:0 - 0:9     commands: complete_commands
-0:0 - 0:9       command: complete_command
-0:0 - 0:9         body: list
-0:0 - 0:9           and_or: and_or
-0:0 - 0:9             pipeline: pipeline
-0:0 - 0:9               sequence: pipe_sequence
-0:0 - 0:9                 command: command
-0:0 - 0:9                   body: simple_command
-0:0 - 0:1                     name: cmd_name
-0:0 - 0:1                       word
-0:0 - 0:1                         literal `:`
-0:1 - 0:9                     suffix: cmd_suffix
-0:2 - 0:9                       word: word
-0:2 - 0:9                         tilde_expansion
-0:2 - 0:3                           "~"
-0:3 - 0:9                           user: tilde_user
-0:3 - 0:9                             pattern_bracket_source
-0:3 - 0:4                               "["
-0:4 - 0:8                               members: pattern_bracket_members_source
-0:4 - 0:5                                 member: pattern_bracket_character_source `a`
-0:5 - 0:7                                 member: escaped_character `\\/`
-0:7 - 0:8                                 member: pattern_bracket_character_source `b`
-0:8 - 0:9                               "]"
-0:9 - 1:0     trailing: linebreak
-0:9 - 1:0       newline_list
-0:9 - 1:0         "\n"
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (escaped_character)
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 tilde bracket delimiter x=~[a\:b]
-:cst
 ==================
 x=~[a\:b]
 
 ------------------
 
-0:0 - 1:0   program
-0:0 - 0:9     commands: complete_commands
-0:0 - 0:9       command: complete_command
-0:0 - 0:9         body: list
-0:0 - 0:9           and_or: and_or
-0:0 - 0:9             pipeline: pipeline
-0:0 - 0:9               sequence: pipe_sequence
-0:0 - 0:9                 command: command
-0:0 - 0:9                   body: simple_command
-0:0 - 0:9                     prefix: cmd_prefix
-0:0 - 0:9                       assignment: assignment_word
-0:0 - 0:1                         name: variable_name `x`
-0:1 - 0:2                         "="
-0:2 - 0:9                         value: assignment_value
-0:2 - 0:9                           tilde_expansion
-0:2 - 0:3                             "~"
-0:3 - 0:9                             user: tilde_user
-0:3 - 0:9                               pattern_bracket_source
-0:3 - 0:4                                 "["
-0:4 - 0:8                                 members: pattern_bracket_members_source
-0:4 - 0:5                                   member: pattern_bracket_character_source `a`
-0:5 - 0:7                                   member: escaped_character `\\:`
-0:7 - 0:8                                   member: pattern_bracket_character_source `b`
-0:8 - 0:9                                 "]"
-0:9 - 1:0     trailing: linebreak
-0:9 - 1:0       newline_list
-0:9 - 1:0         "\n"
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (literal)
+                        (pattern_bracket_source
+                          (pattern_bracket_members_source
+                            (pattern_bracket_character_source)
+                            (escaped_character)
+                            (pattern_bracket_character_source))))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 tilde bracket delimiter : ~[a"b/c"]
-:cst
 ==================
 : ~[a"b/c"]
 
 ------------------
 
-0:0  - 1:0    program
-0:0  - 0:11     commands: complete_commands
-0:0  - 0:11       command: complete_command
-0:0  - 0:11         body: list
-0:0  - 0:11           and_or: and_or
-0:0  - 0:11             pipeline: pipeline
-0:0  - 0:11               sequence: pipe_sequence
-0:0  - 0:11                 command: command
-0:0  - 0:11                   body: simple_command
-0:0  - 0:1                      name: cmd_name
-0:0  - 0:1                        word
-0:0  - 0:1                          literal `:`
-0:1  - 0:11                     suffix: cmd_suffix
-0:2  - 0:11                       word: word
-0:2  - 0:11                         tilde_expansion
-0:2  - 0:3                            "~"
-0:3  - 0:11                           user: tilde_user
-0:3  - 0:11                             pattern_bracket_source
-0:3  - 0:4                                "["
-0:4  - 0:10                               members: pattern_bracket_members_source
-0:4  - 0:5                                  member: pattern_bracket_character_source `a`
-0:5  - 0:10                                 member: double_quoted
-0:5  - 0:6                                    "\""
-0:6  - 0:9                                    double_quote_text `b/c`
-0:9  - 0:10                                   "\""
-0:10 - 0:11                               "]"
-0:11 - 1:0      trailing: linebreak
-0:11 - 1:0        newline_list
-0:11 - 1:0          "\n"
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (double_quoted
+                        (double_quote_text))
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 tilde bracket delimiter x=~[a$(printf b:c)]
-:cst
 ==================
 x=~[a$(printf b:c)]
 
 ------------------
 
-0:0  - 1:0    program
-0:0  - 0:19     commands: complete_commands
-0:0  - 0:19       command: complete_command
-0:0  - 0:19         body: list
-0:0  - 0:19           and_or: and_or
-0:0  - 0:19             pipeline: pipeline
-0:0  - 0:19               sequence: pipe_sequence
-0:0  - 0:19                 command: command
-0:0  - 0:19                   body: simple_command
-0:0  - 0:19                     prefix: cmd_prefix
-0:0  - 0:19                       assignment: assignment_word
-0:0  - 0:1                          name: variable_name `x`
-0:1  - 0:2                          "="
-0:2  - 0:19                         value: assignment_value
-0:2  - 0:19                           tilde_expansion
-0:2  - 0:3                              "~"
-0:3  - 0:19                             user: tilde_user
-0:3  - 0:19                               pattern_bracket_source
-0:3  - 0:4                                  "["
-0:4  - 0:18                                 members: pattern_bracket_members_source
-0:4  - 0:5                                    member: pattern_bracket_character_source `a`
-0:5  - 0:18                                   member: command_substitution
-0:5  - 0:6                                      "$"
-0:6  - 0:7                                      "("
-0:7  - 0:17                                     body: command_substitution_body
-0:7  - 0:17                                       complete_commands
-0:7  - 0:17                                         command: complete_command
-0:7  - 0:17                                           body: list
-0:7  - 0:17                                             and_or: and_or
-0:7  - 0:17                                               pipeline: pipeline
-0:7  - 0:17                                                 sequence: pipe_sequence
-0:7  - 0:17                                                   command: command
-0:7  - 0:17                                                     body: simple_command
-0:7  - 0:13                                                       name: cmd_name
-0:7  - 0:13                                                         word
-0:7  - 0:13                                                           literal `printf`
-0:13 - 0:17                                                       suffix: cmd_suffix
-0:14 - 0:17                                                         word: word
-0:14 - 0:17                                                           literal `b:c`
-0:17 - 0:18                                     ")"
-0:18 - 0:19                                 "]"
-0:19 - 1:0      trailing: linebreak
-0:19 - 1:0        newline_list
-0:19 - 1:0          "\n"
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (literal)
+                        (pattern_bracket_source
+                          (pattern_bracket_members_source
+                            (pattern_bracket_character_source)
+                            (command_substitution
+                              (command_substitution_body
+                                (complete_commands
+                                  (complete_command
+                                    (list
+                                      (and_or
+                                        (pipeline
+                                          (pipe_sequence
+                                            (command
+                                              (simple_command
+                                                (cmd_name
+                                                  (word
+                                                    (literal)))
+                                                (cmd_suffix
+                                                  (word
+                                                    (literal))))))))))))))))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 tilde bracket delimiter : "`: ~[/]`"
@@ -1299,3 +1209,75 @@ tilde bracket delimiter : "`x=~[:]`"
 0:12 - 1:0      trailing: linebreak
 0:12 - 1:0        newline_list
 0:12 - 1:0          "\n"
+
+==================
+empty quotes and variable expansions do not reenable tilde expansion
+==================
+: ~'' ~"" ~${empty} ~"$empty" ~/"tail"
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (single_quoted))
+                    (word
+                      (literal)
+                      (double_quoted))
+                    (word
+                      (literal)
+                      (parameter_expansion
+                        (variable_name)))
+                    (word
+                      (literal)
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name))))
+                    (word
+                      (tilde_expansion)
+                      (literal)
+                      (double_quoted
+                        (double_quote_text))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a quoted tilde candidate does not interrupt an assignment bracket
+==================
+x=[a:~"b"]
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_prefix
+                    (assignment_word
+                      (variable_name)
+                      (assignment_value
+                        (pattern_bracket_source
+                          (pattern_bracket_members_source
+                            (pattern_bracket_character_source)
+                            (pattern_bracket_character_source)
+                            (pattern_bracket_character_source)
+                            (double_quoted
+                              (double_quote_text)))))))))))))))
+  (linebreak (newline_list)))

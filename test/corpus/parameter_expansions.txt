@@ -2120,3 +2120,38 @@ ${#\
 EOF
 
 ------------------
+
+==================
+parameter brackets keep quoted slashes inside the expression
+==================
+: "${v#[a"/"b]}"
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_pattern_operator)
+                          (parameter_pattern
+                            (pattern_bracket_source
+                              (pattern_bracket_members_source
+                                (pattern_bracket_character_source)
+                                (double_quoted
+                                  (double_quote_text))
+                                (pattern_bracket_character_source))))))))))))))))
+  (linebreak
+    (newline_list)))

@@ -1078,7 +1078,7 @@ test_embedded_readers_apply_source_views_before_comments_and_closers(void) {
       fixtures[index].stages
     );
     assert(
-      skip_embedded_construct(NULL, &fixture.lookahead.lexer, ')') ==
+      skip_embedded_construct(NULL, &fixture.lookahead.lexer, ')', false) ==
       ARITHMETIC_VALIDATION_VALID
     );
     assert(fixture.lookahead.lexer.lookahead == fixtures[index].next);
@@ -2998,6 +2998,11 @@ static void test_double_quoted_parameter_delimiters(void) {
     {"\"${x:-'}\"\n", "${x:-'}"},
     {"\"${x:-a\\qb}\"\n", "${x:-a\\qb}"},
     {"\"${x:-a\\}b}\"\n", "${x:-a}b}"},
+    {"\"${x:-\"a\\}b\"}\"\n", "${x:-a}b}"},
+    {"\"${x:-\"a\\qb\"}\"\n", "${x:-a\\qb}"},
+    {"\"${x#\"a\\}b\"}\"\n", "${x#a}b}"},
+    {"\"${x:-$(printf \"a\\}b\")}\"\n", "${x:-$(printf a\\}b)}"},
+    {"\"a\\}b\"\n", "a\\}b"},
     {"\"${x:-\"'ab'\"}\"\n", "${x:-'ab'}"},
     {"\"${x#\"'ab'\"}\"\n", "${x#'ab'}"},
     {"\"${x:-${y:-'EOF'}}\"\n", "${x:-${y:-'EOF'}}"},
@@ -3054,6 +3059,20 @@ static void test_double_quoted_substitution_delimiter_spelling(void) {
     {"${x#'ab'}\n", "${x#ab}"},
     {"$(printf $'a\\x62')\n", "$(printf ab)"},
     {"$(printf $'a\\'b')\n", "$(printf a'b)"},
+    {"$(printf ${x:-a\\qb})\n", "$(printf ${x:-a\\qb})"},
+    {"$(printf ${x#a\\qb})\n", "$(printf ${x#a\\qb})"},
+    {"`printf ${x:-a\\qb}`\n", "`printf ${x:-a\\qb}`"},
+    {"$(printf ${x:-a\\}b})\n", "$(printf ${x:-a}b})"},
+    {"$(printf \"${x#a\\qb}\")\n", "$(printf ${x#aqb})"},
+    {"$(printf ${x:-${y#a\\qb}})\n", "$(printf ${x:-${y#a\\qb}})"},
+    {"$(printf \"${x:-${y#a\\qb}}\")\n", "$(printf ${x:-${y#aqb}})"},
+    {"${x:-a\\qb}\n", "${x:-aqb}"},
+    {"${x#a\\qb}\n", "${x#aqb}"},
+    {"${x:-\"a\\}b\"}\n", "${x:-a}b}"},
+    {"${x#\"a\\}b\"}\n", "${x#a}b}"},
+    {"${x:-\"a\\qb\"}\n", "${x:-a\\qb}"},
+    {"$(printf ${x:-\"a\\}b\"})\n", "$(printf ${x:-a}b})"},
+    {"${x:-$(printf \"a\\}b\")}\n", "${x:-$(printf a\\}b)}"},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(unquoted); index += 1) {
     assert_text_delimiter_fixture(

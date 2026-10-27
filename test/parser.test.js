@@ -267,7 +267,7 @@ test("sh: declaration edits reclassify reused suffixes in both directions", () =
       removed: "export",
       inserted: '"export"',
       beforeNames: ["x"],
-      afterNames: [],
+      afterNames: ["x"],
     },
     {
       name: "assignment-name",
@@ -1905,8 +1905,7 @@ test("sh: tilde, assignment, and compound-tail classifications remain stable", (
     { byte: 12, deleteBytes: 1, insert: "" },
   );
   for (const [range, item] of [
-    ["0:2-0:16", "tilde_expansion"],
-    ["0:3-0:16", "user: tilde_user"],
+    ["0:2-0:3", "literal `~`"],
     ["0:3-0:16", "double_quoted"],
     ["0:4-0:15", "command_substitution"],
     ["0:11-0:14", "literal `a/b`"],

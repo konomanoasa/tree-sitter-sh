@@ -141,7 +141,7 @@ export -p x=1 name >file=value y=2
     (newline_list)))
 
 ==================
-declaration recognition excludes quoted names and command options
+declaration recognition includes quoted names but excludes command options
 ==================
 
 "export" x=sh
@@ -166,7 +166,9 @@ command -- export y=sh
                         (double_quote_text))))
                   (cmd_suffix
                     (word
-                      (literal))))))))))
+                      (variable_name)
+                      (assignment_value
+                        (literal)))))))))))
     (newline_list)
     (complete_command
       (list
@@ -924,7 +926,10 @@ quoted and dynamic names
 0:7  - 0:8                            "\""
 0:8  - 0:12                     suffix: cmd_suffix
 0:9  - 0:12                       word: word
-0:9  - 0:12                         literal `a=1`
+0:9  - 0:10                         name: variable_name `a`
+0:10 - 0:11                         "="
+0:11 - 0:12                         value: assignment_value
+0:11 - 0:12                           literal `1`
 0:12 - 0:13           separator: separator_op
 0:12 - 0:13             ";"
 0:14 - 0:27           and_or: and_or
@@ -938,7 +943,10 @@ quoted and dynamic names
 0:16 - 0:23                         literal `eadonly`
 0:23 - 0:27                     suffix: cmd_suffix
 0:24 - 0:27                       word: word
-0:24 - 0:27                         literal `b=2`
+0:24 - 0:25                         name: variable_name `b`
+0:25 - 0:26                         "="
+0:26 - 0:27                         value: assignment_value
+0:26 - 0:27                           literal `2`
 0:27 - 0:28           separator: separator_op
 0:27 - 0:28             ";"
 0:29 - 0:41           and_or: and_or
@@ -955,7 +963,10 @@ quoted and dynamic names
 0:36 - 0:37                           "\""
 0:37 - 0:41                     suffix: cmd_suffix
 0:38 - 0:41                       word: word
-0:38 - 0:41                         literal `c=3`
+0:38 - 0:39                         name: variable_name `c`
+0:39 - 0:40                         "="
+0:40 - 0:41                         value: assignment_value
+0:40 - 0:41                           literal `3`
 0:41 - 0:42           separator: separator_op
 0:41 - 0:42             ";"
 0:43 - 0:51           and_or: and_or
@@ -1008,7 +1019,10 @@ quoted and dynamic names
 0:82 - 0:88                           double_quote_text `export`
 0:88 - 0:89                           "\""
 0:90 - 0:93                       word: word
-0:90 - 0:93                         literal `f=6`
+0:90 - 0:91                         name: variable_name `f`
+0:91 - 0:92                         "="
+0:92 - 0:93                         value: assignment_value
+0:92 - 0:93                           literal `6`
 0:93 - 1:0      trailing: linebreak
 0:93 - 1:0        newline_list
 0:93 - 1:0          "\n"
@@ -1380,3 +1394,148 @@ export x=~/bin:~user y="${v:-ok}" z=$((1+2)) g=[a-z]*
 0:53 - 1:0      trailing: linebreak
 0:53 - 1:0        newline_list
 0:53 - 1:0          "\n"
+
+==================
+empty quotes retain the declaration name
+==================
+''export X=~
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (single_quoted)
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (variable_name)
+                      (assignment_value
+                        (tilde_expansion))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+dollar quote decoding recognizes declaration names
+==================
+$'\x65xport' X=~
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (dollar_single_quoted
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text))))
+                  (cmd_suffix
+                    (word
+                      (variable_name)
+                      (assignment_value
+                        (tilde_expansion))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+quoted command forwards to a quoted declaration name
+==================
+"command" 'readonly' X=~
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (double_quoted
+                        (double_quote_text))))
+                  (cmd_suffix
+                    (word
+                      (single_quoted
+                        (single_quote_content)))
+                    (word
+                      (variable_name)
+                      (assignment_value
+                        (tilde_expansion))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+dynamic command names do not infer declarations
+==================
+"${cmd:-export}" X=~
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (double_quoted
+                        (parameter_expansion
+                          (variable_name)
+                          (parameter_value_operator)
+                          (parameter_word
+                            (double_quote_text))))))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a quoted declaration prefix is not a complete utility name
+==================
+"export"suffix X=~
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (double_quoted
+                        (double_quote_text))
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))

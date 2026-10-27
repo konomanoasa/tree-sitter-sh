@@ -57,8 +57,8 @@ printf [a] [abc] [!a-z] []-] [a-zA-Z] [^a] [*?] [a-*] [*-z] [[:alpha:]] [[.ch.]]
                             end: (pattern_bracket_character_source)))))
                     word: (word
                       (pattern_bracket_source
+                        negation: (pattern_bracket_negation_source)
                         members: (pattern_bracket_members_source
-                          member: (pattern_bracket_character_source)
                           member: (pattern_bracket_character_source))))
                     word: (word
                       (pattern_bracket_source
@@ -4392,3 +4392,92 @@ enclosing double quote fold
 0:16 - 1:0      trailing: linebreak
 0:16 - 1:0        newline_list
 0:16 - 1:0          "\n"
+
+==================
+caret negation skips empty quotes but keeps quoted and later carets literal
+==================
+: [^a] [''^a] [""!a] [^]] [^] [\^a] [a^]
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_negation_source)
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (pattern_bracket_source
+                        (single_quoted)
+                        (pattern_bracket_negation_source)
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (pattern_bracket_source
+                        (double_quoted)
+                        (pattern_bracket_negation_source)
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_negation_source)
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (literal))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (escaped_character)
+                          (pattern_bracket_character_source))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)
+                          (pattern_bracket_character_source)))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+empty quotes after negation preserve the initial closing bracket member
+==================
+: [!'']] [^""]]
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name (word (literal)))
+                  (cmd_suffix
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_negation_source)
+                        (single_quoted)
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source))))
+                    (word
+                      (pattern_bracket_source
+                        (pattern_bracket_negation_source)
+                        (double_quoted)
+                        (pattern_bracket_members_source
+                          (pattern_bracket_character_source)))))))))))))
+  (linebreak (newline_list)))
