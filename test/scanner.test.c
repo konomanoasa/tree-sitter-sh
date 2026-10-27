@@ -1022,8 +1022,8 @@ static void test_delimiter_source_views_preserve_quotedness_and_bytes(void) {
     {"'E\\\nOF' ", "E\\\nOF", true},
     {"\"E\\\nOF\" ", "EOF", true},
     {"a\\ b ", "a b", true},
-    {"`printf \\`x\\`#tag END` ", "`printf \\`x\\`#tag END`", false},
-    {"`printf \\\\\nEOF` ", "`printf \\\\\nEOF`", false},
+    {"`printf \\`x\\`#tag END` ", "`printf `x`#tag END`", true},
+    {"`printf \\\\\nEOF` ", "`printf \\\nEOF`", true},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
     struct SourceStage stage = source_stage(SOURCE_REMOVE_CONTINUATIONS);
@@ -2742,17 +2742,27 @@ static void test_strict_scalar_encoding(void) {
   ts_free(exact.data);
 }
 
+static void assert_control_escape_bytes(
+  int32_t character,
+  const uint8_t *expected,
+  size_t length
+) {
+  struct ByteBuffer buffer = {0};
+  assert(append_control_escape(&buffer, character));
+  assert(buffer.length == length);
+  assert(memcmp(buffer.data, expected, length) == 0);
+  ts_free(buffer.data);
+}
+
 static void test_control_escape_table(void) {
   uint8_t value = 0;
   for (int32_t index = 0; index < 26; index += 1) {
     assert(defined_control_escape_byte('a' + index, &value));
     assert(value == (uint8_t)(index + 1));
-    assert(control_escape_byte('a' + index, &value));
-    assert(value == (uint8_t)(index + 1));
+    assert_control_escape_bytes('a' + index, &value, 1);
     assert(defined_control_escape_byte('A' + index, &value));
     assert(value == (uint8_t)(index + 1));
-    assert(control_escape_byte('A' + index, &value));
-    assert(value == (uint8_t)(index + 1));
+    assert_control_escape_bytes('A' + index, &value, 1);
   }
 
   const int32_t punctuation[] = {'[', '\\', ']', '^', '_', '?'};
@@ -2760,18 +2770,21 @@ static void test_control_escape_table(void) {
   for (size_t index = 0; index < sizeof(expected); index += 1) {
     assert(defined_control_escape_byte(punctuation[index], &value));
     assert(value == expected[index]);
-    assert(control_escape_byte(punctuation[index], &value));
-    assert(value == expected[index]);
+    assert_control_escape_bytes(punctuation[index], &value, 1);
   }
 
-  const int32_t unspecified[] = {'@', '`', '{', 0xff};
-  const uint8_t fallback[] = {0x00, 0x00, 0x1b, 0x1f};
+  const int32_t unspecified[] = {'@', '`', '{'};
+  const uint8_t fallback[] = {0x00, 0x00, 0x1b};
   for (size_t index = 0; index < sizeof(fallback); index += 1) {
     assert(!defined_control_escape_byte(unspecified[index], &value));
-    assert(control_escape_byte(unspecified[index], &value));
-    assert(value == fallback[index]);
+    assert_control_escape_bytes(unspecified[index], &fallback[index], 1);
   }
-  assert(!control_escape_byte(-1, &value));
+  const uint8_t accented[] = {0x03, 0xa9};
+  assert_control_escape_bytes(0xe9, accented, sizeof(accented));
+  const uint8_t emoji[] = {0x10, 0x9f, 0x98, 0x80};
+  assert_control_escape_bytes(0x1f600, emoji, sizeof(emoji));
+  struct ByteBuffer buffer = {0};
+  assert(!append_control_escape(&buffer, -1));
 }
 
 static bool line_matches_document(
@@ -2984,15 +2997,15 @@ static void test_double_quoted_parameter_delimiters(void) {
     {"\"${x:-'EOF'}\"\n", "${x:-'EOF'}"},
     {"\"${x:-'}\"\n", "${x:-'}"},
     {"\"${x:-a\\qb}\"\n", "${x:-a\\qb}"},
-    {"\"${x:-a\\}b}\"\n", "${x:-a\\}b}"},
-    {"\"${x:-\"'ab'\"}\"\n", "${x:-ab}"},
-    {"\"${x#\"'ab'\"}\"\n", "${x#ab}"},
+    {"\"${x:-a\\}b}\"\n", "${x:-a}b}"},
+    {"\"${x:-\"'ab'\"}\"\n", "${x:-'ab'}"},
+    {"\"${x#\"'ab'\"}\"\n", "${x#'ab'}"},
     {"\"${x:-${y:-'EOF'}}\"\n", "${x:-${y:-'EOF'}}"},
-    {"\"${x:-$(printf 'EOF')}\"\n", "${x:-$(printf 'EOF')}"},
-    {"\"${x#'EOF'}\"\n", "${x#'EOF'}"},
-    {"\"${12%%'EOF'}\"\n", "${12%%'EOF'}"},
-    {"\"${?#'EOF'}\"\n", "${?#'EOF'}"},
-    {"\"${x:-${y#'EOF'}'tail'}\"\n", "${x:-${y#'EOF'}'tail'}"},
+    {"\"${x:-$(printf 'EOF')}\"\n", "${x:-$(printf EOF)}"},
+    {"\"${x#'EOF'}\"\n", "${x#EOF}"},
+    {"\"${12%%'EOF'}\"\n", "${12%%EOF}"},
+    {"\"${?#'EOF'}\"\n", "${?#EOF}"},
+    {"\"${x:-${y#'EOF'}'tail'}\"\n", "${x:-${y#EOF}'tail'}"},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
     assert_text_delimiter_fixture(
@@ -3010,23 +3023,23 @@ static void test_double_quoted_substitution_delimiter_spelling(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
   const char *fixtures[][2] = {
-    {"\"$(printf 'ab')\"\n", "$(printf 'ab')"},
+    {"\"$(printf 'ab')\"\n", "$(printf ab)"},
     {"\"$(printf \"ab\")\"\n", "$(printf ab)"},
-    {"\"${x##'ab'}\"\n", "${x##'ab'}"},
-    {"\"${x%'ab'}\"\n", "${x%'ab'}"},
-    {"\"$(printf ')')\"\n", "$(printf ')')"},
-    {"\"$(printf $(printf 'ab'))\"\n", "$(printf $(printf 'ab'))"},
-    {"\"`printf 'ab'`\"\n", "`printf 'ab'`"},
-    {"\"$((1+$(printf '2')))\"\n", "$((1+$(printf '2')))"},
-    {"pre\"$(printf 'ab')\"post\n", "pre$(printf 'ab')post"},
-    {"\"$(printf 'ab')\"'tail'\n", "$(printf 'ab')tail"},
-    {"\"$(printf 'ab')\"$(printf 'cd')\n", "$(printf 'ab')$(printf cd)"},
+    {"\"${x##'ab'}\"\n", "${x##ab}"},
+    {"\"${x%'ab'}\"\n", "${x%ab}"},
+    {"\"$(printf ')')\"\n", "$(printf ))"},
+    {"\"$(printf $(printf 'ab'))\"\n", "$(printf $(printf ab))"},
+    {"\"`printf 'ab'`\"\n", "`printf ab`"},
+    {"\"$((1+$(printf '2')))\"\n", "$((1+$(printf 2)))"},
+    {"pre\"$(printf 'ab')\"post\n", "pre$(printf ab)post"},
+    {"\"$(printf 'ab')\"'tail'\n", "$(printf ab)tail"},
+    {"\"$(printf 'ab')\"$(printf 'cd')\n", "$(printf ab)$(printf cd)"},
     {"$(printf 'ab')\"tail\"\n", "$(printf ab)tail"},
     {"\"`printf \\\"ab\\\"`\"\n", "`printf \"ab\"`"},
-    {"\"`printf $'ab'`\"\n", "`printf $'ab'`"},
-    {"\"$(printf $'a\\x62')\"\n", "$(printf 'ab')"},
-    {"\"$(printf \"'ab'\")\"\n", "$(printf ab)"},
-    {"\"$(printf '\"')\"\n", "$(printf ')\""},
+    {"\"`printf $'ab'`\"\n", "`printf ab`"},
+    {"\"$(printf $'a\\x62')\"\n", "$(printf ab)"},
+    {"\"$(printf \"'ab'\")\"\n", "$(printf 'ab')"},
+    {"\"$(printf '\"')\"\n", "$(printf \")"},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
     assert_text_delimiter_fixture(
@@ -3037,17 +3050,17 @@ static void test_double_quoted_substitution_delimiter_spelling(void) {
     );
   }
   const char *unquoted[][2] = {
-    {"$(printf 'ab')\n", "$(printf 'ab')"},
-    {"${x#'ab'}\n", "${x#'ab'}"},
-    {"$(printf $'a\\x62')\n", "$(printf 'ab')"},
-    {"$(printf $'a\\'b')\n", "$(printf 'a'\\''b')"},
+    {"$(printf 'ab')\n", "$(printf ab)"},
+    {"${x#'ab'}\n", "${x#ab}"},
+    {"$(printf $'a\\x62')\n", "$(printf ab)"},
+    {"$(printf $'a\\'b')\n", "$(printf a'b)"},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(unquoted); index += 1) {
     assert_text_delimiter_fixture(
       scanner,
       unquoted[index][0],
       unquoted[index][1],
-      false
+      true
     );
   }
   tree_sitter_sh_external_scanner_destroy(scanner);
@@ -3061,16 +3074,19 @@ static void test_arithmetic_delimiters_preserve_nested_quote_context(void) {
     const char *delimiter;
     bool quoted;
   } fixtures[] = {
+    {"$((1+'2'))\n", "$((1+2))", true},
+    {"$((1+\"2\"))\n", "$((1+2))", true},
+    {"\"$((1+'2'))\"\n", "$((1+2))", true},
     {"\"$((1+${x:-'2'}))\"\n", "$((1+${x:-'2'}))", true},
     {"$((1+${x:-'2'}))\n", "$((1+${x:-'2'}))", false},
     {"$((1+${x:-'}))\n", "$((1+${x:-'}))", false},
-    {"$((1+${x:-a\\qb}))\n", "$((1+${x:-a\\qb}))", false},
-    {"$((1+${x:-a\\}b}))\n", "$((1+${x:-a\\}b}))", false},
-    {"$((1+${x:-\\$y}))\n", "$((1+${x:-\\$y}))", false},
-    {"$((1+${x#'2'}))\n", "$((1+${x#'2'}))", false},
+    {"$((1+${x:-a\\qb}))\n", "$((1+${x:-a\\qb}))", true},
+    {"$((1+${x:-a\\}b}))\n", "$((1+${x:-a}b}))", true},
+    {"$((1+${x:-\\$y}))\n", "$((1+${x:-$y}))", true},
+    {"$((1+${x#'2'}))\n", "$((1+${x#2}))", true},
     {"$((1+$((2+${x:-'3'}))))\n", "$((1+$((2+${x:-'3'}))))", false},
-    {"$((1+$(printf '2')))\n", "$((1+$(printf '2')))", false},
-    {"$((1+`printf \\\"2\\\"`))\n", "$((1+`printf \\\"2\\\"`))", false},
+    {"$((1+$(printf '2')))\n", "$((1+$(printf 2)))", true},
+    {"$((1+`printf \\\"2\\\"`))\n", "$((1+`printf \"2\"`))", true},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
     assert_text_delimiter_fixture(
@@ -3114,14 +3130,14 @@ static void test_substitution_hash_delimiter_words(void) {
   assert_text_delimiter_fixture(
     scanner,
     "`printf $'x'#tag END`\n",
-    "`printf $'x'#tag END`",
-    false
+    "`printf x#tag END`",
+    true
   );
   assert_text_delimiter_fixture(
     scanner,
     "`printf \\`x\\`#tag END`\n",
-    "`printf \\`x\\`#tag END`",
-    false
+    "`printf `x`#tag END`",
+    true
   );
 
   assert_text_delimiter_fixture(
@@ -3145,8 +3161,8 @@ static void test_substitution_hash_delimiter_words(void) {
   assert_text_delimiter_fixture(
     scanner,
     "`printf \\`x\\`\\\n#tag END`\n",
-    "`printf \\`x\\`#tag END`",
-    false
+    "`printf `x`#tag END`",
+    true
   );
 
   assert_text_delimiter_fixture(
@@ -3166,12 +3182,13 @@ static void test_dollar_single_quote_escape_units(void) {
     size_t end;
     int32_t following;
   } cases[] = {
-    {{'\\', 'x', '1', '2', '3', 'g'}, 6, 5, 'g'},
-    {{'\\', 'x', 'a', 'B', 'C', 'D', 'E', 'f', '\''}, 9, 8, '\''},
+    {{'\\', 'x', '1', '2', '3', 'g'}, 6, 4, '3'},
+    {{'\\', 'x', 'a', 'B', 'C', 'D', 'E', 'f', '\''}, 9, 4, 'C'},
     {{'\\', 'x', '4', '1', '\''}, 5, 4, '\''},
     {{'\\', 'x', 'F', 'g'}, 4, 3, 'g'},
     {{'\\', '1', '2', '3', '4'}, 5, 4, '4'},
-    {{'\\', 'x', '1', '2', '3'}, 5, 5, 0},
+    {{'\\', 'x', '1', '2', '3'}, 5, 4, '3'},
+    {{'\\', 'x', '\''}, 3, 2, '\''},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(cases); index += 1) {
     struct MockLexer mock;
@@ -3195,6 +3212,21 @@ test_dollar_single_quote_delimiter_bytes_survive_serialization(void) {
     uint8_t delimiter[4];
     size_t delimiter_length;
   } fixtures[] = {
+    {"$'\\q'\n", {'\\', 'q'}, 2},
+    {"$'\\x'\n", {0}, 0},
+    {"$'\\x141'\n", {0x14, '1'}, 2},
+    {"$'\\7774'\n", {0xff, '4'}, 2},
+    {"$'A\\400B'C\n", {'A', 'C'}, 2},
+    {"$'A\\c@B'C\n", {'A', 'C'}, 2},
+    {"$'A\\xgB'C\n", {'A', 'C'}, 2},
+    {"$'A\\0B'$'D\\0E'F\n", {'A', 'D', 'F'}, 3},
+    {"$'A\\0B\\'C'D\n", {'A', 'D'}, 2},
+    {"$'\\u0041B'\n", {'A', 'B'}, 2},
+    {"$'\\U00000041B'\n", {'A', 'B'}, 2},
+    {"$'A\\uGB'C\n", {'A', 'C'}, 2},
+    {"$'\\u00e9'\n", {0xc3, 0xa9}, 2},
+    {"$'\\ud800'\n", {0xed, 0xa0, 0x80}, 3},
+    {"$'A\\U00110000B'\n", {'A', 'B'}, 2},
     {"$'\\c?'\n", {0x7f}, 1},
     {"$'\\xC3\\xBF'\n", {0xc3, 0xbf}, 2},
     {"$'\\303\\277'\n", {0xc3, 0xbf}, 2},
@@ -3263,13 +3295,7 @@ test_dollar_single_quote_delimiter_bytes_survive_serialization(void) {
     unspecified_control_input,
     ARRAY_LENGTH(unspecified_control_input)
   ));
-  const uint8_t unspecified_fallback[] = {0x00, 0x00, 0x1b, 0x1f};
-  assert_document_bytes(
-    &scanner->pending_documents[0],
-    unspecified_fallback,
-    sizeof(unspecified_fallback),
-    true
-  );
+  assert_document_bytes(&scanner->pending_documents[0], NULL, 0, true);
 
   tree_sitter_sh_external_scanner_destroy(scanner);
 }

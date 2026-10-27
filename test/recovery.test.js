@@ -1129,16 +1129,11 @@ test("sh: repairing an encoded backquote closer restores two nested substitution
   }
 });
 
-test("sh: repairing terminator newlines at substitution boundaries matches a fresh parse", () => {
+test("sh: repairing terminator newlines at command substitution boundaries matches a fresh parse", () => {
   for (const [name, prefix, closing] of [
     ["command-named", ": $(cat <<E\nx\nE", ")\n"],
     ["command-empty", ": $(cat <<''\n", ")\n"],
     ["command-empty-tabs", ": $(cat <<-''\n\t", ")\n"],
-    ["backquote-named", ": `cat <<E\nx\nE", "`\n"],
-    ["backquote-quoted", ": `cat <<'E'\nx\nE", "`\n"],
-    ["backquote-empty", ": `cat <<''\n", "`\n"],
-    ["backquote-empty-tabs", ": `cat <<-''\n\t", "`\n"],
-    ["backquote-empty-after-body", ": `cat <<''\nx\n", "`\n"],
   ]) {
     const broken = writeSource(
       `${name}-without-terminator-newline`,
@@ -1188,27 +1183,27 @@ test("sh: heredoc lookahead terminates at source boundaries and preserves repair
     {
       name: "empty-backquote-bracket",
       source: "echo [`cat <<''\n`]\n",
-      status: 1,
+      status: 0,
     },
     {
       name: "empty-backquote-arithmetic",
       source: "echo $((`cat <<''\n`+1))\n",
-      status: 1,
+      status: 0,
     },
     {
       name: "empty-after-body-bracket",
       source: "echo [`cat <<''\nx\n`]\n",
-      status: 1,
+      status: 0,
     },
     {
       name: "empty-after-body-arithmetic",
       source: "echo $((`cat <<''\nx\n`+1))\n",
-      status: 1,
+      status: 0,
     },
     {
       name: "partial-end-backquote",
       source: "echo [`cat <<X\nX`]\n",
-      status: 1,
+      status: 0,
     },
   ]) {
     const output = runParse({

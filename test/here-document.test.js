@@ -148,6 +148,112 @@ for (const { name, source, suffix, endingCount, initialEndings = 0 } of [
   });
 }
 
+for (const { name, prefix, suffix = "`\necho after\n", ending, count = 1 } of [
+  { name: "unquoted body", prefix: "x=`cat <<E\nBODY", ending: "\nE\n" },
+  { name: "quoted body", prefix: "x=`cat <<'E'\n${x", ending: "\nE\n" },
+  { name: "empty delimiter", prefix: "x=`cat <<''\nBODY", ending: "\n\n" },
+  { name: "empty body", prefix: "x=`cat <<''\n", ending: "\n" },
+  { name: "empty tabs", prefix: "x=`cat <<-''\n\t", ending: "\n" },
+  { name: "empty after body", prefix: "x=`cat <<''\nx\n", ending: "\n" },
+  {
+    name: "queued bodies",
+    prefix: "x=`cat <<A <<B\nFIRST",
+    ending: "\nA\nSECOND\nB\n",
+    count: 2,
+  },
+  { name: "delimiter without newline", prefix: "x=`cat <<E\nE", ending: "\n" },
+  {
+    name: "quoted delimiter without newline",
+    prefix: "x=`cat <<'E'\nx\nE",
+    ending: "\n",
+  },
+  {
+    name: "bracket",
+    prefix: "echo [`cat <<E\nBODY",
+    suffix: "`]\necho after\n",
+    ending: "\nE\n",
+  },
+  {
+    name: "arithmetic",
+    prefix: "echo $((`cat <<E\nBODY",
+    suffix: "`+1))\necho after\n",
+    ending: "\nE\n",
+  },
+  {
+    name: "nested backquote",
+    prefix: ": `echo \\`cat <<E\nBODY",
+    suffix: "\\``\necho after\n",
+    ending: "\nE\n",
+  },
+]) {
+  test(`sh: ${name} switches between backquote and real here-document endings`, () => {
+    const initial = writeSource(`${name}-backquote-body`, prefix + suffix);
+    const final = writeSource(
+      `${name}-backquote-ending`,
+      prefix + ending + suffix,
+    );
+    const insert = { byte: prefix.length, deleteBytes: 0, insert: ending };
+    const remove = {
+      byte: prefix.length,
+      deleteBytes: ending.length,
+      insert: "",
+    };
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      name,
+      insert,
+    )) {
+      assertNodeCount(output, "here_document_end", count);
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `${name}-undo`,
+      remove,
+    )) {
+      assertNodeCount(output, "here_document_end", 0);
+      const row = (prefix + suffix).split("\n").length - 2;
+      assertCstRange(output, `${row}:0-${row}:10`, "command: complete_command");
+      if (name === "delimiter without newline") {
+        assertCstRange(output, "1:0-1:1", "here_document_text `E`");
+      }
+    }
+    assertIncrementalEqualsFresh(
+      initial,
+      initial,
+      `${name}-roundtrip`,
+      insert,
+      remove,
+    );
+  });
+}
+
+test("sh: a backquote ending does not complete a parameter inside an expanded here-document", () => {
+  const quoted = writeSource(
+    "backquote-quoted-unclosed-parameter",
+    "x=`cat <<'E'\n${x`\necho after\n",
+  );
+  const expanded = writeSource(
+    "backquote-expanded-unclosed-parameter",
+    "x=`cat <<E\n${x`\necho after\n",
+  );
+  const unquote = { byte: 9, deleteBytes: 3, insert: "E" };
+  for (const output of parseRecoveryAfterEdits(
+    quoted,
+    expanded,
+    "unquote-backquote-body",
+    unquote,
+  )) {
+    assert.ok(hasRecovery(output));
+  }
+  assertIncrementalEqualsFresh(expanded, quoted, "quote-backquote-body", {
+    byte: 9,
+    deleteBytes: 1,
+    insert: "'E'",
+  });
+});
+
 test("sh: nested here-documents activate at the scanner state capacity", () => {
   const nestedDelimiterBytes = 251;
   const capacityDelimiterBytes = 466;
@@ -799,23 +905,23 @@ test("sh: editing substitution delimiter quotes updates matching and restores th
     {
       name: "pattern-outer-quotes",
       initialWord: `"\${x#'ab'}"`,
-      initialDelimiter: `\${x#'ab'}`,
+      initialDelimiter: `\${x#ab}`,
       finalWord: `\${x#'ab'}`,
-      finalDelimiter: `\${x#'ab'}`,
-      finalQuoted: false,
+      finalDelimiter: `\${x#ab}`,
+      finalQuoted: true,
     },
     {
       name: "command-outer-quotes",
       initialWord: "\"$(printf 'ab')\"",
-      initialDelimiter: "$(printf 'ab')",
+      initialDelimiter: "$(printf ab)",
       finalWord: "$(printf 'ab')",
-      finalDelimiter: "$(printf 'ab')",
-      finalQuoted: false,
+      finalDelimiter: "$(printf ab)",
+      finalQuoted: true,
     },
     {
       name: "command-inner-quotes",
       initialWord: "\"$(printf 'ab')\"",
-      initialDelimiter: "$(printf 'ab')",
+      initialDelimiter: "$(printf ab)",
       finalWord: '"$(printf "ab")"',
       finalDelimiter: "$(printf ab)",
       finalQuoted: true,
@@ -823,7 +929,7 @@ test("sh: editing substitution delimiter quotes updates matching and restores th
     {
       name: "trailing-outer-quote",
       initialWord: "\"$(printf 'ab')\"",
-      initialDelimiter: "$(printf 'ab')",
+      initialDelimiter: "$(printf ab)",
       finalWord: "$(printf 'ab')\"tail\"",
       finalDelimiter: "$(printf ab)tail",
       finalQuoted: true,
@@ -902,6 +1008,112 @@ test("sh: editing substitution delimiter quotes updates matching and restores th
       initial,
       `${name}-repair-outer-quote`,
       { byte: 6, deleteBytes: 0, insert: '"' },
+    );
+  }
+});
+
+test("sh: escape edits update delimiter bytes without discarding quoted source", () => {
+  for (const {
+    name,
+    initialWord,
+    initialDelimiter,
+    finalWord,
+    finalDelimiter,
+  } of [
+    {
+      name: "unknown escape",
+      initialWord: "$'\\q'",
+      initialDelimiter: "\\q",
+      finalWord: "$'\\%'",
+      finalDelimiter: "\\%",
+    },
+    {
+      name: "hex digit limit",
+      initialWord: "$'\\x41'",
+      initialDelimiter: "A",
+      finalWord: "$'\\x4142'",
+      finalDelimiter: "A42",
+    },
+    {
+      name: "NUL quote scope",
+      initialWord: "$'A\\0B'C",
+      initialDelimiter: "AC",
+      finalWord: "$'A\\qB'C",
+      finalDelimiter: "A\\qBC",
+    },
+    {
+      name: "empty hex",
+      initialWord: "$'A\\xgB'C",
+      initialDelimiter: "AC",
+      finalWord: "$'A\\x41B'C",
+      finalDelimiter: "AABC",
+    },
+    {
+      name: "escaped quote after NUL",
+      initialWord: "$'A\\0B'C",
+      initialDelimiter: "AC",
+      finalWord: "$'A\\0B\\'C'D",
+      finalDelimiter: "AD",
+    },
+    {
+      name: "unicode escape",
+      initialWord: "$'\\u0041'",
+      initialDelimiter: "A",
+      finalWord: "$'\\u00e9'",
+      finalDelimiter: "é",
+    },
+    {
+      name: "wide unicode escape",
+      initialWord: "$'\\u00e9'",
+      initialDelimiter: "é",
+      finalWord: "$'\\U00000041'",
+      finalDelimiter: "A",
+    },
+  ]) {
+    const source = (word, delimiter) =>
+      lines(`cat <<${word}`, "$literal", delimiter, "echo after");
+    const initialText = source(initialWord, initialDelimiter);
+    const finalText = source(finalWord, finalDelimiter);
+    const initial = writeSource(`${name}-initial`, initialText);
+    const final = writeSource(`${name}-final`, finalText);
+    const replace = [
+      {
+        byte: Buffer.byteLength(`cat <<${initialWord}\n$literal\n`),
+        deleteBytes: Buffer.byteLength(initialDelimiter),
+        insert: finalDelimiter,
+      },
+      { byte: 6, deleteBytes: initialWord.length, insert: finalWord },
+    ];
+    const undo = [
+      {
+        byte: Buffer.byteLength(`cat <<${finalWord}\n$literal\n`),
+        deleteBytes: Buffer.byteLength(finalDelimiter),
+        insert: initialDelimiter,
+      },
+      { byte: 6, deleteBytes: finalWord.length, insert: initialWord },
+    ];
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      name,
+      ...replace,
+    )) {
+      assertCstRange(output, `0:6-0:${6 + finalWord.length}`, "word: word");
+      assertCstRange(output, "1:0-2:0", "body: quoted_here_document_body");
+      assertCstRange(
+        output,
+        `2:0-2:${Buffer.byteLength(finalDelimiter)}`,
+        "here_document_end_text",
+      );
+      assertCstRange(output, "3:0-3:10", "command: complete_command");
+    }
+    assertIncrementalEqualsFresh(final, initial, `${name}-undo`, ...undo);
+    assertIncrementalEqualsFresh(
+      initial,
+      initial,
+      `${name}-roundtrip`,
+      ...replace,
+      ...undo,
     );
   }
 });

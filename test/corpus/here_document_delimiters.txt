@@ -644,7 +644,7 @@ delimiter command substitutions retain quoted parentheses inside case brackets
 
 cat <<$(case x in [')']) printf END;; esac)
 body
-$(case x in [')']) printf END;; esac)
+$(case x in [)]) printf END;; esac)
 after
 
 ------------------
@@ -712,8 +712,8 @@ after
       (here_document_sequence
         (here_document_line_end)
         (here_document
-          (here_document_body
-            (here_document_text))
+          (quoted_here_document_body
+            (quoted_here_document_text))
           (here_document_end
             (here_document_end_text)))))
     (complete_command
@@ -735,7 +735,7 @@ delimiter command substitutions retain parentheses inside functions
 
 cat <<$(f() { printf ')'; }; f)
 body
-$(f() { printf ')'; }; f)
+$(f() { printf ); }; f)
 after
 
 ------------------
@@ -803,8 +803,8 @@ after
       (here_document_sequence
         (here_document_line_end)
         (here_document
-          (here_document_body
-            (here_document_text))
+          (quoted_here_document_body
+            (quoted_here_document_text))
           (here_document_end
             (here_document_end_text)))))
     (complete_command
@@ -821,13 +821,15 @@ after
     (newline_list)))
 
 ==================
-substitution syntax quotes do not reset delimiter quote removal
+delimiter quote removal preserves quoted quote characters
 ==================
 
 cat <<"$(printf '"')"
 body
 $(printf '"')
 $(printf ')"
+$(printf ")
+after
 
 ------------------
 
@@ -868,17 +870,29 @@ $(printf ')"
                                                   suffix: (cmd_suffix
                                                     word: (word
                                                       (single_quoted
-                                                        (single_quote_content))))))))))))))))))))))))))))
-  trailing: (linebreak
-    (newline_list
+                                                        (single_quote_content)))))))))))))))))))))))))))
+    separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
         document: (here_document
           body: (quoted_here_document_body
             (quoted_here_document_text)
+            (quoted_here_document_text)
             (quoted_here_document_text))
           end: (here_document_end
-            (here_document_end_text)))))))
+            (here_document_end_text)))))
+    command: (complete_command
+      body: (list
+        and_or: (and_or
+          pipeline: (pipeline
+            sequence: (pipe_sequence
+              command: (command
+                body: (simple_command
+                  name: (cmd_name
+                    (word
+                      (literal)))))))))))
+  trailing: (linebreak
+    (newline_list)))
 
 ==================
 backquote delimiter backslashes fold to the owning level
@@ -1714,7 +1728,7 @@ cat <<~root/path <<-~"user" <<~${value:-~fallback}
             (here_document_end_text)))))))
 
 ==================
-arithmetic here-document delimiters distinguish outer quoting from nested quoting
+arithmetic delimiter escapes and pattern quotes also quote the body
 ==================
 
 : <<"$((1+${x:-'2'}))" <<$((1+${x:-a\qb})) <<$((1+${x#'2'}))
@@ -1723,7 +1737,7 @@ $((1+${x:-'2'}))
 $unquoted
 $((1+${x:-a\qb}))
 $pattern
-$((1+${x#'2'}))
+$((1+${x#2}))
 : after
 
 ------------------
@@ -1796,15 +1810,13 @@ $((1+${x#'2'}))
           end: (here_document_end
             (here_document_end_text)))
         document: (here_document
-          body: (here_document_body
-            (parameter_expansion
-              parameter: (variable_name)))
+          body: (quoted_here_document_body
+            (quoted_here_document_text))
           end: (here_document_end
             (here_document_end_text)))
         document: (here_document
-          body: (here_document_body
-            (parameter_expansion
-              parameter: (variable_name)))
+          body: (quoted_here_document_body
+            (quoted_here_document_text))
           end: (here_document_end
             (here_document_end_text)))))
     command: (complete_command
@@ -2411,8 +2423,8 @@ pattern single quotes
 ==================
 cat <<"${x#'ab'}"
 $literal
-${x#ab}
 ${x#'ab'}
+${x#ab}
 echo after
 
 ------------------
@@ -2456,9 +2468,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:7                quoted_here_document_text `${x#ab}`
+2:0  - 2:9                quoted_here_document_text `${x#'ab'}`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:9                here_document_end_text `${x#'ab'}`
+3:0  - 3:7                here_document_end_text `${x#ab}`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -2482,8 +2494,8 @@ long pattern
 ==================
 cat <<"${x##'ab'}"
 $literal
-${x##ab}
 ${x##'ab'}
+${x##ab}
 echo after
 
 ------------------
@@ -2527,9 +2539,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:8                quoted_here_document_text `${x##ab}`
+2:0  - 2:10               quoted_here_document_text `${x##'ab'}`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:10               here_document_end_text `${x##'ab'}`
+3:0  - 3:8                here_document_end_text `${x##ab}`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -2553,8 +2565,8 @@ suffix pattern
 ==================
 cat <<"${x%'ab'}"
 $literal
-${x%ab}
 ${x%'ab'}
+${x%ab}
 echo after
 
 ------------------
@@ -2598,9 +2610,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:7                quoted_here_document_text `${x%ab}`
+2:0  - 2:9                quoted_here_document_text `${x%'ab'}`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:9                here_document_end_text `${x%'ab'}`
+3:0  - 3:7                here_document_end_text `${x%ab}`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -2624,8 +2636,8 @@ long suffix pattern
 ==================
 cat <<"${x%%'ab'}"
 $literal
-${x%%ab}
 ${x%%'ab'}
+${x%%ab}
 echo after
 
 ------------------
@@ -2669,9 +2681,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:8                quoted_here_document_text `${x%%ab}`
+2:0  - 2:10               quoted_here_document_text `${x%%'ab'}`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:10               here_document_end_text `${x%%'ab'}`
+3:0  - 3:8                here_document_end_text `${x%%ab}`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -2695,8 +2707,8 @@ command single quotes
 ==================
 cat <<"$(printf 'ab')"
 $literal
-$(printf ab)
 $(printf 'ab')
+$(printf ab)
 echo after
 
 ------------------
@@ -2751,9 +2763,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:12               quoted_here_document_text `$(printf ab)`
+2:0  - 2:14               quoted_here_document_text `$(printf 'ab')`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:14               here_document_end_text `$(printf 'ab')`
+3:0  - 3:12               here_document_end_text `$(printf ab)`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -2859,8 +2871,8 @@ quoted closing parenthesis
 ==================
 cat <<"$(printf ')')"
 $literal
-$(printf ))
 $(printf ')')
+$(printf ))
 echo after
 
 ------------------
@@ -2915,9 +2927,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:11               quoted_here_document_text `$(printf ))`
+2:0  - 2:13               quoted_here_document_text `$(printf ')')`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:13               here_document_end_text `$(printf ')')`
+3:0  - 3:11               here_document_end_text `$(printf ))`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -2941,8 +2953,8 @@ nested command
 ==================
 cat <<"$(printf $(printf 'ab'))"
 $literal
-$(printf $(printf ab))
 $(printf $(printf 'ab'))
+$(printf $(printf ab))
 echo after
 
 ------------------
@@ -3015,9 +3027,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:22               quoted_here_document_text `$(printf $(printf ab))`
+2:0  - 2:24               quoted_here_document_text `$(printf $(printf 'ab'))`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:24               here_document_end_text `$(printf $(printf 'ab'))`
+3:0  - 3:22               here_document_end_text `$(printf $(printf ab))`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -3041,8 +3053,8 @@ parameter command
 ==================
 cat <<"${x:-$(printf 'ab')}"
 $literal
-${x:-$(printf ab)}
 ${x:-$(printf 'ab')}
+${x:-$(printf ab)}
 echo after
 
 ------------------
@@ -3104,9 +3116,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:18               quoted_here_document_text `${x:-$(printf ab)}`
+2:0  - 2:20               quoted_here_document_text `${x:-$(printf 'ab')}`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:20               here_document_end_text `${x:-$(printf 'ab')}`
+3:0  - 3:18               here_document_end_text `${x:-$(printf ab)}`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -3130,8 +3142,8 @@ backquote
 ==================
 cat <<"`printf 'ab'`"
 $literal
-`printf ab`
 `printf 'ab'`
+`printf ab`
 echo after
 
 ------------------
@@ -3185,9 +3197,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:11               quoted_here_document_text `\`printf ab\``
+2:0  - 2:13               quoted_here_document_text `\`printf 'ab'\``
 3:0  - 4:0              end: here_document_end
-3:0  - 3:13               here_document_end_text `\`printf 'ab'\``
+3:0  - 3:11               here_document_end_text `\`printf ab\``
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -3211,8 +3223,8 @@ arithmetic command
 ==================
 cat <<"$((1+$(printf '2')))"
 $literal
-$((1+$(printf 2)))
 $((1+$(printf '2')))
+$((1+$(printf 2)))
 echo after
 
 ------------------
@@ -3276,9 +3288,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:18               quoted_here_document_text `$((1+$(printf 2)))`
+2:0  - 2:20               quoted_here_document_text `$((1+$(printf '2')))`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:20               here_document_end_text `$((1+$(printf '2')))`
+3:0  - 3:18               here_document_end_text `$((1+$(printf 2)))`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -3302,8 +3314,8 @@ concatenated word
 ==================
 cat <<pre"$(printf 'ab')"post
 $literal
-pre$(printf ab)post
 pre$(printf 'ab')post
+pre$(printf ab)post
 echo after
 
 ------------------
@@ -3360,9 +3372,9 @@ echo after
 1:0  - 4:0            document: here_document
 1:0  - 3:0              body: quoted_here_document_body
 1:0  - 1:8                quoted_here_document_text `$literal`
-2:0  - 2:19               quoted_here_document_text `pre$(printf ab)post`
+2:0  - 2:21               quoted_here_document_text `pre$(printf 'ab')post`
 3:0  - 4:0              end: here_document_end
-3:0  - 3:21               here_document_end_text `pre$(printf 'ab')post`
+3:0  - 3:19               here_document_end_text `pre$(printf ab)post`
 4:0  - 4:10       command: complete_command
 4:0  - 4:10         body: list
 4:0  - 4:10           and_or: and_or
@@ -3861,7 +3873,7 @@ backquote here document
 ==================
 cat <<"`printf '%s' END`"
 body
-`printf '%s' END`
+`printf %s END`
 after
 
 ------------------
@@ -3918,7 +3930,7 @@ after
 1:0  - 2:0              body: quoted_here_document_body
 1:0  - 1:4                quoted_here_document_text `body`
 2:0  - 3:0              end: here_document_end
-2:0  - 2:17               here_document_end_text `\`printf '%s' END\``
+2:0  - 2:15               here_document_end_text `\`printf %s END\``
 3:0  - 3:5        command: complete_command
 3:0  - 3:5          body: list
 3:0  - 3:5            and_or: and_or
@@ -4650,8 +4662,7 @@ body
             (here_document_end_text)))))))
 
 ==================
-a quoted here-document delimiter requires a newline before a closing backquote
-:error
+a quoted here-document retains a delimiter without newline before a closing backquote
 ==================
 : `cat <<'EOF'
 body
@@ -4660,7 +4671,62 @@ after
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (io_redirect
+                                              (io_here
+                                                (dless)
+                                                (here_end
+                                                  (word
+                                                    (single_quoted
+                                                      (single_quote_content)))))))))))))))
+                          (linebreak
+                            (newline_list
+                              (here_document_sequence
+                                (here_document_line_end)
+                                (here_document
+                                  (quoted_here_document_body
+                                    (quoted_here_document_text)
+                                    (quoted_here_document_text)))))))))))))))))
+    (newline_list)
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 delimiter outer raw escaping
@@ -5289,30 +5355,113 @@ cat <<-''
         (here_document)))))
 
 ==================
-an empty delimiter requires a newline before a closing backquote in a bracket
-:error
+a closing backquote ends an empty missing here-document inside a bracket
 ==================
 echo [`cat <<''
 `]
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (io_redirect
+                                              (io_here
+                                                (dless)
+                                                (here_end
+                                                  (word
+                                                    (single_quoted))))))))))))))
+                          (linebreak
+                            (newline_list
+                              (here_document_sequence
+                                (here_document_line_end)
+                                (here_document))))))
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
-an empty delimiter requires a newline before a closing backquote in arithmetic
-:error
+a closing backquote ends an empty missing here-document inside arithmetic
 ==================
 echo $((`cat <<''
 `+1))
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_binary_expression
+                          (backquote_substitution
+                            (backquote_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (io_redirect
+                                                  (io_here
+                                                    (dless)
+                                                    (here_end
+                                                      (word
+                                                        (single_quoted))))))))))))))
+                              (linebreak
+                                (newline_list
+                                  (here_document_sequence
+                                    (here_document_line_end)
+                                    (here_document))))))
+                          (arithmetic_operator)
+                          (arithmetic_number)))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
-an empty delimiter after body text requires a newline before a closing backquote in a bracket
-:error
+a closing backquote ends an empty-delimiter body inside a bracket
 ==================
 echo [`cat <<''
 x
@@ -5320,11 +5469,54 @@ x
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (io_redirect
+                                              (io_here
+                                                (dless)
+                                                (here_end
+                                                  (word
+                                                    (single_quoted))))))))))))))
+                          (linebreak
+                            (newline_list
+                              (here_document_sequence
+                                (here_document_line_end)
+                                (here_document
+                                  (quoted_here_document_body
+                                    (quoted_here_document_text))))))))
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
-an empty delimiter after body text requires a newline before a closing backquote in arithmetic
-:error
+a closing backquote ends an empty-delimiter body inside arithmetic
 ==================
 echo $((`cat <<''
 x
@@ -5332,18 +5524,107 @@ x
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_binary_expression
+                          (backquote_substitution
+                            (backquote_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (io_redirect
+                                                  (io_here
+                                                    (dless)
+                                                    (here_end
+                                                      (word
+                                                        (single_quoted))))))))))))))
+                              (linebreak
+                                (newline_list
+                                  (here_document_sequence
+                                    (here_document_line_end)
+                                    (here_document
+                                      (quoted_here_document_body
+                                        (quoted_here_document_text))))))))
+                          (arithmetic_operator)
+                          (arithmetic_number)))))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
-a named delimiter requires a newline before a closing backquote in a bracket
-:error
+a closing backquote retains an unterminated delimiter inside a bracket
 ==================
 echo [`cat <<X
 X`]
 
 ------------------
 
-
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (io_redirect
+                                              (io_here
+                                                (dless)
+                                                (here_end
+                                                  (word
+                                                    (literal))))))))))))))
+                          (linebreak
+                            (newline_list
+                              (here_document_sequence
+                                (here_document_line_end)
+                                (here_document
+                                  (here_document_body
+                                    (here_document_text))))))))
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
 
 ==================
 a named delimiter at EOF ends the document

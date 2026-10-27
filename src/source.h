@@ -74,7 +74,7 @@ struct SourceCursor {
   struct SourceStage *initial;
   struct SourceStage *stages;
   size_t stage_count;
-  /* Stages from this index must not process characters before the cursor origin. */
+  /* Stages at or after this index start at the cursor origin. */
   size_t fresh;
   int32_t *raw;
   size_t raw_count;

@@ -451,7 +451,7 @@ backquote double-quoted tails distinguish literal and parameter brace escapes
     (newline_list)))
 
 ==================
-hexadecimal quote escapes consume all digits while octal escapes stop after three
+hexadecimal quote escapes consume two digits while octal escapes stop after three
 ==================
 
 : $'\x123' $'\xABCDEf' $'\1234'
@@ -475,10 +475,12 @@ hexadecimal quote escapes consume all digits while octal escapes stop after thre
                   suffix: (cmd_suffix
                     word: (word
                       (dollar_single_quoted
-                        (dollar_single_quote_escape)))
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)))
                     word: (word
                       (dollar_single_quoted
-                        (dollar_single_quote_escape)))
+                        (dollar_single_quote_escape)
+                        (dollar_single_quote_text)))
                     word: (word
                       (dollar_single_quoted
                         (dollar_single_quote_escape)

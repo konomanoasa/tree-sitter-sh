@@ -139,7 +139,7 @@ test("sh: nested backquotes preserve arithmetic classification across edits", ()
   }
 });
 
-test("sh: hexadecimal quote escapes retain every digit across edits", () => {
+test("sh: numeric quote escapes keep their digit limits across edits", () => {
   for (const {
     name,
     initialText,
@@ -147,6 +147,8 @@ test("sh: hexadecimal quote escapes retain every digit across edits", () => {
     edit,
     initialRange,
     finalRange,
+    initialTail,
+    finalTail,
   } of [
     {
       name: "third-hexadecimal-digit",
@@ -154,15 +156,19 @@ test("sh: hexadecimal quote escapes retain every digit across edits", () => {
       finalText: ": $'\\x123g'\n",
       edit: { byte: 8, deleteBytes: 0, insert: "3" },
       initialRange: "0:4-0:8",
-      finalRange: "0:4-0:9",
+      finalRange: "0:4-0:8",
+      initialTail: "g",
+      finalTail: "3g",
     },
     {
       name: "fourth-hexadecimal-digit",
       initialText: ": $'\\x123g'\n",
       finalText: ": $'\\x1234g'\n",
       edit: { byte: 9, deleteBytes: 0, insert: "4" },
-      initialRange: "0:4-0:9",
-      finalRange: "0:4-0:10",
+      initialRange: "0:4-0:8",
+      finalRange: "0:4-0:8",
+      initialTail: "3g",
+      finalTail: "34g",
     },
     {
       name: "backquote-third-hexadecimal-digit",
@@ -170,18 +176,47 @@ test("sh: hexadecimal quote escapes retain every digit across edits", () => {
       finalText: ": `: $'\\\\x123g'`\n",
       edit: { byte: 12, deleteBytes: 0, insert: "3" },
       initialRange: "0:7-0:12",
-      finalRange: "0:7-0:13",
+      finalRange: "0:7-0:12",
+      initialTail: "g",
+      finalTail: "3g",
+    },
+    {
+      name: "fifth-unicode-digit",
+      initialText: ": $'\\u0041g'\n",
+      finalText: ": $'\\u00412g'\n",
+      edit: { byte: 10, deleteBytes: 0, insert: "2" },
+      initialRange: "0:4-0:10",
+      finalRange: "0:4-0:10",
+      initialTail: "g",
+      finalTail: "2g",
+    },
+    {
+      name: "ninth-unicode-digit",
+      initialText: ": $'\\U0001f600g'\n",
+      finalText: ": $'\\U0001f6001g'\n",
+      edit: { byte: 14, deleteBytes: 0, insert: "1" },
+      initialRange: "0:4-0:14",
+      finalRange: "0:4-0:14",
+      initialTail: "g",
+      finalTail: "1g",
     },
   ]) {
     const initial = writeSource(`${name}-initial`, initialText);
     const final = writeSource(`${name}-final`, finalText);
-    for (const { before, after, change, range } of [
-      { before: initial, after: final, change: edit, range: finalRange },
+    for (const { before, after, change, range, tail } of [
+      {
+        before: initial,
+        after: final,
+        change: edit,
+        range: finalRange,
+        tail: finalTail,
+      },
       {
         before: final,
         after: initial,
         change: { byte: edit.byte, deleteBytes: 1, insert: "" },
         range: initialRange,
+        tail: initialTail,
       },
     ]) {
       for (const output of assertIncrementalEqualsFresh(
@@ -195,12 +230,12 @@ test("sh: hexadecimal quote escapes retain every digit across edits", () => {
         const end = Number(range.split("-")[1].split(":")[1]);
         assertCstRange(
           output,
-          `0:${end}-0:${end + 1}`,
-          "dollar_single_quote_text `g`",
+          `0:${end}-0:${end + tail.length}`,
+          `dollar_single_quote_text \`${tail}\``,
         );
         assertCstRange(
           output,
-          `0:${end + 1}-0:${end + 2}`,
+          `0:${end + tail.length}-0:${end + tail.length + 1}`,
           JSON.stringify("'"),
         );
       }

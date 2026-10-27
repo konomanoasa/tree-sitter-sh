@@ -15,6 +15,10 @@ For syntax error analysis, see [tree-sitter-diagnostic-sh](https://github.com/ko
 npm install tree-sitter-sh
 ```
 
+## Parsing Policy
+
+[Parsing Policy](PARSING_POLICY.md)
+
 ## Development
 
 ```sh
@@ -23,19 +27,15 @@ npm run build
 npm test
 ```
 
-## Parsing Policy
-
-[Parsing Policy](PARSING_POLICY.md)
-
 ## Specification
 
 [POSIX.1-2024 Shell Command Language](https://pubs.opengroup.org/onlinepubs/9799919799.2024edition/utilities/V3_chap02.html)
+
+## License
+
+[MIT](LICENSE)
 
 ## Used By
 
 - [sh-ts-mode](https://github.com/konomanoasa/sh-ts-mode)
 - [shellsmith](https://github.com/konomanoasa/shellsmith)
-
-## License
-
-[MIT](LICENSE)
