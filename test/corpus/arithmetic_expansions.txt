@@ -3954,3 +3954,157 @@ echo $((1 +
 after
 
 ------------------
+
+==================
+arithmetic quote characters remain source rather than shell quotes
+==================
+
+echo $(( "y" = 1 )) $((1+"2")) $((1+'2')) $((1+')) "$(('1'+2))"
+
+------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_source
+                          (arithmetic_source_fragment)
+                          (arithmetic_variable)
+                          (arithmetic_source_fragment)
+                          (arithmetic_operator)
+                          (arithmetic_number))))
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_source
+                          (arithmetic_number)
+                          (arithmetic_operator)
+                          (arithmetic_source_fragment)
+                          (arithmetic_number)
+                          (arithmetic_source_fragment))))
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_source
+                          (arithmetic_number)
+                          (arithmetic_operator)
+                          (arithmetic_source_fragment)
+                          (arithmetic_number)
+                          (arithmetic_source_fragment))))
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_source
+                          (arithmetic_number)
+                          (arithmetic_operator)
+                          (arithmetic_source_fragment))))
+                    (word
+                      (double_quoted
+                        (arithmetic_expansion
+                          (arithmetic_source
+                            (arithmetic_source_fragment)
+                            (arithmetic_number)
+                            (arithmetic_source_fragment)
+                            (arithmetic_operator)
+                            (arithmetic_number))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+arithmetic quote source preserves groups and nested expansions
+==================
+
+echo $(("$x"+('1'+${y:-"2"})+$(printf '3')+`printf '4'`+$((1+"5"))))
+
+------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (arithmetic_expansion
+                        (arithmetic_source
+                          (arithmetic_source_fragment)
+                          (parameter_expansion
+                            (variable_name))
+                          (arithmetic_source_fragment)
+                          (arithmetic_operator)
+                          (parenthesized_arithmetic_source
+                            (arithmetic_source_fragment)
+                            (arithmetic_number)
+                            (arithmetic_source_fragment)
+                            (arithmetic_operator)
+                            (parameter_expansion
+                              (variable_name)
+                              (parameter_value_operator)
+                              (parameter_word
+                                (double_quoted
+                                  (double_quote_text)))))
+                          (arithmetic_operator)
+                          (command_substitution
+                            (command_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (word
+                                                  (single_quoted
+                                                    (single_quote_content))))))))))))))
+                          (arithmetic_operator)
+                          (backquote_substitution
+                            (backquote_substitution_body
+                              (complete_commands
+                                (complete_command
+                                  (list
+                                    (and_or
+                                      (pipeline
+                                        (pipe_sequence
+                                          (command
+                                            (simple_command
+                                              (cmd_name
+                                                (word
+                                                  (literal)))
+                                              (cmd_suffix
+                                                (word
+                                                  (single_quoted
+                                                    (single_quote_content))))))))))))))
+                          (arithmetic_operator)
+                          (arithmetic_expansion
+                            (arithmetic_source
+                              (arithmetic_number)
+                              (arithmetic_operator)
+                              (arithmetic_source_fragment)
+                              (arithmetic_number)
+                              (arithmetic_source_fragment)))))))))))))))
+  (linebreak
+    (newline_list)))

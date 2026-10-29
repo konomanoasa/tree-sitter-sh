@@ -5858,3 +5858,169 @@ echo after
 5:10 - 6:0      trailing: linebreak
 5:10 - 6:0        newline_list
 5:10 - 6:0          "\n"
+
+==================
+arithmetic quote characters in delimiters preserve body expansion
+==================
+
+cat <<$((1+"2")) <<$((1+'2'))
+$x
+$((1+"2"))
+$x
+$((1+'2'))
+echo after
+
+------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (arithmetic_expansion
+                              (arithmetic_source
+                                (arithmetic_number)
+                                (arithmetic_operator)
+                                (arithmetic_source_fragment)
+                                (arithmetic_number)
+                                (arithmetic_source_fragment)))))))
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (arithmetic_expansion
+                              (arithmetic_source
+                                (arithmetic_number)
+                                (arithmetic_operator)
+                                (arithmetic_source_fragment)
+                                (arithmetic_number)
+                                (arithmetic_source_fragment)))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (parameter_expansion
+              (variable_name)))
+          (here_document_end
+            (here_document_end_text)))
+        (here_document
+          (here_document_body
+            (parameter_expansion
+              (variable_name)))
+          (here_document_end
+            (here_document_end_text)))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+outer delimiter quotes suppress expansion while retaining arithmetic quote characters
+==================
+
+cat <<"$((1+"2"))" <<"$((1+'2'))"
+$x
+$((1+"2"))
+$x
+$((1+'2'))
+echo after
+
+------------------
+
+(program
+  (linebreak
+    (newline_list))
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (double_quoted
+                              (arithmetic_expansion
+                                (arithmetic_source
+                                  (arithmetic_number)
+                                  (arithmetic_operator)
+                                  (arithmetic_source_fragment)
+                                  (arithmetic_number)
+                                  (arithmetic_source_fragment))))))))
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (double_quoted
+                              (arithmetic_expansion
+                                (arithmetic_source
+                                  (arithmetic_number)
+                                  (arithmetic_operator)
+                                  (arithmetic_source_fragment)
+                                  (arithmetic_number)
+                                  (arithmetic_source_fragment))))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (quoted_here_document_body
+            (quoted_here_document_text))
+          (here_document_end
+            (here_document_end_text)))
+        (here_document
+          (quoted_here_document_body
+            (quoted_here_document_text))
+          (here_document_end
+            (here_document_end_text)))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))

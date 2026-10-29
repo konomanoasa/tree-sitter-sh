@@ -316,11 +316,12 @@ const arithmeticExpansionStart = (
   marker,
   start = $._command_substitution_start,
 ) => seq(start, marker, physical($, $._punct_left_parenthesis, "("));
-const arithmeticExpansion = ($, start, dynamicStart) =>
+const arithmeticExpansion = ($, start, dynamicStart, sourceStart) =>
   choice(
     ...[
       [start, $._arithmetic_assignment_expression],
       [dynamicStart, $.arithmetic_dynamic_expression],
+      [sourceStart, $.arithmetic_source],
     ].map(([opening, expression]) =>
       seq(
         opening,
@@ -333,6 +334,13 @@ const arithmeticExpansion = ($, start, dynamicStart) =>
       ),
     ),
   );
+
+const arithmeticSourceTokens = ($) => [
+  $.arithmetic_number,
+  $.arithmetic_variable,
+  $.arithmetic_source_fragment,
+  $._arithmetic_source_operator,
+];
 
 const separatorOperatorLayout = ($, operator) =>
   seq(operator, optional(field("linebreak", $.linebreak)));
@@ -811,6 +819,7 @@ export default grammar({
       $._arithmetic_closing_boundary,
       $._arithmetic_left_parenthesis,
       $._arithmetic_dynamic_left_parenthesis,
+      $._arithmetic_source_left_parenthesis,
       $._pattern_special_left_bracket,
       $._comment_boundary,
       $._trailing_comment_boundary,
@@ -1815,11 +1824,18 @@ export default grammar({
         $._arithmetic_dynamic_left_parenthesis,
         $._word_initial_command_start,
       ),
+    _word_initial_arithmetic_source_start: ($) =>
+      arithmeticExpansionStart(
+        $,
+        $._arithmetic_source_left_parenthesis,
+        $._word_initial_command_start,
+      ),
     _word_initial_arithmetic_expansion: ($) =>
       arithmeticExpansion(
         $,
         $._word_initial_arithmetic_start,
         $._word_initial_arithmetic_dynamic_start,
+        $._word_initial_arithmetic_source_start,
       ),
     _word_initial_backquote_substitution: ($) =>
       backquoteSubstitution($, $._word_initial_backquote_start),
@@ -2180,11 +2196,42 @@ export default grammar({
     _arithmetic_dynamic_expansion_start: ($) =>
       arithmeticExpansionStart($, $._arithmetic_dynamic_left_parenthesis),
 
+    _arithmetic_source_expansion_start: ($) =>
+      arithmeticExpansionStart($, $._arithmetic_source_left_parenthesis),
+
     arithmetic_expansion: ($) =>
       arithmeticExpansion(
         $,
         $._arithmetic_expansion_start,
         $._arithmetic_dynamic_expansion_start,
+        $._arithmetic_source_expansion_start,
+      ),
+
+    arithmetic_source: ($) =>
+      prec.right(
+        repeat1(
+          seq($._arithmetic_unstructured_part, optional($._arithmetic_layout)),
+        ),
+      ),
+
+    _arithmetic_unstructured_part: ($) =>
+      choice(
+        ...arithmeticSourceTokens($),
+        ...quotedExpansionParts($),
+        alias(
+          $._parenthesized_arithmetic_unstructured_source,
+          $.parenthesized_arithmetic_source,
+        ),
+      ),
+
+    _parenthesized_arithmetic_unstructured_source: ($) =>
+      seq(
+        physical($, $._punct_left_parenthesis, "("),
+        optional($._arithmetic_layout),
+        repeat(
+          seq($._arithmetic_unstructured_part, optional($._arithmetic_layout)),
+        ),
+        physical($, $._punct_right_parenthesis, ")"),
       ),
 
     arithmetic_dynamic_expression: ($) =>
@@ -2204,13 +2251,7 @@ export default grammar({
       ),
 
     _arithmetic_source_part: ($) =>
-      choice(
-        $.arithmetic_number,
-        $.arithmetic_variable,
-        $.arithmetic_source_fragment,
-        $._arithmetic_source_operator,
-        $.parenthesized_arithmetic_source,
-      ),
+      choice(...arithmeticSourceTokens($), $.parenthesized_arithmetic_source),
 
     _arithmetic_runtime_fragment: ($) =>
       choice(

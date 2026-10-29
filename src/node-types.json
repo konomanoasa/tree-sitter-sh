@@ -489,6 +489,10 @@
             "named": true
           },
           {
+            "type": "arithmetic_source",
+            "named": true
+          },
+          {
             "type": "arithmetic_unary_expression",
             "named": true
           },
@@ -525,6 +529,53 @@
     "type": "arithmetic_operator",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "arithmetic_source",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "arithmetic_expansion",
+          "named": true
+        },
+        {
+          "type": "arithmetic_number",
+          "named": true
+        },
+        {
+          "type": "arithmetic_operator",
+          "named": true
+        },
+        {
+          "type": "arithmetic_source_fragment",
+          "named": true
+        },
+        {
+          "type": "arithmetic_variable",
+          "named": true
+        },
+        {
+          "type": "backquote_substitution",
+          "named": true
+        },
+        {
+          "type": "command_substitution",
+          "named": true
+        },
+        {
+          "type": "parameter_expansion",
+          "named": true
+        },
+        {
+          "type": "parenthesized_arithmetic_source",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "arithmetic_source_fragment",
@@ -2346,6 +2397,10 @@
       "required": false,
       "types": [
         {
+          "type": "arithmetic_expansion",
+          "named": true
+        },
+        {
           "type": "arithmetic_number",
           "named": true
         },
@@ -2359,6 +2414,18 @@
         },
         {
           "type": "arithmetic_variable",
+          "named": true
+        },
+        {
+          "type": "backquote_substitution",
+          "named": true
+        },
+        {
+          "type": "command_substitution",
+          "named": true
+        },
+        {
+          "type": "parameter_expansion",
           "named": true
         },
         {

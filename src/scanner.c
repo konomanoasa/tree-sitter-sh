@@ -65,6 +65,7 @@ enum TokenType {
   ARITHMETIC_CLOSING_BOUNDARY,
   ARITHMETIC_LEFT_PARENTHESIS,
   ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS,
+  ARITHMETIC_SOURCE_LEFT_PARENTHESIS,
   PATTERN_SPECIAL_LEFT_BRACKET,
   COMMENT_BOUNDARY,
   TRAILING_COMMENT_BOUNDARY,
@@ -413,7 +414,8 @@ static bool is_here_document_context(enum TokenType opener) {
 
 static bool is_arithmetic_context(enum TokenType opener) {
   return opener == ARITHMETIC_LEFT_PARENTHESIS ||
-    opener == ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS;
+    opener == ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS ||
+    opener == ARITHMETIC_SOURCE_LEFT_PARENTHESIS;
 }
 
 static bool is_backquote_context(enum TokenType opener) {
@@ -1056,6 +1058,7 @@ struct ArithmeticScan {
   char embedded_closer;
   size_t group_depth;
   bool has_expansion;
+  bool has_quote;
 };
 
 struct AmbiguousSubstitution {
@@ -5636,6 +5639,12 @@ static enum ArithmeticValidation validate_arithmetic_content(
       return ARITHMETIC_VALIDATION_INCOMPLETE;
     }
 
+    if (character == '\'' || character == '"') {
+      scan->has_quote = true;
+      lexer->advance(lexer, false);
+      continue;
+    }
+
     if (arithmetic_whitespace(character)) {
       if (!append_arithmetic_source(scan, character)) {
         return ARITHMETIC_VALIDATION_RESOURCE_FAILURE;
@@ -5955,7 +5964,13 @@ static enum TokenType classify_arithmetic_source(
   *result = validate_arithmetic_content(scanner, lexer, scan);
 
   enum TokenType symbol = TOKEN_COUNT;
-  if (*result == ARITHMETIC_VALIDATION_VALID) {
+  if (
+    scan->has_quote &&
+    (*result == ARITHMETIC_VALIDATION_VALID ||
+      *result == ARITHMETIC_VALIDATION_INCOMPLETE)
+  ) {
+    symbol = ARITHMETIC_SOURCE_LEFT_PARENTHESIS;
+  } else if (*result == ARITHMETIC_VALIDATION_VALID) {
     struct StructuredValidation validation = {
       .tokens = scan->tokens.data,
       .count = scan->tokens.length,
@@ -6000,7 +6015,10 @@ static bool scan_arithmetic_left_parenthesis(
   if (lookahead_is_pending(lexer)) {
     return false;
   }
-  if (result == ARITHMETIC_VALIDATION_INCOMPLETE) {
+  if (
+    result == ARITHMETIC_VALIDATION_INCOMPLETE &&
+    symbol != ARITHMETIC_SOURCE_LEFT_PARENTHESIS
+  ) {
     symbol = valid_symbols[ARITHMETIC_LEFT_PARENTHESIS]
       ? ARITHMETIC_LEFT_PARENTHESIS
       : ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS;
@@ -6027,7 +6045,8 @@ static bool scan_command_substitution_body_begin(
   if (
     lexer->lookahead == '(' &&
     (valid_symbols[ARITHMETIC_LEFT_PARENTHESIS] ||
-      valid_symbols[ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS])
+      valid_symbols[ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS] ||
+      valid_symbols[ARITHMETIC_SOURCE_LEFT_PARENTHESIS])
   ) {
     return scan_arithmetic_left_parenthesis(scanner, lexer, valid_symbols);
   }
@@ -7815,6 +7834,15 @@ static bool lexical_name(TSLexer *lexer, enum TokenType symbol) {
 }
 
 static bool lexical_arithmetic_word(TSLexer *lexer, const bool *valid) {
+  if (
+    valid[ARITHMETIC_SOURCE_FRAGMENT_BEGIN] &&
+    (lexer->lookahead == '\'' || lexer->lookahead == '"')
+  ) {
+    lexer->advance(lexer, false);
+    lexer->mark_end(lexer);
+    lexer->result_symbol = ARITHMETIC_SOURCE_FRAGMENT_BEGIN;
+    return true;
+  }
   if (!is_name_character(lexer->lookahead)) {
     return false;
   }

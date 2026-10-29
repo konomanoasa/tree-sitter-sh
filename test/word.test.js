@@ -1812,6 +1812,72 @@ test("sh: arithmetic source fragments retain classification after completion and
   }
 });
 
+test("sh: arithmetic quote edits preserve classification across source contexts", () => {
+  for (const [name, prefix, suffix] of [
+    ["plain", "echo $((", "))\n"],
+    ["double-quoted", 'echo "$((1+', '))"\n'],
+    ["dynamic", "echo $((", "$x))\n"],
+    ["parenthesized", "echo $(((", "+$x)))\n"],
+    ["nested-arithmetic", "echo $((1+$((", "))))\n"],
+    ["parameter-word", 'echo "${x:-$((', '))}"\n'],
+    ["command", "echo $(echo $((", ")))\n"],
+    ["backquote", "echo `echo $((", "))`\n"],
+    ["here-document-body", "cat <<E\n$((", "))\nE\n"],
+  ]) {
+    const initial = writeSource(
+      `${name}-arithmetic-expression`,
+      `${prefix}1${suffix}`,
+    );
+    for (const quote of ["'", '"']) {
+      const quoted = `${quote}1${quote}`;
+      const final = writeSource(
+        `${name}-arithmetic-quote-source`,
+        prefix + quoted + suffix,
+      );
+      for (const output of assertIncrementalEqualsFresh(
+        initial,
+        final,
+        `${name}-insert-arithmetic-quotes`,
+        { byte: prefix.length, deleteBytes: 1, insert: quoted },
+      )) {
+        assertNodeCount(output, "arithmetic_source", 1);
+        assertNodeCount(output, "arithmetic_source_fragment", 2);
+      }
+      for (const output of assertIncrementalEqualsFresh(
+        final,
+        initial,
+        `${name}-remove-arithmetic-quotes`,
+        { byte: prefix.length, deleteBytes: quoted.length, insert: "1" },
+      )) {
+        assertNodeCount(output, "arithmetic_source", 0);
+      }
+    }
+  }
+
+  const complete = 'echo BEFORE\necho $(("1"+2))\necho AFTER\n';
+  const closed = writeSource("arithmetic-quote-source-closed", complete);
+  const byte = complete.indexOf("))");
+  const open = writeSource(
+    "arithmetic-quote-source-open",
+    complete.slice(0, byte) + complete.slice(byte + 2),
+  );
+  parseRecoveryAfterEdits(closed, open, "remove-arithmetic-source-closer", {
+    byte,
+    deleteBytes: 2,
+    insert: "",
+  });
+  assertIncrementalEqualsFresh(
+    open,
+    closed,
+    "restore-arithmetic-source-closer",
+    {
+      byte,
+      deleteBytes: 0,
+      insert: "))",
+    },
+  );
+});
+
 test("sh: a newline edit preserves dynamic arithmetic layout", () => {
   const dynamicSpace = writeSource(
     "arithmetic-dynamic-space",

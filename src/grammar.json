@@ -6363,6 +6363,23 @@
         }
       ]
     },
+    "_word_initial_arithmetic_source_start": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_word_initial_command_start"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_arithmetic_source_left_parenthesis"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_punct_left_parenthesis_physical"
+        }
+      ]
+    },
     "_word_initial_arithmetic_expansion": {
       "type": "CHOICE",
       "members": [
@@ -6453,6 +6470,68 @@
               "content": {
                 "type": "SYMBOL",
                 "name": "arithmetic_dynamic_expression"
+              }
+            },
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_arithmetic_closing_boundary"
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_arithmetic_layout"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_punct_right_parenthesis_physical"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_punct_right_parenthesis_physical"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_arithmetic_expansion_end"
+            }
+          ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_word_initial_arithmetic_source_start"
+            },
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_arithmetic_layout"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "FIELD",
+              "name": "expression",
+              "content": {
+                "type": "SYMBOL",
+                "name": "arithmetic_source"
               }
             },
             {
@@ -11222,6 +11301,23 @@
         }
       ]
     },
+    "_arithmetic_source_expansion_start": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_command_substitution_start"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_arithmetic_source_left_parenthesis"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_punct_left_parenthesis_physical"
+        }
+      ]
+    },
     "arithmetic_expansion": {
       "type": "CHOICE",
       "members": [
@@ -11348,6 +11444,201 @@
               "name": "_arithmetic_expansion_end"
             }
           ]
+        },
+        {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_arithmetic_source_expansion_start"
+            },
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_arithmetic_layout"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
+              "type": "FIELD",
+              "name": "expression",
+              "content": {
+                "type": "SYMBOL",
+                "name": "arithmetic_source"
+              }
+            },
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_arithmetic_closing_boundary"
+                },
+                {
+                  "type": "CHOICE",
+                  "members": [
+                    {
+                      "type": "SYMBOL",
+                      "name": "_arithmetic_layout"
+                    },
+                    {
+                      "type": "BLANK"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_punct_right_parenthesis_physical"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_punct_right_parenthesis_physical"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "_arithmetic_expansion_end"
+            }
+          ]
+        }
+      ]
+    },
+    "arithmetic_source": {
+      "type": "PREC_RIGHT",
+      "value": 0,
+      "content": {
+        "type": "REPEAT1",
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_arithmetic_unstructured_part"
+            },
+            {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "_arithmetic_layout"
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "_arithmetic_unstructured_part": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "arithmetic_number"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "arithmetic_variable"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "arithmetic_source_fragment"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_arithmetic_source_operator"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_double_quoted_parameter_expansion"
+          },
+          "named": true,
+          "value": "parameter_expansion"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "command_substitution"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "arithmetic_expansion"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_double_quoted_backquote_substitution"
+          },
+          "named": true,
+          "value": "backquote_substitution"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_parenthesized_arithmetic_unstructured_source"
+          },
+          "named": true,
+          "value": "parenthesized_arithmetic_source"
+        }
+      ]
+    },
+    "_parenthesized_arithmetic_unstructured_source": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_punct_left_parenthesis_physical"
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "_arithmetic_layout"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "_arithmetic_unstructured_part"
+              },
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "_arithmetic_layout"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_punct_right_parenthesis_physical"
         }
       ]
     },
@@ -14047,6 +14338,10 @@
     {
       "type": "SYMBOL",
       "name": "_arithmetic_dynamic_left_parenthesis"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_arithmetic_source_left_parenthesis"
     },
     {
       "type": "SYMBOL",

@@ -21,6 +21,56 @@ import {
   writeSource,
 } from "./support/parser.js";
 
+test("sh: arithmetic delimiter quote edits preserve matching and body expansion", () => {
+  for (const outer of ["", '"']) {
+    const initialText = `cat <<${outer}$((1+2))${outer}\n$x\n$((1+2))\necho after\n`;
+    const initial = writeSource(
+      "arithmetic-delimiter-without-inner-quotes",
+      initialText,
+    );
+    for (const quote of ["'", '"']) {
+      const replacement = `${quote}2${quote}`;
+      const finalText = initialText.replaceAll("2", replacement);
+      const final = writeSource(
+        "arithmetic-delimiter-with-inner-quotes",
+        finalText,
+      );
+      const positions = [
+        initialText.lastIndexOf("2"),
+        initialText.indexOf("2"),
+      ];
+      for (const output of assertIncrementalEqualsFresh(
+        initial,
+        final,
+        "insert-arithmetic-delimiter-quotes",
+        ...positions.map((byte) => ({
+          byte,
+          deleteBytes: 1,
+          insert: replacement,
+        })),
+      )) {
+        assertNodeCount(output, "arithmetic_source", 1);
+        assertNodeCount(output, "parameter_expansion", outer === "" ? 1 : 0);
+        assertCstRange(output, "2:0-3:0", "end: here_document_end");
+        assertCstRange(output, "3:0-3:10", "command: complete_command");
+      }
+      assertIncrementalEqualsFresh(
+        final,
+        initial,
+        "remove-arithmetic-delimiter-quotes",
+        ...[
+          finalText.lastIndexOf(replacement),
+          finalText.indexOf(replacement),
+        ].map((byte) => ({
+          byte,
+          deleteBytes: replacement.length,
+          insert: "2",
+        })),
+      );
+    }
+  }
+});
+
 for (const { name, source, suffix, endingCount, initialEndings = 0 } of [
   {
     name: "named",
