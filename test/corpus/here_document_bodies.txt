@@ -1086,8 +1086,8 @@ a backslash-only line in a quoted body inside backquotes does not end an empty d
 0:11 - 1:0                                    line_end: here_document_line_end
 0:11 - 0:12                                     `\n`
 1:0  - 4:0                                    document: here_document
-1:0  - 3:0                                      body: quoted_here_document_body
-1:0  - 1:1                                        quoted_here_document_text `\\`
+1:0  - 1:1                                      line_continuation `\\`
+2:0  - 3:0                                      body: quoted_here_document_body
 2:0  - 2:1                                        quoted_here_document_text `]`
 3:0  - 4:0                                      end: here_document_end
 3:0  - 3:1                                        `\n`

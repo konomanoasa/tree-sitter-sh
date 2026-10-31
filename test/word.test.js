@@ -1220,18 +1220,18 @@ test("parameter word escapes cannot become continuation extras", () => {
   }
 });
 
-test("sh: quoting a backquote changes comment endings before inner tokenization", () => {
+test("sh: quoting a backquote preserves comment continuation removal before inner tokenization", () => {
   const body = "`a #x\\\nb\n`";
   const unquotedText = `echo ${body}\n`;
   const unquoted = writeSource("unquoted-backquote-comment", unquotedText);
   const quoted = writeSource("quoted-backquote-comment", `echo "${body}"\n`);
   const initialOutput = parseValidCst(unquoted);
-  assertOccurrenceCount(initialOutput, "name: cmd_name", 3);
+  assertOccurrenceCount(initialOutput, "name: cmd_name", 2);
   assertOccurrenceCount(initialOutput, "comment\n", 1);
   assertNodeCount(initialOutput, "comment_text", 1);
-  assertCstRange(initialOutput, "0:8-0:11", "comment");
-  assertCstRange(initialOutput, "0:8-0:11", "comment_text");
-  assert.deepEqual(continuationManifest(initialOutput), []);
+  assertCstRange(initialOutput, "0:8-1:1", "comment");
+  assertCstRange(initialOutput, "0:8-1:1", "comment_text");
+  assertCstRange(initialOutput, "0:10-0:11", "line_continuation");
   const output = parseValidCst(quoted);
   assertOccurrenceCount(output, "name: cmd_name", 2);
   assertOccurrenceCount(output, "comment\n", 1);
@@ -1255,7 +1255,7 @@ test("sh: quoting a backquote changes comment endings before inner tokenization"
   );
 });
 
-test("sh: quoted backquote ancestors remove continuations before inner tokenization", () => {
+test("sh: backquote ancestors remove continuations before inner tokenization with either outer quote context", () => {
   for (const { count, ranges } of [
     { count: 7, ranges: ["0:10-0:16"] },
     { count: 15, ranges: ["0:10-0:18", "0:18-0:24"] },
@@ -1265,8 +1265,12 @@ test("sh: quoted backquote ancestors remove continuations before inner tokenizat
     const unquoted = writeSource(`unquoted-ancestor-${count}`, unquotedText);
     const quoted = writeSource(`quoted-ancestor-${count}`, `: "${body}"\n`);
     const initialOutput = parseValidCst(unquoted);
-    assertOccurrenceCount(initialOutput, "name: cmd_name", 4);
-    assert.deepEqual(continuationManifest(initialOutput), []);
+    assertOccurrenceCount(initialOutput, "name: cmd_name", 3);
+    assertCstRange(
+      initialOutput,
+      `0:${8 + count}-0:${9 + count}`,
+      "line_continuation",
+    );
     const output = parseValidCst(quoted);
     assertOccurrenceCount(output, "name: cmd_name", 3);
     assert.deepEqual(

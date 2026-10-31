@@ -28,6 +28,14 @@ for (const [name, word, delimiter, quoted] of [
   ["length suffix", `\${#x:}`, `\${#x:}`, false],
   ["invalid initial byte", `\${.}`, `\${}`, false],
   ["invalid length byte", `\${#.}`, `\${#}`, false],
+  ["literal operator quote", `\${x'}`, `\${x'}`, false],
+  ["literal operator backslash", `\${x\\}`, `\${x\\}`, false],
+  ["colon backslash", `\${x:\\}`, `\${x:\\}`, false],
+  ["colon brace", `\${x:}}`, `\${x:}}`, false],
+  ["length prefix backslash", `\${#\\a}`, `\${#\\a}`, false],
+  ["consumed command closer", `$(f \${x))`, `$(f \${x))`, false],
+  ["operand command closer", `$(f \${x:-)`, `$(f \${x:-)`, false],
+  ["consumed backquote closer", `\`g \${y\`\``, `\`g \${y\`\``, false],
   ["parameter blank", `\${a b}`, `\${a b}`, false],
   ["unfinished command", "$(if)", "$(if)", false],
   ["command separator", "$(;)", "$(;)", false],
@@ -92,6 +100,76 @@ test("sh: editing an unexpanded parameter delimiter preserves matching and body 
   }
 });
 
+test("sh: a line continuation after a consumed prefix backslash keeps the delimiter matching", () => {
+  for (const [name, quote, operator] of [
+    ["operator", "", ""],
+    ["quoted-colon", '"', ":"],
+  ]) {
+    const initialText = `cat <<${quote}\${x${operator}\\\\}}${quote}\n$probe\n\${x${operator}\\}}\necho AFTER\n`;
+    const byte = initialText.indexOf("\\\\") + 2;
+    const finalText = `${initialText.slice(0, byte)}\n${initialText.slice(byte)}`;
+    const initial = writeSource(
+      `consumed-backslash-${name}-initial`,
+      initialText,
+    );
+    const final = writeSource(`consumed-backslash-${name}-final`, finalText);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `consumed-backslash-${name}-continued`,
+      { byte, deleteBytes: 0, insert: "\n" },
+    )) {
+      assertCstRange(output, `0:6-1:${2 + quote.length}`, "here_end_text");
+      assertCstRange(output, "3:0-4:0", "here_document_end");
+      assertNodeCount(output, "parameter_expansion", quote === "" ? 1 : 0);
+      assertNodeCount(output, "line_continuation", 1);
+      assertCstRange(output, `0:${byte - 1}-0:${byte}`, "line_continuation");
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `consumed-backslash-${name}-joined`,
+      { byte, deleteBytes: 1, insert: "" },
+    )) {
+      assertCstRange(output, "2:0-3:0", "here_document_end");
+      assertNodeCount(output, "parameter_expansion", 0);
+    }
+  }
+});
+
+test("sh: quoting a delimiter changes continuation ownership across edits", () => {
+  for (const quote of ["'", "$'"]) {
+    const initialText = "cat <<a\\\nb\n$literal\nab\necho after\n";
+    const finalText = `cat <<${quote}a\\\nb'\n$literal\nab\necho after\n`;
+    const initial = writeSource("removed-delimiter-continuation", initialText);
+    const final = writeSource("retained-delimiter-continuation", finalText);
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      `retain-delimiter-continuation-${quote.length}`,
+      { byte: 10, deleteBytes: 0, insert: "'" },
+      { byte: 6, deleteBytes: 0, insert: quote },
+    )) {
+      assert.deepEqual(continuationManifest(output), []);
+      assertCstRange(output, "0:6-1:2", "here_end_text");
+      assertCstRange(output, "2:0-5:0", "quoted_here_document_body");
+      assertNodeCount(output, "here_document_end", 0);
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      final,
+      initial,
+      `remove-delimiter-continuation-${quote.length}`,
+      { byte: 10 + quote.length, deleteBytes: 1, insert: "" },
+      { byte: 6, deleteBytes: quote.length, insert: "" },
+    )) {
+      assertNodeCount(output, "line_continuation", 1);
+      assertCstRange(output, "0:7-0:8", "line_continuation");
+      assertCstRange(output, "3:0-4:0", "here_document_end");
+      assertCstRange(output, "4:0-4:10", "command: complete_command");
+    }
+  }
+});
+
 test("sh: C delimiter bytes preserve an unmatched quoted body through EOF", () => {
   const source = `cat <<"\${é}"\n\${x:bad}\n\${é}\necho AFTER\n`;
   const output = parseValidCst(writeSource("c-delimiter-bytes", source));
@@ -99,6 +177,73 @@ test("sh: C delimiter bytes preserve an unmatched quoted body through EOF", () =
   assertCstRange(output, "1:0-4:0", "quoted_here_document_body");
   assertNodeCount(output, "here_document_end", 0);
   assertNodeCount(output, "parameter_expansion", 0);
+});
+
+test("sh: long delimiter continuation runs preserve reader policy without per-pair scanner state", () => {
+  const pairs = 4096;
+  const continuation = "\\\n".repeat(pairs);
+  const endRow = pairs + 2;
+  for (const { name, word, count } of [
+    { name: "removed", word: `E${continuation}ND`, count: pairs },
+    { name: "retained after NUL", word: `$'END\\0${continuation}'`, count: 0 },
+  ]) {
+    const source = `cat <<${word}\nbody\nEND\necho after\n`;
+    const output = parseValidCst(writeSource(name, source));
+    assertNodeCount(output, "line_continuation", count);
+    assertCstRange(output, `${endRow}:0-${endRow + 1}:0`, "here_document_end");
+    assertCstRange(
+      output,
+      `${endRow + 1}:0-${endRow + 1}:10`,
+      "command: complete_command",
+    );
+  }
+});
+
+test("sh: backslash edits inside backquotes change quoted delimiter matching before inner tokenization", () => {
+  for (const outer of ["", '"']) {
+    for (const quote of ["'", "$'"]) {
+      const prefix = `: ${outer}\`cat <<${quote}a`;
+      const suffix = `\nb'\n$literal\nab\necho inner\n\`${outer}\necho after\n`;
+      const initialText = `${prefix}\\\\${suffix}`;
+      const finalText = `${prefix}\\${suffix}`;
+      const initial = writeSource(
+        "backquote-retained-delimiter-newline",
+        initialText,
+      );
+      const final = writeSource(
+        "backquote-removed-delimiter-newline",
+        finalText,
+      );
+      for (const output of assertIncrementalEqualsFresh(
+        initial,
+        final,
+        "remove-backquote-delimiter-backslash",
+        { byte: prefix.length, deleteBytes: 1, insert: "" },
+      )) {
+        assertNodeCount(output, "line_continuation", 1);
+        assertCstRange(
+          output,
+          `0:${prefix.length}-0:${prefix.length + 1}`,
+          "line_continuation",
+        );
+        assertCstRange(output, "2:0-3:0", "quoted_here_document_body");
+        assertCstRange(output, "3:0-4:0", "here_document_end");
+        assertCstRange(output, "4:0-4:10", "command: complete_command");
+        assertCstRange(output, "6:0-6:10", "command: complete_command");
+      }
+      for (const output of assertIncrementalEqualsFresh(
+        final,
+        initial,
+        "restore-backquote-delimiter-backslash",
+        { byte: prefix.length, deleteBytes: 0, insert: "\\" },
+      )) {
+        assert.deepEqual(continuationManifest(output), []);
+        assertNodeCount(output, "here_document_end", 0);
+        assertCstRange(output, "2:0-5:0", "quoted_here_document_body");
+        assertCstRange(output, "6:0-6:10", "command: complete_command");
+      }
+    }
+  }
 });
 
 test("sh: an empty parameter delimiter is retained inside a backquote command", () => {
@@ -1173,6 +1318,20 @@ test("sh: escape edits update delimiter bytes without discarding quoted source",
       initialDelimiter: "A",
       finalWord: "$'\\x4142'",
       finalDelimiter: "A42",
+    },
+    {
+      name: "control operand below question mark",
+      initialWord: "$'A\\c>B'C",
+      initialDelimiter: "A~BC",
+      finalWord: "$'A\\c?B'C",
+      finalDelimiter: "A\x7fBC",
+    },
+    {
+      name: "control operand at NUL boundary",
+      initialWord: "$'A\\c?B'C",
+      initialDelimiter: "A\x7fBC",
+      finalWord: "$'A\\c@B'C",
+      finalDelimiter: "AC",
     },
     {
       name: "NUL quote scope",

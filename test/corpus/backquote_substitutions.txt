@@ -1290,7 +1290,7 @@ echo `echo a # \` x`
     (newline_list)))
 
 ==================
-a comment ending in a backslash inside unquoted backquotes ends at the raw newline
+backquote continuations join comment source before inner tokenization
 ==================
 
 `a #\
@@ -1332,10 +1332,9 @@ E
                                           name: (cmd_name
                                             (word
                                               (literal)))))))))))
-                          (linebreak
-                            (newline_list
-                              (comment
-                                (comment_text)))))))))))))))
+                          (comment
+                            (comment_text)))
+                        (line_continuation)))))))))))
     separator: (newline_list)
     command: (complete_command
       body: (list
@@ -1372,11 +1371,10 @@ E
                               (newline_list
                                 (here_document_sequence
                                   comment: (comment
-                                    (comment_text))
+                                    (comment_text
+                                      (line_continuation)))
                                   line_end: (here_document_line_end)
                                   document: (here_document
-                                    body: (here_document_body
-                                      (here_document_text))
                                     end: (here_document_end
                                       (here_document_end_text))))))))))))))))))
     separator: (newline_list)
@@ -1416,11 +1414,10 @@ E
                             (newline_list
                               (here_document_sequence
                                 comment: (comment
-                                  (comment_text))
+                                  (comment_text
+                                    (line_continuation)))
                                 line_end: (here_document_line_end)
                                 document: (here_document
-                                  body: (here_document_body
-                                    (here_document_text))
                                   end: (here_document_end
                                     (here_document_end_text)))))))))
                     word: (word

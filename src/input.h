@@ -237,11 +237,18 @@ static inline bool logical_fork(
   if (!source_snapshot_at(&parent->cursor, raw_cut - parent->base, &snapshot)) {
     return false;
   }
+  /* A replaced stage may hold a pending backslash at the cut only when the
+     parent consumed it; the replacement then starts fresh after it. */
   for (
     size_t index = inherited_stage_count; index < snapshot.stage_count;
     index += 1
   ) {
-    if (snapshot.stages[index].has_pending) {
+    const struct SourceStage *stage = &snapshot.stages[index];
+    if (
+      stage->has_pending &&
+      (raw_cut != parent->consumed ||
+        stage->pending.origin.end != (int64_t)(raw_cut - parent->base))
+    ) {
       source_snapshot_clear(&snapshot);
       return false;
     }

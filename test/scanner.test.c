@@ -806,6 +806,36 @@ static void test_logical_forks_preserve_ancestor_pending_units(void) {
   native_input_clear(&native);
 }
 
+static void test_logical_fork_restarts_after_a_consumed_backslash(void) {
+  const int32_t input[] = {'\\', '\\', '\n', 'x'};
+  struct SourceNativeMock mock;
+  source_native_init(&mock, input, ARRAY_LENGTH(input));
+  struct NativeInput native = {.lexer = &mock.lexer};
+  struct SourceStage local = source_stage(SOURCE_REMOVE_CONTINUATIONS);
+  struct SourceSnapshot initial = {.stages = &local, .stage_count = 1};
+  struct LogicalLexer logical;
+  assert(logical_init(&logical, &native, &initial));
+  assert(logical.lexer.lookahead == '\\');
+  struct LogicalLexer child;
+  assert(!logical_fork(&child, &logical, 1, 0, &local, 1));
+  logical_clear(&child);
+  logical.lexer.advance(&logical.lexer, false);
+  assert(logical.lexer.lookahead == '\\');
+  assert(logical.consumed == 1);
+
+  assert(logical_replace_view(&logical, 0, &local, 1));
+  assert(logical.lexer.lookahead == 'x');
+  assert(logical.base == 1);
+  assert(logical.cursor.removal_count == 1);
+  assert(logical.cursor.removals[0].slash == 0);
+  assert(logical.cursor.removals[0].origin.start == 1);
+  logical.lexer.advance(&logical.lexer, false);
+  assert(logical.lexer.eof(&logical.lexer));
+  assert(mock.advances == 4);
+  logical_clear(&logical);
+  native_input_clear(&native);
+}
+
 #ifdef TREE_SITTER_REUSE_ALLOCATOR
 static void test_logical_fork_allocation_failures_preserve_parent(void) {
   const int32_t input[] = {'a', '\\', '\n', 'b'};
@@ -2772,14 +2802,18 @@ static void test_control_escape_table(void) {
     assert_control_escape_bytes(punctuation[index], &value, 1);
   }
 
-  const int32_t unspecified[] = {'@', '`', '{'};
-  const uint8_t fallback[] = {0x00, 0x00, 0x1b};
+  const int32_t unspecified[] =
+    {0x01, '\n', 0x1f, ' ', '!', '\'', '0', '>', '@', '`', '{', 0x7f};
+  const uint8_t fallback[] =
+    {0x41, 0x4a, 0x5f, 0x60, 0x61, 0x67, 0x70, 0x7e, 0x00, 0x00, 0x1b, 0x1f};
   for (size_t index = 0; index < sizeof(fallback); index += 1) {
     assert(!defined_control_escape_byte(unspecified[index], &value));
     assert_control_escape_bytes(unspecified[index], &fallback[index], 1);
   }
   const uint8_t accented[] = {0x03, 0xa9};
   assert_control_escape_bytes(0xe9, accented, sizeof(accented));
+  const uint8_t euro[] = {0x02, 0x82, 0xac};
+  assert_control_escape_bytes(0x20ac, euro, sizeof(euro));
   const uint8_t emoji[] = {0x10, 0x9f, 0x98, 0x80};
   assert_control_escape_bytes(0x1f600, emoji, sizeof(emoji));
   struct ByteBuffer buffer = {0};
@@ -2970,14 +3004,20 @@ static void assert_text_delimiter_fixture(
     characters[index] = (unsigned char)input[index];
   }
 
-  assert(scan_delimiter_fixture(scanner, characters, length));
-  assert(scanner->pending_count == 1);
-  assert_document(
-    &scanner->pending_documents[0],
-    expected_delimiter,
-    quoted,
-    false
-  );
+  bool scanned = scan_delimiter_fixture(scanner, characters, length);
+  if (expected_delimiter == NULL) {
+    assert(!scanned);
+    assert(scanner->pending_count == 0);
+  } else {
+    assert(scanned);
+    assert(scanner->pending_count == 1);
+    assert_document(
+      &scanner->pending_documents[0],
+      expected_delimiter,
+      quoted,
+      false
+    );
+  }
 
   free(characters);
   clear_scanner(scanner);
@@ -3034,6 +3074,9 @@ static void test_double_quoted_parameter_delimiters(void) {
     {"\"${12%%'EOF'}\"\n", "${12%%EOF}"},
     {"\"${?#'EOF'}\"\n", "${?#EOF}"},
     {"\"${x:-${y#'EOF'}'tail'}\"\n", "${x:-${y#EOF}'tail'}"},
+    {"\"${x:}\"\n", NULL},
+    {"\"${x:\"a\"}\"\n", NULL},
+    {"\"${x:\\}}\"\n", "${x:\\}}"},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
     assert_text_delimiter_fixture(
@@ -3105,6 +3148,82 @@ static void test_double_quoted_substitution_delimiter_spelling(void) {
       true
     );
   }
+  tree_sitter_sh_external_scanner_destroy(scanner);
+}
+
+static void test_parameter_delimiter_structural_characters(void) {
+  struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
+  assert(scanner != NULL);
+  const struct {
+    const char *input;
+    const char *delimiter;
+    bool quoted;
+  } fixtures[] = {
+    {"${x:}}\n", "${x:}}", false},
+    {"${x$y}\n", "${x$y}", false},
+    {"${x'}\n", "${x'}", false},
+    {"${x\"}\n", "${x\"}", false},
+    {"${x\\}}\n", "${x\\}}", false},
+    {"\"${x\\}}\"\n", "${x\\}}", true},
+    {"${x:\\}\n", "${x:\\}", false},
+    {"${x:\\}}\n", "${x:\\}}", false},
+    {"${x$'a'}\n", "${x$a}", true},
+    {"${x:$'a'}\n", "${x:$a}", true},
+    {"${#$y}\n", "${#$y}", false},
+    {"${#\\a}\n", "${#\\a}", false},
+    {"${#x:\"a\"}\n", "${#x:a}", true},
+    {"${#\\}}\n", "${#}}", false},
+    {"${#'}\n", "${#}", false},
+    {"${#\"}}\n", "${#}}", false},
+    {"${#\\}\n", "${#}", false},
+    {"${#)}\n", "${#}", false},
+    {"`${#`}`\n", "`${#}`", false},
+    {"\"${#'}\"\n", "${#}", true},
+    {"`${#'`\n", "`${#'`", false},
+    {"$(f ${x))\n", "$(f ${x))", false},
+    {"$(f ${#))\n", "$(f ${#))", false},
+    {"$(f ${x$)\n", "$(f ${x$)", false},
+    {"$(f ${x:-)\n", "$(f ${x:-)", false},
+    {"`g ${y``\n", "`g ${y``", false},
+    {"${x\\\\\n}\n", "${x\\}", false},
+    {"${x:\\\\\n}\n", "${x:\\}", false},
+    {"${\\\\\n}\n", "${}", false},
+    {"${#\\\\\n}\n", "${#}", false},
+    {"${#\\\\\n:}\n", "${#\\:}", false},
+    {"\"${x:\\\\\n}\"\n", "${x:\\}", true},
+    {"${x\\\\\\\\\n}\n", "${x\\\\}", true},
+    {"${x\\\\\n'a'}\n", "${x\\a}", true},
+    {"${x\\\\\\\n}\n", "${x\\\\\n}", true},
+    {"${x:}\n", NULL, false},
+    {"${x\"a\"}\n", NULL, false},
+    {"${x'a'}\n", NULL, false},
+    {"${x`g`}\n", NULL, false},
+    {"\"${x\"a\"}\"\n", NULL, false},
+    {"${#\"a\"}\n", NULL, false},
+    {"${#'a'}\n", NULL, false},
+    {"$(${#)}\n", NULL, false},
+    {"$(f ${x)\n", NULL, false},
+    {"$(f ${#)\n", NULL, false},
+    {"$(f ${x:-${y)\n", NULL, false},
+    {"$(f ${x:-$(g ${y))\n", NULL, false},
+    {"$(f ${x:-`g ${y`)\n", NULL, false},
+    {"`g ${y`\n", NULL, false},
+    {"${x:\"a\"}\n", NULL, false},
+  };
+  for (size_t index = 0; index < ARRAY_LENGTH(fixtures); index += 1) {
+    assert_text_delimiter_fixture(
+      scanner,
+      fixtures[index].input,
+      fixtures[index].delimiter,
+      fixtures[index].quoted
+    );
+  }
+
+  const int32_t undecodable[] = {'$', '{', '#', -1, '}', '\n'};
+  assert(
+    !scan_delimiter_fixture(scanner, undecodable, ARRAY_LENGTH(undecodable))
+  );
+  assert(scanner->pending_count == 0);
   tree_sitter_sh_external_scanner_destroy(scanner);
 }
 
@@ -3668,6 +3787,112 @@ test_logical_lexical_emission_keeps_individual_physical_pairs(void) {
   assert(offset == 7);
   assert(!scanner.emission.active);
   assert(scanner.context_count == 0);
+  clear_scanner(&scanner);
+}
+
+static void test_delimiter_emission_restores_reader_continuation_changes(void) {
+  const struct {
+    const char *source;
+    size_t continuation;
+    enum TokenType context;
+  } cases[] = {
+    {"'a\\\nb' ", SIZE_MAX, 0},
+    {"$'a\\\nb' ", SIZE_MAX, 0},
+    {"${x\\\\\n} ", 4, 0},
+    {"${x:\\\\\n} ", 5, 0},
+    {"\"${x:\\\\\n}\" ", 6, 0},
+    {"${#\\\\\n} ", 4, 0},
+    {"${\\\\\n} ", 3, 0},
+    {"${x\\\\\\\n} ", SIZE_MAX, 0},
+    {"${x\\\\\\\\\n} ", 6, 0},
+    {"'a\\\nb' ", 2, DOUBLE_QUOTED_BACKQUOTE_START},
+    {"'a\\\nb' ", 2, BACKQUOTE_START},
+    {"'a\\\\\nb' ", SIZE_MAX, BACKQUOTE_START},
+  };
+  for (size_t index = 0; index < ARRAY_LENGTH(cases); index += 1) {
+    struct Scanner scanner = {0};
+    if (cases[index].context != 0) {
+      assert(scanner_source_ready(&scanner));
+      assert(source_context_push(&scanner, cases[index].context));
+    }
+    size_t length = strlen(cases[index].source);
+    int32_t input[32];
+    assert(length <= ARRAY_LENGTH(input));
+    for (size_t byte = 0; byte < length; byte += 1)
+      input[byte] = (unsigned char)cases[index].source[byte];
+    assert_source_step(&scanner, input, length, HERE_END_BEGIN, 0);
+    size_t offset = 0, continuations = 0, newlines = 0;
+    while (scanner.emission.active) {
+      char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+      unsigned state_length = snapshot_scanner(&scanner, state);
+      tree_sitter_sh_external_scanner_deserialize(
+        &scanner,
+        state,
+        state_length
+      );
+      assert_scanner_matches_snapshot(&scanner, state, state_length);
+      bool valid[TOKEN_COUNT] = {false};
+      valid[HERE_END_BEGIN_PIECE] = true;
+      valid[LINE_CONTINUATION] = true;
+      valid[REMOVED_NEWLINE] = true;
+      struct MockLexer lexer;
+      init_mock_lexer(&lexer, input + offset, length - offset);
+      assert(
+        tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid)
+      );
+      if (lexer.lexer.result_symbol == LINE_CONTINUATION) {
+        assert(offset == cases[index].continuation && lexer.mark == 1);
+        continuations += 1;
+      } else if (lexer.lexer.result_symbol == REMOVED_NEWLINE) {
+        assert(cases[index].continuation != SIZE_MAX);
+        assert(offset == cases[index].continuation + 1 && lexer.mark == 1);
+        newlines += 1;
+      }
+      assert(lexer.mark > 0);
+      offset += lexer.mark;
+    }
+    assert(offset == length - 1);
+    assert(continuations == (cases[index].continuation != SIZE_MAX ? 1u : 0u));
+    assert(newlines == continuations);
+    assert(scanner.emission.changes == NULL);
+    assert(!scanner.source.stages[scanner.source.stage_count - 1].disabled);
+    clear_scanner(&scanner);
+  }
+}
+
+static void test_delimiter_continuation_changes_respect_state_capacity(void) {
+  const size_t quote_pairs = SCANNER_STATE_CAPACITY;
+  int32_t *input = malloc((2 * quote_pairs + 2) * sizeof(*input));
+  assert(input != NULL);
+  for (size_t index = 0; index < 2 * quote_pairs; index += 1)
+    input[index] = '\'';
+  input[2 * quote_pairs] = 'E';
+  input[2 * quote_pairs + 1] = ' ';
+  struct Scanner scanner = {0};
+  char before[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned before_length = snapshot_scanner(&scanner, before);
+  bool valid[TOKEN_COUNT] = {false};
+  valid[HERE_END_BEGIN] = true;
+  struct MockLexer lexer;
+  init_mock_lexer(&lexer, input, 2 * quote_pairs + 2);
+  assert(!tree_sitter_sh_external_scanner_scan(&scanner, &lexer.lexer, valid));
+  assert_scanner_matches_snapshot(&scanner, before, before_length);
+  free(input);
+
+  const int32_t quoted[] = {'\'', 'E', '\'', ' '};
+  assert_source_step(&scanner, quoted, ARRAY_LENGTH(quoted), HERE_END_BEGIN, 0);
+  assert(scanner.emission.change_count == 2);
+  char state[TREE_SITTER_SERIALIZATION_BUFFER_SIZE];
+  unsigned length = snapshot_scanner(&scanner, state);
+  struct Scanner restored = {0};
+  for (unsigned cut = 1; cut < length; cut += 1) {
+    tree_sitter_sh_external_scanner_deserialize(&restored, state, cut);
+    assert_scanner_matches_snapshot(&restored, before, before_length);
+  }
+  state[length - 1] = 2;
+  tree_sitter_sh_external_scanner_deserialize(&restored, state, length);
+  assert_scanner_matches_snapshot(&restored, before, before_length);
+  clear_scanner(&restored);
   clear_scanner(&scanner);
 }
 
@@ -4479,6 +4704,7 @@ int main(void) {
   test_logical_context_changes_reclassify_cached_lookahead();
   test_logical_backquote_closers_belong_to_the_innermost_active_view();
   test_logical_forks_preserve_ancestor_pending_units();
+  test_logical_fork_restarts_after_a_consumed_backslash();
   test_logical_resume_does_not_repeat_already_emitted_source();
   test_source_reader_failure_releases_owned_memory();
   test_lookahead_replays_raw_cuts_in_distinct_quote_views();
@@ -4515,12 +4741,15 @@ int main(void) {
   test_byte_delimiter_matching();
   test_double_quoted_parameter_delimiters();
   test_double_quoted_substitution_delimiter_spelling();
+  test_parameter_delimiter_structural_characters();
   test_arithmetic_delimiters_preserve_nested_quote_context();
   test_substitution_hash_delimiter_words();
   test_dollar_single_quote_escape_units();
   test_dollar_single_quote_delimiter_bytes_survive_serialization();
   test_delimiter_scan_resource_rollback();
   test_logical_lexical_emission_keeps_individual_physical_pairs();
+  test_delimiter_emission_restores_reader_continuation_changes();
+  test_delimiter_continuation_changes_respect_state_capacity();
   test_word_entry_classifies_and_owns_source_in_normal_and_recovery_scans();
   test_whole_source_requires_its_classification_and_nonempty_range();
   test_separators_preserve_operator_identity_and_pending_documents();

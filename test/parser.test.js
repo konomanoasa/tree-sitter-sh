@@ -51,16 +51,16 @@ test("sh: folded continuations preserve keyword and function-name classification
       `0:${newline - 1}-0:${newline}`,
     ]);
   }
-  for (const [name, sourceText] of [
-    ["nested-start", ": `if\\`:\\``\n"],
-    ["literal-slash-three", ": `if\\\\\\\n`\n"],
-    ["literal-slash-four", ": `if\\\\\\\\\n`\n"],
+  for (const [name, sourceText, continuations] of [
+    ["nested-start", ": `if\\`:\\``\n", []],
+    ["literal-slash-three", ": `if\\\\\\\n`\n", ["0:7-0:8"]],
+    ["literal-slash-four", ": `if\\\\\\\\\n`\n", []],
   ]) {
     const source = writeSource(name, sourceText);
     const output = parseValidCst(source);
     assertOccurrenceCount(output, "if_keyword", 0);
     assertContains(output, "cmd_name");
-    assert.deepEqual(lineContinuationManifest(runQuery(source)), []);
+    assert.deepEqual(lineContinuationManifest(runQuery(source)), continuations);
   }
 });
 

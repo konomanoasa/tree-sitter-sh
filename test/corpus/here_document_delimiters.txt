@@ -535,6 +535,64 @@ after
     (newline_list)))
 
 ==================
+unquoted backquotes remove continuations before single-quoted delimiter matching
+==================
+: `cat <<'a\
+b'
+BODY
+ab
+`
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (backquote_substitution
+                        (backquote_substitution_body
+                          (complete_commands
+                            (complete_command
+                              (list
+                                (and_or
+                                  (pipeline
+                                    (pipe_sequence
+                                      (command
+                                        (simple_command
+                                          (cmd_name
+                                            (word
+                                              (literal)))
+                                          (cmd_suffix
+                                            (io_redirect
+                                              (io_here
+                                                (dless)
+                                                (here_end
+                                                  (word
+                                                    (here_end_text
+                                                      (line_continuation)))))))))))))))
+                          (linebreak
+                            (newline_list
+                              (here_document_sequence
+                                (here_document_line_end)
+                                (here_document
+                                  (quoted_here_document_body
+                                    (quoted_here_document_text))
+                                  (here_document_end
+                                    (here_document_end_text))))))))))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
 backquote delimiter backslashes fold to the owning level
 ==================
 
@@ -1538,6 +1596,169 @@ echo after
 4:10 - 5:0      trailing: linebreak
 4:10 - 5:0        newline_list
 4:10 - 5:0          "\n"
+
+==================
+parameter colon prefix consumes a brace or backslash
+:cst
+==================
+cat <<${x:}} <<"${x:\}"
+$probe
+${x:}}
+${x:\}
+echo after
+
+------------------
+
+0:0  - 5:0    program
+0:0  - 4:10     commands: complete_commands
+0:0  - 0:23       command: complete_command
+0:0  - 0:23         body: list
+0:0  - 0:23           and_or: and_or
+0:0  - 0:23             pipeline: pipeline
+0:0  - 0:23               sequence: pipe_sequence
+0:0  - 0:23                 command: command
+0:0  - 0:23                   body: simple_command
+0:0  - 0:3                      name: cmd_name
+0:0  - 0:3                        word
+0:0  - 0:3                          literal `cat`
+0:3  - 0:23                     suffix: cmd_suffix
+0:4  - 0:12                       redirect: io_redirect
+0:4  - 0:12                         body: io_here
+0:4  - 0:6                            operator: dless `<<`
+0:6  - 0:12                           end: here_end
+0:6  - 0:12                             word: word
+0:6  - 0:12                               here_end_text `${x:}}`
+0:13 - 0:23                       redirect: io_redirect
+0:13 - 0:23                         body: io_here
+0:13 - 0:15                           operator: dless `<<`
+0:15 - 0:23                           end: here_end
+0:15 - 0:23                             word: word
+0:15 - 0:23                               here_end_text `\"${x:\\}\"`
+0:23 - 4:0        separator: newline_list
+0:23 - 4:0          here_document_sequence
+0:23 - 1:0            line_end: here_document_line_end
+0:23 - 0:24             `\n`
+1:0  - 3:0            document: here_document
+1:0  - 2:0              body: here_document_body
+1:0  - 1:6                parameter_expansion
+1:0  - 1:1                  "$"
+1:1  - 1:6                  parameter: variable_name `probe`
+2:0  - 3:0              end: here_document_end
+2:0  - 2:6                here_document_end_text `${x:}}`
+3:0  - 4:0            document: here_document
+3:0  - 4:0              end: here_document_end
+3:0  - 3:6                here_document_end_text `${x:\\}`
+4:0  - 4:10       command: complete_command
+4:0  - 4:10         body: list
+4:0  - 4:10           and_or: and_or
+4:0  - 4:10             pipeline: pipeline
+4:0  - 4:10               sequence: pipe_sequence
+4:0  - 4:10                 command: command
+4:0  - 4:10                   body: simple_command
+4:0  - 4:4                      name: cmd_name
+4:0  - 4:4                        word
+4:0  - 4:4                          literal `echo`
+4:4  - 4:10                     suffix: cmd_suffix
+4:5  - 4:10                       word: word
+4:5  - 4:10                         literal `after`
+4:10 - 5:0      trailing: linebreak
+4:10 - 5:0        newline_list
+4:10 - 5:0          "\n"
+
+==================
+parameter prefix consumption precedes quotes and closers
+:cst
+==================
+cat <<$(f ${x)) <<`g ${y`` <<$(f ${x:-) <<${x'}
+one
+$(f ${x))
+two
+`g ${y``
+three
+$(f ${x:-)
+four
+${x'}
+echo after
+
+------------------
+
+0:0  - 10:0   program
+0:0  - 9:10     commands: complete_commands
+0:0  - 0:47       command: complete_command
+0:0  - 0:47         body: list
+0:0  - 0:47           and_or: and_or
+0:0  - 0:47             pipeline: pipeline
+0:0  - 0:47               sequence: pipe_sequence
+0:0  - 0:47                 command: command
+0:0  - 0:47                   body: simple_command
+0:0  - 0:3                      name: cmd_name
+0:0  - 0:3                        word
+0:0  - 0:3                          literal `cat`
+0:3  - 0:47                     suffix: cmd_suffix
+0:4  - 0:15                       redirect: io_redirect
+0:4  - 0:15                         body: io_here
+0:4  - 0:6                            operator: dless `<<`
+0:6  - 0:15                           end: here_end
+0:6  - 0:15                             word: word
+0:6  - 0:15                               here_end_text `$(f ${x))`
+0:16 - 0:26                       redirect: io_redirect
+0:16 - 0:26                         body: io_here
+0:16 - 0:18                           operator: dless `<<`
+0:18 - 0:26                           end: here_end
+0:18 - 0:26                             word: word
+0:18 - 0:26                               here_end_text `\`g ${y\`\``
+0:27 - 0:39                       redirect: io_redirect
+0:27 - 0:39                         body: io_here
+0:27 - 0:29                           operator: dless `<<`
+0:29 - 0:39                           end: here_end
+0:29 - 0:39                             word: word
+0:29 - 0:39                               here_end_text `$(f ${x:-)`
+0:40 - 0:47                       redirect: io_redirect
+0:40 - 0:47                         body: io_here
+0:40 - 0:42                           operator: dless `<<`
+0:42 - 0:47                           end: here_end
+0:42 - 0:47                             word: word
+0:42 - 0:47                               here_end_text `${x'}`
+0:47 - 9:0        separator: newline_list
+0:47 - 9:0          here_document_sequence
+0:47 - 1:0            line_end: here_document_line_end
+0:47 - 0:48             `\n`
+1:0  - 3:0            document: here_document
+1:0  - 2:0              body: here_document_body
+1:0  - 1:3                here_document_text `one`
+2:0  - 3:0              end: here_document_end
+2:0  - 2:9                here_document_end_text `$(f ${x))`
+3:0  - 5:0            document: here_document
+3:0  - 4:0              body: here_document_body
+3:0  - 3:3                here_document_text `two`
+4:0  - 5:0              end: here_document_end
+4:0  - 4:8                here_document_end_text `\`g ${y\`\``
+5:0  - 7:0            document: here_document
+5:0  - 6:0              body: here_document_body
+5:0  - 5:5                here_document_text `three`
+6:0  - 7:0              end: here_document_end
+6:0  - 6:10               here_document_end_text `$(f ${x:-)`
+7:0  - 9:0            document: here_document
+7:0  - 8:0              body: here_document_body
+7:0  - 7:4                here_document_text `four`
+8:0  - 9:0              end: here_document_end
+8:0  - 8:5                here_document_end_text `${x'}`
+9:0  - 9:10       command: complete_command
+9:0  - 9:10         body: list
+9:0  - 9:10           and_or: and_or
+9:0  - 9:10             pipeline: pipeline
+9:0  - 9:10               sequence: pipe_sequence
+9:0  - 9:10                 command: command
+9:0  - 9:10                   body: simple_command
+9:0  - 9:4                      name: cmd_name
+9:0  - 9:4                        word
+9:0  - 9:4                          literal `echo`
+9:4  - 9:10                     suffix: cmd_suffix
+9:5  - 9:10                       word: word
+9:5  - 9:10                         literal `after`
+9:10 - 10:0     trailing: linebreak
+9:10 - 10:0       newline_list
+9:10 - 10:0         "\n"
 
 ==================
 parameter quoted brace
@@ -2840,6 +3061,59 @@ after
 1:0  - 1:4                quoted_here_document_text `body`
 2:0  - 3:0              end: here_document_end
 2:0  - 2:15               here_document_end_text `\`printf %s END\``
+3:0  - 3:5        command: complete_command
+3:0  - 3:5          body: list
+3:0  - 3:5            and_or: and_or
+3:0  - 3:5              pipeline: pipeline
+3:0  - 3:5                sequence: pipe_sequence
+3:0  - 3:5                  command: command
+3:0  - 3:5                    body: simple_command
+3:0  - 3:5                      name: cmd_name
+3:0  - 3:5                        word
+3:0  - 3:5                          literal `after`
+3:5  - 4:0      trailing: linebreak
+3:5  - 4:0        newline_list
+3:5  - 4:0          "\n"
+
+==================
+control operands below 0x40 match their transformed bytes in a quoted here document
+:cst
+==================
+cat <<$'\c0\c!\c'\c>'
+$literal
+pag~
+after
+
+------------------
+
+0:0  - 4:0    program
+0:0  - 3:5      commands: complete_commands
+0:0  - 0:21       command: complete_command
+0:0  - 0:21         body: list
+0:0  - 0:21           and_or: and_or
+0:0  - 0:21             pipeline: pipeline
+0:0  - 0:21               sequence: pipe_sequence
+0:0  - 0:21                 command: command
+0:0  - 0:21                   body: simple_command
+0:0  - 0:3                      name: cmd_name
+0:0  - 0:3                        word
+0:0  - 0:3                          literal `cat`
+0:3  - 0:21                     suffix: cmd_suffix
+0:4  - 0:21                       redirect: io_redirect
+0:4  - 0:21                         body: io_here
+0:4  - 0:6                            operator: dless `<<`
+0:6  - 0:21                           end: here_end
+0:6  - 0:21                             word: word
+0:6  - 0:21                               here_end_text `$'\\c0\\c!\\c'\\c>'`
+0:21 - 3:0        separator: newline_list
+0:21 - 3:0          here_document_sequence
+0:21 - 1:0            line_end: here_document_line_end
+0:21 - 0:22             `\n`
+1:0  - 3:0            document: here_document
+1:0  - 2:0              body: quoted_here_document_body
+1:0  - 1:8                quoted_here_document_text `$literal`
+2:0  - 3:0              end: here_document_end
+2:0  - 2:4                here_document_end_text `pag~`
 3:0  - 3:5        command: complete_command
 3:0  - 3:5          body: list
 3:0  - 3:5            and_or: and_or
@@ -4518,6 +4792,364 @@ echo after
             (quoted_here_document_text))
           (here_document_end
             (here_document_end_text)))
+        (here_document
+          (quoted_here_document_body
+            (quoted_here_document_text))
+          (here_document_end
+            (here_document_end_text)))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+length operator before a dropped byte and a closer
+:cst
+==================
+cat <<${#'} <<"${#)}" <<`${#`}` <<${#x'a'}
+$one
+${#}
+$two
+${#}
+three
+`${#}`
+four
+${#xa}
+echo after
+
+------------------
+
+0:0  - 10:0   program
+0:0  - 9:10     commands: complete_commands
+0:0  - 0:42       command: complete_command
+0:0  - 0:42         body: list
+0:0  - 0:42           and_or: and_or
+0:0  - 0:42             pipeline: pipeline
+0:0  - 0:42               sequence: pipe_sequence
+0:0  - 0:42                 command: command
+0:0  - 0:42                   body: simple_command
+0:0  - 0:3                      name: cmd_name
+0:0  - 0:3                        word
+0:0  - 0:3                          literal `cat`
+0:3  - 0:42                     suffix: cmd_suffix
+0:4  - 0:11                       redirect: io_redirect
+0:4  - 0:11                         body: io_here
+0:4  - 0:6                            operator: dless `<<`
+0:6  - 0:11                           end: here_end
+0:6  - 0:11                             word: word
+0:6  - 0:11                               here_end_text `${#'}`
+0:12 - 0:21                       redirect: io_redirect
+0:12 - 0:21                         body: io_here
+0:12 - 0:14                           operator: dless `<<`
+0:14 - 0:21                           end: here_end
+0:14 - 0:21                             word: word
+0:14 - 0:21                               here_end_text `\"${#)}\"`
+0:22 - 0:31                       redirect: io_redirect
+0:22 - 0:31                         body: io_here
+0:22 - 0:24                           operator: dless `<<`
+0:24 - 0:31                           end: here_end
+0:24 - 0:31                             word: word
+0:24 - 0:31                               here_end_text `\`${#\`}\``
+0:32 - 0:42                       redirect: io_redirect
+0:32 - 0:42                         body: io_here
+0:32 - 0:34                           operator: dless `<<`
+0:34 - 0:42                           end: here_end
+0:34 - 0:42                             word: word
+0:34 - 0:42                               here_end_text `${#x'a'}`
+0:42 - 9:0        separator: newline_list
+0:42 - 9:0          here_document_sequence
+0:42 - 1:0            line_end: here_document_line_end
+0:42 - 0:43             `\n`
+1:0  - 3:0            document: here_document
+1:0  - 2:0              body: here_document_body
+1:0  - 1:4                parameter_expansion
+1:0  - 1:1                  "$"
+1:1  - 1:4                  parameter: variable_name `one`
+2:0  - 3:0              end: here_document_end
+2:0  - 2:4                here_document_end_text `${#}`
+3:0  - 5:0            document: here_document
+3:0  - 4:0              body: quoted_here_document_body
+3:0  - 3:4                quoted_here_document_text `$two`
+4:0  - 5:0              end: here_document_end
+4:0  - 4:4                here_document_end_text `${#}`
+5:0  - 7:0            document: here_document
+5:0  - 6:0              body: here_document_body
+5:0  - 5:5                here_document_text `three`
+6:0  - 7:0              end: here_document_end
+6:0  - 6:6                here_document_end_text `\`${#}\``
+7:0  - 9:0            document: here_document
+7:0  - 8:0              body: quoted_here_document_body
+7:0  - 7:4                quoted_here_document_text `four`
+8:0  - 9:0              end: here_document_end
+8:0  - 8:6                here_document_end_text `${#xa}`
+9:0  - 9:10       command: complete_command
+9:0  - 9:10         body: list
+9:0  - 9:10           and_or: and_or
+9:0  - 9:10             pipeline: pipeline
+9:0  - 9:10               sequence: pipe_sequence
+9:0  - 9:10                 command: command
+9:0  - 9:10                   body: simple_command
+9:0  - 9:4                      name: cmd_name
+9:0  - 9:4                        word
+9:0  - 9:4                          literal `echo`
+9:4  - 9:10                     suffix: cmd_suffix
+9:5  - 9:10                       word: word
+9:5  - 9:10                         literal `after`
+9:10 - 10:0     trailing: linebreak
+9:10 - 10:0       newline_list
+9:10 - 10:0         "\n"
+
+==================
+a colon consumes the only parameter closer
+:error
+==================
+cat <<${x:}
+
+------------------
+
+(ERROR)
+
+==================
+an operator quote leaves the operand quote unclosed
+:error
+==================
+cat <<${x"a"}
+
+------------------
+
+(ERROR)
+
+==================
+a colon quote leaves the operand quote unclosed
+:error
+==================
+cat <<${x:"a"}
+
+------------------
+
+(ERROR)
+
+==================
+a parameter prefix consumes the only command closer
+:error
+==================
+cat <<$(f ${x)
+
+------------------
+
+(ERROR)
+
+==================
+a consumed operator backslash does not escape a line continuation
+==================
+cat <<${x\\
+}
+$x
+${x\}
+echo after
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (here_end_text
+                              (line_continuation))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (parameter_expansion
+              (variable_name)))
+          (here_document_end
+            (here_document_end_text)))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a length prefix backslash before a continuation and the closer is dropped
+==================
+cat <<${#\\
+}
+one
+${#}
+echo after
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (here_end_text
+                              (line_continuation))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end
+            (here_document_end_text)))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a dropped initial backslash does not escape a line continuation
+==================
+cat <<${\\
+}
+one
+${}
+echo after
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (here_end_text
+                              (line_continuation))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
+        (here_document
+          (here_document_body
+            (here_document_text))
+          (here_document_end
+            (here_document_end_text)))))
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (word
+                      (literal)))))))))))
+  (linebreak
+    (newline_list)))
+
+==================
+a double-quoted colon backslash before a line continuation
+==================
+cat <<"${x:\\
+}"
+$x
+${x:\}
+echo after
+
+------------------
+
+(program
+  (complete_commands
+    (complete_command
+      (list
+        (and_or
+          (pipeline
+            (pipe_sequence
+              (command
+                (simple_command
+                  (cmd_name
+                    (word
+                      (literal)))
+                  (cmd_suffix
+                    (io_redirect
+                      (io_here
+                        (dless)
+                        (here_end
+                          (word
+                            (here_end_text
+                              (line_continuation))))))))))))))
+    (newline_list
+      (here_document_sequence
+        (here_document_line_end)
         (here_document
           (quoted_here_document_body
             (quoted_here_document_text))
