@@ -1034,7 +1034,6 @@ static void test_delimiter_source_views_preserve_quotedness_and_bytes(void) {
       read_here_document_delimiter(
         &fixture.lookahead.lexer,
         NULL,
-        0,
         false,
         &document
       ) == DELIMITER_READ_WORD
@@ -2988,6 +2987,30 @@ static void test_double_quoted_parameter_delimiters(void) {
   struct Scanner *scanner = tree_sitter_sh_external_scanner_create();
   assert(scanner != NULL);
 
+  const struct {
+    int32_t source[7];
+    size_t length;
+    const char *delimiter;
+  } bytes[] = {
+    {{'$', '{', 0xe9, '}', '\n'}, 5, "${\251}"},
+    {{'$', '{', '#', 0xe9, '}', '\n'}, 6, "${#\303\251}"},
+    {{'$', '{', 'a', 0xe9, '}', '\n'}, 6, "${a\303\251}"},
+    {{'$', '{', 0x2603, '}', '\n'}, 5, "${\230\203}"},
+  };
+  for (size_t index = 0; index < ARRAY_LENGTH(bytes); index++) {
+    assert(
+      scan_delimiter_fixture(scanner, bytes[index].source, bytes[index].length)
+    );
+    assert(scanner->pending_count == 1);
+    assert_document(
+      &scanner->pending_documents[0],
+      bytes[index].delimiter,
+      false,
+      false
+    );
+    clear_scanner(scanner);
+  }
+
   const char *fixtures[][2] = {
     {"\"${x:-\"ab\"}\"\n", "${x:-ab}"},
     {"\"${x:-\"a}b\"}tail\"\n", "${x:-a}b}tail"},
@@ -4139,7 +4162,6 @@ static void test_physical_prefix_and_character_keep_the_same_begin(void) {
 static void test_saved_source_requires_a_begin_token(void) {
   const int32_t source[] = {'e', 'c', 'h', 'o', ' '};
   const enum TokenType owners[] = {
-    HERE_END_COMMIT,
     WORD_INITIAL_LITERAL_BEGIN_PIECE,
     PUNCT_RIGHT_PARENTHESIS_PREFIX,
   };

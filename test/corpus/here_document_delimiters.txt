@@ -37,8 +37,7 @@ STOP
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (single_quoted
-                              (single_quote_content))))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -63,8 +62,7 @@ STOP
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (double_quoted
-                              (double_quote_text))))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -89,9 +87,7 @@ STOP
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal)
-                            (escaped_character)
-                            (literal)))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -116,8 +112,7 @@ STOP
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (dollar_single_quoted
-                              (dollar_single_quote_text)))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -158,8 +153,7 @@ EOF
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (escaped_character)
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -200,11 +194,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (pattern_bracket_source
-                              (pattern_bracket_members_source
-                                (pattern_bracket_character_source)
-                                (pattern_bracket_character_source)
-                                (pattern_bracket_character_source))))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -246,12 +236,7 @@ after
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (double_quoted
-                              (parameter_expansion
-                                parameter: (variable_name)
-                                operator: (parameter_value_operator)
-                                word: (parameter_word
-                                  (double_quote_text))))))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -304,13 +289,7 @@ after
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (double_quoted
-                              (parameter_expansion
-                                parameter: (variable_name)
-                                operator: (parameter_value_operator)
-                                word: (parameter_word
-                                  (double_quoted
-                                    (double_quote_text)))))))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -333,7 +312,8 @@ after
     (newline_list)))
 
 ==================
-a case command can occur in a here-document delimiter word
+a case command can occur in a here-document delimiter word is rejected
+:error
 ==================
 
 cat <<$(case x in x) printf END;; esac)
@@ -342,71 +322,7 @@ $(case x in x) printf END;; esac)
 
 ------------------
 
-(program
-  leading: (linebreak
-    (newline_list))
-  commands: (complete_commands
-    command: (complete_command
-      body: (list
-        and_or: (and_or
-          pipeline: (pipeline
-            sequence: (pipe_sequence
-              command: (command
-                body: (simple_command
-                  name: (cmd_name
-                    (word
-                      (literal)))
-                  suffix: (cmd_suffix
-                    redirect: (io_redirect
-                      body: (io_here
-                        operator: (dless)
-                        end: (here_end
-                          word: (word
-                            (command_substitution
-                              body: (command_substitution_body
-                                (complete_commands
-                                  command: (complete_command
-                                    body: (list
-                                      and_or: (and_or
-                                        pipeline: (pipeline
-                                          sequence: (pipe_sequence
-                                            command: (command
-                                              body: (compound_command
-                                                (case_clause
-                                                  (case_keyword)
-                                                  word: (word
-                                                    (literal))
-                                                  in: (in
-                                                    (in_keyword))
-                                                  items: (case_list
-                                                    item: (case_item
-                                                      patterns: (pattern_list
-                                                        word: (word
-                                                          (literal)))
-                                                      body: (compound_list
-                                                        body: (term
-                                                          and_or: (and_or
-                                                            pipeline: (pipeline
-                                                              sequence: (pipe_sequence
-                                                                command: (command
-                                                                  body: (simple_command
-                                                                    name: (cmd_name
-                                                                      (word
-                                                                        (literal)))
-                                                                    suffix: (cmd_suffix
-                                                                      word: (word
-                                                                        (literal))))))))))
-                                                      terminator: (dsemi)))
-                                                  (esac_keyword)))))))))))))))))))))))))
-  trailing: (linebreak
-    (newline_list
-      (here_document_sequence
-        line_end: (here_document_line_end)
-        document: (here_document
-          body: (here_document_body
-            (here_document_text))
-          end: (here_document_end
-            (here_document_end_text)))))))
+(ERROR)
 
 ==================
 delimiter command substitutions recognize empty and nested case commands
@@ -447,23 +363,7 @@ $(printf $(case w in esac))
                         (dless)
                         (here_end
                           (word
-                            (command_substitution
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (compound_command
-                                                (case_clause
-                                                  (case_keyword)
-                                                  (word
-                                                    (literal))
-                                                  (in
-                                                    (in_keyword))
-                                                  (esac_keyword))))))))))))))))))))))))
+                            (here_end_text)))))))))))))
     (newline_list
       (here_document_sequence
         (here_document_line_end)
@@ -488,48 +388,7 @@ $(printf $(case w in esac))
                         (dless)
                         (here_end
                           (word
-                            (command_substitution
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (compound_command
-                                                (if_clause
-                                                  (if_keyword)
-                                                  (compound_list
-                                                    (term
-                                                      (and_or
-                                                        (pipeline
-                                                          (pipe_sequence
-                                                            (command
-                                                              (simple_command
-                                                                (cmd_name
-                                                                  (word
-                                                                    (literal)))))))))
-                                                    (separator
-                                                      (separator_op)))
-                                                  (then_keyword)
-                                                  (compound_list
-                                                    (term
-                                                      (and_or
-                                                        (pipeline
-                                                          (pipe_sequence
-                                                            (command
-                                                              (compound_command
-                                                                (case_clause
-                                                                  (case_keyword)
-                                                                  (word
-                                                                    (literal))
-                                                                  (in
-                                                                    (in_keyword))
-                                                                  (esac_keyword))))))))
-                                                    (separator
-                                                      (separator_op)))
-                                                  (fi_keyword))))))))))))))))))))))))
+                            (here_end_text)))))))))))))
     (newline_list
       (here_document_sequence
         (here_document_line_end)
@@ -554,24 +413,7 @@ $(printf $(case w in esac))
                         (dless)
                         (here_end
                           (word
-                            (command_substitution
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (bang)
-                                          (pipe_sequence
-                                            (command
-                                              (compound_command
-                                                (case_clause
-                                                  (case_keyword)
-                                                  (word
-                                                    (literal))
-                                                  (in
-                                                    (in_keyword))
-                                                  (esac_keyword))))))))))))))))))))))))
+                            (here_end_text)))))))))))))
     (newline_list
       (here_document_sequence
         (here_document_line_end)
@@ -596,38 +438,7 @@ $(printf $(case w in esac))
                         (dless)
                         (here_end
                           (word
-                            (command_substitution
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (simple_command
-                                                (cmd_name
-                                                  (word
-                                                    (literal)))
-                                                (cmd_suffix
-                                                  (word
-                                                    (command_substitution
-                                                      (command_substitution_body
-                                                        (complete_commands
-                                                          (complete_command
-                                                            (list
-                                                              (and_or
-                                                                (pipeline
-                                                                  (pipe_sequence
-                                                                    (command
-                                                                      (compound_command
-                                                                        (case_clause
-                                                                          (case_keyword)
-                                                                          (word
-                                                                            (literal))
-                                                                          (in
-                                                                            (in_keyword))
-                                                                          (esac_keyword)))))))))))))))))))))))))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -639,7 +450,8 @@ $(printf $(case w in esac))
             (here_document_end_text)))))))
 
 ==================
-delimiter command substitutions retain quoted parentheses inside case brackets
+delimiter command substitutions retain quoted parentheses inside case brackets is rejected
+:error
 ==================
 
 cat <<$(case x in [')']) printf END;; esac)
@@ -649,88 +461,11 @@ after
 
 ------------------
 
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (command_substitution
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (compound_command
-                                                (case_clause
-                                                  (case_keyword)
-                                                  (word
-                                                    (literal))
-                                                  (in
-                                                    (in_keyword))
-                                                  (case_list
-                                                    (case_item
-                                                      (pattern_list
-                                                        (word
-                                                          (pattern_bracket_source
-                                                            (pattern_bracket_members_source
-                                                              (single_quoted
-                                                                (single_quote_content))))))
-                                                      (compound_list
-                                                        (term
-                                                          (and_or
-                                                            (pipeline
-                                                              (pipe_sequence
-                                                                (command
-                                                                  (simple_command
-                                                                    (cmd_name
-                                                                      (word
-                                                                        (literal)))
-                                                                    (cmd_suffix
-                                                                      (word
-                                                                        (literal))))))))))
-                                                      (dsemi)))
-                                                  (esac_keyword))))))))))))))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (quoted_here_document_body
-            (quoted_here_document_text))
-          (here_document_end
-            (here_document_end_text)))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
+(ERROR)
 
 ==================
-delimiter command substitutions retain parentheses inside functions
+delimiter command substitutions retain parentheses inside functions is rejected
+:error
 ==================
 
 cat <<$(f() { printf ')'; }; f)
@@ -740,85 +475,7 @@ after
 
 ------------------
 
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (command_substitution
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (function_definition
-                                                (fname)
-                                                (function_body
-                                                  (compound_command
-                                                    (brace_group
-                                                      (compound_list
-                                                        (term
-                                                          (and_or
-                                                            (pipeline
-                                                              (pipe_sequence
-                                                                (command
-                                                                  (simple_command
-                                                                    (cmd_name
-                                                                      (word
-                                                                        (literal)))
-                                                                    (cmd_suffix
-                                                                      (word
-                                                                        (single_quoted
-                                                                          (single_quote_content))))))))))
-                                                        (separator
-                                                          (separator_op)))))))))))
-                                      (separator_op)
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (simple_command
-                                                (cmd_name
-                                                  (word
-                                                    (literal)))))))))))))))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (quoted_here_document_body
-            (quoted_here_document_text))
-          (here_document_end
-            (here_document_end_text)))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
+(ERROR)
 
 ==================
 delimiter quote removal preserves quoted quote characters
@@ -853,24 +510,7 @@ after
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (double_quoted
-                              (command_substitution
-                                body: (command_substitution_body
-                                  (complete_commands
-                                    command: (complete_command
-                                      body: (list
-                                        and_or: (and_or
-                                          pipeline: (pipeline
-                                            sequence: (pipe_sequence
-                                              command: (command
-                                                body: (simple_command
-                                                  name: (cmd_name
-                                                    (word
-                                                      (literal)))
-                                                  suffix: (cmd_suffix
-                                                    word: (word
-                                                      (single_quoted
-                                                        (single_quote_content)))))))))))))))))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -944,7 +584,7 @@ $v
                                                 operator: (dless)
                                                 end: (here_end
                                                   word: (word
-                                                    (escaped_character))))))))))))))
+                                                    (here_end_text))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence
@@ -986,8 +626,7 @@ $v
                                                 operator: (dless)
                                                 end: (here_end
                                                   word: (word
-                                                    (parameter_expansion
-                                                      parameter: (variable_name)))))))))))))))
+                                                    (here_end_text))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence
@@ -1048,15 +687,13 @@ second
                                                 operator: (dless)
                                                 end: (here_end
                                                   word: (word
-                                                    (dollar_single_quoted
-                                                      (dollar_single_quote_escape))))))
+                                                    (here_end_text)))))
                                             redirect: (io_redirect
                                               body: (io_here
                                                 operator: (dless)
                                                 end: (here_end
                                                   word: (word
-                                                    (double_quoted
-                                                      (double_quote_escape)))))))))))))))
+                                                    (here_end_text))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence
@@ -1126,8 +763,7 @@ y
                                                   operator: (dless)
                                                   end: (here_end
                                                     word: (word
-                                                      (single_quoted
-                                                        (single_quote_content)))))))))))))))
+                                                      (here_end_text))))))))))))))
                             (linebreak
                               (newline_list
                                 (here_document_sequence
@@ -1185,8 +821,7 @@ y
                                                                           operator: (dless)
                                                                           end: (here_end
                                                                             word: (word
-                                                                              (single_quoted
-                                                                                (single_quote_content)))))))))))))))
+                                                                              (here_end_text))))))))))))))
                                                     (linebreak
                                                       (newline_list
                                                         (here_document_sequence
@@ -1248,8 +883,7 @@ EOF
                                                   operator: (dless)
                                                   end: (here_end
                                                     word: (word
-                                                      (double_quoted
-                                                        (double_quote_text)))))))))))))))
+                                                      (here_end_text))))))))))))))
                             (linebreak
                               (newline_list
                                 (here_document_sequence
@@ -1292,11 +926,7 @@ ${value#(}
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (parameter_expansion
-                              parameter: (variable_name)
-                              operator: (parameter_pattern_operator)
-                              pattern: (parameter_pattern
-                                (literal))))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -1308,7 +938,8 @@ ${value#(}
             (here_document_end_text)))))))
 
 ==================
-a case pattern esac after a pipe stays in the substitution delimiter
+a case pattern esac after a pipe stays in the substitution delimiter is rejected
+:error
 ==================
 
 cat <<$(case q in x|esac) k;; esac)
@@ -1318,87 +949,11 @@ echo after
 
 ------------------
 
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (command_substitution
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (compound_command
-                                                (case_clause
-                                                  (case_keyword)
-                                                  (word
-                                                    (literal))
-                                                  (in
-                                                    (in_keyword))
-                                                  (case_list
-                                                    (case_item
-                                                      (pattern_list
-                                                        (word
-                                                          (literal))
-                                                        (word
-                                                          (literal)))
-                                                      (compound_list
-                                                        (term
-                                                          (and_or
-                                                            (pipeline
-                                                              (pipe_sequence
-                                                                (command
-                                                                  (simple_command
-                                                                    (cmd_name
-                                                                      (word
-                                                                        (literal))))))))))
-                                                      (dsemi)))
-                                                  (esac_keyword))))))))))))))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end
-            (here_document_end_text)))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
+(ERROR)
 
 ==================
-a parenthesized esac case pattern stays in the substitution delimiter
+a parenthesized esac case pattern stays in the substitution delimiter is rejected
+:error
 ==================
 
 cat <<$(case x in (esac) y;; esac)
@@ -1408,82 +963,7 @@ echo after
 
 ------------------
 
-(program
-  (linebreak
-    (newline_list))
-  (complete_commands
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (io_redirect
-                      (io_here
-                        (dless)
-                        (here_end
-                          (word
-                            (command_substitution
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (compound_command
-                                                (case_clause
-                                                  (case_keyword)
-                                                  (word
-                                                    (literal))
-                                                  (in
-                                                    (in_keyword))
-                                                  (case_list
-                                                    (case_item
-                                                      (pattern_list
-                                                        (word
-                                                          (literal)))
-                                                      (compound_list
-                                                        (term
-                                                          (and_or
-                                                            (pipeline
-                                                              (pipe_sequence
-                                                                (command
-                                                                  (simple_command
-                                                                    (cmd_name
-                                                                      (word
-                                                                        (literal))))))))))
-                                                      (dsemi)))
-                                                  (esac_keyword))))))))))))))))))))))))
-    (newline_list
-      (here_document_sequence
-        (here_document_line_end)
-        (here_document
-          (here_document_body
-            (here_document_text))
-          (here_document_end
-            (here_document_end_text)))))
-    (complete_command
-      (list
-        (and_or
-          (pipeline
-            (pipe_sequence
-              (command
-                (simple_command
-                  (cmd_name
-                    (word
-                      (literal)))
-                  (cmd_suffix
-                    (word
-                      (literal)))))))))))
-  (linebreak
-    (newline_list)))
+(ERROR)
 
 ==================
 delimiter lookahead keeps subshell case closers and following command words
@@ -1516,36 +996,7 @@ echo after
                         (dless)
                         (here_end
                           (word
-                            (command_substitution
-                              (command_substitution_body
-                                (complete_commands
-                                  (complete_command
-                                    (list
-                                      (and_or
-                                        (pipeline
-                                          (pipe_sequence
-                                            (command
-                                              (compound_command
-                                                (subshell
-                                                  (compound_list
-                                                    (term
-                                                      (and_or
-                                                        (pipeline
-                                                          (pipe_sequence
-                                                            (command
-                                                              (compound_command
-                                                                (case_clause
-                                                                  (case_keyword)
-                                                                  (word
-                                                                    (literal))
-                                                                  (in
-                                                                    (in_keyword))
-                                                                  (case_list_ns
-                                                                    (case_item_ns
-                                                                      (pattern_list
-                                                                        (word
-                                                                          (literal)))))
-                                                                  (esac_keyword))))))))))))))))))))))))
+                            (here_end_text)))))
                     (io_redirect
                       (io_file
                         (filename
@@ -1607,7 +1058,7 @@ first
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1649,8 +1100,7 @@ echo after
                         (dless)
                         (here_end
                           (word
-                            (double_quoted
-                              (double_quote_text)))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1691,28 +1141,19 @@ cat <<~root/path <<-~"user" <<~${value:-~fallback}
                         (dless)
                         (here_end
                           (word
-                            (literal)))))
+                            (here_end_text)))))
                     (io_redirect
                       (io_here
                         (dlessdash)
                         (here_end
                           (word
-                            (literal)
-                            (double_quoted
-                              (double_quote_text))))))
+                            (here_end_text)))))
                     (io_redirect
                       (io_here
                         (dless)
                         (here_end
                           (word
-                            (literal)
-                            (parameter_expansion
-                              (variable_name)
-                              (parameter_value_operator)
-                              (parameter_word
-                                (tilde_expansion
-                                  (tilde_user
-                                    (literal))))))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1762,45 +1203,19 @@ $((1+${x#2}))
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (double_quoted
-                              (arithmetic_expansion
-                                expression: (arithmetic_binary_expression
-                                  left: (arithmetic_number)
-                                  operator: (arithmetic_operator)
-                                  right: (parameter_expansion
-                                    parameter: (variable_name)
-                                    operator: (parameter_value_operator)
-                                    word: (parameter_word
-                                      (double_quote_text))))))))))
+                            (here_end_text)))))
                     redirect: (io_redirect
                       body: (io_here
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (arithmetic_expansion
-                              expression: (arithmetic_binary_expression
-                                left: (arithmetic_number)
-                                operator: (arithmetic_operator)
-                                right: (parameter_expansion
-                                  parameter: (variable_name)
-                                  operator: (parameter_value_operator)
-                                  word: (parameter_word
-                                    (double_quote_text)))))))))
+                            (here_end_text)))))
                     redirect: (io_redirect
                       body: (io_here
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (arithmetic_expansion
-                              expression: (arithmetic_binary_expression
-                                left: (arithmetic_number)
-                                operator: (arithmetic_operator)
-                                right: (parameter_expansion
-                                  parameter: (variable_name)
-                                  operator: (parameter_pattern_operator)
-                                  pattern: (parameter_pattern
-                                    (single_quoted
-                                      (single_quote_content))))))))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -1876,7 +1291,7 @@ echo after
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal)))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -1931,10 +1346,7 @@ E$${
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal)
-                            (parameter_expansion
-                              parameter: (special_parameter))
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -1976,10 +1388,7 @@ $$(
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (double_quoted
-                              (parameter_expansion
-                                parameter: (special_parameter))
-                              (double_quote_text)))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -2020,27 +1429,7 @@ E`cat <<F`
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal)
-                            (backquote_substitution
-                              body: (backquote_substitution_body
-                                (complete_commands
-                                  command: (complete_command
-                                    body: (list
-                                      and_or: (and_or
-                                        pipeline: (pipeline
-                                          sequence: (pipe_sequence
-                                            command: (command
-                                              body: (simple_command
-                                                name: (cmd_name
-                                                  (word
-                                                    (literal)))
-                                                suffix: (cmd_suffix
-                                                  redirect: (io_redirect
-                                                    body: (io_here
-                                                      operator: (dless)
-                                                      end: (here_end
-                                                        word: (word
-                                                          (literal)))))))))))))))))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -2080,16 +1469,7 @@ body
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:14                           end: here_end
 0:6  - 0:14                             word: word
-0:6  - 0:14                               pattern_bracket_source
-0:6  - 0:7                                  "["
-0:7  - 0:13                                 members: pattern_bracket_members_source
-0:7  - 0:13                                   member: pattern_character_class_source
-0:7  - 0:8                                      "["
-0:8  - 0:9                                      ":"
-0:9  - 0:11                                     content: pattern_character_class_content_source `a:`
-0:11 - 0:12                                     ":"
-0:12 - 0:13                                     "]"
-0:13 - 0:14                                 "]"
+0:6  - 0:14                               here_end_text `[[:a::]]`
 0:14 - 3:0      trailing: linebreak
 0:14 - 3:0        newline_list
 0:14 - 3:0          here_document_sequence
@@ -2131,20 +1511,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:18                           end: here_end
 0:6  - 0:18                             word: word
-0:6  - 0:18                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:17                                 parameter_expansion
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "{"
-0:9  - 0:10                                   parameter: variable_name `x`
-0:10 - 0:12                                   operator: parameter_value_operator `:-`
-0:12 - 0:16                                   word: parameter_word
-0:12 - 0:16                                     double_quoted
-0:12 - 0:13                                       "\""
-0:13 - 0:15                                       double_quote_text `ab`
-0:15 - 0:16                                       "\""
-0:16 - 0:17                                   "}"
-0:17 - 0:18                                 "\""
+0:6  - 0:18                               here_end_text `\"${x:-\"ab\"}\"`
 0:18 - 4:0        separator: newline_list
 0:18 - 4:0          here_document_sequence
 0:18 - 1:0            line_end: here_document_line_end
@@ -2202,21 +1569,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:23                           end: here_end
 0:6  - 0:23                             word: word
-0:6  - 0:23                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:18                                 parameter_expansion
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "{"
-0:9  - 0:10                                   parameter: variable_name `x`
-0:10 - 0:12                                   operator: parameter_value_operator `:-`
-0:12 - 0:17                                   word: parameter_word
-0:12 - 0:17                                     double_quoted
-0:12 - 0:13                                       "\""
-0:13 - 0:16                                       double_quote_text `a}b`
-0:16 - 0:17                                       "\""
-0:17 - 0:18                                   "}"
-0:18 - 0:22                                 double_quote_text `tail`
-0:22 - 0:23                                 "\""
+0:6  - 0:23                               here_end_text `\"${x:-\"a}b\"}tail\"`
 0:23 - 4:0        separator: newline_list
 0:23 - 4:0          here_document_sequence
 0:23 - 1:0            line_end: here_document_line_end
@@ -2274,30 +1627,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:26                           end: here_end
 0:6  - 0:26                             word: word
-0:6  - 0:26                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:25                                 parameter_expansion
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "{"
-0:9  - 0:10                                   parameter: variable_name `x`
-0:10 - 0:12                                   operator: parameter_value_operator `:-`
-0:12 - 0:24                                   word: parameter_word
-0:12 - 0:24                                     double_quoted
-0:12 - 0:13                                       "\""
-0:13 - 0:23                                       parameter_expansion
-0:13 - 0:14                                         "$"
-0:14 - 0:15                                         "{"
-0:15 - 0:16                                         parameter: variable_name `y`
-0:16 - 0:18                                         operator: parameter_value_operator `:-`
-0:18 - 0:22                                         word: parameter_word
-0:18 - 0:22                                           double_quoted
-0:18 - 0:19                                             "\""
-0:19 - 0:21                                             double_quote_text `ab`
-0:21 - 0:22                                             "\""
-0:22 - 0:23                                         "}"
-0:23 - 0:24                                       "\""
-0:24 - 0:25                                   "}"
-0:25 - 0:26                                 "\""
+0:6  - 0:26                               here_end_text `\"${x:-\"${y:-\"ab\"}\"}\"`
 0:26 - 4:0        separator: newline_list
 0:26 - 4:0          here_document_sequence
 0:26 - 1:0            line_end: here_document_line_end
@@ -2355,41 +1685,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:30                           end: here_end
 0:6  - 0:30                             word: word
-0:6  - 0:30                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:29                                 parameter_expansion
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "{"
-0:9  - 0:10                                   parameter: variable_name `x`
-0:10 - 0:12                                   operator: parameter_value_operator `:-`
-0:12 - 0:28                                   word: parameter_word
-0:12 - 0:28                                     double_quoted
-0:12 - 0:13                                       "\""
-0:13 - 0:27                                       command_substitution
-0:13 - 0:14                                         "$"
-0:14 - 0:15                                         "("
-0:15 - 0:26                                         body: command_substitution_body
-0:15 - 0:26                                           complete_commands
-0:15 - 0:26                                             command: complete_command
-0:15 - 0:26                                               body: list
-0:15 - 0:26                                                 and_or: and_or
-0:15 - 0:26                                                   pipeline: pipeline
-0:15 - 0:26                                                     sequence: pipe_sequence
-0:15 - 0:26                                                       command: command
-0:15 - 0:26                                                         body: simple_command
-0:15 - 0:21                                                           name: cmd_name
-0:15 - 0:21                                                             word
-0:15 - 0:21                                                               literal `printf`
-0:21 - 0:26                                                           suffix: cmd_suffix
-0:22 - 0:26                                                             word: word
-0:22 - 0:26                                                               single_quoted
-0:22 - 0:23                                                                 "'"
-0:23 - 0:25                                                                 single_quote_content `ab`
-0:25 - 0:26                                                                 "'"
-0:26 - 0:27                                         ")"
-0:27 - 0:28                                       "\""
-0:28 - 0:29                                   "}"
-0:29 - 0:30                                 "\""
+0:6  - 0:30                               here_end_text `\"${x:-\"$(printf 'ab')\"}\"`
 0:30 - 4:0        separator: newline_list
 0:30 - 4:0          here_document_sequence
 0:30 - 1:0            line_end: here_document_line_end
@@ -2447,20 +1743,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:17                           end: here_end
 0:6  - 0:17                             word: word
-0:6  - 0:17                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:16                                 parameter_expansion
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "{"
-0:9  - 0:10                                   parameter: variable_name `x`
-0:10 - 0:11                                   operator: parameter_pattern_operator `#`
-0:11 - 0:15                                   pattern: parameter_pattern
-0:11 - 0:15                                     single_quoted
-0:11 - 0:12                                       "'"
-0:12 - 0:14                                       single_quote_content `ab`
-0:14 - 0:15                                       "'"
-0:15 - 0:16                                   "}"
-0:16 - 0:17                                 "\""
+0:6  - 0:17                               here_end_text `\"${x#'ab'}\"`
 0:17 - 4:0        separator: newline_list
 0:17 - 4:0          here_document_sequence
 0:17 - 1:0            line_end: here_document_line_end
@@ -2518,20 +1801,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:18                           end: here_end
 0:6  - 0:18                             word: word
-0:6  - 0:18                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:17                                 parameter_expansion
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "{"
-0:9  - 0:10                                   parameter: variable_name `x`
-0:10 - 0:12                                   operator: parameter_pattern_operator `##`
-0:12 - 0:16                                   pattern: parameter_pattern
-0:12 - 0:16                                     single_quoted
-0:12 - 0:13                                       "'"
-0:13 - 0:15                                       single_quote_content `ab`
-0:15 - 0:16                                       "'"
-0:16 - 0:17                                   "}"
-0:17 - 0:18                                 "\""
+0:6  - 0:18                               here_end_text `\"${x##'ab'}\"`
 0:18 - 4:0        separator: newline_list
 0:18 - 4:0          here_document_sequence
 0:18 - 1:0            line_end: here_document_line_end
@@ -2589,20 +1859,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:17                           end: here_end
 0:6  - 0:17                             word: word
-0:6  - 0:17                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:16                                 parameter_expansion
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "{"
-0:9  - 0:10                                   parameter: variable_name `x`
-0:10 - 0:11                                   operator: parameter_pattern_operator `%`
-0:11 - 0:15                                   pattern: parameter_pattern
-0:11 - 0:15                                     single_quoted
-0:11 - 0:12                                       "'"
-0:12 - 0:14                                       single_quote_content `ab`
-0:14 - 0:15                                       "'"
-0:15 - 0:16                                   "}"
-0:16 - 0:17                                 "\""
+0:6  - 0:17                               here_end_text `\"${x%'ab'}\"`
 0:17 - 4:0        separator: newline_list
 0:17 - 4:0          here_document_sequence
 0:17 - 1:0            line_end: here_document_line_end
@@ -2660,20 +1917,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:18                           end: here_end
 0:6  - 0:18                             word: word
-0:6  - 0:18                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:17                                 parameter_expansion
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "{"
-0:9  - 0:10                                   parameter: variable_name `x`
-0:10 - 0:12                                   operator: parameter_pattern_operator `%%`
-0:12 - 0:16                                   pattern: parameter_pattern
-0:12 - 0:16                                     single_quoted
-0:12 - 0:13                                       "'"
-0:13 - 0:15                                       single_quote_content `ab`
-0:15 - 0:16                                       "'"
-0:16 - 0:17                                   "}"
-0:17 - 0:18                                 "\""
+0:6  - 0:18                               here_end_text `\"${x%%'ab'}\"`
 0:18 - 4:0        separator: newline_list
 0:18 - 4:0          here_document_sequence
 0:18 - 1:0            line_end: here_document_line_end
@@ -2731,31 +1975,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:22                           end: here_end
 0:6  - 0:22                             word: word
-0:6  - 0:22                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:21                                 command_substitution
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "("
-0:9  - 0:20                                   body: command_substitution_body
-0:9  - 0:20                                     complete_commands
-0:9  - 0:20                                       command: complete_command
-0:9  - 0:20                                         body: list
-0:9  - 0:20                                           and_or: and_or
-0:9  - 0:20                                             pipeline: pipeline
-0:9  - 0:20                                               sequence: pipe_sequence
-0:9  - 0:20                                                 command: command
-0:9  - 0:20                                                   body: simple_command
-0:9  - 0:15                                                     name: cmd_name
-0:9  - 0:15                                                       word
-0:9  - 0:15                                                         literal `printf`
-0:15 - 0:20                                                     suffix: cmd_suffix
-0:16 - 0:20                                                       word: word
-0:16 - 0:20                                                         single_quoted
-0:16 - 0:17                                                           "'"
-0:17 - 0:19                                                           single_quote_content `ab`
-0:19 - 0:20                                                           "'"
-0:20 - 0:21                                   ")"
-0:21 - 0:22                                 "\""
+0:6  - 0:22                               here_end_text `\"$(printf 'ab')\"`
 0:22 - 4:0        separator: newline_list
 0:22 - 4:0          here_document_sequence
 0:22 - 1:0            line_end: here_document_line_end
@@ -2813,31 +2033,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:22                           end: here_end
 0:6  - 0:22                             word: word
-0:6  - 0:22                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:21                                 command_substitution
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "("
-0:9  - 0:20                                   body: command_substitution_body
-0:9  - 0:20                                     complete_commands
-0:9  - 0:20                                       command: complete_command
-0:9  - 0:20                                         body: list
-0:9  - 0:20                                           and_or: and_or
-0:9  - 0:20                                             pipeline: pipeline
-0:9  - 0:20                                               sequence: pipe_sequence
-0:9  - 0:20                                                 command: command
-0:9  - 0:20                                                   body: simple_command
-0:9  - 0:15                                                     name: cmd_name
-0:9  - 0:15                                                       word
-0:9  - 0:15                                                         literal `printf`
-0:15 - 0:20                                                     suffix: cmd_suffix
-0:16 - 0:20                                                       word: word
-0:16 - 0:20                                                         double_quoted
-0:16 - 0:17                                                           "\""
-0:17 - 0:19                                                           double_quote_text `ab`
-0:19 - 0:20                                                           "\""
-0:20 - 0:21                                   ")"
-0:21 - 0:22                                 "\""
+0:6  - 0:22                               here_end_text `\"$(printf \"ab\")\"`
 0:22 - 4:0        separator: newline_list
 0:22 - 4:0          here_document_sequence
 0:22 - 1:0            line_end: here_document_line_end
@@ -2895,31 +2091,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:21                           end: here_end
 0:6  - 0:21                             word: word
-0:6  - 0:21                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:20                                 command_substitution
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "("
-0:9  - 0:19                                   body: command_substitution_body
-0:9  - 0:19                                     complete_commands
-0:9  - 0:19                                       command: complete_command
-0:9  - 0:19                                         body: list
-0:9  - 0:19                                           and_or: and_or
-0:9  - 0:19                                             pipeline: pipeline
-0:9  - 0:19                                               sequence: pipe_sequence
-0:9  - 0:19                                                 command: command
-0:9  - 0:19                                                   body: simple_command
-0:9  - 0:15                                                     name: cmd_name
-0:9  - 0:15                                                       word
-0:9  - 0:15                                                         literal `printf`
-0:15 - 0:19                                                     suffix: cmd_suffix
-0:16 - 0:19                                                       word: word
-0:16 - 0:19                                                         single_quoted
-0:16 - 0:17                                                           "'"
-0:17 - 0:18                                                           single_quote_content `)`
-0:18 - 0:19                                                           "'"
-0:19 - 0:20                                   ")"
-0:20 - 0:21                                 "\""
+0:6  - 0:21                               here_end_text `\"$(printf ')')\"`
 0:21 - 4:0        separator: newline_list
 0:21 - 4:0          here_document_sequence
 0:21 - 1:0            line_end: here_document_line_end
@@ -2977,49 +2149,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:32                           end: here_end
 0:6  - 0:32                             word: word
-0:6  - 0:32                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:31                                 command_substitution
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "("
-0:9  - 0:30                                   body: command_substitution_body
-0:9  - 0:30                                     complete_commands
-0:9  - 0:30                                       command: complete_command
-0:9  - 0:30                                         body: list
-0:9  - 0:30                                           and_or: and_or
-0:9  - 0:30                                             pipeline: pipeline
-0:9  - 0:30                                               sequence: pipe_sequence
-0:9  - 0:30                                                 command: command
-0:9  - 0:30                                                   body: simple_command
-0:9  - 0:15                                                     name: cmd_name
-0:9  - 0:15                                                       word
-0:9  - 0:15                                                         literal `printf`
-0:15 - 0:30                                                     suffix: cmd_suffix
-0:16 - 0:30                                                       word: word
-0:16 - 0:30                                                         command_substitution
-0:16 - 0:17                                                           "$"
-0:17 - 0:18                                                           "("
-0:18 - 0:29                                                           body: command_substitution_body
-0:18 - 0:29                                                             complete_commands
-0:18 - 0:29                                                               command: complete_command
-0:18 - 0:29                                                                 body: list
-0:18 - 0:29                                                                   and_or: and_or
-0:18 - 0:29                                                                     pipeline: pipeline
-0:18 - 0:29                                                                       sequence: pipe_sequence
-0:18 - 0:29                                                                         command: command
-0:18 - 0:29                                                                           body: simple_command
-0:18 - 0:24                                                                             name: cmd_name
-0:18 - 0:24                                                                               word
-0:18 - 0:24                                                                                 literal `printf`
-0:24 - 0:29                                                                             suffix: cmd_suffix
-0:25 - 0:29                                                                               word: word
-0:25 - 0:29                                                                                 single_quoted
-0:25 - 0:26                                                                                   "'"
-0:26 - 0:28                                                                                   single_quote_content `ab`
-0:28 - 0:29                                                                                   "'"
-0:29 - 0:30                                                           ")"
-0:30 - 0:31                                   ")"
-0:31 - 0:32                                 "\""
+0:6  - 0:32                               here_end_text `\"$(printf $(printf 'ab'))\"`
 0:32 - 4:0        separator: newline_list
 0:32 - 4:0          here_document_sequence
 0:32 - 1:0            line_end: here_document_line_end
@@ -3077,38 +2207,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:28                           end: here_end
 0:6  - 0:28                             word: word
-0:6  - 0:28                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:27                                 parameter_expansion
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "{"
-0:9  - 0:10                                   parameter: variable_name `x`
-0:10 - 0:12                                   operator: parameter_value_operator `:-`
-0:12 - 0:26                                   word: parameter_word
-0:12 - 0:26                                     command_substitution
-0:12 - 0:13                                       "$"
-0:13 - 0:14                                       "("
-0:14 - 0:25                                       body: command_substitution_body
-0:14 - 0:25                                         complete_commands
-0:14 - 0:25                                           command: complete_command
-0:14 - 0:25                                             body: list
-0:14 - 0:25                                               and_or: and_or
-0:14 - 0:25                                                 pipeline: pipeline
-0:14 - 0:25                                                   sequence: pipe_sequence
-0:14 - 0:25                                                     command: command
-0:14 - 0:25                                                       body: simple_command
-0:14 - 0:20                                                         name: cmd_name
-0:14 - 0:20                                                           word
-0:14 - 0:20                                                             literal `printf`
-0:20 - 0:25                                                         suffix: cmd_suffix
-0:21 - 0:25                                                           word: word
-0:21 - 0:25                                                             single_quoted
-0:21 - 0:22                                                               "'"
-0:22 - 0:24                                                               single_quote_content `ab`
-0:24 - 0:25                                                               "'"
-0:25 - 0:26                                       ")"
-0:26 - 0:27                                   "}"
-0:27 - 0:28                                 "\""
+0:6  - 0:28                               here_end_text `\"${x:-$(printf 'ab')}\"`
 0:28 - 4:0        separator: newline_list
 0:28 - 4:0          here_document_sequence
 0:28 - 1:0            line_end: here_document_line_end
@@ -3166,30 +2265,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:21                           end: here_end
 0:6  - 0:21                             word: word
-0:6  - 0:21                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:20                                 backquote_substitution
-0:7  - 0:8                                    "\`"
-0:8  - 0:19                                   body: backquote_substitution_body
-0:8  - 0:19                                     complete_commands
-0:8  - 0:19                                       command: complete_command
-0:8  - 0:19                                         body: list
-0:8  - 0:19                                           and_or: and_or
-0:8  - 0:19                                             pipeline: pipeline
-0:8  - 0:19                                               sequence: pipe_sequence
-0:8  - 0:19                                                 command: command
-0:8  - 0:19                                                   body: simple_command
-0:8  - 0:14                                                     name: cmd_name
-0:8  - 0:14                                                       word
-0:8  - 0:14                                                         literal `printf`
-0:14 - 0:19                                                     suffix: cmd_suffix
-0:15 - 0:19                                                       word: word
-0:15 - 0:19                                                         single_quoted
-0:15 - 0:16                                                           "'"
-0:16 - 0:18                                                           single_quote_content `ab`
-0:18 - 0:19                                                           "'"
-0:19 - 0:20                                   "\`"
-0:20 - 0:21                                 "\""
+0:6  - 0:21                               here_end_text `\"\`printf 'ab'\`\"`
 0:21 - 4:0        separator: newline_list
 0:21 - 4:0          here_document_sequence
 0:21 - 1:0            line_end: here_document_line_end
@@ -3247,40 +2323,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:28                           end: here_end
 0:6  - 0:28                             word: word
-0:6  - 0:28                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:27                                 arithmetic_expansion
-0:7  - 0:8                                    "$"
-0:8  - 0:9                                    "("
-0:9  - 0:10                                   "("
-0:10 - 0:25                                   expression: arithmetic_binary_expression
-0:10 - 0:11                                     left: arithmetic_number `1`
-0:11 - 0:12                                     operator: arithmetic_operator `+`
-0:12 - 0:25                                     right: command_substitution
-0:12 - 0:13                                       "$"
-0:13 - 0:14                                       "("
-0:14 - 0:24                                       body: command_substitution_body
-0:14 - 0:24                                         complete_commands
-0:14 - 0:24                                           command: complete_command
-0:14 - 0:24                                             body: list
-0:14 - 0:24                                               and_or: and_or
-0:14 - 0:24                                                 pipeline: pipeline
-0:14 - 0:24                                                   sequence: pipe_sequence
-0:14 - 0:24                                                     command: command
-0:14 - 0:24                                                       body: simple_command
-0:14 - 0:20                                                         name: cmd_name
-0:14 - 0:20                                                           word
-0:14 - 0:20                                                             literal `printf`
-0:20 - 0:24                                                         suffix: cmd_suffix
-0:21 - 0:24                                                           word: word
-0:21 - 0:24                                                             single_quoted
-0:21 - 0:22                                                               "'"
-0:22 - 0:23                                                               single_quote_content `2`
-0:23 - 0:24                                                               "'"
-0:24 - 0:25                                       ")"
-0:25 - 0:26                                   ")"
-0:26 - 0:27                                   ")"
-0:27 - 0:28                                 "\""
+0:6  - 0:28                               here_end_text `\"$((1+$(printf '2')))\"`
 0:28 - 4:0        separator: newline_list
 0:28 - 4:0          here_document_sequence
 0:28 - 1:0            line_end: here_document_line_end
@@ -3338,33 +2381,7 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:29                           end: here_end
 0:6  - 0:29                             word: word
-0:6  - 0:9                                literal `pre`
-0:9  - 0:25                               double_quoted
-0:9  - 0:10                                 "\""
-0:10 - 0:24                                 command_substitution
-0:10 - 0:11                                   "$"
-0:11 - 0:12                                   "("
-0:12 - 0:23                                   body: command_substitution_body
-0:12 - 0:23                                     complete_commands
-0:12 - 0:23                                       command: complete_command
-0:12 - 0:23                                         body: list
-0:12 - 0:23                                           and_or: and_or
-0:12 - 0:23                                             pipeline: pipeline
-0:12 - 0:23                                               sequence: pipe_sequence
-0:12 - 0:23                                                 command: command
-0:12 - 0:23                                                   body: simple_command
-0:12 - 0:18                                                     name: cmd_name
-0:12 - 0:18                                                       word
-0:12 - 0:18                                                         literal `printf`
-0:18 - 0:23                                                     suffix: cmd_suffix
-0:19 - 0:23                                                       word: word
-0:19 - 0:23                                                         single_quoted
-0:19 - 0:20                                                           "'"
-0:20 - 0:22                                                           single_quote_content `ab`
-0:22 - 0:23                                                           "'"
-0:23 - 0:24                                   ")"
-0:24 - 0:25                                 "\""
-0:25 - 0:29                               literal `post`
+0:6  - 0:29                               here_end_text `pre\"$(printf 'ab')\"post`
 0:29 - 4:0        separator: newline_list
 0:29 - 4:0          here_document_sequence
 0:29 - 1:0            line_end: here_document_line_end
@@ -3420,7 +2437,7 @@ $name
 0:4 - 0:6                           operator: dless `<<`
 0:6 - 0:7                           end: here_end
 0:6 - 0:7                             word: word
-0:6 - 0:7                               literal `~`
+0:6 - 0:7                               here_end_text `~`
 0:7 - 3:0     trailing: linebreak
 0:7 - 3:0       newline_list
 0:7 - 3:0         here_document_sequence
@@ -3462,7 +2479,7 @@ $name
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:16                           end: here_end
 0:6  - 0:16                             word: word
-0:6  - 0:16                               literal `~root/path`
+0:6  - 0:16                               here_end_text `~root/path`
 0:16 - 3:0      trailing: linebreak
 0:16 - 3:0        newline_list
 0:16 - 3:0          here_document_sequence
@@ -3504,12 +2521,7 @@ $name
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:18                           end: here_end
 0:6  - 0:18                             word: word
-0:6  - 0:7                                literal `~`
-0:7  - 0:13                               single_quoted
-0:7  - 0:8                                  "'"
-0:8  - 0:12                                 single_quote_content `root`
-0:12 - 0:13                                 "'"
-0:13 - 0:18                               literal `/path`
+0:6  - 0:18                               here_end_text `~'root'/path`
 0:18 - 3:0      trailing: linebreak
 0:18 - 3:0        newline_list
 0:18 - 3:0          here_document_sequence
@@ -3549,12 +2561,7 @@ $name
 0:4  - 0:7                            operator: dlessdash `<<-`
 0:7  - 0:19                           end: here_end
 0:7  - 0:19                             word: word
-0:7  - 0:8                                literal `~`
-0:8  - 0:14                               double_quoted
-0:8  - 0:9                                  "\""
-0:9  - 0:13                                 double_quote_text `root`
-0:13 - 0:14                                 "\""
-0:14 - 0:19                               literal `/path`
+0:7  - 0:19                               here_end_text `~\"root\"/path`
 0:19 - 3:0      trailing: linebreak
 0:19 - 3:0        newline_list
 0:19 - 3:0          here_document_sequence
@@ -3594,13 +2601,7 @@ $name
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:19                           end: here_end
 0:6  - 0:19                             word: word
-0:6  - 0:7                                literal `~`
-0:7  - 0:14                               dollar_single_quoted
-0:7  - 0:8                                  "$"
-0:8  - 0:9                                  "'"
-0:9  - 0:13                                 dollar_single_quote_text `root`
-0:13 - 0:14                                 "'"
-0:14 - 0:19                               literal `/path`
+0:6  - 0:19                               here_end_text `~$'root'/path`
 0:19 - 3:0      trailing: linebreak
 0:19 - 3:0        newline_list
 0:19 - 3:0          here_document_sequence
@@ -3640,9 +2641,7 @@ $name
 0:4  - 0:7                            operator: dlessdash `<<-`
 0:7  - 0:18                           end: here_end
 0:7  - 0:18                             word: word
-0:7  - 0:8                                literal `~`
-0:8  - 0:10                               escaped_character `\\r`
-0:10 - 0:18                               literal `oot/path`
+0:7  - 0:18                               here_end_text `~\\root/path`
 0:18 - 3:0      trailing: linebreak
 0:18 - 3:0        newline_list
 0:18 - 3:0          here_document_sequence
@@ -3681,18 +2680,7 @@ cat <<~${value:-~fallback}
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:26                           end: here_end
 0:6  - 0:26                             word: word
-0:6  - 0:7                                literal `~`
-0:7  - 0:26                               parameter_expansion
-0:7  - 0:8                                  "$"
-0:8  - 0:9                                  "{"
-0:9  - 0:14                                 parameter: variable_name `value`
-0:14 - 0:16                                 operator: parameter_value_operator `:-`
-0:16 - 0:25                                 word: parameter_word
-0:16 - 0:25                                   tilde_expansion
-0:16 - 0:17                                     "~"
-0:17 - 0:25                                     user: tilde_user
-0:17 - 0:25                                       literal `fallback`
-0:25 - 0:26                                 "}"
+0:6  - 0:26                               here_end_text `~${value:-~fallback}`
 0:26 - 2:0      trailing: linebreak
 0:26 - 2:0        newline_list
 0:26 - 2:0          here_document_sequence
@@ -3729,18 +2717,7 @@ cat <<~${value#~fallback}
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:25                           end: here_end
 0:6  - 0:25                             word: word
-0:6  - 0:7                                literal `~`
-0:7  - 0:25                               parameter_expansion
-0:7  - 0:8                                  "$"
-0:8  - 0:9                                  "{"
-0:9  - 0:14                                 parameter: variable_name `value`
-0:14 - 0:15                                 operator: parameter_pattern_operator `#`
-0:15 - 0:24                                 pattern: parameter_pattern
-0:15 - 0:24                                   tilde_expansion
-0:15 - 0:16                                     "~"
-0:16 - 0:24                                     user: tilde_user
-0:16 - 0:24                                       literal `fallback`
-0:24 - 0:25                                 "}"
+0:6  - 0:25                               here_end_text `~${value#~fallback}`
 0:25 - 2:0      trailing: linebreak
 0:25 - 2:0        newline_list
 0:25 - 2:0          here_document_sequence
@@ -3777,29 +2754,7 @@ cat <<~$(printf ~fallback)
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:26                           end: here_end
 0:6  - 0:26                             word: word
-0:6  - 0:7                                literal `~`
-0:7  - 0:26                               command_substitution
-0:7  - 0:8                                  "$"
-0:8  - 0:9                                  "("
-0:9  - 0:25                                 body: command_substitution_body
-0:9  - 0:25                                   complete_commands
-0:9  - 0:25                                     command: complete_command
-0:9  - 0:25                                       body: list
-0:9  - 0:25                                         and_or: and_or
-0:9  - 0:25                                           pipeline: pipeline
-0:9  - 0:25                                             sequence: pipe_sequence
-0:9  - 0:25                                               command: command
-0:9  - 0:25                                                 body: simple_command
-0:9  - 0:15                                                   name: cmd_name
-0:9  - 0:15                                                     word
-0:9  - 0:15                                                       literal `printf`
-0:15 - 0:25                                                   suffix: cmd_suffix
-0:16 - 0:25                                                     word: word
-0:16 - 0:25                                                       tilde_expansion
-0:16 - 0:17                                                         "~"
-0:17 - 0:25                                                         user: tilde_user
-0:17 - 0:25                                                           literal `fallback`
-0:25 - 0:26                                 ")"
+0:6  - 0:26                               here_end_text `~$(printf ~fallback)`
 0:26 - 2:0      trailing: linebreak
 0:26 - 2:0        newline_list
 0:26 - 2:0          here_document_sequence
@@ -3836,28 +2791,7 @@ cat <<~`printf ~fallback`
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:25                           end: here_end
 0:6  - 0:25                             word: word
-0:6  - 0:7                                literal `~`
-0:7  - 0:25                               backquote_substitution
-0:7  - 0:8                                  "\`"
-0:8  - 0:24                                 body: backquote_substitution_body
-0:8  - 0:24                                   complete_commands
-0:8  - 0:24                                     command: complete_command
-0:8  - 0:24                                       body: list
-0:8  - 0:24                                         and_or: and_or
-0:8  - 0:24                                           pipeline: pipeline
-0:8  - 0:24                                             sequence: pipe_sequence
-0:8  - 0:24                                               command: command
-0:8  - 0:24                                                 body: simple_command
-0:8  - 0:14                                                   name: cmd_name
-0:8  - 0:14                                                     word
-0:8  - 0:14                                                       literal `printf`
-0:14 - 0:24                                                   suffix: cmd_suffix
-0:15 - 0:24                                                     word: word
-0:15 - 0:24                                                       tilde_expansion
-0:15 - 0:16                                                         "~"
-0:16 - 0:24                                                         user: tilde_user
-0:16 - 0:24                                                           literal `fallback`
-0:24 - 0:25                                 "\`"
+0:6  - 0:25                               here_end_text `~\`printf ~fallback\``
 0:25 - 2:0      trailing: linebreak
 0:25 - 2:0        newline_list
 0:25 - 2:0          here_document_sequence
@@ -3896,32 +2830,7 @@ after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:25                           end: here_end
 0:6  - 0:25                             word: word
-0:6  - 0:25                               double_quoted
-0:6  - 0:7                                  "\""
-0:7  - 0:24                                 backquote_substitution
-0:7  - 0:8                                    "\`"
-0:8  - 0:23                                   body: backquote_substitution_body
-0:8  - 0:23                                     complete_commands
-0:8  - 0:23                                       command: complete_command
-0:8  - 0:23                                         body: list
-0:8  - 0:23                                           and_or: and_or
-0:8  - 0:23                                             pipeline: pipeline
-0:8  - 0:23                                               sequence: pipe_sequence
-0:8  - 0:23                                                 command: command
-0:8  - 0:23                                                   body: simple_command
-0:8  - 0:14                                                     name: cmd_name
-0:8  - 0:14                                                       word
-0:8  - 0:14                                                         literal `printf`
-0:14 - 0:23                                                     suffix: cmd_suffix
-0:15 - 0:19                                                       word: word
-0:15 - 0:19                                                         single_quoted
-0:15 - 0:16                                                           "'"
-0:16 - 0:18                                                           single_quote_content `%s`
-0:18 - 0:19                                                           "'"
-0:20 - 0:23                                                       word: word
-0:20 - 0:23                                                         literal `END`
-0:23 - 0:24                                   "\`"
-0:24 - 0:25                                 "\""
+0:6  - 0:25                               here_end_text `\"\`printf '%s' END\`\"`
 0:25 - 3:0        separator: newline_list
 0:25 - 3:0          here_document_sequence
 0:25 - 1:0            line_end: here_document_line_end
@@ -3977,11 +2886,7 @@ after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:12                           end: here_end
 0:6  - 0:12                             word: word
-0:6  - 0:12                               dollar_single_quoted
-0:6  - 0:7                                  "$"
-0:7  - 0:8                                  "'"
-0:8  - 0:11                                 dollar_single_quote_escape `\\c?`
-0:11 - 0:12                                 "'"
+0:6  - 0:12                               here_end_text `$'\\c?'`
 0:12 - 3:0        separator: newline_list
 0:12 - 3:0          here_document_sequence
 0:12 - 1:0            line_end: here_document_line_end
@@ -4007,12 +2912,7 @@ after
 3:4  - 3:6                            operator: dless `<<`
 3:6  - 3:17                           end: here_end
 3:6  - 3:17                             word: word
-3:6  - 3:17                               dollar_single_quoted
-3:6  - 3:7                                  "$"
-3:7  - 3:8                                  "'"
-3:8  - 3:12                                 dollar_single_quote_escape `\\xC3`
-3:12 - 3:16                                 dollar_single_quote_escape `\\xBF`
-3:16 - 3:17                                 "'"
+3:6  - 3:17                               here_end_text `$'\\xC3\\xBF'`
 3:17 - 6:0        separator: newline_list
 3:17 - 6:0          here_document_sequence
 3:17 - 4:0            line_end: here_document_line_end
@@ -4065,7 +2965,7 @@ after
 0:4 - 0:6                           operator: dless `<<`
 0:6 - 0:9                           end: here_end
 0:6 - 0:9                             word: word
-0:6 - 0:9                               literal `EOF`
+0:6 - 0:9                               here_end_text `EOF`
 0:9 - 3:0       separator: newline_list
 0:9 - 3:0         here_document_sequence
 0:9 - 1:0           line_end: here_document_line_end
@@ -4118,10 +3018,7 @@ after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:11                           end: here_end
 0:6  - 0:11                             word: word
-0:6  - 0:11                               single_quoted
-0:6  - 0:7                                  "'"
-0:7  - 0:10                                 single_quote_content `EOF`
-0:10 - 0:11                                 "'"
+0:6  - 0:11                               here_end_text `'EOF'`
 0:11 - 3:0        separator: newline_list
 0:11 - 3:0          here_document_sequence
 0:11 - 1:0            line_end: here_document_line_end
@@ -4174,7 +3071,7 @@ after
 0:4  - 0:7                            operator: dlessdash `<<-`
 0:7  - 0:10                           end: here_end
 0:7  - 0:10                             word: word
-0:7  - 0:10                               literal `EOF`
+0:7  - 0:10                               here_end_text `EOF`
 0:10 - 3:0        separator: newline_list
 0:10 - 3:0          here_document_sequence
 0:10 - 1:0            line_end: here_document_line_end
@@ -4227,10 +3124,7 @@ after
 0:4  - 0:7                            operator: dlessdash `<<-`
 0:7  - 0:12                           end: here_end
 0:7  - 0:12                             word: word
-0:7  - 0:12                               single_quoted
-0:7  - 0:8                                  "'"
-0:8  - 0:11                                 single_quote_content `EOF`
-0:11 - 0:12                                 "'"
+0:7  - 0:12                               here_end_text `'EOF'`
 0:12 - 3:0        separator: newline_list
 0:12 - 3:0          here_document_sequence
 0:12 - 1:0            line_end: here_document_line_end
@@ -4283,10 +3177,7 @@ after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:12                           end: here_end
 0:6  - 0:12                             word: word
-0:6  - 0:12                               single_quoted
-0:6  - 0:7                                  "'"
-0:7  - 0:11                                 single_quote_content `\tEOF`
-0:11 - 0:12                                 "'"
+0:6  - 0:12                               here_end_text `'\tEOF'`
 0:12 - 3:0        separator: newline_list
 0:12 - 3:0          here_document_sequence
 0:12 - 1:0            line_end: here_document_line_end
@@ -4339,9 +3230,7 @@ after
 0:4 - 0:6                           operator: dless `<<`
 0:6 - 0:8                           end: here_end
 0:6 - 0:8                             word: word
-0:6 - 0:8                               single_quoted
-0:6 - 0:7                                 "'"
-0:7 - 0:8                                 "'"
+0:6 - 0:8                               here_end_text `''`
 0:8 - 3:0       separator: newline_list
 0:8 - 3:0         here_document_sequence
 0:8 - 1:0           line_end: here_document_line_end
@@ -4394,9 +3283,7 @@ after
 0:4 - 0:7                           operator: dlessdash `<<-`
 0:7 - 0:9                           end: here_end
 0:7 - 0:9                             word: word
-0:7 - 0:9                               single_quoted
-0:7 - 0:8                                 "'"
-0:8 - 0:9                                 "'"
+0:7 - 0:9                               here_end_text `''`
 0:9 - 3:0       separator: newline_list
 0:9 - 3:0         here_document_sequence
 0:9 - 1:0           line_end: here_document_line_end
@@ -4446,7 +3333,7 @@ body
                         (dlessdash)
                         (here_end
                           (word
-                            (single_quoted))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -4484,10 +3371,7 @@ after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:13                           end: here_end
 0:6  - 0:13                             word: word
-0:6  - 0:13                               single_quoted
-0:6  - 0:7                                  "'"
-0:7  - 0:12                                 single_quote_content `\\$END`
-0:12 - 0:13                                 "'"
+0:6  - 0:13                               here_end_text `'\\$END'`
 0:13 - 3:0        separator: newline_list
 0:13 - 3:0          here_document_sequence
 0:13 - 1:0            line_end: here_document_line_end
@@ -4540,10 +3424,7 @@ after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:12                           end: here_end
 0:6  - 0:12                             word: word
-0:6  - 0:12                               single_quoted
-0:6  - 0:7                                  "'"
-0:7  - 0:11                                 single_quote_content `END\\`
-0:11 - 0:12                                 "'"
+0:6  - 0:12                               here_end_text `'END\\'`
 0:12 - 3:0        separator: newline_list
 0:12 - 3:0          here_document_sequence
 0:12 - 1:0            line_end: here_document_line_end
@@ -4596,10 +3477,7 @@ after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:11                           end: here_end
 0:6  - 0:11                             word: word
-0:6  - 0:11                               single_quoted
-0:6  - 0:7                                  "'"
-0:7  - 0:10                                 single_quote_content `終`
-0:10 - 0:11                                 "'"
+0:6  - 0:11                               here_end_text `'終'`
 0:11 - 3:0        separator: newline_list
 0:11 - 3:0          here_document_sequence
 0:11 - 1:0            line_end: here_document_line_end
@@ -4649,8 +3527,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (single_quoted
-                              (single_quote_content)))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -4704,8 +3581,7 @@ after
                                                 (dless)
                                                 (here_end
                                                   (word
-                                                    (single_quoted
-                                                      (single_quote_content)))))))))))))))
+                                                    (here_end_text))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence
@@ -4773,24 +3649,7 @@ delimiter outer raw escaping
 0:7  - 0:9                                                    operator: dless `<<`
 0:9  - 0:21                                                   end: here_end
 0:9  - 0:21                                                     word: word
-0:9  - 0:21                                                       backquote_substitution
-0:10 - 0:11                                                         "\`"
-0:11 - 0:19                                                         body: backquote_substitution_body
-0:11 - 0:19                                                           complete_commands
-0:11 - 0:19                                                             command: complete_command
-0:11 - 0:19                                                               body: list
-0:11 - 0:19                                                                 and_or: and_or
-0:11 - 0:19                                                                   pipeline: pipeline
-0:11 - 0:19                                                                     sequence: pipe_sequence
-0:11 - 0:19                                                                       command: command
-0:11 - 0:19                                                                         body: simple_command
-0:11 - 0:17                                                                           name: cmd_name
-0:11 - 0:17                                                                             word
-0:11 - 0:17                                                                               literal `printf`
-0:17 - 0:19                                                                           suffix: cmd_suffix
-0:18 - 0:19                                                                             word: word
-0:18 - 0:19                                                                               literal `x`
-0:20 - 0:21                                                         "\`"
+0:9  - 0:21                                                       here_end_text `\\\`printf x\\\``
 0:21 - 3:0                              linebreak
 0:21 - 3:0                                newline_list
 0:21 - 3:0                                  here_document_sequence
@@ -4855,24 +3714,7 @@ delimiter outer double quoted escaping
 0:8  - 0:10                                                     operator: dless `<<`
 0:10 - 0:22                                                     end: here_end
 0:10 - 0:22                                                       word: word
-0:10 - 0:22                                                         backquote_substitution
-0:11 - 0:12                                                           "\`"
-0:12 - 0:20                                                           body: backquote_substitution_body
-0:12 - 0:20                                                             complete_commands
-0:12 - 0:20                                                               command: complete_command
-0:12 - 0:20                                                                 body: list
-0:12 - 0:20                                                                   and_or: and_or
-0:12 - 0:20                                                                     pipeline: pipeline
-0:12 - 0:20                                                                       sequence: pipe_sequence
-0:12 - 0:20                                                                         command: command
-0:12 - 0:20                                                                           body: simple_command
-0:12 - 0:18                                                                             name: cmd_name
-0:12 - 0:18                                                                               word
-0:12 - 0:18                                                                                 literal `printf`
-0:18 - 0:20                                                                             suffix: cmd_suffix
-0:19 - 0:20                                                                               word: word
-0:19 - 0:20                                                                                 literal `x`
-0:21 - 0:22                                                           "\`"
+0:10 - 0:22                                                         here_end_text `\\\`printf x\\\``
 0:22 - 3:0                                linebreak
 0:22 - 3:0                                  newline_list
 0:22 - 3:0                                    here_document_sequence
@@ -4955,24 +3797,7 @@ delimiter outer nested escaping
 0:12 - 0:14                                                                             operator: dless `<<`
 0:14 - 0:30                                                                             end: here_end
 0:14 - 0:30                                                                               word: word
-0:14 - 0:30                                                                                 backquote_substitution
-0:17 - 0:18                                                                                   "\`"
-0:18 - 0:26                                                                                   body: backquote_substitution_body
-0:18 - 0:26                                                                                     complete_commands
-0:18 - 0:26                                                                                       command: complete_command
-0:18 - 0:26                                                                                         body: list
-0:18 - 0:26                                                                                           and_or: and_or
-0:18 - 0:26                                                                                             pipeline: pipeline
-0:18 - 0:26                                                                                               sequence: pipe_sequence
-0:18 - 0:26                                                                                                 command: command
-0:18 - 0:26                                                                                                   body: simple_command
-0:18 - 0:24                                                                                                     name: cmd_name
-0:18 - 0:24                                                                                                       word
-0:18 - 0:24                                                                                                         literal `printf`
-0:24 - 0:26                                                                                                     suffix: cmd_suffix
-0:25 - 0:26                                                                                                       word: word
-0:25 - 0:26                                                                                                         literal `x`
-0:29 - 0:30                                                                                   "\`"
+0:14 - 0:30                                                                                 here_end_text `\\\\\\\`printf x\\\\\\\``
 0:30 - 3:0                                                        linebreak
 0:30 - 3:0                                                          newline_list
 0:30 - 3:0                                                            here_document_sequence
@@ -4996,8 +3821,8 @@ delimiter outer nested escaping
 4:1  - 5:0          "\n"
 
 ==================
-delimiter for without separator
-:cst
+delimiter for without separator is rejected
+:error
 ==================
 cat <<$(for x do case y in y) : ;; esac; done)
 $(for x do case y in y) : ;; esac; done)
@@ -5005,104 +3830,11 @@ echo after
 
 ------------------
 
-0:0  - 3:0    program
-0:0  - 2:10     commands: complete_commands
-0:0  - 0:46       command: complete_command
-0:0  - 0:46         body: list
-0:0  - 0:46           and_or: and_or
-0:0  - 0:46             pipeline: pipeline
-0:0  - 0:46               sequence: pipe_sequence
-0:0  - 0:46                 command: command
-0:0  - 0:46                   body: simple_command
-0:0  - 0:3                      name: cmd_name
-0:0  - 0:3                        word
-0:0  - 0:3                          literal `cat`
-0:3  - 0:46                     suffix: cmd_suffix
-0:4  - 0:46                       redirect: io_redirect
-0:4  - 0:46                         body: io_here
-0:4  - 0:6                            operator: dless `<<`
-0:6  - 0:46                           end: here_end
-0:6  - 0:46                             word: word
-0:6  - 0:46                               command_substitution
-0:6  - 0:7                                  "$"
-0:7  - 0:8                                  "("
-0:8  - 0:45                                 body: command_substitution_body
-0:8  - 0:45                                   complete_commands
-0:8  - 0:45                                     command: complete_command
-0:8  - 0:45                                       body: list
-0:8  - 0:45                                         and_or: and_or
-0:8  - 0:45                                           pipeline: pipeline
-0:8  - 0:45                                             sequence: pipe_sequence
-0:8  - 0:45                                               command: command
-0:8  - 0:45                                                 body: compound_command
-0:8  - 0:45                                                   for_clause
-0:8  - 0:11                                                     for_keyword `for`
-0:12 - 0:13                                                     name: name `x`
-0:14 - 0:45                                                     body: do_group
-0:14 - 0:16                                                       do_keyword `do`
-0:16 - 0:40                                                       body: compound_list
-0:17 - 0:39                                                         body: term
-0:17 - 0:39                                                           and_or: and_or
-0:17 - 0:39                                                             pipeline: pipeline
-0:17 - 0:39                                                               sequence: pipe_sequence
-0:17 - 0:39                                                                 command: command
-0:17 - 0:39                                                                   body: compound_command
-0:17 - 0:39                                                                     case_clause
-0:17 - 0:21                                                                       case_keyword `case`
-0:22 - 0:23                                                                       word: word
-0:22 - 0:23                                                                         literal `y`
-0:24 - 0:26                                                                       in: in
-0:24 - 0:26                                                                         in_keyword `in`
-0:27 - 0:35                                                                       items: case_list
-0:27 - 0:35                                                                         item: case_item
-0:27 - 0:28                                                                           patterns: pattern_list
-0:27 - 0:28                                                                             word: word
-0:27 - 0:28                                                                               literal `y`
-0:28 - 0:29                                                                           ")"
-0:29 - 0:31                                                                           body: compound_list
-0:30 - 0:31                                                                             body: term
-0:30 - 0:31                                                                               and_or: and_or
-0:30 - 0:31                                                                                 pipeline: pipeline
-0:30 - 0:31                                                                                   sequence: pipe_sequence
-0:30 - 0:31                                                                                     command: command
-0:30 - 0:31                                                                                       body: simple_command
-0:30 - 0:31                                                                                         name: cmd_name
-0:30 - 0:31                                                                                           word
-0:30 - 0:31                                                                                             literal `:`
-0:32 - 0:34                                                                           terminator: dsemi `;;`
-0:35 - 0:39                                                                       esac_keyword `esac`
-0:39 - 0:40                                                         terminator: separator
-0:39 - 0:40                                                           operator: separator_op
-0:39 - 0:40                                                             ";"
-0:41 - 0:45                                                       done_keyword `done`
-0:45 - 0:46                                 ")"
-0:46 - 2:0        separator: newline_list
-0:46 - 2:0          here_document_sequence
-0:46 - 1:0            line_end: here_document_line_end
-0:46 - 0:47             `\n`
-1:0  - 2:0            document: here_document
-1:0  - 2:0              end: here_document_end
-1:0  - 1:40               here_document_end_text `$(for x do case y in y) : ;; esac; done)`
-2:0  - 2:10       command: complete_command
-2:0  - 2:10         body: list
-2:0  - 2:10           and_or: and_or
-2:0  - 2:10             pipeline: pipeline
-2:0  - 2:10               sequence: pipe_sequence
-2:0  - 2:10                 command: command
-2:0  - 2:10                   body: simple_command
-2:0  - 2:4                      name: cmd_name
-2:0  - 2:4                        word
-2:0  - 2:4                          literal `echo`
-2:4  - 2:10                     suffix: cmd_suffix
-2:5  - 2:10                       word: word
-2:5  - 2:10                         literal `after`
-2:10 - 3:0      trailing: linebreak
-2:10 - 3:0        newline_list
-2:10 - 3:0          "\n"
+(ERROR)
 
 ==================
-delimiter closed command redirect
-:cst
+delimiter closed command redirect is rejected
+:error
 ==================
 cat <<$(case x in x) case y in y) { :; } >file esac;; z) : ;; esac)
 $(case x in x) case y in y) { :; } >file esac;; z) : ;; esac)
@@ -5110,140 +3842,7 @@ echo after
 
 ------------------
 
-0:0  - 3:0    program
-0:0  - 2:10     commands: complete_commands
-0:0  - 0:67       command: complete_command
-0:0  - 0:67         body: list
-0:0  - 0:67           and_or: and_or
-0:0  - 0:67             pipeline: pipeline
-0:0  - 0:67               sequence: pipe_sequence
-0:0  - 0:67                 command: command
-0:0  - 0:67                   body: simple_command
-0:0  - 0:3                      name: cmd_name
-0:0  - 0:3                        word
-0:0  - 0:3                          literal `cat`
-0:3  - 0:67                     suffix: cmd_suffix
-0:4  - 0:67                       redirect: io_redirect
-0:4  - 0:67                         body: io_here
-0:4  - 0:6                            operator: dless `<<`
-0:6  - 0:67                           end: here_end
-0:6  - 0:67                             word: word
-0:6  - 0:67                               command_substitution
-0:6  - 0:7                                  "$"
-0:7  - 0:8                                  "("
-0:8  - 0:66                                 body: command_substitution_body
-0:8  - 0:66                                   complete_commands
-0:8  - 0:66                                     command: complete_command
-0:8  - 0:66                                       body: list
-0:8  - 0:66                                         and_or: and_or
-0:8  - 0:66                                           pipeline: pipeline
-0:8  - 0:66                                             sequence: pipe_sequence
-0:8  - 0:66                                               command: command
-0:8  - 0:66                                                 body: compound_command
-0:8  - 0:66                                                   case_clause
-0:8  - 0:12                                                     case_keyword `case`
-0:13 - 0:14                                                     word: word
-0:13 - 0:14                                                       literal `x`
-0:15 - 0:17                                                     in: in
-0:15 - 0:17                                                       in_keyword `in`
-0:18 - 0:62                                                     items: case_list
-0:18 - 0:54                                                       item: case_item
-0:18 - 0:19                                                         patterns: pattern_list
-0:18 - 0:19                                                           word: word
-0:18 - 0:19                                                             literal `x`
-0:19 - 0:20                                                         ")"
-0:20 - 0:51                                                         body: compound_list
-0:21 - 0:51                                                           body: term
-0:21 - 0:51                                                             and_or: and_or
-0:21 - 0:51                                                               pipeline: pipeline
-0:21 - 0:51                                                                 sequence: pipe_sequence
-0:21 - 0:51                                                                   command: command
-0:21 - 0:51                                                                     body: compound_command
-0:21 - 0:51                                                                       case_clause
-0:21 - 0:25                                                                         case_keyword `case`
-0:26 - 0:27                                                                         word: word
-0:26 - 0:27                                                                           literal `y`
-0:28 - 0:30                                                                         in: in
-0:28 - 0:30                                                                           in_keyword `in`
-0:31 - 0:47                                                                         items: case_list_ns
-0:31 - 0:47                                                                           item: case_item_ns
-0:31 - 0:32                                                                             patterns: pattern_list
-0:31 - 0:32                                                                               word: word
-0:31 - 0:32                                                                                 literal `y`
-0:32 - 0:33                                                                             ")"
-0:33 - 0:46                                                                             body: compound_list
-0:34 - 0:46                                                                               body: term
-0:34 - 0:46                                                                                 and_or: and_or
-0:34 - 0:46                                                                                   pipeline: pipeline
-0:34 - 0:46                                                                                     sequence: pipe_sequence
-0:34 - 0:46                                                                                       command: command
-0:34 - 0:40                                                                                         body: compound_command
-0:34 - 0:40                                                                                           brace_group
-0:34 - 0:35                                                                                             "{"
-0:35 - 0:38                                                                                             body: compound_list
-0:36 - 0:37                                                                                               body: term
-0:36 - 0:37                                                                                                 and_or: and_or
-0:36 - 0:37                                                                                                   pipeline: pipeline
-0:36 - 0:37                                                                                                     sequence: pipe_sequence
-0:36 - 0:37                                                                                                       command: command
-0:36 - 0:37                                                                                                         body: simple_command
-0:36 - 0:37                                                                                                           name: cmd_name
-0:36 - 0:37                                                                                                             word
-0:36 - 0:37                                                                                                               literal `:`
-0:37 - 0:38                                                                                               terminator: separator
-0:37 - 0:38                                                                                                 operator: separator_op
-0:37 - 0:38                                                                                                   ";"
-0:39 - 0:40                                                                                             "}"
-0:41 - 0:46                                                                                         redirects: redirect_list
-0:41 - 0:46                                                                                           redirect: io_redirect
-0:41 - 0:46                                                                                             body: io_file
-0:41 - 0:42                                                                                               ">"
-0:42 - 0:46                                                                                               filename: filename
-0:42 - 0:46                                                                                                 word: word
-0:42 - 0:46                                                                                                   literal `file`
-0:47 - 0:51                                                                         esac_keyword `esac`
-0:51 - 0:53                                                         terminator: dsemi `;;`
-0:54 - 0:62                                                       item: case_item
-0:54 - 0:55                                                         patterns: pattern_list
-0:54 - 0:55                                                           word: word
-0:54 - 0:55                                                             literal `z`
-0:55 - 0:56                                                         ")"
-0:56 - 0:58                                                         body: compound_list
-0:57 - 0:58                                                           body: term
-0:57 - 0:58                                                             and_or: and_or
-0:57 - 0:58                                                               pipeline: pipeline
-0:57 - 0:58                                                                 sequence: pipe_sequence
-0:57 - 0:58                                                                   command: command
-0:57 - 0:58                                                                     body: simple_command
-0:57 - 0:58                                                                       name: cmd_name
-0:57 - 0:58                                                                         word
-0:57 - 0:58                                                                           literal `:`
-0:59 - 0:61                                                         terminator: dsemi `;;`
-0:62 - 0:66                                                     esac_keyword `esac`
-0:66 - 0:67                                 ")"
-0:67 - 2:0        separator: newline_list
-0:67 - 2:0          here_document_sequence
-0:67 - 1:0            line_end: here_document_line_end
-0:67 - 0:68             `\n`
-1:0  - 2:0            document: here_document
-1:0  - 2:0              end: here_document_end
-1:0  - 1:61               here_document_end_text `$(case x in x) case y in y) { :; } >file esac;; z) : ;; esac)`
-2:0  - 2:10       command: complete_command
-2:0  - 2:10         body: list
-2:0  - 2:10           and_or: and_or
-2:0  - 2:10             pipeline: pipeline
-2:0  - 2:10               sequence: pipe_sequence
-2:0  - 2:10                 command: command
-2:0  - 2:10                   body: simple_command
-2:0  - 2:4                      name: cmd_name
-2:0  - 2:4                        word
-2:0  - 2:4                          literal `echo`
-2:4  - 2:10                     suffix: cmd_suffix
-2:5  - 2:10                       word: word
-2:5  - 2:10                         literal `after`
-2:10 - 3:0      trailing: linebreak
-2:10 - 3:0        newline_list
-2:10 - 3:0          "\n"
+(ERROR)
 
 ==================
 terminator escaped backtick
@@ -5291,10 +3890,7 @@ after
 0:7  - 0:9                                                    operator: dless `<<`
 0:9  - 0:15                                                   end: here_end
 0:9  - 0:15                                                     word: word
-0:9  - 0:15                                                       double_quoted
-0:9  - 0:10                                                         "\""
-0:10 - 0:14                                                         double_quote_escape `\\\\\\\``
-0:14 - 0:15                                                         "\""
+0:9  - 0:15                                                       here_end_text `\"\\\\\\\`\"`
 0:15 - 3:0                              linebreak
 0:15 - 3:0                                newline_list
 0:15 - 3:0                                  here_document_sequence
@@ -5347,7 +3943,7 @@ cat <<-''
                         (dlessdash)
                         (here_end
                           (word
-                            (single_quoted))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -5396,7 +3992,7 @@ echo [`cat <<''
                                                 (dless)
                                                 (here_end
                                                   (word
-                                                    (single_quoted))))))))))))))
+                                                    (here_end_text))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence
@@ -5449,7 +4045,7 @@ echo $((`cat <<''
                                                     (dless)
                                                     (here_end
                                                       (word
-                                                        (single_quoted))))))))))))))
+                                                        (here_end_text))))))))))))))
                               (linebreak
                                 (newline_list
                                   (here_document_sequence
@@ -5503,7 +4099,7 @@ x
                                                 (dless)
                                                 (here_end
                                                   (word
-                                                    (single_quoted))))))))))))))
+                                                    (here_end_text))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence
@@ -5559,7 +4155,7 @@ x
                                                     (dless)
                                                     (here_end
                                                       (word
-                                                        (single_quoted))))))))))))))
+                                                        (here_end_text))))))))))))))
                               (linebreak
                                 (newline_list
                                   (here_document_sequence
@@ -5614,7 +4210,7 @@ X`]
                                                 (dless)
                                                 (here_end
                                                   (word
-                                                    (literal))))))))))))))
+                                                    (here_end_text))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence
@@ -5652,7 +4248,7 @@ E
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -5688,7 +4284,7 @@ cat <<''
                         (dless)
                         (here_end
                           (word
-                            (single_quoted))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -5722,7 +4318,7 @@ E\
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -5765,69 +4361,13 @@ echo after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:26                           end: here_end
 0:6  - 0:26                             word: word
-0:6  - 0:26                               command_substitution
-0:6  - 0:7                                  "$"
-0:7  - 0:8                                  "("
-0:8  - 0:25                                 body: command_substitution_body
-0:8  - 0:25                                   complete_commands
-0:8  - 0:25                                     command: complete_command
-0:8  - 0:25                                       body: list
-0:8  - 0:25                                         and_or: and_or
-0:8  - 0:25                                           pipeline: pipeline
-0:8  - 0:25                                             sequence: pipe_sequence
-0:8  - 0:25                                               command: command
-0:8  - 0:25                                                 body: simple_command
-0:8  - 0:14                                                   name: cmd_name
-0:8  - 0:14                                                     word
-0:8  - 0:14                                                       literal `printf`
-0:14 - 0:25                                                   suffix: cmd_suffix
-0:15 - 0:25                                                     word: word
-0:15 - 0:25                                                       parameter_expansion
-0:15 - 0:16                                                         "$"
-0:16 - 0:17                                                         "{"
-0:17 - 0:18                                                         parameter: variable_name `x`
-0:18 - 0:20                                                         operator: parameter_value_operator `:-`
-0:20 - 0:24                                                         word: parameter_word
-0:20 - 0:21                                                           literal `a`
-0:21 - 0:23                                                           escaped_character `\\q`
-0:23 - 0:24                                                           literal `b`
-0:24 - 0:25                                                         "}"
-0:25 - 0:26                                 ")"
+0:6  - 0:26                               here_end_text `$(printf ${x:-a\\qb})`
 0:27 - 0:49                       redirect: io_redirect
 0:27 - 0:49                         body: io_here
 0:27 - 0:29                           operator: dless `<<`
 0:29 - 0:49                           end: here_end
 0:29 - 0:49                             word: word
-0:29 - 0:49                               backquote_substitution
-0:29 - 0:30                                 "\`"
-0:30 - 0:48                                 body: backquote_substitution_body
-0:30 - 0:48                                   complete_commands
-0:30 - 0:48                                     command: complete_command
-0:30 - 0:48                                       body: list
-0:30 - 0:48                                         and_or: and_or
-0:30 - 0:48                                           pipeline: pipeline
-0:30 - 0:48                                             sequence: pipe_sequence
-0:30 - 0:48                                               command: command
-0:30 - 0:48                                                 body: simple_command
-0:30 - 0:36                                                   name: cmd_name
-0:30 - 0:36                                                     word
-0:30 - 0:36                                                       literal `printf`
-0:36 - 0:48                                                   suffix: cmd_suffix
-0:37 - 0:48                                                     word: word
-0:37 - 0:48                                                       double_quoted
-0:37 - 0:38                                                         "\""
-0:38 - 0:47                                                         parameter_expansion
-0:38 - 0:39                                                           "$"
-0:39 - 0:40                                                           "{"
-0:40 - 0:41                                                           parameter: variable_name `x`
-0:41 - 0:42                                                           operator: parameter_pattern_operator `#`
-0:42 - 0:46                                                           pattern: parameter_pattern
-0:42 - 0:43                                                             literal `a`
-0:43 - 0:45                                                             escaped_character `\\q`
-0:45 - 0:46                                                             literal `b`
-0:46 - 0:47                                                           "}"
-0:47 - 0:48                                                         "\""
-0:48 - 0:49                                 "\`"
+0:29 - 0:49                               here_end_text `\`printf \"${x#a\\qb}\"\``
 0:49 - 5:0        separator: newline_list
 0:49 - 5:0          here_document_sequence
 0:49 - 1:0            line_end: here_document_line_end
@@ -5892,25 +4432,13 @@ echo after
                         (dless)
                         (here_end
                           (word
-                            (arithmetic_expansion
-                              (arithmetic_source
-                                (arithmetic_number)
-                                (arithmetic_operator)
-                                (arithmetic_source_fragment)
-                                (arithmetic_number)
-                                (arithmetic_source_fragment)))))))
+                            (here_end_text)))))
                     (io_redirect
                       (io_here
                         (dless)
                         (here_end
                           (word
-                            (arithmetic_expansion
-                              (arithmetic_source
-                                (arithmetic_number)
-                                (arithmetic_operator)
-                                (arithmetic_source_fragment)
-                                (arithmetic_number)
-                                (arithmetic_source_fragment)))))))))))))))
+                            (here_end_text)))))))))))))
     (newline_list
       (here_document_sequence
         (here_document_line_end)
@@ -5975,27 +4503,13 @@ echo after
                         (dless)
                         (here_end
                           (word
-                            (double_quoted
-                              (arithmetic_expansion
-                                (arithmetic_source
-                                  (arithmetic_number)
-                                  (arithmetic_operator)
-                                  (arithmetic_source_fragment)
-                                  (arithmetic_number)
-                                  (arithmetic_source_fragment))))))))
+                            (here_end_text)))))
                     (io_redirect
                       (io_here
                         (dless)
                         (here_end
                           (word
-                            (double_quoted
-                              (arithmetic_expansion
-                                (arithmetic_source
-                                  (arithmetic_number)
-                                  (arithmetic_operator)
-                                  (arithmetic_source_fragment)
-                                  (arithmetic_number)
-                                  (arithmetic_source_fragment))))))))))))))))
+                            (here_end_text)))))))))))))
     (newline_list
       (here_document_sequence
         (here_document_line_end)

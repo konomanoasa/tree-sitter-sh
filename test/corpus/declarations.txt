@@ -257,7 +257,7 @@ END
                         (dless)
                         (here_end
                           (word
-                            (literal)))))
+                            (here_end_text)))))
                     (word
                       (literal))
                     (word
@@ -493,7 +493,7 @@ END
 0:8  - 0:10                           operator: dless `<<`
 0:10 - 0:13                           end: here_end
 0:10 - 0:13                             word: word
-0:10 - 0:13                               literal `END`
+0:10 - 0:13                               here_end_text `END`
 0:14 - 0:20                       word: word
 0:14 - 0:20                         literal `export`
 0:21 - 0:24                       word: word
@@ -540,7 +540,7 @@ x=y
 0:9  - 0:11                           operator: dless `<<`
 0:11 - 0:14                           end: here_end
 0:11 - 0:14                             word: word
-0:11 - 0:14                               literal `x=y`
+0:11 - 0:14                               here_end_text `x=y`
 0:15 - 0:18                       word: word
 0:15 - 0:16                         name: variable_name `x`
 0:16 - 0:17                         "="
@@ -798,7 +798,7 @@ END
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:9                            end: here_end
 0:6  - 0:9                              word: word
-0:6  - 0:9                                literal `END`
+0:6  - 0:9                                here_end_text `END`
 0:9  - 3:0      trailing: linebreak
 0:9  - 3:0        newline_list
 0:9  - 3:0          here_document_sequence

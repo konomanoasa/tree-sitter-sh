@@ -827,7 +827,7 @@ END
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -1281,7 +1281,7 @@ X
                                                                             (dless)
                                                                             (here_end
                                                                               (word
-                                                                                (escaped_character))))))))))))))
+                                                                                (here_end_text))))))))))))))
                                                       (linebreak
                                                         (newline_list
                                                           (here_document_sequence

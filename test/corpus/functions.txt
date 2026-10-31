@@ -707,7 +707,7 @@ E
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal)))))))))))
+                            (here_end_text)))))))))))
         separator: (separator_op)
         and_or: (and_or
           pipeline: (pipeline

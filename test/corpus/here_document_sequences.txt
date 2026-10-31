@@ -32,7 +32,7 @@ next
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal)))))
+                            (here_end_text)))))
                     word: (word
                       (literal))
                     redirect: (io_redirect
@@ -40,7 +40,7 @@ next
                         operator: (dlessdash)
                         end: (here_end
                           word: (word
-                            (literal)))))
+                            (here_end_text)))))
                     redirect: (io_redirect
                       body: (io_file
                         filename: (filename
@@ -103,7 +103,7 @@ next
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal))))))))
+                            (here_end_text))))))))
               command: (command
                 body: (simple_command
                   name: (cmd_name
@@ -177,7 +177,7 @@ tr a b
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal))))))))
+                            (here_end_text))))))))
               (linebreak
                 (newline_list
                   (here_document_sequence
@@ -231,7 +231,7 @@ E
                         (dless)
                         (here_end
                           (word
-                            (literal)))))
+                            (here_end_text)))))
                     (word
                       (command_substitution
                         (command_substitution_body
@@ -298,7 +298,7 @@ E
                         (dless)
                         (here_end
                           (word
-                            (literal)))))
+                            (here_end_text)))))
                     (word
                       (backquote_substitution
                         (backquote_substitution_body
@@ -373,7 +373,7 @@ E
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal)))))))))))
+                                            (here_end_text)))))))))))
                         (separator
                           (separator_op))
                         (and_or
@@ -436,7 +436,7 @@ B
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal)))))))))))
+                                            (here_end_text)))))))))))
                         (separator
                           (separator_op))
                         (and_or
@@ -453,7 +453,7 @@ B
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal))))))))))))
+                                            (here_end_text))))))))))))
                       (separator
                         (separator_op))))))))))))
   (linebreak
@@ -510,7 +510,7 @@ E
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal)))))))))))
+                                            (here_end_text)))))))))))
                         (separator
                           (separator_op))
                         (and_or
@@ -595,7 +595,7 @@ E
                                             (dless)
                                             (here_end
                                               (word
-                                                (literal)))))))))))
+                                                (here_end_text)))))))))))
                             (separator
                               (separator_op))
                             (and_or
@@ -656,7 +656,7 @@ E
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal)))))))))))
+                                            (here_end_text)))))))))))
                         (separator
                           (separator_op))
                         (and_or
@@ -710,7 +710,7 @@ second
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal)))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -760,7 +760,7 @@ E
                         (dless)
                         (here_end
                           (word
-                            (literal)))))
+                            (here_end_text)))))
                     (word
                       (backquote_substitution
                         (backquote_substitution_body
@@ -832,13 +832,13 @@ cat <<FIRST <<SECOND
                         (dless)
                         (here_end
                           (word
-                            (literal)))))
+                            (here_end_text)))))
                     (io_redirect
                       (io_here
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))))))
+                            (here_end_text)))))))))))))))
 
 ==================
 EOF accepts a started document: multiple declarations, suffix "\n"
@@ -865,13 +865,13 @@ cat <<FIRST <<SECOND
                         (dless)
                         (here_end
                           (word
-                            (literal)))))
+                            (here_end_text)))))
                     (io_redirect
                       (io_here
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -904,13 +904,13 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal)))))
+                            (here_end_text)))))
                     (io_redirect
                       (io_here
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -946,13 +946,13 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal)))))
+                            (here_end_text)))))
                     (io_redirect
                       (io_here
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -988,13 +988,13 @@ FIRST
                         (dless)
                         (here_end
                           (word
-                            (literal)))))
+                            (here_end_text)))))
                     (io_redirect
                       (io_here
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1030,7 +1030,7 @@ cat <<SECOND
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))))
+                            (here_end_text)))))))))))))
     (newline_list
       (here_document_sequence
         (here_document_line_end)
@@ -1053,4 +1053,4 @@ cat <<SECOND
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))))))
+                            (here_end_text)))))))))))))))

@@ -1072,7 +1072,7 @@ E`" after
                                                   (dless)
                                                   (here_end
                                                     (word
-                                                      (literal))))))))))))))
+                                                      (here_end_text))))))))))))))
                             (linebreak
                               (newline_list
                                 (here_document_sequence
@@ -1114,8 +1114,7 @@ E`" after
                                                   (dless)
                                                   (here_end
                                                     (word
-                                                      (single_quoted
-                                                        (single_quote_content)))))))))))))))
+                                                      (here_end_text))))))))))))))
                             (linebreak
                               (newline_list
                                 (here_document_sequence
@@ -1368,7 +1367,7 @@ E
                                                   operator: (dless)
                                                   end: (here_end
                                                     word: (word
-                                                      (literal))))))))))))))
+                                                      (here_end_text))))))))))))))
                             (linebreak
                               (newline_list
                                 (here_document_sequence
@@ -1412,7 +1411,7 @@ E
                                                 operator: (dless)
                                                 end: (here_end
                                                   word: (word
-                                                    (literal))))))))))))))
+                                                    (here_end_text))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence

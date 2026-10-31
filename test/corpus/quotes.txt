@@ -554,10 +554,7 @@ EOF
 3:4  - 3:6                            operator: dless `<<`
 3:6  - 3:11                           end: here_end
 3:6  - 3:11                             word: word
-3:6  - 3:11                               single_quoted
-3:6  - 3:7                                  "'"
-3:7  - 3:10                                 single_quote_content `EOF`
-3:10 - 3:11                                 "'"
+3:6  - 3:11                               here_end_text `'EOF'`
 3:11 - 7:0      trailing: linebreak
 3:11 - 7:0        newline_list
 3:11 - 7:0          here_document_sequence

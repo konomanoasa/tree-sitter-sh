@@ -1406,7 +1406,6 @@ test("sh: empty quoted here-document delimiters preserve enclosing source after 
       expectedRange: "0:5-3:8",
       expectedNode: "arithmetic_expansion",
       delimiterRange: "0:17-0:19",
-      delimiterNode: "single_quoted",
     },
     {
       name: "bracket-empty-double-quoted-delimiter",
@@ -1416,7 +1415,6 @@ test("sh: empty quoted here-document delimiters preserve enclosing source after 
       expectedRange: "0:5-3:2",
       expectedNode: "pattern_bracket_source",
       delimiterRange: "0:14-0:16",
-      delimiterNode: "double_quoted",
     },
     {
       name: "arithmetic-empty-dollar-single-quoted-delimiter",
@@ -1426,7 +1424,6 @@ test("sh: empty quoted here-document delimiters preserve enclosing source after 
       expectedRange: "0:5-3:8",
       expectedNode: "arithmetic_expansion",
       delimiterRange: "0:17-0:20",
-      delimiterNode: "dollar_single_quoted",
     },
   ];
   for (const fixture of fixtures) {
@@ -1441,7 +1438,7 @@ test("sh: empty quoted here-document delimiters preserve enclosing source after 
     )) {
       assertCstRange(output, fixture.expectedRange, fixture.expectedNode);
       assertCstRange(output, fixture.delimiterRange, "here_end");
-      assertCstRange(output, fixture.delimiterRange, fixture.delimiterNode);
+      assertCstRange(output, fixture.delimiterRange, "here_end_text");
       assertCstRange(output, "1:0-2:0", "quoted_here_document_body");
       assertCstRange(output, "2:0-3:0", "here_document_end");
     }

@@ -210,6 +210,48 @@ test("source contracts use UTF-8 byte coordinates", () => {
   );
 });
 
+test("C parsing conditions preserve UTF-8 source independently of the process locale", (t) => {
+  const originalLocale = process.env.LC_ALL;
+  t.after(() => {
+    if (originalLocale === undefined) delete process.env.LC_ALL;
+    else process.env.LC_ALL = originalLocale;
+  });
+  for (const { name, source, recovery } of [
+    {
+      name: "ASCII names with UTF-8 words, patterns and a quoted delimiter",
+      source: lines(
+        "A_1=é",
+        'printf "$A_1" "$é" [é] [[:alpha:]]',
+        "cat <<'é😀'",
+        "body",
+        "é😀",
+      ),
+      recovery: false,
+    },
+    {
+      name: "a non-ASCII parameter name in an ordinary word",
+      source: `printf \${é}\n`,
+      recovery: true,
+    },
+  ]) {
+    const path = writeSource(name, source);
+    let baseline;
+    for (const locale of ["C", "C.UTF-8"]) {
+      process.env.LC_ALL = locale;
+      const description = `${name}: ${locale}`;
+      const actual = runParse({
+        description,
+        mode: recovery ? "recovery" : "valid",
+        source: path,
+      });
+      assert.equal(actual.recovery, recovery, description);
+      const fingerprint = cstFingerprint(actual.output);
+      baseline ??= fingerprint;
+      assert.equal(fingerprint, baseline, description);
+    }
+  }
+});
+
 test("anonymous punctuation retains exact source", () => {
   assertCstSourceContract(
     ["0:0 - 0:1   program", '0:0 - 0:1     "\\`"'].join("\n"),
@@ -567,7 +609,7 @@ const fixtures = [
     marked: "cat <§<§-E§OF\nbody\nEOF\n",
     expectedNodes: [
       { type: "dlessdash", spelling: "<<-" },
-      { type: "literal", spelling: "EOF" },
+      { type: "here_end_text", spelling: "EOF" },
     ],
   },
   {
@@ -1250,8 +1292,7 @@ for (const { name, source, expected, continuations } of [
     source: "\ncat <<OUT\n$( : # hello\\\n) ; <<IN ignored\n)\nOUT\n",
     expected: `(program (linebreak (newline_list)) (complete_commands (complete_command
       (list (and_or (pipeline (pipe_sequence (command (simple_command (cmd_name
-      (word (literal))) (cmd_suffix (io_redirect (io_here (dless) (here_end (word
-      (literal)))))))))))))) (linebreak (newline_list (here_document_sequence
+      (word (literal))) (cmd_suffix (io_redirect (io_here (dless) (here_end (word (here_end_text)))))))))))))) (linebreak (newline_list (here_document_sequence
       (here_document_line_end) (here_document (here_document_body
       (command_substitution (command_substitution_body (complete_commands
       (complete_command (list (and_or (pipeline (pipe_sequence (command
@@ -1447,14 +1488,13 @@ for (const { name, source, expected, continuations } of [
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dless) end: (here_end word: (word (literal)))))))))))))
+      (io_here operator: (dless) end: (here_end word: (word (here_end_text)))))))))))))
       separator: (newline_list (here_document_sequence line_end:
       (here_document_line_end) document: (here_document end: (here_document_end
       (here_document_end_text))))) command: (complete_command body: (list and_or:
       (and_or pipeline: (pipeline sequence: (pipe_sequence command: (command body:
       (simple_command name: (cmd_name (word (literal))) suffix: (cmd_suffix
-      redirect: (io_redirect body: (io_here operator: (dless) end: (here_end word:
-      (word (single_quoted (single_quote_content))))))))))))))) trailing:
+      redirect: (io_redirect body: (io_here operator: (dless) end: (here_end word: (word (here_end_text)))))))))))))) trailing:
       (linebreak (newline_list (here_document_sequence line_end:
       (here_document_line_end) document: (here_document body:
       (quoted_here_document_body (quoted_here_document_text)
@@ -1469,8 +1509,7 @@ for (const { name, source, expected, continuations } of [
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dlessdash) end: (here_end word: (word
-      (literal))))))))))))) separator: (newline_list (here_document_sequence
+      (io_here operator: (dlessdash) end: (here_end word: (word (here_end_text))))))))))))) separator: (newline_list (here_document_sequence
       line_end: (here_document_line_end) document: (here_document body:
       (here_document_body (here_document_text)) end: (here_document_end
       (here_document_end_text))))) command: (complete_command body: (list and_or:
@@ -1484,13 +1523,12 @@ for (const { name, source, expected, continuations } of [
     source: "\ncat <<OUT\n`cat <<IN\n\\\\\\\n \nIN\n`\nOUT\n",
     expected: `(program (linebreak (newline_list)) (complete_commands (complete_command
       (list (and_or (pipeline (pipe_sequence (command (simple_command (cmd_name
-      (word (literal))) (cmd_suffix (io_redirect (io_here (dless) (here_end (word
-      (literal)))))))))))))) (linebreak (newline_list (here_document_sequence
+      (word (literal))) (cmd_suffix (io_redirect (io_here (dless) (here_end (word (here_end_text)))))))))))))) (linebreak (newline_list (here_document_sequence
       (here_document_line_end) (here_document (here_document_body
       (backquote_substitution (backquote_substitution_body (complete_commands
       (complete_command (list (and_or (pipeline (pipe_sequence (command
       (simple_command (cmd_name (word (literal))) (cmd_suffix (io_redirect (io_here
-      (dless) (here_end (word (literal)))))))))))))) (linebreak (newline_list
+      (dless) (here_end (word (here_end_text)))))))))))))) (linebreak (newline_list
       (here_document_sequence (here_document_line_end) (here_document
       (here_document_body (here_document_text)) (here_document_end
       (here_document_end_text))))))))) (here_document_end
@@ -1509,8 +1547,7 @@ for (const { name, source, expected, continuations } of [
       (literal))) (cmd_suffix (word (backquote_substitution
       (backquote_substitution_body (complete_commands (complete_command (list
       (and_or (pipeline (pipe_sequence (command (simple_command (cmd_name (word
-      (literal))) (cmd_suffix (io_redirect (io_here (dless) (here_end (word
-      (single_quoted (single_quote_content))))))))))))))) (linebreak (newline_list
+      (literal))) (cmd_suffix (io_redirect (io_here (dless) (here_end (word (here_end_text)))))))))))))) (linebreak (newline_list
       (here_document_sequence (here_document_line_end) (here_document
       (here_document_end (here_document_end_text))))))))))))))))))))))))))))))
       (newline_list) (complete_command (list (and_or (pipeline (pipe_sequence
@@ -1521,7 +1558,7 @@ for (const { name, source, expected, continuations } of [
       (backquote_substitution (backquote_substitution_body (complete_commands
       (complete_command (list (and_or (pipeline (pipe_sequence (command
       (simple_command (cmd_name (word (literal))) (cmd_suffix (io_redirect (io_here
-      (dless) (here_end (word (single_quoted (single_quote_content)))))))))))))))
+      (dless) (here_end (word (here_end_text))))))))))))))
       (linebreak (newline_list (here_document_sequence (here_document_line_end)
       (here_document (here_document_end
       (here_document_end_text)))))))))))))))))))))))))))))) (newline_list)
@@ -1533,7 +1570,7 @@ for (const { name, source, expected, continuations } of [
       (backquote_substitution (backquote_substitution_body (complete_commands
       (complete_command (list (and_or (pipeline (pipe_sequence (command
       (simple_command (cmd_name (word (literal))) (cmd_suffix (io_redirect (io_here
-      (dless) (here_end (word (single_quoted (single_quote_content)))))))))))))))
+      (dless) (here_end (word (here_end_text))))))))))))))
       (linebreak (newline_list (here_document_sequence (here_document_line_end)
       (here_document (here_document_end
       (here_document_end_text))))))))))))))))))))))))))))))) (linebreak
@@ -1547,8 +1584,7 @@ for (const { name, source, expected, continuations } of [
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dlessdash) end: (here_end word: (word
-      (literal)))))))))))))) trailing: (linebreak (newline_list
+      (io_here operator: (dlessdash) end: (here_end word: (word (here_end_text)))))))))))))) trailing: (linebreak (newline_list
       (here_document_sequence line_end: (here_document_line_end) document:
       (here_document end: (here_document_end (here_document_end_text)))))))`,
     continuations: ["2:1-2:2"],
@@ -1560,7 +1596,7 @@ for (const { name, source, expected, continuations } of [
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dless) end: (here_end word: (word (literal)))))))))))))
+      (io_here operator: (dless) end: (here_end word: (word (here_end_text)))))))))))))
       separator: (newline_list (here_document_sequence line_end:
       (here_document_line_end) document: (here_document body: (here_document_body
       (here_document_text)) end: (here_document_end (here_document_end_text)))))
@@ -1576,8 +1612,7 @@ for (const { name, source, expected, continuations } of [
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dlessdash) end: (here_end word: (word
-      (literal))))))))))))) separator: (newline_list (here_document_sequence
+      (io_here operator: (dlessdash) end: (here_end word: (word (here_end_text))))))))))))) separator: (newline_list (here_document_sequence
       line_end: (here_document_line_end) document: (here_document body:
       (here_document_body (here_document_text)) end: (here_document_end
       (here_document_end_text))))) command: (complete_command body: (list and_or:
@@ -1591,8 +1626,7 @@ for (const { name, source, expected, continuations } of [
     source: "\ncat <<EOF\\\n\\\n\nbody\nEOF\nafter\n",
     expected: `(program (linebreak (newline_list)) (complete_commands (complete_command
       (list (and_or (pipeline (pipe_sequence (command (simple_command (cmd_name
-      (word (literal))) (cmd_suffix (io_redirect (io_here (dless) (here_end (word
-      (literal))))))))))))) (newline_list (here_document_sequence
+      (word (literal))) (cmd_suffix (io_redirect (io_here (dless) (here_end (word (here_end_text))))))))))))) (newline_list (here_document_sequence
       (here_document_line_end) (here_document (here_document_body
       (here_document_text)) (here_document_end (here_document_end_text)))))
       (complete_command (list (and_or (pipeline (pipe_sequence (command
@@ -1612,7 +1646,7 @@ for (const { name, source, expected, continuations } of [
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dless) end: (here_end word: (word (literal))))))))))))))
+      (io_here operator: (dless) end: (here_end word: (word (here_end_text))))))))))))))
       (linebreak (newline_list (here_document_sequence line_end:
       (here_document_line_end) document: (here_document body: (here_document_body
       (here_document_text) (parameter_expansion parameter: (variable_name))) end:
@@ -1628,8 +1662,7 @@ for (const { name, source, expected, continuations } of [
       (complete_commands command: (complete_command body: (list and_or: (and_or
       pipeline: (pipeline sequence: (pipe_sequence command: (command body:
       (simple_command name: (cmd_name (word (literal))) suffix: (cmd_suffix
-      redirect: (io_redirect body: (io_here operator: (dless) end: (here_end word:
-      (word (literal)))))))))))))) (linebreak (newline_list (here_document_sequence
+      redirect: (io_redirect body: (io_here operator: (dless) end: (here_end word: (word (here_end_text)))))))))))))) (linebreak (newline_list (here_document_sequence
       line_end: (here_document_line_end) document: (here_document body:
       (here_document_body (here_document_text)) end: (here_document_end
       (here_document_end_text)))))))))))))))))))))))))))))) trailing: (linebreak
@@ -1643,16 +1676,14 @@ for (const { name, source, expected, continuations } of [
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dlessdash) end: (here_end word: (word
-      (literal)))))))))))))) trailing: (linebreak (newline_list
+      (io_here operator: (dlessdash) end: (here_end word: (word (here_end_text)))))))))))))) trailing: (linebreak (newline_list
       (here_document_sequence line_end: (here_document_line_end) document:
       (here_document body: (here_document_body (command_substitution body:
       (command_substitution_body (complete_commands command: (complete_command
       body: (list and_or: (and_or pipeline: (pipeline sequence: (pipe_sequence
       command: (command body: (simple_command name: (cmd_name (word (literal)))
       suffix: (cmd_suffix redirect: (io_redirect body: (io_here operator: (dless)
-      end: (here_end word: (word (single_quoted
-      (single_quote_content))))))))))))))) (linebreak (newline_list
+      end: (here_end word: (word (here_end_text)))))))))))))) (linebreak (newline_list
       (here_document_sequence line_end: (here_document_line_end) document:
       (here_document end: (here_document_end (here_document_end_text))))))))) end:
       (here_document_end (here_document_end_text)))))))`,
@@ -1665,15 +1696,14 @@ for (const { name, source, expected, continuations } of [
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dless) end: (here_end word: (word (literal))))))))))))))
+      (io_here operator: (dless) end: (here_end word: (word (here_end_text))))))))))))))
       trailing: (linebreak (newline_list (here_document_sequence line_end:
       (here_document_line_end) document: (here_document body: (here_document_body
       (command_substitution body: (command_substitution_body (complete_commands
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dless) end: (here_end word: (word (single_quoted
-      (single_quote_content))))))))))))))) (linebreak (newline_list
+      (io_here operator: (dless) end: (here_end word: (word (here_end_text)))))))))))))) (linebreak (newline_list
       (here_document_sequence line_end: (here_document_line_end) document:
       (here_document body: (quoted_here_document_body (quoted_here_document_text))
       end: (here_document_end (here_document_end_text))))))))) end:
@@ -1688,9 +1718,9 @@ for (const { name, source, expected, continuations } of [
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dless) end: (here_end word: (word (literal))))) word:
+      (io_here operator: (dless) end: (here_end word: (word (here_end_text))))) word:
       (word (literal)) redirect: (io_redirect body: (io_here operator: (dless) end:
-      (here_end word: (word (literal)))))))))))))) trailing: (linebreak
+      (here_end word: (word (here_end_text)))))))))))))) trailing: (linebreak
       (newline_list (here_document_sequence comment: (comment (comment_text))
       line_end: (here_document_line_end) document: (here_document body:
       (here_document_body (here_document_text)) end: (here_document_end
@@ -1704,8 +1734,7 @@ for (const { name, source, expected, continuations } of [
       "\ncat <<EOF; echo first\\\n\nbody\nEOF\nsecond\ncat <<END; echo third\\\n \\\n\nbody two\nEND\nfourth\n",
     expected: `(program (linebreak (newline_list)) (complete_commands (complete_command
       (list (and_or (pipeline (pipe_sequence (command (simple_command (cmd_name
-      (word (literal))) (cmd_suffix (io_redirect (io_here (dless) (here_end (word
-      (literal))))))))))) (separator_op) (and_or (pipeline (pipe_sequence (command
+      (word (literal))) (cmd_suffix (io_redirect (io_here (dless) (here_end (word (here_end_text))))))))))) (separator_op) (and_or (pipeline (pipe_sequence (command
       (simple_command (cmd_name (word (literal))) (cmd_suffix (word
       (literal)))))))))) (newline_list (here_document_sequence
       (here_document_line_end) (here_document (here_document_body
@@ -1714,7 +1743,7 @@ for (const { name, source, expected, continuations } of [
       (simple_command (cmd_name (word (literal)))))))))) (newline_list)
       (complete_command (list (and_or (pipeline (pipe_sequence (command
       (simple_command (cmd_name (word (literal))) (cmd_suffix (io_redirect (io_here
-      (dless) (here_end (word (literal))))))))))) (separator_op) (and_or (pipeline
+      (dless) (here_end (word (here_end_text))))))))))) (separator_op) (and_or (pipeline
       (pipe_sequence (command (simple_command (cmd_name (word (literal)))
       (cmd_suffix (word (literal)))))))))) (newline_list (here_document_sequence
       (here_document_line_end) (here_document (here_document_body
@@ -1731,7 +1760,7 @@ for (const { name, source, expected, continuations } of [
       command: (complete_command body: (list and_or: (and_or pipeline: (pipeline
       sequence: (pipe_sequence command: (command body: (simple_command name:
       (cmd_name (word (literal))) suffix: (cmd_suffix redirect: (io_redirect body:
-      (io_here operator: (dless) end: (here_end word: (word (literal)))))))))))))
+      (io_here operator: (dless) end: (here_end word: (word (here_end_text)))))))))))))
       separator: (newline_list (here_document_sequence line_end:
       (here_document_line_end) document: (here_document end: (here_document_end
       (here_document_end_text))))) command: (complete_command body: (list and_or:
@@ -2184,6 +2213,29 @@ test("sh: parser resource bounds preserve complete roots and deterministic recov
       completionOnly,
     );
   });
+
+  const overlongDelimiter = "D".repeat(1024);
+  for (const [name, prefix] of [
+    [
+      "delimiter capacity",
+      `cat <<${overlongDelimiter}\nbody\n${overlongDelimiter}\n`,
+    ],
+    ["nested document capacity", nestedDocuments(maximumNestedDocuments + 1)],
+  ]) {
+    await context.test(
+      `${name} can be repaired without losing following source`,
+      () => {
+        const suffix = `printf '終😀' "\${x:-値}"\n`;
+        const initial = writeSource(name, prefix + suffix);
+        const final = writeSource(`${name}-repaired`, `:\n${suffix}`);
+        assertIncrementalEqualsFresh(initial, final, name, {
+          byte: 0,
+          deleteBytes: Buffer.byteLength(prefix),
+          insert: ":\n",
+        });
+      },
+    );
+  }
 
   await context.test("nested backquotes", () => {
     let nestedBackquotes = "echo `level1 ";

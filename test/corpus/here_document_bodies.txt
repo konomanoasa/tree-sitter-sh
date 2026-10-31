@@ -28,7 +28,7 @@ EOF
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -73,7 +73,7 @@ next
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal)))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -96,7 +96,7 @@ next
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (single_quoted)))))))))))))
+                            (here_end_text)))))))))))))
     separator: (newline_list
       (here_document_sequence
         line_end: (here_document_line_end)
@@ -145,7 +145,7 @@ OUTER
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -233,7 +233,7 @@ EOF
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -279,7 +279,7 @@ EOF
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -321,7 +321,7 @@ E
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -388,7 +388,7 @@ after
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))))
+                            (here_end_text)))))))))))))
     (newline_list
       (here_document_sequence
         (here_document_line_end)
@@ -486,7 +486,7 @@ EOF
                                                 (dless)
                                                 (here_end
                                                   (word
-                                                    (literal))))))))))))))
+                                                    (here_end_text))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence
@@ -547,7 +547,7 @@ EOF
                                                 (dless)
                                                 (here_end
                                                   (word
-                                                    (literal))))))))))))))
+                                                    (here_end_text))))))))))))))
                           (linebreak
                             (newline_list
                               (here_document_sequence
@@ -591,7 +591,7 @@ E
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal)))))))))))
+                            (here_end_text)))))))))))
         separator: (separator_op)
         and_or: (and_or
           pipeline: (pipeline
@@ -657,7 +657,7 @@ EOF
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -715,7 +715,7 @@ EOF
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -776,7 +776,7 @@ EOF
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence
@@ -850,7 +850,7 @@ IN
 0:7  - 0:9                                                    operator: dless `<<`
 0:9  - 0:11                                                   end: here_end
 0:9  - 0:11                                                     word: word
-0:9  - 0:11                                                       literal `IN`
+0:9  - 0:11                                                       here_end_text `IN`
 0:11 - 3:0                              linebreak
 0:11 - 3:0                                newline_list
 0:11 - 3:0                                  here_document_sequence
@@ -895,10 +895,7 @@ END
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:11                           end: here_end
 0:6  - 0:11                             word: word
-0:6  - 0:11                               single_quoted
-0:6  - 0:7                                  "'"
-0:7  - 0:10                                 single_quote_content `END`
-0:10 - 0:11                                 "'"
+0:6  - 0:11                               here_end_text `'END'`
 0:11 - 4:0      trailing: linebreak
 0:11 - 4:0        newline_list
 0:11 - 4:0          here_document_sequence
@@ -958,7 +955,7 @@ EOF
 0:8  - 0:10                                                     operator: dless `<<`
 0:10 - 0:13                                                     end: here_end
 0:10 - 0:13                                                       word: word
-0:10 - 0:13                                                         literal `EOF`
+0:10 - 0:13                                                         here_end_text `EOF`
 0:13 - 3:0                                linebreak
 0:13 - 3:0                                  newline_list
 0:13 - 3:0                                    here_document_sequence
@@ -1020,10 +1017,7 @@ EOF
 0:7  - 0:9                                                    operator: dless `<<`
 0:9  - 0:14                                                   end: here_end
 0:9  - 0:14                                                     word: word
-0:9  - 0:14                                                       single_quoted
-0:9  - 0:10                                                         "'"
-0:10 - 0:13                                                         single_quote_content `EOF`
-0:13 - 0:14                                                         "'"
+0:9  - 0:14                                                       here_end_text `'EOF'`
 0:14 - 3:0                              linebreak
 0:14 - 3:0                                newline_list
 0:14 - 3:0                                  here_document_sequence
@@ -1085,9 +1079,7 @@ a backslash-only line in a quoted body inside backquotes does not end an empty d
 0:7  - 0:9                                                    operator: dless `<<`
 0:9  - 0:11                                                   end: here_end
 0:9  - 0:11                                                     word: word
-0:9  - 0:11                                                       single_quoted
-0:9  - 0:10                                                         "'"
-0:10 - 0:11                                                         "'"
+0:9  - 0:11                                                       here_end_text `''`
 0:11 - 4:0                              linebreak
 0:11 - 4:0                                newline_list
 0:11 - 4:0                                  here_document_sequence
@@ -1131,7 +1123,7 @@ after
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1165,7 +1157,7 @@ cat <<EOF
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))))))
+                            (here_end_text)))))))))))))))
 
 ==================
 EOF accepts a started document: declaration, suffix "\n"
@@ -1192,7 +1184,7 @@ cat <<EOF
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1224,7 +1216,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1259,7 +1251,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1292,7 +1284,7 @@ cat <<EOF
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))))))
+                            (here_end_text)))))))))))))))
 
 ==================
 EOF accepts a started document: trailing blank, suffix "\n"
@@ -1319,7 +1311,7 @@ cat <<EOF
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1351,7 +1343,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1386,7 +1378,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1419,7 +1411,7 @@ cat <<EOF # comment
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (comment
     (comment_text)))
 
@@ -1448,7 +1440,7 @@ cat <<EOF # comment
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1482,7 +1474,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1519,7 +1511,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1555,7 +1547,7 @@ cat <<EOF \
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (line_continuation))
 
 ==================
@@ -1584,7 +1576,7 @@ cat <<EOF \
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1618,7 +1610,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1655,7 +1647,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1689,8 +1681,7 @@ cat <<'EOF'
                         (dless)
                         (here_end
                           (word
-                            (single_quoted
-                              (single_quote_content))))))))))))))))
+                            (here_end_text)))))))))))))))
 
 ==================
 EOF accepts a started document: quoted delimiter, suffix "\n"
@@ -1717,8 +1708,7 @@ cat <<'EOF'
                         (dless)
                         (here_end
                           (word
-                            (single_quoted
-                              (single_quote_content)))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1750,8 +1740,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (single_quoted
-                              (single_quote_content)))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1786,8 +1775,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (single_quoted
-                              (single_quote_content)))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1820,7 +1808,7 @@ cat <<-EOF
                         (dlessdash)
                         (here_end
                           (word
-                            (literal)))))))))))))))
+                            (here_end_text)))))))))))))))
 
 ==================
 EOF accepts a started document: tab stripping, suffix "\n"
@@ -1847,7 +1835,7 @@ cat <<-EOF
                         (dlessdash)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1879,7 +1867,7 @@ body
                         (dlessdash)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1914,7 +1902,7 @@ body
                         (dlessdash)
                         (here_end
                           (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -1947,7 +1935,7 @@ cat <<EOF; echo after
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))
+                            (here_end_text)))))))))))
         (separator_op)
         (and_or
           (pipeline
@@ -1986,7 +1974,7 @@ cat <<EOF; echo after
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))
+                            (here_end_text)))))))))))
         (separator_op)
         (and_or
           (pipeline
@@ -2030,7 +2018,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))
+                            (here_end_text)))))))))))
         (separator_op)
         (and_or
           (pipeline
@@ -2077,7 +2065,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal)))))))))))
+                            (here_end_text)))))))))))
         (separator_op)
         (and_or
           (pipeline
@@ -2122,7 +2110,7 @@ cat <<EOF &
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))
+                            (here_end_text))))))))))))
       (separator_op))))
 
 ==================
@@ -2150,7 +2138,7 @@ cat <<EOF &
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))
+                            (here_end_text))))))))))))
       (separator_op)))
   (linebreak
     (newline_list
@@ -2183,7 +2171,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))
+                            (here_end_text))))))))))))
       (separator_op)))
   (linebreak
     (newline_list
@@ -2219,7 +2207,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))))
+                            (here_end_text))))))))))))
       (separator_op)))
   (linebreak
     (newline_list
@@ -2253,7 +2241,7 @@ cat <<EOF | cat
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))
+                            (here_end_text))))))))
               (command
                 (simple_command
                   (cmd_name
@@ -2285,7 +2273,7 @@ cat <<EOF | cat
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))
+                            (here_end_text))))))))
               (command
                 (simple_command
                   (cmd_name
@@ -2322,7 +2310,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))
+                            (here_end_text))))))))
               (command
                 (simple_command
                   (cmd_name
@@ -2362,7 +2350,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))
+                            (here_end_text))))))))
               (command
                 (simple_command
                   (cmd_name
@@ -2400,7 +2388,7 @@ cat <<EOF && echo after
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))
+                            (here_end_text))))))))))
           (and_if)
           (pipeline
             (pipe_sequence
@@ -2438,7 +2426,7 @@ cat <<EOF && echo after
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))
+                            (here_end_text))))))))))
           (and_if)
           (pipeline
             (pipe_sequence
@@ -2481,7 +2469,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))
+                            (here_end_text))))))))))
           (and_if)
           (pipeline
             (pipe_sequence
@@ -2527,7 +2515,7 @@ body
                         (dless)
                         (here_end
                           (word
-                            (literal))))))))))
+                            (here_end_text))))))))))
           (and_if)
           (pipeline
             (pipe_sequence
@@ -2579,7 +2567,7 @@ EOF accepts an unstarted document: brace group, suffix ""
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal))))))))))))
+                                            (here_end_text))))))))))))
                       (separator
                         (separator_op)))))))))))))
 
@@ -2616,7 +2604,7 @@ EOF accepts a started document: brace group, suffix "\n"
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal))))))))))))
+                                            (here_end_text))))))))))))
                       (separator
                         (separator_op))))))))))))
   (linebreak
@@ -2658,7 +2646,7 @@ body
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal))))))))))))
+                                            (here_end_text))))))))))))
                       (separator
                         (separator_op))))))))))))
   (linebreak
@@ -2703,7 +2691,7 @@ body
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal))))))))))))
+                                            (here_end_text))))))))))))
                       (separator
                         (separator_op))))))))))))
   (linebreak
@@ -2746,7 +2734,7 @@ EOF accepts an unstarted document: subshell, suffix ""
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal)))))))))))))))))))))))
+                                            (here_end_text)))))))))))))))))))))))
 
 ==================
 EOF accepts a started document: subshell, suffix "\n"
@@ -2781,7 +2769,7 @@ EOF accepts a started document: subshell, suffix "\n"
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal))))))))))))))))))))))
+                                            (here_end_text))))))))))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -2821,7 +2809,7 @@ body
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal))))))))))))))))))))))
+                                            (here_end_text))))))))))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -2864,7 +2852,7 @@ body
                                         (dless)
                                         (here_end
                                           (word
-                                            (literal))))))))))))))))))))))
+                                            (here_end_text))))))))))))))))))))))
   (linebreak
     (newline_list
       (here_document_sequence
@@ -2908,7 +2896,7 @@ f() { cat <<EOF; }
                                             (dless)
                                             (here_end
                                               (word
-                                                (literal))))))))))))
+                                                (here_end_text))))))))))))
                           (separator
                             (separator_op)))))))))))))))
 
@@ -2948,7 +2936,7 @@ f() { cat <<EOF; }
                                             (dless)
                                             (here_end
                                               (word
-                                                (literal))))))))))))
+                                                (here_end_text))))))))))))
                           (separator
                             (separator_op))))))))))))))
   (linebreak
@@ -2993,7 +2981,7 @@ body
                                             (dless)
                                             (here_end
                                               (word
-                                                (literal))))))))))))
+                                                (here_end_text))))))))))))
                           (separator
                             (separator_op))))))))))))))
   (linebreak
@@ -3041,7 +3029,7 @@ body
                                             (dless)
                                             (here_end
                                               (word
-                                                (literal))))))))))))
+                                                (here_end_text))))))))))))
                           (separator
                             (separator_op))))))))))))))
   (linebreak
@@ -3076,4 +3064,4 @@ cat <<''
                         (dless)
                         (here_end
                           (word
-                            (single_quoted)))))))))))))))
+                            (here_end_text)))))))))))))))

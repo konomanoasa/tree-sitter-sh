@@ -3506,7 +3506,7 @@ E
 0:15 - 0:17                                                       operator: dless `<<`
 0:17 - 0:18                                                       end: here_end
 0:17 - 0:18                                                         word: word
-0:17 - 0:18                                                           literal `E`
+0:17 - 0:18                                                           here_end_text `E`
 0:18 - 3:0                                  linebreak
 0:18 - 3:0                                    newline_list
 0:18 - 3:0                                      here_document_sequence

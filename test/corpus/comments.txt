@@ -454,7 +454,7 @@ EOF
 2:4  - 2:6                            operator: dless `<<`
 2:6  - 2:9                            end: here_end
 2:6  - 2:9                              word: word
-2:6  - 2:9                                literal `EOF`
+2:6  - 2:9                                here_end_text `EOF`
 2:9  - 5:0      trailing: linebreak
 2:9  - 5:0        newline_list
 2:9  - 5:0          here_document_sequence
@@ -527,7 +527,7 @@ after
 0:4  - 0:6                            operator: dless `<<`
 0:6  - 0:9                            end: here_end
 0:6  - 0:9                              word: word
-0:6  - 0:9                                literal `EOF`
+0:6  - 0:9                                here_end_text `EOF`
 0:9  - 3:0        separator: newline_list
 0:9  - 3:0          here_document_sequence
 0:10 - 0:14           comment: comment

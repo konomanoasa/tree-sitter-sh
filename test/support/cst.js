@@ -22,6 +22,7 @@ const lexicalTypes = new Set([
   "escaped_character",
   "fname",
   "greatand",
+  "here_end_text",
   "here_document_end_text",
   "here_document_escape",
   "here_document_line_end",

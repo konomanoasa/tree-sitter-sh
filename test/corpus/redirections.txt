@@ -1156,7 +1156,7 @@ EOF
                         operator: (dless)
                         end: (here_end
                           word: (word
-                            (literal))))))))))))))
+                            (here_end_text))))))))))))))
   trailing: (linebreak
     (newline_list
       (here_document_sequence

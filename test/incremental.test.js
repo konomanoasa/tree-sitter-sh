@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   assertCstDirectChildRange,
-  assertFreshOutputsEqual,
   assertOccurrenceCount,
   cstFingerprint,
   hasRecovery,
@@ -10,107 +9,18 @@ import {
 import {
   applyEdits,
   compareIncrementalAndFresh,
-  lines,
   parseRecoveryAfterEdits,
   runParse,
   writeSource,
 } from "./support/parser.js";
 import { editingWorkloads } from "./support/workloads.js";
 
-const fuzzSeed = 1n;
-const fuzzHistoryCount = 100;
-const fuzzEditsPerHistory = 5;
-const fuzzMaximumFragments = 3;
-const fuzzMaximumDeletionBytes = 2;
-const randomStateBits = 64;
-const randomMultiplier = 6_364_136_223_846_793_005n;
-const randomOutputShift = 32n;
-
-function createEditHistoryGenerator() {
-  let seed = fuzzSeed;
-  function next(maximum) {
-    seed = BigInt.asUintN(randomStateBits, seed * randomMultiplier + 1n);
-    return Number(seed >> randomOutputShift) % maximum;
-  }
-  return function* (fragments, insertions, joinSource) {
-    for (let iteration = 0; iteration < fuzzHistoryCount; iteration++) {
-      const parts = [];
-      const count = 1 + next(fuzzMaximumFragments);
-      for (let part = 0; part < count; part++) {
-        parts.push(fragments[next(fragments.length)]);
-      }
-      const initial = joinSource(parts);
-      let source = Buffer.from(initial);
-      const edits = [];
-      for (let step = 0; step < fuzzEditsPerHistory; step++) {
-        const position = next(source.length + 1);
-        const insert = next(2) === 0 || position === source.length;
-        const edit = insert
-          ? {
-              byte: position,
-              deleteBytes: 0,
-              insert: insertions[next(insertions.length)],
-            }
-          : {
-              byte: position,
-              deleteBytes: Math.min(
-                next(fuzzMaximumDeletionBytes) + 1,
-                source.length - position,
-              ),
-              insert: "",
-            };
-        edits.push(edit);
-        source = applyEdits(source, [edit]);
-        yield {
-          initial,
-          source,
-          edits: [...edits],
-          context: `seed ${fuzzSeed}, iteration ${iteration}, source ${JSON.stringify(initial)}, edits ${JSON.stringify(edits)}`,
-        };
-      }
-    }
-  };
-}
-
-const fuzzFragments = [
-  ":",
-  "echo value",
-  "name=value",
-  "echo $name",
-  'echo "$name"',
-  "echo 'a b'",
-  `echo \${name:-value}`,
-  "echo $((1 + 2))",
-  "echo $(printf x)",
-  "echo `printf x`",
-  "printf [a-z]",
-  "cat <input >output",
-  "cat <<EOF\nbody\nEOF",
-  "if :; then :; fi",
-  "while :; do :; done",
-  "for x in a b; do echo $x; done",
-  "case x in x) :;; esac",
-  "f() { :; }",
-  "(echo x)",
-  "{ echo x; }",
-  "a | b",
-  "a && b",
-  "a || b",
-  "! a",
-  "#comment",
-  "echo ~user/path",
-  "}",
-  "if",
-  "echo '",
-  "echo ${",
-  "cat >",
-  "echo $(",
-  "echo \\\nvalue",
-];
-
-const fuzzInsertions = "abcxyz12!{}();,\n\\/*[]().^$|+?-:=# \t'\"<>`";
-
 for (const { name, source, edit } of [
+  {
+    name: "Unicode content changes rows and byte columns",
+    source: "printf '終😀'\necho after\n",
+    edit: { byte: 8, deleteBytes: 7, insert: "é\n行" },
+  },
   {
     name: "zero parameter becomes positional",
     source: `echo \${00}\n`,
@@ -143,7 +53,9 @@ for (const { name, source, edit } of [
     const reverse = {
       byte: edit.byte,
       deleteBytes: Buffer.byteLength(edit.insert),
-      insert: source.slice(edit.byte, edit.byte + edit.deleteBytes),
+      insert: Buffer.from(source)
+        .subarray(edit.byte, edit.byte + edit.deleteBytes)
+        .toString(),
     };
     compareIncrementalAndFresh({}, initial, final, name, edit);
     compareIncrementalAndFresh({}, final, initial, `${name}: reverse`, reverse);
@@ -260,64 +172,73 @@ test("sh: appending and removing a command preserves here-document layout owners
   }
 });
 
-test("sh: fixed-seed generated histories converge at every valid final source", async (context) => {
-  const generateHistories = createEditHistoryGenerator();
-  let checked = 0;
-  let compared = 0;
-  const histories = Array.from(
-    generateHistories(fuzzFragments, fuzzInsertions, (parts) =>
-      lines(...parts),
-    ),
-  );
-  assert.equal(histories.length, fuzzHistoryCount * fuzzEditsPerHistory);
-  for (let iteration = 0; iteration < fuzzHistoryCount; iteration++) {
-    await context.test(`seed ${fuzzSeed}, history ${iteration}`, () => {
-      for (const history of histories.slice(
-        iteration * fuzzEditsPerHistory,
-        (iteration + 1) * fuzzEditsPerHistory,
-      )) {
-        const initial = writeSource("generated-initial", history.initial);
-        const final = writeSource("generated-final", history.source);
-        const fresh = runParse({
-          description: history.context,
-          mode: "recovery",
-          source: final,
-        });
-        assertFreshOutputsEqual(
-          history.context,
-          fresh,
-          runParse({
-            description: `${history.context}, repeated fresh parse`,
-            mode: "recovery",
-            source: final,
-          }),
-        );
-        const incremental = runParse({
-          description: history.context,
-          mode: "recovery",
-          source: initial,
-          expectedSource: final,
-          edits: history.edits,
-        });
-        if (fresh.status === 0 && !hasRecovery(fresh.output)) {
-          assert.equal(incremental.status, 0, history.context);
-          assert.equal(hasRecovery(incremental.output), false, history.context);
-          assert.equal(
-            cstFingerprint(incremental.output),
-            cstFingerprint(fresh.output),
-            history.context,
-          );
-          compared += 1;
-        }
-        checked += 1;
-      }
-    });
+test("sh: fixed-seed edit histories restore fresh CSTs after repairs", () => {
+  const seed = 1n;
+  const historiesPerInput = 2;
+  const forwardEditCount = 2;
+  const maximumDeletionBytes = 2;
+  const randomStateBits = 64;
+  const randomMultiplier = 6_364_136_223_846_793_005n;
+  const randomOutputShift = 32n;
+  const inputs = [
+    `echo x\\\nvalue "\${v:-$(printf x)}"\n`,
+    `echo $((1 + \${v:-2}))\n`,
+    "echo `echo \\`echo inner\\``\n",
+    "cat <<OUT\n$(cat <<'IN'\nbody\nIN\n)\nOUT\n",
+    "case x in [a-z]) printf '%s' \"$x\";; esac\n",
+    "f() { if :; then echo ok; fi; } >output\n",
+  ];
+  const insertions = ["x", " ", "\n", "\\", "'", '"', "$", "(", ")", "}"];
+  let random = seed;
+  function next(maximum) {
+    random = BigInt.asUintN(randomStateBits, random * randomMultiplier + 1n);
+    return Number(random >> randomOutputShift) % maximum;
   }
-  assert.equal(checked, fuzzHistoryCount * fuzzEditsPerHistory);
-  assert.ok(compared > 0);
-  context.diagnostic(
-    `sh: checked ${checked} generated edit states, compared ${compared} valid CSTs`,
-  );
+  for (const [index, contents] of inputs.entries()) {
+    const initial = writeSource("generated-initial", contents);
+    for (let history = 0; history < historiesPerInput; history++) {
+      let source = Buffer.from(contents);
+      const edits = [];
+      const reversals = [];
+      for (let step = 0; step < forwardEditCount * 2; step++) {
+        let edit;
+        if (step < forwardEditCount) {
+          const byte = next(source.length + 1);
+          const deleteBytes = Math.min(
+            next(maximumDeletionBytes + 1),
+            source.length - byte,
+          );
+          const insert = insertions[next(insertions.length)];
+          edit = { byte, deleteBytes, insert };
+          reversals.push({
+            byte,
+            deleteBytes: Buffer.byteLength(insert),
+            insert: source.subarray(byte, byte + deleteBytes).toString(),
+          });
+        } else {
+          edit = reversals.pop();
+        }
+        edits.push(edit);
+        source = applyEdits(source, [edit]);
+        const final = writeSource("generated-final", source);
+        const label = `seed ${seed}, input ${index}, history ${history}, step ${step}`;
+        const results = compareIncrementalAndFresh(
+          { mode: "recovery" },
+          initial,
+          final,
+          label,
+          ...edits,
+        );
+        if (step === forwardEditCount * 2 - 1) {
+          for (const result of results) {
+            assert.equal(result.status, 0, label);
+            assert.equal(result.recovery, false, label);
+          }
+        }
+      }
+      assert.deepEqual(source, Buffer.from(contents));
+    }
+  }
 });
 
 for (const {

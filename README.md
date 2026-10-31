@@ -37,5 +37,4 @@ npm test
 
 ## Used By
 
-- [sh-ts-mode](https://github.com/konomanoasa/sh-ts-mode)
-- [shellsmith](https://github.com/konomanoasa/shellsmith)
+[shellsmith](https://github.com/konomanoasa/shellsmith)

@@ -718,13 +718,6 @@ test("sh: arithmetic viability follows edits through nested scanner callers", ()
       outerArithmetic: 0,
     },
     {
-      name: "here-document-delimiter",
-      initial: "cat <<$((1 $x))\nbody\n$((1 $x))\n",
-      final: "cat <<$((: $x))\nbody\n$((: $x))\n",
-      range: "0:6-0:15",
-      outerArithmetic: 0,
-    },
-    {
       name: "backquote-command",
       initial: "echo `echo $((1 $x))`\n",
       final: "echo `echo $((: $x))`\n",

@@ -21,6 +21,96 @@ import {
   writeSource,
 } from "./support/parser.js";
 
+for (const [name, word, delimiter, quoted] of [
+  ["empty parameter", `\${}`, `\${}`, false],
+  ["parameter suffix", `\${a.b}`, `\${a.b}`, false],
+  ["non-ASCII parameter suffix", `\${aé}`, `\${aé}`, false],
+  ["length suffix", `\${#x:}`, `\${#x:}`, false],
+  ["invalid initial byte", `\${.}`, `\${}`, false],
+  ["invalid length byte", `\${#.}`, `\${#}`, false],
+  ["parameter blank", `\${a b}`, `\${a b}`, false],
+  ["unfinished command", "$(if)", "$(if)", false],
+  ["command separator", "$(;)", "$(;)", false],
+  ["unfinished pipeline", "$(a|)", "$(a|)", false],
+  ["unfinished backquote command", "`if`", "`if`", false],
+  ["empty arithmetic", "$(())", "$(())", false],
+  ["unfinished arithmetic", "$((1+))", "$((1+))", false],
+  ["command-like arithmetic", "$((: $x))", "$((: $x))", false],
+  ["arithmetic parentheses", "$(((1+)))", "$(((1+)))", false],
+  ["quoted invalid suffix", `\${a.b:-"x"}`, `\${a.b:-x}`, true],
+]) {
+  for (const [context, prefix, suffix, tabs, outerQuote] of [
+    ["plain", "cat <<", "", "", ""],
+    ["quoted", 'cat <<"', '"', "", '"'],
+    ["tab-stripped", "cat <<-", "", "\t", ""],
+    ["substitution", "echo $(cat <<", "", "", ""],
+  ]) {
+    test(`sh: unexpanded delimiter ${name} retains source and bounds the ${context} body`, () => {
+      const isQuoted = quoted || outerQuote !== "";
+      const body = isQuoted ? `\${x:bad}` : "$probe";
+      const source = `${prefix}${word}${suffix}\n${tabs}${body}\n${tabs}${delimiter}\n${context === "substitution" ? ")\n" : ""}echo AFTER\n`;
+      const output = parseValidCst(
+        writeSource(`unexpanded-${name}-${context}`, source),
+      );
+      const start = Buffer.byteLength(prefix) - outerQuote.length;
+      const end = Buffer.byteLength(prefix + word + suffix);
+      assertCstRange(output, `0:${start}-0:${end}`, "here_end_text");
+      assertCstRange(output, "2:0-3:0", "here_document_end");
+      assertNodeCount(output, "parameter_expansion", isQuoted ? 0 : 1);
+      assertNodeCount(output, "arithmetic_expansion", 0);
+      assertNodeCount(output, "backquote_substitution", 0);
+      assertNodeCount(
+        output,
+        "command_substitution",
+        context === "substitution" ? 1 : 0,
+      );
+      assertNodeCount(output, "here_end_text", 1);
+    });
+  }
+}
+
+test("sh: editing an unexpanded parameter delimiter preserves matching and body expansion", () => {
+  for (const quote of ["", '"']) {
+    const initialText = `cat <<${quote}\${x}${quote}\n$probe\n\${x}\necho AFTER\n`;
+    const finalText = initialText.replaceAll(`\${x}`, `\${}`);
+    const initial = writeSource("named-parameter-delimiter", initialText);
+    const final = writeSource("empty-parameter-delimiter", finalText);
+    const edits = [
+      initialText.lastIndexOf("x}"),
+      initialText.indexOf("x}"),
+    ].map((byte) => ({ byte, deleteBytes: 1, insert: "" }));
+    for (const output of assertIncrementalEqualsFresh(
+      initial,
+      final,
+      "empty-delimiter-parameter",
+      ...edits,
+    )) {
+      assertCstRange(output, "2:0-3:0", "here_document_end");
+      assertNodeCount(output, "parameter_expansion", quote === "" ? 1 : 0);
+      assertNodeCount(output, "here_end_text", 1);
+    }
+  }
+});
+
+test("sh: C delimiter bytes preserve an unmatched quoted body through EOF", () => {
+  const source = `cat <<"\${é}"\n\${x:bad}\n\${é}\necho AFTER\n`;
+  const output = parseValidCst(writeSource("c-delimiter-bytes", source));
+  assertCstRange(output, "0:6-0:13", "here_end_text");
+  assertCstRange(output, "1:0-4:0", "quoted_here_document_body");
+  assertNodeCount(output, "here_document_end", 0);
+  assertNodeCount(output, "parameter_expansion", 0);
+});
+
+test("sh: an empty parameter delimiter is retained inside a backquote command", () => {
+  const source = `: \`cat <<\${}\n$probe\n\${}\n\`\necho AFTER\n`;
+  const output = parseValidCst(
+    writeSource("backquote-empty-parameter-delimiter", source),
+  );
+  assertCstRange(output, "0:9-0:12", "here_end_text");
+  assertCstRange(output, "2:0-3:0", "here_document_end");
+  assertNodeCount(output, "parameter_expansion", 1);
+});
+
 test("sh: arithmetic delimiter quote edits preserve matching and body expansion", () => {
   for (const outer of ["", '"']) {
     const initialText = `cat <<${outer}$((1+2))${outer}\n$x\n$((1+2))\necho after\n`;
@@ -49,7 +139,7 @@ test("sh: arithmetic delimiter quote edits preserve matching and body expansion"
           insert: replacement,
         })),
       )) {
-        assertNodeCount(output, "arithmetic_source", 1);
+        assertNodeCount(output, "here_end_text", 1);
         assertNodeCount(output, "parameter_expansion", outer === "" ? 1 : 0);
         assertCstRange(output, "2:0-3:0", "end: here_document_end");
         assertCstRange(output, "3:0-3:10", "command: complete_command");
@@ -410,7 +500,7 @@ test("changing a file redirect to a here-document updates tilde classification",
   )) {
     assertNodeCount(output, "tilde_expansion", 0);
     assertNodeCount(output, "io_here", 1);
-    assertCstRange(output, "0:6-0:11", "literal");
+    assertCstRange(output, "0:6-0:11", "here_end_text");
   }
   for (const output of assertIncrementalEqualsFresh(
     document,
@@ -1183,7 +1273,6 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
         { byte: 11, deleteBytes: 3, insert: "x" },
       ],
       delimiterRange: "0:9-0:15",
-      quoteNode: "dollar_single_quoted",
       afterRange: "4:0-4:5",
     },
     {
@@ -1199,7 +1288,6 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
         { byte: 10, deleteBytes: 4, insert: "x" },
       ],
       delimiterRange: "0:9-0:15",
-      quoteNode: "double_quoted",
       afterRange: "4:0-4:5",
     },
     {
@@ -1215,7 +1303,6 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
         { byte: 12, deleteBytes: 4, insert: "x" },
       ],
       delimiterRange: "0:10-0:18",
-      quoteNode: "double_quoted",
       afterRange: "4:0-4:5",
     },
     {
@@ -1238,7 +1325,6 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
         { byte: 17, deleteBytes: 8, insert: "x" },
       ],
       delimiterRange: "0:16-0:26",
-      quoteNode: "double_quoted",
       afterRange: "5:0-5:5",
     },
     {
@@ -1260,7 +1346,6 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
         { byte: 10, deleteBytes: 8, insert: "x" },
       ],
       delimiterRange: "0:9-0:19",
-      quoteNode: "double_quoted",
       afterRange: "4:0-4:5",
     },
   ]) {
@@ -1276,7 +1361,7 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
       ...fixture.edits,
     )) {
       assertCstRange(output, fixture.delimiterRange, "end: here_end");
-      assertCstRange(output, fixture.delimiterRange, fixture.quoteNode);
+      assertCstRange(output, fixture.delimiterRange, "here_end_text");
       assertCstRange(output, "1:0-2:0", "quoted_here_document_body");
       assertCstRange(output, "2:0-3:0", "here_document_end");
       assertCstRange(output, fixture.afterRange, "command: complete_command");
@@ -1518,8 +1603,8 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
     "arithmetic-here-document-delimiter",
     lines("cat <<$((case)) >out arg", "body", "$((case))", "after"),
   );
-  const fallbackDelimiter = writeSource(
-    "command-fallback-here-document-delimiter",
+  const commandLikeDelimiter = writeSource(
+    "command-like-arithmetic-delimiter",
     lines(
       "cat <<$((case x in x)esac)) >out arg",
       "body",
@@ -1539,26 +1624,26 @@ test("sh: here-document state, delimiters, and bodies remain deterministic", () 
   } of [
     {
       initial: arithmeticDelimiter,
-      final: fallbackDelimiter,
-      name: "arithmetic-delimiter-to-command-fallback",
+      final: commandLikeDelimiter,
+      name: "insert-command-source-in-arithmetic-delimiter",
+      member: "here_end_text `$((case x in x)esac))`",
       edits: [
         { byte: 37, deleteBytes: 0, insert: " x in x)esac" },
         { byte: 13, deleteBytes: 0, insert: " x in x)esac" },
       ],
-      member: "command_substitution",
       end: 27,
       redirect: "0:28-0:32",
       argument: "0:33-0:36",
     },
     {
-      initial: fallbackDelimiter,
+      initial: commandLikeDelimiter,
       final: arithmeticDelimiter,
-      name: "command-fallback-delimiter-to-arithmetic",
+      name: "remove-command-source-from-arithmetic-delimiter",
+      member: "here_end_text `$((case))`",
       edits: [
         { byte: 49, deleteBytes: 12, insert: "" },
         { byte: 13, deleteBytes: 12, insert: "" },
       ],
-      member: "arithmetic_expansion",
       end: 15,
       redirect: "0:16-0:20",
       argument: "0:21-0:24",

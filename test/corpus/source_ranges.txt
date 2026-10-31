@@ -236,7 +236,7 @@ $
 6:4  - 6:6                            operator: dless `<<`
 6:6  - 6:7                            end: here_end
 6:6  - 6:7                              word: word
-6:6  - 6:7                                literal `$`
+6:6  - 6:7                                here_end_text `$`
 6:7  - 9:0      trailing: linebreak
 6:7  - 9:0        newline_list
 6:7  - 9:0          here_document_sequence

@@ -1,6 +1,6 @@
 #include "arithmetic.h"
 #include "input.h"
-#include "lexical-tokens.h"
+#include "tokens.h"
 #include "tree_sitter/alloc.h"
 #include "tree_sitter/parser.h"
 
@@ -15,225 +15,6 @@
 
 #define SCANNER_SERIALIZATION_VERSION 35
 #define SCANNER_STATE_CAPACITY (TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 1)
-
-enum TokenType {
-  LEFT_BRACE,
-  RIGHT_BRACE,
-  FILE_DESCRIPTOR,
-  PIPELINE_NEGATION,
-  IF_KEYWORD,
-  THEN_KEYWORD,
-  ELIF_KEYWORD,
-  ELSE_KEYWORD,
-  FI_KEYWORD,
-  FOR_KEYWORD,
-  IN_KEYWORD,
-  DO_KEYWORD,
-  DONE_KEYWORD,
-  CASE_KEYWORD,
-  ESAC_KEYWORD,
-  WHILE_KEYWORD,
-  UNTIL_KEYWORD,
-  HERE_END_BEGIN,
-  HERE_END_STRIP_BEGIN,
-  HERE_END_COMMIT,
-  HERE_DOCUMENT_LINE_END,
-  HERE_DOCUMENT_BODY_START,
-  QUOTED_HERE_DOCUMENT_BODY_START,
-  QUOTED_HERE_DOCUMENT_END_BEGIN,
-  QUOTED_HERE_DOCUMENT_END_TEXT,
-  QUOTED_HERE_DOCUMENT_TEXT,
-  HERE_DOCUMENT_END_BEGIN,
-  HERE_DOCUMENT_END_COMMIT,
-  HERE_DOCUMENT_EOF,
-  HERE_DOCUMENT_SEQUENCE_END,
-  HERE_DOCUMENT_CONTENT_LINE_START,
-  NEWLINE,
-  ARITHMETIC_ASSIGNMENT_OPERATOR_BOUNDARY,
-  ARITHMETIC_QUESTION_OPERATOR_BOUNDARY,
-  ARITHMETIC_COLON_OPERATOR_BOUNDARY,
-  ARITHMETIC_LOGICAL_OR_OPERATOR_BOUNDARY,
-  ARITHMETIC_LOGICAL_AND_OPERATOR_BOUNDARY,
-  ARITHMETIC_BITWISE_OR_OPERATOR_BOUNDARY,
-  ARITHMETIC_BITWISE_XOR_OPERATOR_BOUNDARY,
-  ARITHMETIC_BITWISE_AND_OPERATOR_BOUNDARY,
-  ARITHMETIC_EQUALITY_OPERATOR_BOUNDARY,
-  ARITHMETIC_RELATIONAL_OPERATOR_BOUNDARY,
-  ARITHMETIC_SHIFT_OPERATOR_BOUNDARY,
-  ARITHMETIC_ADDITIVE_OPERATOR_BOUNDARY,
-  ARITHMETIC_MULTIPLICATIVE_OPERATOR_BOUNDARY,
-  ARITHMETIC_CLOSING_BOUNDARY,
-  ARITHMETIC_LEFT_PARENTHESIS,
-  ARITHMETIC_DYNAMIC_LEFT_PARENTHESIS,
-  ARITHMETIC_SOURCE_LEFT_PARENTHESIS,
-  PATTERN_SPECIAL_LEFT_BRACKET,
-  COMMENT_BOUNDARY,
-  TRAILING_COMMENT_BOUNDARY,
-  COMMENT_START,
-  COMMENT_LINE_END,
-  DOLLAR_EXPANSION_START,
-  BRACED_ZERO_PARAMETER_START,
-  BRACED_POSITIONAL_PARAMETER_START,
-  BACKQUOTE_START,
-  BACKQUOTE_END,
-  PATTERN_CONTINUATION,
-  PATTERN_END,
-  PIPE_CONTINUATION,
-  REDIRECT_LIST_BEGIN,
-  CASE_ITEM_END,
-  FUNCTION_BODY_CONTINUATION_BOUNDARY,
-  COMMAND_SUBSTITUTION_BODY_BEGIN,
-  PATTERN_BRACKET_CHARACTER,
-  PARAMETER_PATTERN_BRACKET_CHARACTER,
-  PATTERN_BRACKET_HYPHEN,
-  PATTERN_BRACKET_RANGE_OPERATOR,
-  WORD_TILDE_END,
-  ASSIGNMENT_TILDE_END,
-  ASSIGNMENT_NAME_TOKEN,
-  FNAME_TOKEN,
-  DECLARATION_WORD_START,
-  FORWARDING_WORD_START,
-  CASE_PATTERN_START,
-  CASE_PATTERN_END,
-  AND_OR_CONTINUATION,
-  WORD_SEPARATOR_BEGIN,
-  TERM_CONTINUATION,
-  ASSIGNMENT_SEPARATOR_BEGIN,
-  REDIRECT_SEPARATOR_BEGIN,
-  PRE_NEWLINE_BLANK,
-  COMMAND_SUBSTITUTION_END,
-  SEPARATOR_NEWLINE,
-  TERM_BOUNDARY,
-  WORD_PATTERN_BRACKET_OPEN,
-  PARAMETER_PATTERN_BRACKET_OPEN,
-  DOUBLE_QUOTED_BACKQUOTE_START,
-  DOLLAR_SINGLE_QUOTE_ESCAPE,
-  PATTERN_CHARACTER_CLASS_END_COLON,
-  LINE_CONTINUATION,
-  REMOVED_NEWLINE,
-  LITERAL_BEGIN,
-  ASSIGNMENT_LITERAL_BEGIN,
-  PARAMETER_LITERAL_BEGIN,
-  NAME_BEGIN,
-  VARIABLE_NAME_BEGIN,
-  ESCAPED_CHARACTER_BEGIN,
-  SINGLE_QUOTE_CONTENT_BEGIN,
-  DOUBLE_QUOTE_TEXT_BEGIN,
-  DOUBLE_QUOTE_ESCAPE_BEGIN,
-  DOLLAR_SINGLE_QUOTE_TEXT_BEGIN,
-  DOUBLE_QUOTED_PARAMETER_TEXT_BEGIN,
-  DOUBLE_QUOTED_PARAMETER_ESCAPE_BEGIN,
-  HERE_DOCUMENT_TEXT_BEGIN,
-  HERE_DOCUMENT_ESCAPE_BEGIN,
-  HERE_DOCUMENT_END_TEXT_BEGIN,
-  UNBRACED_POSITIONAL_PARAMETER_BEGIN,
-  SPECIAL_PARAMETER_BEGIN,
-  SPECIAL_PARAMETER_HASH_BEGIN,
-  PARAMETER_VALUE_OPERATOR_BEGIN,
-  PARAMETER_PATTERN_OPERATOR_BEGIN,
-  ARITHMETIC_NUMBER_BEGIN,
-  ARITHMETIC_VARIABLE_BEGIN,
-  ARITHMETIC_UNARY_OPERATOR_BEGIN,
-  ARITHMETIC_ASSIGNMENT_OPERATOR_BEGIN,
-  ARITHMETIC_QUESTION_OPERATOR_BEGIN,
-  ARITHMETIC_COLON_OPERATOR_BEGIN,
-  ARITHMETIC_LOGICAL_OR_OPERATOR_BEGIN,
-  ARITHMETIC_LOGICAL_AND_OPERATOR_BEGIN,
-  ARITHMETIC_BITWISE_OR_OPERATOR_BEGIN,
-  ARITHMETIC_BITWISE_XOR_OPERATOR_BEGIN,
-  ARITHMETIC_BITWISE_AND_OPERATOR_BEGIN,
-  ARITHMETIC_EQUALITY_OPERATOR_BEGIN,
-  ARITHMETIC_RELATIONAL_OPERATOR_BEGIN,
-  ARITHMETIC_SHIFT_OPERATOR_BEGIN,
-  ARITHMETIC_ADDITIVE_OPERATOR_BEGIN,
-  ARITHMETIC_MULTIPLICATIVE_OPERATOR_BEGIN,
-  AND_IF_BEGIN,
-  OR_IF_BEGIN,
-  DSEMI_BEGIN,
-  SEMI_AND_BEGIN,
-  LESSAND_BEGIN,
-  GREATAND_BEGIN,
-  DGREAT_BEGIN,
-  LESSGREAT_BEGIN,
-  CLOBBER_BEGIN,
-  DLESS_OPERATOR_BEGIN,
-  DLESSDASH_OPERATOR_BEGIN,
-  PATTERN_STAR_BEGIN,
-  PATTERN_QUESTION_BEGIN,
-  PATTERN_NEGATION_BEGIN,
-  PATTERN_EMPTY_QUOTE_START,
-  PATTERN_CLASS_CONTENT_BEGIN,
-  PARAMETER_PATTERN_CLASS_CONTENT_BEGIN,
-  PATTERN_COLLATING_CHARACTER_BEGIN,
-  PARAMETER_PATTERN_COLLATING_CHARACTER_BEGIN,
-  PATTERN_EQUIVALENCE_CHARACTER_BEGIN,
-  PARAMETER_PATTERN_EQUIVALENCE_CHARACTER_BEGIN,
-  PUNCT_LEFT_PARENTHESIS,
-  PUNCT_RIGHT_PARENTHESIS,
-  PUNCT_SEMICOLON,
-  PUNCT_AMPERSAND,
-  PUNCT_PIPE,
-  PUNCT_LESS,
-  PUNCT_GREATER,
-  PUNCT_EQUALS,
-  PUNCT_RIGHT_BRACKET,
-  PUNCT_COLON,
-  PUNCT_DOT,
-  SQ_OPEN,
-  SQ_CLOSE,
-  DQ_OPEN,
-  DQ_CLOSE,
-  DOLLAR_SQ_DOLLAR,
-  DOLLAR_SQ_OPEN,
-  DOLLAR_SQ_CLOSE,
-  PARAMETER_OPEN,
-  PARAMETER_CLOSE,
-  COMMAND_OPEN,
-  WORD_TILDE_START,
-  ASSIGNMENT_TILDE_START,
-  PARAMETER_TILDE_START,
-  LOGICAL_NEWLINE_BEGIN,
-  LOGICAL_BLANK_BEGIN,
-  ARITHMETIC_EXPANSION_END,
-  PATTERN_INITIAL_RIGHT_BRACKET_BEGIN,
-  SOURCE_BEGIN,
-  REMOVED_SOURCE,
-  HERE_DOCUMENT_END_LINE_END,
-  WORD_FALLBACK_LITERAL_BEGIN,
-  ASSIGNMENT_FALLBACK_LITERAL_BEGIN,
-  PARAMETER_FALLBACK_LITERAL_BEGIN,
-  WORD_BRACKET_FALLBACK_END,
-  ASSIGNMENT_BRACKET_FALLBACK_END,
-  PARAMETER_BRACKET_FALLBACK_END,
-  WORD_INITIAL_LITERAL_BEGIN,
-  WORD_INITIAL_FALLBACK_LITERAL_BEGIN,
-  WORD_INITIAL_PATTERN_BRACKET_OPEN,
-  WORD_INITIAL_PATTERN_STAR_BEGIN,
-  WORD_INITIAL_PATTERN_QUESTION_BEGIN,
-  WORD_INITIAL_ESCAPED_CHARACTER_BEGIN,
-  WORD_INITIAL_SQ_OPEN,
-  WORD_INITIAL_DQ_OPEN,
-  WORD_INITIAL_DOLLAR_SQ_DOLLAR,
-  WORD_INITIAL_DOLLAR_EXPANSION_START,
-  WORD_INITIAL_BACKQUOTE_START,
-  HERE_DOCUMENT_SEQUENCE_BEGIN,
-  PARAMETER_HYPHEN_BEGIN,
-  PARAMETER_QUESTION_BEGIN,
-  ARITHMETIC_BLANK_BEGIN,
-  PARAMETER_LENGTH_OPERATOR_BEGIN,
-  ARITHMETIC_SOURCE_FRAGMENT_BEGIN,
-  PATTERN_RANGE_END_LEFT_BRACKET_BEGIN,
-#define LEXICAL_SOURCE_ENUM(begin, piece) piece,
-  SH_LEXICAL_SOURCE_TOKENS(LEXICAL_SOURCE_ENUM)
-#undef LEXICAL_SOURCE_ENUM
-#define PHYSICAL_SOURCE_ENUM(begin, prefix, character) prefix, character,
-    SH_PHYSICAL_SOURCE_TOKENS(PHYSICAL_SOURCE_ENUM)
-#undef PHYSICAL_SOURCE_ENUM
-#define WHOLE_SOURCE_ENUM(begin, whole) whole,
-      SH_WHOLE_SOURCE_TOKENS(WHOLE_SOURCE_ENUM)
-#undef WHOLE_SOURCE_ENUM
-        TOKEN_COUNT,
-};
 
 enum LexicalSourceKind {
   LEXICAL_SOURCE_NONE,
@@ -1454,7 +1235,7 @@ static bool advance_to_comment_end(TSLexer *lexer, struct ByteBuffer *source) {
   return lookahead_local_policy(lexer, disabled);
 }
 
-static bool comment_reaches_end(const TSLexer *lexer) {
+static bool lexer_at_input_end(const TSLexer *lexer) {
   return lexer_at_eof(lexer) || (lexer->lookahead == SOURCE_BACKQUOTE_BOUNDARY);
 }
 
@@ -1620,8 +1401,7 @@ enum DelimiterGroupKind {
   DELIMITER_GROUP_DOUBLE_QUOTE,
   DELIMITER_GROUP_COMMAND,
   DELIMITER_GROUP_ARITHMETIC,
-  DELIMITER_GROUP_SUBSHELL,
-  DELIMITER_GROUP_FUNCTION_HEADER,
+  DELIMITER_GROUP_ARITHMETIC_PAREN,
   DELIMITER_GROUP_BACKQUOTE,
 };
 
@@ -1654,8 +1434,6 @@ struct DelimiterGroupFrame {
   enum DelimiterGroupKind kind;
   enum DelimiterQuote parent_quote;
   bool keeps_backslash;
-  enum ParameterQuoteState parameter_quote_state;
-  struct CommandTracker command;
 };
 
 struct DelimiterGroupBuffer {
@@ -1833,30 +1611,10 @@ static bool append_case_tracker(struct CaseTrackerBuffer *cases, size_t depth) {
   return true;
 }
 
-static bool delimiter_group_holds_commands(enum DelimiterGroupKind kind) {
-  return (
-    kind == DELIMITER_GROUP_COMMAND ||
-    kind == DELIMITER_GROUP_SUBSHELL ||
-    kind == DELIMITER_GROUP_BACKQUOTE
-  );
-}
-
 static bool delimiter_quote_is_double(enum DelimiterQuote quote) {
   return quote == DELIMITER_DOUBLE_QUOTED ||
     quote == DELIMITER_PARAMETER_DOUBLE_QUOTED ||
     quote == DELIMITER_ARITHMETIC;
-}
-
-static bool delimiter_operand_keeps_backslash(
-  const struct DelimiterGroupBuffer *groups,
-  size_t depth,
-  enum DelimiterQuote parent_quote,
-  bool pattern
-) {
-  if (delimiter_quote_is_double(parent_quote)) {
-    return !pattern;
-  }
-  return depth > 0 && groups->data[depth - 1].keeps_backslash;
 }
 
 static bool push_delimiter_group(
@@ -1886,15 +1644,10 @@ static bool push_delimiter_group(
     .parent_quote = parent_quote,
     .keeps_backslash = kind == DELIMITER_GROUP_COMMAND ||
       kind == DELIMITER_GROUP_BACKQUOTE ||
-      kind == DELIMITER_GROUP_SUBSHELL ||
       (kind == DELIMITER_GROUP_PARAMETER &&
-        delimiter_operand_keeps_backslash(
-          groups,
-          groups->length,
-          parent_quote,
-          false
-        )),
-    .command = {.word = {.candidate = true, .digits = true, .name = true}},
+        (delimiter_quote_is_double(parent_quote) ||
+          (groups->length > 0 &&
+            groups->data[groups->length - 1].keeps_backslash))),
   };
   groups->length += 1;
   return true;
@@ -2008,17 +1761,6 @@ static void begin_command_redirect(struct CommandTracker *command) {
   }
   command->redirect_operand = true;
   command->function_name = false;
-}
-
-static size_t
-delimiter_command_group_depth(const struct DelimiterGroupBuffer *groups) {
-  if (
-    groups->length == 0 ||
-    !delimiter_group_holds_commands(groups->data[groups->length - 1].kind)
-  ) {
-    return 0;
-  }
-  return groups->length;
 }
 
 static void
@@ -2162,45 +1904,6 @@ scan_dollar_single_quote_escape(TSLexer *lexer, struct ByteBuffer *delimiter) {
 
   lexer->advance(lexer, false);
   return append_quoted_escape(delimiter, character);
-}
-
-static bool append_nested_here_document(
-  struct HereDocument **documents,
-  size_t *count,
-  struct ByteBuffer *source,
-  size_t delimiter_start,
-  size_t declaration_depth,
-  bool quoted,
-  bool strip_tabs
-) {
-  if (delimiter_start > source->length) {
-    return false;
-  }
-
-  size_t delimiter_length = source->length - delimiter_start;
-  uint8_t *delimiter = NULL;
-  if (delimiter_length > 0) {
-    delimiter = ts_malloc(delimiter_length);
-    if (delimiter == NULL) {
-      source->failed = true;
-      return false;
-    }
-    memcpy(delimiter, source->data + delimiter_start, delimiter_length);
-  }
-
-  struct HereDocument document = {
-    .delimiter = delimiter,
-    .delimiter_length = delimiter_length,
-    .declaration_depth = declaration_depth,
-    .quoted = quoted,
-    .strip_tabs = strip_tabs,
-  };
-  if (!append_document(documents, count, document)) {
-    source->failed = true;
-    clear_document(&document);
-    return false;
-  }
-  return true;
 }
 
 enum HereDocumentLineKind {
@@ -2618,37 +2321,6 @@ static enum HereDocumentLineKind read_here_document_line(
   return HERE_DOCUMENT_LINE_CONTENT;
 }
 
-static bool scan_nested_here_document_sequence(
-  const struct Scanner *scanner,
-  TSLexer *lexer,
-  struct ByteBuffer *source,
-  const struct HereDocument *documents,
-  size_t count
-) {
-  for (size_t index = 0; index < count; index += 1) {
-    while (true) {
-      enum HereDocumentLineKind kind = read_here_document_line(
-        scanner,
-        lexer,
-        &documents[index],
-        source,
-        NULL
-      );
-      if (kind == HERE_DOCUMENT_LINE_DELIMITER) {
-        break;
-      }
-      if (
-        kind == HERE_DOCUMENT_LINE_INVALID ||
-        kind == HERE_DOCUMENT_LINE_END_OF_INPUT ||
-        lexer_at_eof(lexer)
-      ) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 static bool scan_dollar_single_quote_token(TSLexer *lexer) {
   lexer->advance(lexer, false);
   if (!scan_dollar_single_quote_escape(lexer, NULL)) {
@@ -2712,23 +2384,11 @@ enum DelimiterReadResult {
 
 struct DelimiterReader {
   TSLexer *lexer;
-  const struct Scanner *scanner;
   struct ByteBuffer delimiter;
   struct DelimiterGroupBuffer groups;
-  struct CaseTrackerBuffer cases;
-  struct HereDocument *nested_documents;
-  size_t nested_document_count;
-  size_t nested_delimiter_start;
-  size_t nested_delimiter_group_depth;
-  size_t backquote_depth;
   enum DelimiterQuote quote;
   bool has_word_content;
   bool quoted;
-  bool expecting_nested_delimiter;
-  bool collecting_nested_delimiter;
-  bool nested_delimiter_quoted;
-  bool nested_delimiter_strips_tabs;
-  bool inherited_strip_tabs;
   bool valid;
 };
 
@@ -2737,67 +2397,45 @@ enum DelimiterStep {
   DELIMITER_STEP_END,
 };
 
-static void delimiter_mark_quoted(struct DelimiterReader *reader) {
-  reader->quoted = true;
-  if (reader->collecting_nested_delimiter) {
-    reader->nested_delimiter_quoted = true;
-  }
-}
-
 static struct DelimiterGroupFrame *
 delimiter_top_group(struct DelimiterReader *reader) {
   return &reader->groups.data[reader->groups.length - 1];
 }
 
-static bool delimiter_in_parameter_operand(struct DelimiterReader *reader) {
+static void pop_delimiter_group(struct DelimiterReader *reader) {
+  struct DelimiterGroupBuffer *groups = &reader->groups;
+  reader->quote = groups->data[groups->length - 1].parent_quote;
+  groups->length -= 1;
+}
+
+static bool delimiter_close_nearest_group(
+  struct DelimiterReader *reader,
+  enum DelimiterGroupKind kind,
+  uint8_t closing
+) {
   size_t depth = reader->groups.length;
   while (
     depth > 0 &&
-    reader->groups.data[depth - 1].kind == DELIMITER_GROUP_DOUBLE_QUOTE
+    reader->groups.data[depth - 1].kind == DELIMITER_GROUP_PARAMETER
   ) {
     depth -= 1;
   }
-  return depth > 0 &&
-    reader->groups.data[depth - 1].kind == DELIMITER_GROUP_PARAMETER;
-}
-
-static bool
-delimiter_escape_removed(struct DelimiterReader *reader, int32_t character) {
-  return is_one_of(character, "\\$`\"") ||
-    (character == '}' && delimiter_in_parameter_operand(reader));
-}
-
-static struct CommandTracker *
-delimiter_command(struct DelimiterReader *reader, size_t command_depth) {
-  return &reader->groups.data[command_depth - 1].command;
-}
-
-static void pop_delimiter_group(struct DelimiterReader *reader) {
-  struct DelimiterGroupBuffer *groups = &reader->groups;
-  size_t group_depth = groups->length;
-  enum DelimiterGroupKind kind = groups->data[group_depth - 1].kind;
-  reader->quote = groups->data[group_depth - 1].parent_quote;
-  pop_case_trackers_at_depth(&reader->cases, group_depth);
-  groups->length -= 1;
-  if (kind == DELIMITER_GROUP_COMMAND || kind == DELIMITER_GROUP_BACKQUOTE) {
-    discard_documents_above(
-      &reader->nested_documents,
-      &reader->nested_document_count,
-      groups->length
-    );
+  if (depth == 0 || reader->groups.data[depth - 1].kind != kind) {
+    return false;
   }
-  size_t command_depth = delimiter_command_group_depth(groups);
-  if (command_depth > 0) {
-    struct CommandTracker *command = delimiter_command(reader, command_depth);
-    if (kind == DELIMITER_GROUP_FUNCTION_HEADER) {
-      reset_command_position(command, COMMAND_POSITION_START);
-    } else if (kind == DELIMITER_GROUP_SUBSHELL) {
-      reset_command_position(command, COMMAND_POSITION_CLOSED);
-    }
+  reader->valid = append_byte(&reader->delimiter, closing);
+  while (reader->groups.length >= depth) {
+    pop_delimiter_group(reader);
   }
+  reader->lexer->advance(reader->lexer, false);
+  return true;
 }
 
-static bool push_backquote_delimiter_group(struct DelimiterReader *reader) {
+static bool delimiter_open_backquote(struct DelimiterReader *reader) {
+  if (!append_byte(&reader->delimiter, '`')) {
+    return false;
+  }
+  reader->lexer->advance(reader->lexer, false);
   if (!push_delimiter_group(
         &reader->groups,
         '`',
@@ -2806,9 +2444,71 @@ static bool push_backquote_delimiter_group(struct DelimiterReader *reader) {
       )) {
     return false;
   }
-  reader->backquote_depth += 1;
   reader->quote = DELIMITER_UNQUOTED;
   return true;
+}
+
+static bool delimiter_parameter_operator(
+  struct DelimiterReader *reader,
+  int32_t character
+) {
+  TSLexer *lexer = reader->lexer;
+  if (character == '#' || character == '%') {
+    if (reader->quote == DELIMITER_PARAMETER_DOUBLE_QUOTED) {
+      delimiter_top_group(reader)->keeps_backslash = false;
+    }
+    reader->quote = DELIMITER_UNQUOTED;
+  } else if (character == ':') {
+    if (!append_byte(&reader->delimiter, ':') || lexer_at_input_end(lexer)) {
+      return false;
+    }
+    character = lexer->lookahead;
+    lexer->advance(lexer, false);
+  }
+  return append_codepoint(&reader->delimiter, character);
+}
+
+/* In the C locale, dash drops one invalid initial byte. After `${#`, it only
+   drops an invalid byte immediately followed by `}`. */
+static bool delimiter_parameter_prefix(struct DelimiterReader *reader) {
+  TSLexer *lexer = reader->lexer;
+  struct ByteBuffer *delimiter = &reader->delimiter;
+  if (lexer_at_input_end(lexer)) return false;
+  int32_t character = lexer->lookahead;
+  if (character == '}') return true;
+  if (character == '#') {
+    if (!advance_source(lexer, delimiter) || lexer_at_input_end(lexer)) {
+      return false;
+    }
+    character = lexer->lookahead;
+    if (character == '}') return true;
+    lexer->advance(lexer, false);
+    if (character <= 0x7f && lexer->lookahead == '}') {
+      return !is_parameter_start_character(character) ||
+        append_codepoint(delimiter, character);
+    }
+    return delimiter_parameter_operator(reader, character);
+  }
+  if (!is_parameter_start_character(character)) {
+    uint8_t bytes[4];
+    size_t length;
+    lexer->advance(lexer, false);
+    return encode_utf8_scalar(character, bytes, &length) &&
+      append_bytes(delimiter, bytes + 1, length - 1);
+  }
+  bool name = is_name_start_character(character);
+  bool positional = is_decimal_digit(character);
+  do {
+    if (!advance_source(lexer, delimiter)) return false;
+  } while (
+    (name && is_name_character(lexer->lookahead)) ||
+    (positional && is_decimal_digit(lexer->lookahead))
+  );
+  if (lexer_at_input_end(lexer)) return false;
+  character = lexer->lookahead;
+  if (character == '}') return true;
+  lexer->advance(lexer, false);
+  return delimiter_parameter_operator(reader, character);
 }
 
 static bool push_dollar_delimiter_group(struct DelimiterReader *reader) {
@@ -2829,50 +2529,50 @@ static bool push_dollar_delimiter_group(struct DelimiterReader *reader) {
     ? DELIMITER_PARAMETER_DOUBLE_QUOTED
     : DELIMITER_UNQUOTED;
 
+  if (opening == '{') return delimiter_parameter_prefix(reader);
+
   if (opening == '(' && lexer->lookahead == '(') {
-    struct Scanner context =
-      reader->scanner == NULL ? (struct Scanner){0} : *reader->scanner;
-    context.backquote_depth = reader->backquote_depth;
-    const struct AmbiguousSubstitution *substitution =
-      lookup_ambiguous_substitution(&context, lexer);
-    if (substitution == NULL) return false;
-    if (!substitution->arithmetic) return true;
     delimiter_top_group(reader)->kind = DELIMITER_GROUP_ARITHMETIC;
-    reset_command_position(
-      &delimiter_top_group(reader)->command,
-      COMMAND_POSITION_WORD
-    );
-    if (
-      !push_delimiter_group(
-        &reader->groups,
-        ')',
-        DELIMITER_GROUP_ARITHMETIC,
-        DELIMITER_ARITHMETIC
-      ) ||
-      !append_byte(&reader->delimiter, '(')
-    ) {
-      return false;
-    }
+    if (!append_byte(&reader->delimiter, '(')) return false;
     lexer->advance(lexer, false);
     reader->quote = DELIMITER_ARITHMETIC;
   }
+
   return true;
+}
+
+static bool delimiter_dollar_tail(struct DelimiterReader *reader) {
+  TSLexer *lexer = reader->lexer;
+  if (lexer->lookahead == '(' || lexer->lookahead == '{') {
+    return push_dollar_delimiter_group(reader);
+  }
+  return skip_dollar_parameter(lexer, &reader->delimiter);
+}
+
+static bool delimiter_in_parameter(struct DelimiterReader *reader) {
+  size_t depth = reader->groups.length;
+  while (
+    depth > 0 &&
+    reader->groups.data[depth - 1].kind == DELIMITER_GROUP_DOUBLE_QUOTE
+  )
+    depth -= 1;
+  return depth > 0 &&
+    reader->groups.data[depth - 1].kind == DELIMITER_GROUP_PARAMETER;
 }
 
 static bool scan_delimiter_double_quoted_character(
   struct DelimiterReader *reader,
-  bool *escaped
+  bool *quoted
 ) {
   TSLexer *lexer = reader->lexer;
   struct ByteBuffer *delimiter = &reader->delimiter;
-  *escaped = false;
+  *quoted = false;
   int32_t character = lexer->lookahead;
   if (lexer_at_eof(lexer)) {
     return false;
   }
 
   if (character == '"') {
-    *escaped = true;
     if (reader->quote == DELIMITER_PARAMETER_DOUBLE_QUOTED) {
       if (!push_delimiter_group(
             &reader->groups,
@@ -2887,8 +2587,10 @@ static bool scan_delimiter_double_quoted_character(
       reader->groups.length > 0 &&
       delimiter_top_group(reader)->kind == DELIMITER_GROUP_DOUBLE_QUOTE
     ) {
+      *quoted = true;
       pop_delimiter_group(reader);
     } else {
+      *quoted = true;
       reader->quote = DELIMITER_UNQUOTED;
     }
     lexer->advance(lexer, false);
@@ -2897,34 +2599,36 @@ static bool scan_delimiter_double_quoted_character(
 
   if (character == '$') {
     lexer->advance(lexer, false);
-    if (!append_byte(delimiter, '$')) {
-      return false;
-    }
-    if (lexer->lookahead == '(' || lexer->lookahead == '{') {
-      return push_dollar_delimiter_group(reader);
-    }
-    return skip_dollar_parameter(lexer, delimiter);
+    return append_byte(delimiter, '$') && delimiter_dollar_tail(reader);
   }
 
   if (character == '`') {
-    if (!append_byte(delimiter, '`')) {
-      return false;
-    }
-    lexer->advance(lexer, false);
-    return push_backquote_delimiter_group(reader);
+    return delimiter_open_backquote(reader);
   }
 
   if (character == '\\') {
     lexer->advance(lexer, false);
-    *escaped = true;
-    if (delimiter_escape_removed(reader, lexer->lookahead)) {
+    if (lexer->lookahead == '\n') {
+      lexer->advance(lexer, false);
+      return true;
+    }
+    *quoted = true;
+    if (
+      is_one_of(lexer->lookahead, "$`\"\\") ||
+      (delimiter_in_parameter(reader) && lexer->lookahead == '}')
+    ) {
       if (!append_codepoint(delimiter, lexer->lookahead)) {
         return false;
       }
       lexer->advance(lexer, false);
       return true;
     }
-    return append_byte(delimiter, '\\');
+    if (!append_byte(delimiter, '\\')) return false;
+    if (reader->quote == DELIMITER_ARITHMETIC && !lexer_at_input_end(lexer)) {
+      if (!append_codepoint(delimiter, lexer->lookahead)) return false;
+      lexer->advance(lexer, false);
+    }
+    return true;
   }
 
   if (!append_codepoint(delimiter, character)) {
@@ -2934,62 +2638,10 @@ static bool scan_delimiter_double_quoted_character(
   return true;
 }
 
-static bool flush_nested_here_documents(struct DelimiterReader *reader) {
-  if (reader->nested_document_count == 0) {
-    return true;
-  }
-  bool valid = scan_nested_here_document_sequence(
-    reader->scanner,
-    reader->lexer,
-    &reader->delimiter,
-    reader->nested_documents,
-    reader->nested_document_count
-  );
-  clear_document_array(
-    &reader->nested_documents,
-    &reader->nested_document_count
-  );
-  return valid;
-}
-
-static void delimiter_complete_nested_delimiter(
-  struct DelimiterReader *reader,
-  size_t command_depth
-) {
-  reader->valid = append_nested_here_document(
-    &reader->nested_documents,
-    &reader->nested_document_count,
-    &reader->delimiter,
-    reader->nested_delimiter_start,
-    reader->groups.length,
-    reader->nested_delimiter_quoted,
-    reader->nested_delimiter_strips_tabs || reader->inherited_strip_tabs
-  );
-  reader->collecting_nested_delimiter = false;
-  if (command_depth > 0) {
-    delimiter_command(reader, command_depth)->redirect_operand = false;
-  }
-  reader->nested_delimiter_quoted = false;
-  reader->nested_delimiter_strips_tabs = false;
-}
-
 static bool delimiter_parameter_quote_step(
   struct DelimiterReader *reader,
   int32_t character
 ) {
-  struct DelimiterGroupFrame *group = delimiter_top_group(reader);
-  group->parameter_quote_state =
-    parameter_quote_state_after(group->parameter_quote_state, character);
-  if (group->parameter_quote_state == PARAMETER_QUOTE_PATTERN) {
-    group->keeps_backslash = delimiter_operand_keeps_backslash(
-      &reader->groups,
-      reader->groups.length - 1,
-      group->parent_quote,
-      true
-    );
-    reader->quote = DELIMITER_UNQUOTED;
-    return false;
-  }
   if (character != '}') {
     return false;
   }
@@ -3000,205 +2652,61 @@ static bool delimiter_parameter_quote_step(
 }
 
 static void delimiter_single_quoted_step(struct DelimiterReader *reader) {
-  bool dollar = reader->quote == DELIMITER_DOLLAR_SINGLE_QUOTED;
   reader->valid = scan_delimiter_single_quoted_segment(
     reader->lexer,
     &reader->delimiter,
-    dollar
+    reader->quote == DELIMITER_DOLLAR_SINGLE_QUOTED
   );
-  if (reader->valid) reader->quote = DELIMITER_UNQUOTED;
+  if (reader->valid) {
+    reader->quote = DELIMITER_UNQUOTED;
+  }
 }
 
 static void delimiter_double_quoted_step(struct DelimiterReader *reader) {
-  bool escaped;
-  reader->valid = scan_delimiter_double_quoted_character(reader, &escaped);
-  if (escaped) {
-    delimiter_mark_quoted(reader);
+  bool quoted;
+  reader->valid = scan_delimiter_double_quoted_character(reader, &quoted);
+  if (quoted) {
+    reader->quoted = true;
   }
-}
-
-static bool delimiter_expect_nested_delimiter(
-  struct DelimiterReader *reader,
-  int32_t character
-) {
-  if (character == ' ' || character == '\t') {
-    reader->valid = append_codepoint(&reader->delimiter, character);
-    if (reader->valid) {
-      reader->lexer->advance(reader->lexer, false);
-    }
-    return true;
-  }
-  reader->expecting_nested_delimiter = false;
-  if (character == '#' || is_token_delimiter(reader->lexer)) {
-    reader->nested_delimiter_strips_tabs = false;
-  } else {
-    reader->collecting_nested_delimiter = true;
-    reader->nested_delimiter_start = reader->delimiter.length;
-    reader->nested_delimiter_group_depth = reader->groups.length;
-  }
-  return false;
-}
-
-static void delimiter_redirect_operator(
-  struct DelimiterReader *reader,
-  int32_t character,
-  size_t command_depth
-) {
-  TSLexer *lexer = reader->lexer;
-  struct CommandTracker *command = delimiter_command(reader, command_depth);
-  reader->valid =
-    finish_command_word(&reader->cases, command_depth, command, true);
-  if (!reader->valid) {
-    return;
-  }
-  begin_command_redirect(command);
-
-  reader->has_word_content = true;
-  reader->valid = append_codepoint(&reader->delimiter, character);
-  if (!reader->valid) {
-    return;
-  }
-  lexer->advance(lexer, false);
-  if (character == '>' || lexer->lookahead != '<') {
-    if (is_redirect_operator_suffix(character, lexer->lookahead)) {
-      reader->valid = append_codepoint(&reader->delimiter, lexer->lookahead);
-      lexer->advance(lexer, false);
-    }
-    return;
-  }
-
-  reader->valid = append_byte(&reader->delimiter, '<');
-  if (!reader->valid) {
-    return;
-  }
-  lexer->advance(lexer, false);
-  if (lexer->lookahead == '<') {
-    return;
-  }
-
-  bool nested_strip_tabs = lexer->lookahead == '-';
-  if (nested_strip_tabs) {
-    reader->valid = append_byte(&reader->delimiter, '-');
-    if (!reader->valid) {
-      return;
-    }
-    lexer->advance(lexer, false);
-  }
-  reader->expecting_nested_delimiter = true;
-  reader->nested_delimiter_strips_tabs = nested_strip_tabs;
-  reset_command_word(&command->word);
-}
-
-static void
-delimiter_comment(struct DelimiterReader *reader, size_t command_depth) {
-  TSLexer *lexer = reader->lexer;
-  reader->has_word_content = true;
-  reader->valid = advance_to_comment_end(lexer, &reader->delimiter);
-  if (!reader->valid || lexer->lookahead != '\n') {
-    return;
-  }
-  reader->valid = append_byte(&reader->delimiter, '\n');
-  lexer->advance(lexer, false);
-  struct CommandTracker *command = delimiter_command(reader, command_depth);
-  reset_command_position(
-    command,
-    command->position == COMMAND_POSITION_FOR_IN ? COMMAND_POSITION_FOR_IN
-                                                 : COMMAND_POSITION_START
-  );
-  reader->valid = reader->valid && flush_nested_here_documents(reader);
-}
-
-static void delimiter_note_word_character(
-  struct DelimiterReader *reader,
-  struct CommandWord *command_word,
-  bool at_nested_delimiter_base,
-  int32_t character
-) {
-  if (command_word != NULL && !at_nested_delimiter_base) {
-    track_command_word_character(command_word, character);
-  }
-  reader->has_word_content = true;
 }
 
 static void delimiter_dollar(struct DelimiterReader *reader) {
   TSLexer *lexer = reader->lexer;
+  reader->has_word_content = true;
   lexer->advance(lexer, false);
 
   if (lexer->lookahead == '\'') {
-    delimiter_mark_quoted(reader);
+    reader->quoted = true;
     reader->quote = DELIMITER_DOLLAR_SINGLE_QUOTED;
     lexer->advance(lexer, false);
     return;
   }
 
-  reader->valid = append_byte(&reader->delimiter, '$');
-  if (!reader->valid) {
-    return;
-  }
-
-  if (lexer->lookahead == '(' || lexer->lookahead == '{') {
-    reader->valid = push_dollar_delimiter_group(reader);
-  } else {
-    reader->valid = skip_dollar_parameter(lexer, &reader->delimiter);
-  }
+  reader->valid =
+    append_byte(&reader->delimiter, '$') && delimiter_dollar_tail(reader);
 }
 
 static void delimiter_backslash(struct DelimiterReader *reader) {
   TSLexer *lexer = reader->lexer;
   lexer->advance(lexer, false);
-  if (lexer_at_eof(lexer)) {
-    reader->valid = logical_source_eof(lookahead_input(lexer)) &&
-      append_byte(&reader->delimiter, '\\');
-    return;
-  }
-  if (lexer->lookahead == SOURCE_BACKQUOTE_BOUNDARY) {
+  reader->has_word_content = true;
+  if (lexer_at_input_end(lexer)) {
     reader->valid = append_byte(&reader->delimiter, '\\');
     return;
   }
-  delimiter_mark_quoted(reader);
-  bool kept = reader->groups.length > 0 &&
-    delimiter_top_group(reader)->keeps_backslash &&
-    !delimiter_escape_removed(reader, lexer->lookahead);
-  reader->valid = (!kept || append_byte(&reader->delimiter, '\\')) &&
+  reader->quoted = true;
+  struct DelimiterGroupFrame *group =
+    reader->groups.length > 0 ? delimiter_top_group(reader) : NULL;
+  bool escape = is_one_of(lexer->lookahead, "\\$`\"") ||
+    (group != NULL &&
+      group->kind == DELIMITER_GROUP_PARAMETER &&
+      lexer->lookahead == '}');
+  reader->valid = (group == NULL ||
+                    !group->keeps_backslash ||
+                    escape ||
+                    append_byte(&reader->delimiter, '\\')) &&
     append_codepoint(&reader->delimiter, lexer->lookahead);
   lexer->advance(lexer, false);
-}
-
-static bool delimiter_case_pattern_parenthesis(
-  struct DelimiterReader *reader,
-  int32_t character,
-  size_t depth
-) {
-  struct CaseTracker *active_case = active_case_tracker(&reader->cases, depth);
-  if (active_case == NULL || !case_tracker_in_pattern(active_case->state)) {
-    return false;
-  }
-  if (character == '(') {
-    reader->has_word_content = true;
-  }
-  reader->valid = append_codepoint(&reader->delimiter, character);
-  active_case->state =
-    character == '(' ? CASE_TRACKER_IN_PATTERN : CASE_TRACKER_BODY;
-  if (character == ')') {
-    reset_command_position(
-      &delimiter_top_group(reader)->command,
-      COMMAND_POSITION_START
-    );
-  }
-  reader->lexer->advance(reader->lexer, false);
-  return true;
-}
-
-static bool
-delimiter_open_group(struct DelimiterReader *reader, size_t command_depth) {
-  enum DelimiterGroupKind parent_kind = delimiter_top_group(reader)->kind;
-  enum DelimiterGroupKind nested_kind =
-    parent_kind == DELIMITER_GROUP_ARITHMETIC ? DELIMITER_GROUP_ARITHMETIC
-    : command_depth > 0 &&
-      delimiter_command(reader, command_depth)->function_name
-    ? DELIMITER_GROUP_FUNCTION_HEADER
-    : DELIMITER_GROUP_SUBSHELL;
-  return push_delimiter_group(&reader->groups, ')', nested_kind, reader->quote);
 }
 
 static void
@@ -3207,145 +2715,41 @@ delimiter_plain_character(struct DelimiterReader *reader, int32_t character) {
   reader->has_word_content = true;
   reader->valid = append_codepoint(&reader->delimiter, character);
   lexer->advance(lexer, false);
-
-  size_t command_depth = delimiter_command_group_depth(&reader->groups);
-  if (command_depth == 0) {
-    return;
-  }
-  struct CaseTracker *active_case =
-    active_case_tracker(&reader->cases, command_depth);
-  if (
-    character == ';' &&
-    active_case != NULL &&
-    active_case->state == CASE_TRACKER_BODY &&
-    (lexer->lookahead == ';' || lexer->lookahead == '&')
-  ) {
-    active_case->state = CASE_TRACKER_EXPECT_PATTERN;
-  }
-
-  if (
-    character == '\n' ||
-    character == ';' ||
-    character == '&' ||
-    (character == '|' &&
-      !(active_case != NULL && case_tracker_in_pattern(active_case->state)))
-  ) {
-    struct CommandTracker *command = delimiter_command(reader, command_depth);
-    reset_command_position(
-      command,
-      character == '\n' && command->position == COMMAND_POSITION_FOR_IN
-        ? COMMAND_POSITION_FOR_IN
-        : COMMAND_POSITION_START
-    );
-  }
-
-  if (character == '\n') {
-    reader->valid = reader->valid && flush_nested_here_documents(reader);
-  }
 }
 
-static bool delimiter_structured_start(
-  struct DelimiterReader *reader,
-  struct CommandWord *command_word,
-  bool at_nested_delimiter_base,
-  int32_t character
-) {
+static bool
+delimiter_structured_start(struct DelimiterReader *reader, int32_t character) {
   TSLexer *lexer = reader->lexer;
-  bool quote = (character == '\'' || character == '"') &&
-    reader->quote != DELIMITER_ARITHMETIC;
-  if (!quote && character != '\\' && character != '`' && character != '$') {
-    return false;
-  }
-  delimiter_note_word_character(
-    reader,
-    command_word,
-    at_nested_delimiter_base,
-    character
-  );
-  if (quote) {
-    delimiter_mark_quoted(reader);
+  if (
+    (character == '\'' || character == '"') &&
+    reader->quote != DELIMITER_ARITHMETIC
+  ) {
+    reader->has_word_content = true;
+    if (character == '\'') reader->quoted = true;
     reader->quote =
       character == '\'' ? DELIMITER_SINGLE_QUOTED : DELIMITER_DOUBLE_QUOTED;
     lexer->advance(lexer, false);
-  } else if (character == '\\') {
+    return true;
+  }
+  if (character == '\\') {
     delimiter_backslash(reader);
-  } else if (character == '`') {
-    reader->valid = append_byte(&reader->delimiter, '`');
-    if (reader->valid) {
-      lexer->advance(lexer, false);
-      reader->valid = push_backquote_delimiter_group(reader);
-    }
-  } else {
+    return true;
+  }
+  if (character == '`') {
+    reader->has_word_content = true;
+    reader->valid = delimiter_open_backquote(reader);
+    return true;
+  }
+  if (character == '$') {
     delimiter_dollar(reader);
+    return true;
   }
-  return true;
-}
-
-static void delimiter_track_command_character(
-  struct DelimiterReader *reader,
-  size_t command_depth,
-  int32_t character
-) {
-  struct CommandTracker *command = delimiter_command(reader, command_depth);
-  if (is_token_delimiter(reader->lexer)) {
-    reader->valid =
-      finish_command_word(&reader->cases, command_depth, command, false);
-  } else if (!is_quote_or_expansion_start(character) && character != '\\') {
-    track_command_word_character(&command->word, character);
-  }
+  return false;
 }
 
 static enum DelimiterStep
 delimiter_unquoted_step(struct DelimiterReader *reader, int32_t character) {
   TSLexer *lexer = reader->lexer;
-  size_t command_depth = delimiter_command_group_depth(&reader->groups);
-  struct CommandWord *command_word =
-    command_depth == 0 ? NULL : &delimiter_command(reader, command_depth)->word;
-  if (
-    reader->collecting_nested_delimiter &&
-    reader->groups.length == reader->nested_delimiter_group_depth &&
-    is_token_delimiter(lexer)
-  ) {
-    delimiter_complete_nested_delimiter(reader, command_depth);
-    if (!reader->valid) {
-      return DELIMITER_STEP_NEXT;
-    }
-  }
-
-  if (
-    reader->expecting_nested_delimiter &&
-    delimiter_expect_nested_delimiter(reader, character)
-  ) {
-    return DELIMITER_STEP_NEXT;
-  }
-
-  struct CaseTracker *operator_case =
-    active_case_tracker(&reader->cases, command_depth);
-  bool in_case_pattern =
-    operator_case != NULL && case_tracker_in_pattern(operator_case->state);
-  if (
-    command_depth > 0 &&
-    !reader->collecting_nested_delimiter &&
-    !in_case_pattern &&
-    (character == '<' || character == '>')
-  ) {
-    delimiter_redirect_operator(reader, character, command_depth);
-    return DELIMITER_STEP_NEXT;
-  }
-
-  bool at_nested_delimiter_base = reader->collecting_nested_delimiter &&
-    command_depth == reader->nested_delimiter_group_depth;
-  if (command_depth > 0 && !at_nested_delimiter_base) {
-    if (character == '#' && !command_word->active) {
-      delimiter_comment(reader, command_depth);
-      return DELIMITER_STEP_NEXT;
-    }
-    delimiter_track_command_character(reader, command_depth, character);
-    if (!reader->valid) {
-      return DELIMITER_STEP_NEXT;
-    }
-  }
-
   if (reader->groups.length == 0 && is_token_delimiter(lexer)) {
     return DELIMITER_STEP_END;
   }
@@ -3357,21 +2761,13 @@ delimiter_unquoted_step(struct DelimiterReader *reader, int32_t character) {
     return DELIMITER_STEP_END;
   }
 
-  if (
-    delimiter_structured_start(
-      reader,
-      command_word,
-      at_nested_delimiter_base,
-      character
-    )
-  ) {
+  if (delimiter_structured_start(reader, character)) {
     return DELIMITER_STEP_NEXT;
   }
 
   if (
-    command_depth > 0 &&
     character == ')' &&
-    delimiter_case_pattern_parenthesis(reader, character, command_depth)
+    delimiter_close_nearest_group(reader, DELIMITER_GROUP_COMMAND, ')')
   ) {
     return DELIMITER_STEP_NEXT;
   }
@@ -3380,6 +2776,11 @@ delimiter_unquoted_step(struct DelimiterReader *reader, int32_t character) {
     reader->groups.length > 0 &&
     character == delimiter_top_group(reader)->closing
   ) {
+    if (delimiter_top_group(reader)->kind == DELIMITER_GROUP_ARITHMETIC) {
+      reader->valid = append_byte(&reader->delimiter, ')');
+      lexer->advance(lexer, false);
+      if (lexer->lookahead != ')') return DELIMITER_STEP_NEXT;
+    }
     reader->valid = append_codepoint(&reader->delimiter, character);
     pop_delimiter_group(reader);
     lexer->advance(lexer, false);
@@ -3388,20 +2789,15 @@ delimiter_unquoted_step(struct DelimiterReader *reader, int32_t character) {
 
   if (
     reader->groups.length > 0 &&
-    (command_depth > 0 ||
-      delimiter_top_group(reader)->kind == DELIMITER_GROUP_ARITHMETIC) &&
+    reader->quote == DELIMITER_ARITHMETIC &&
     character == '('
   ) {
-    if (
-      delimiter_case_pattern_parenthesis(
-        reader,
-        character,
-        reader->groups.length
-      )
-    ) {
-      return DELIMITER_STEP_NEXT;
-    }
-    if (!delimiter_open_group(reader, command_depth)) {
+    if (!push_delimiter_group(
+          &reader->groups,
+          ')',
+          DELIMITER_GROUP_ARITHMETIC_PAREN,
+          reader->quote
+        )) {
       reader->valid = false;
       return DELIMITER_STEP_NEXT;
     }
@@ -3422,20 +2818,10 @@ static enum DelimiterStep delimiter_step(struct DelimiterReader *reader) {
   }
   if (
     character == '`' &&
-    reader->quote == DELIMITER_UNQUOTED &&
-    reader->groups.length > 0 &&
-    delimiter_top_group(reader)->kind == DELIMITER_GROUP_BACKQUOTE
+    reader->quote != DELIMITER_SINGLE_QUOTED &&
+    reader->quote != DELIMITER_DOLLAR_SINGLE_QUOTED &&
+    delimiter_close_nearest_group(reader, DELIMITER_GROUP_BACKQUOTE, '`')
   ) {
-    if (
-      reader->collecting_nested_delimiter &&
-      reader->groups.length == reader->nested_delimiter_group_depth
-    ) {
-      delimiter_complete_nested_delimiter(reader, reader->groups.length);
-    }
-    reader->valid = reader->valid && append_byte(&reader->delimiter, '`');
-    pop_delimiter_group(reader);
-    reader->backquote_depth -= 1;
-    lexer->advance(lexer, false);
     return DELIMITER_STEP_NEXT;
   }
   if (
@@ -3455,7 +2841,7 @@ static enum DelimiterStep delimiter_step(struct DelimiterReader *reader) {
     reader->quote == DELIMITER_DOUBLE_QUOTED ||
     reader->quote == DELIMITER_PARAMETER_DOUBLE_QUOTED ||
     (reader->quote == DELIMITER_ARITHMETIC &&
-      (character == '$' || character == '`'))
+      (character == '$' || character == '`' || character == '\\'))
   ) {
     delimiter_double_quoted_step(reader);
     return DELIMITER_STEP_NEXT;
@@ -3466,18 +2852,12 @@ static enum DelimiterStep delimiter_step(struct DelimiterReader *reader) {
 static enum DelimiterReadResult read_here_document_delimiter(
   TSLexer *lexer,
   const struct Scanner *scanner,
-  size_t backquote_depth,
   bool strip_tabs,
   struct HereDocument *document
 ) {
   struct LogicalLexer *input = lookahead_input(lexer);
   struct DelimiterReader reader = {
     .lexer = lexer,
-    .scanner = scanner,
-    .backquote_depth = backquote_depth,
-    .inherited_strip_tabs = scanner != NULL &&
-      scanner->active_frame.count > 0 &&
-      scanner->active_frame.documents[0].strip_tabs,
     .valid = true,
   };
   if (input == NULL) return DELIMITER_READ_RESOURCE_FAILURE;
@@ -3488,19 +2868,11 @@ static enum DelimiterReadResult read_here_document_delimiter(
   bool complete = reader.valid &&
     reader.has_word_content &&
     reader.quote == DELIMITER_UNQUOTED &&
-    reader.groups.length == 0 &&
-    reader.backquote_depth == backquote_depth &&
-    !reader.expecting_nested_delimiter &&
-    !reader.collecting_nested_delimiter &&
-    reader.nested_document_count == 0;
+    reader.groups.length == 0;
   ts_free(reader.groups.data);
-  ts_free(reader.cases.data);
-  clear_document_array(&reader.nested_documents, &reader.nested_document_count);
   if (!complete) {
     ts_free(reader.delimiter.data);
-    if (
-      reader.delimiter.failed || reader.groups.failed || reader.cases.failed
-    ) {
+    if (reader.delimiter.failed || reader.groups.failed) {
       return DELIMITER_READ_RESOURCE_FAILURE;
     }
     return lexer_at_eof(lexer) ? DELIMITER_READ_INCOMPLETE
@@ -3511,12 +2883,14 @@ static enum DelimiterReadResult read_here_document_delimiter(
     ts_free(reader.delimiter.data);
     return DELIMITER_READ_RESOURCE_FAILURE;
   }
-
   *document = (struct HereDocument){
     .delimiter = (uint8_t *)reader.delimiter.data,
     .delimiter_length = reader.delimiter.length,
     .quoted = reader.quoted,
-    .strip_tabs = strip_tabs || reader.inherited_strip_tabs,
+    .strip_tabs = strip_tabs ||
+      (scanner != NULL &&
+        scanner->active_frame.count > 0 &&
+        scanner->active_frame.documents[0].strip_tabs),
   };
   return DELIMITER_READ_WORD;
 }
@@ -3528,13 +2902,8 @@ static bool scan_here_document_delimiter(
 ) {
   lexer->mark_end(lexer);
   struct HereDocument document;
-  enum DelimiterReadResult result = read_here_document_delimiter(
-    lexer,
-    scanner,
-    scanner->backquote_depth,
-    strip_tabs,
-    &document
-  );
+  enum DelimiterReadResult result =
+    read_here_document_delimiter(lexer, scanner, strip_tabs, &document);
   if (result != DELIMITER_READ_WORD) {
     if (result == DELIMITER_READ_RESOURCE_FAILURE) {
       lookahead_fail((struct LookaheadLexer *)lexer);
@@ -3550,17 +2919,8 @@ static bool scan_here_document_delimiter(
     }
     return false;
   }
-  lexer->result_symbol = strip_tabs ? HERE_END_STRIP_BEGIN : HERE_END_BEGIN;
-  return true;
-}
-
-static bool scan_here_end_commit(TSLexer *lexer) {
-  if (!is_token_delimiter(lexer)) {
-    return false;
-  }
-
   lexer->mark_end(lexer);
-  lexer->result_symbol = HERE_END_COMMIT;
+  lexer->result_symbol = strip_tabs ? HERE_END_STRIP_BEGIN : HERE_END_BEGIN;
   return true;
 }
 
@@ -3713,7 +3073,7 @@ classify_comment_boundary(TSLexer *lexer, const bool *valid_symbols) {
   bool comment_reaches_input_end = false;
   if (valid_symbols[TRAILING_COMMENT_BOUNDARY]) {
     advance_to_comment_end(lexer, NULL);
-    comment_reaches_input_end = comment_reaches_end(lexer);
+    comment_reaches_input_end = lexer_at_input_end(lexer);
   }
   return classify_scanned_comment_boundary(
     lexer,
@@ -4081,7 +3441,7 @@ static bool scan_comment_term_boundary(
     return classify_comment_boundary(lexer, valid_symbols);
   }
   advance_to_comment_end(lexer, NULL);
-  bool reaches_end = comment_reaches_end(lexer);
+  bool reaches_end = lexer_at_input_end(lexer);
   if (!reaches_end) {
     enum TermContinuation continuation =
       finish_term_continuation(scanner, lexer, valid_symbols);
@@ -4535,13 +3895,8 @@ static enum ArithmeticValidation read_embedded_here_document_delimiter(
     lexer->advance(lexer, false);
   }
 
-  enum DelimiterReadResult result = read_here_document_delimiter(
-    lexer,
-    scanner,
-    scanner == NULL ? 0 : scanner->backquote_depth,
-    strip_tabs,
-    document
-  );
+  enum DelimiterReadResult result =
+    read_here_document_delimiter(lexer, scanner, strip_tabs, document);
   if (result == DELIMITER_READ_WORD) {
     return ARITHMETIC_VALIDATION_VALID;
   }
@@ -5288,8 +4643,9 @@ static unsigned bracket_phase_after(unsigned phase, enum BracketInput input) {
     }
     return base +
       (range_end ? 0 : marker * BRACKET_CLASS_STAGE_COUNT) +
-      (stage != BRACKET_CLASS_EMPTY && input == marker ? BRACKET_CLASS_MARKED
-                                                       : BRACKET_CLASS_FILLED);
+      (stage != BRACKET_CLASS_EMPTY && input == (enum BracketInput)marker
+          ? BRACKET_CLASS_MARKED
+          : BRACKET_CLASS_FILLED);
   }
   if (phase == BRACKET_PHASE_RANGE_END && input != BRACKET_INPUT_CLOSE) {
     return input == BRACKET_INPUT_OPEN ? BRACKET_PHASE_RANGE_OPENED
@@ -6937,7 +6293,6 @@ scan_dispatch(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
     !has_startable_pending_document(scanner) &&
     !valid[HERE_END_BEGIN] &&
     !valid[HERE_END_STRIP_BEGIN] &&
-    !valid[HERE_END_COMMIT] &&
     !valid[FUNCTION_BODY_CONTINUATION_BOUNDARY]
   ) {
     return scan_here_document_body_newline(scanner, lexer, valid);
@@ -6948,9 +6303,6 @@ scan_dispatch(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
       lexer,
       valid[HERE_END_STRIP_BEGIN]
     );
-  }
-  if (valid[HERE_END_COMMIT] && scan_here_end_commit(lexer)) {
-    return true;
   }
   if (valid[DOLLAR_SINGLE_QUOTE_ESCAPE] && lexer->lookahead == '\\') {
     return scan_dollar_single_quote_token(lexer);

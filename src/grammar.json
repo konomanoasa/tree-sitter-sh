@@ -4577,6 +4577,45 @@
       ]
     },
     "here_end": {
+      "type": "FIELD",
+      "name": "word",
+      "content": {
+        "type": "ALIAS",
+        "content": {
+          "type": "SYMBOL",
+          "name": "_here_end_word"
+        },
+        "named": true,
+        "value": "word"
+      }
+    },
+    "_here_end_strip": {
+      "type": "FIELD",
+      "name": "word",
+      "content": {
+        "type": "ALIAS",
+        "content": {
+          "type": "SYMBOL",
+          "name": "_here_end_strip_word"
+        },
+        "named": true,
+        "value": "word"
+      }
+    },
+    "_here_end_word": {
+      "type": "SYMBOL",
+      "name": "here_end_text"
+    },
+    "_here_end_strip_word": {
+      "type": "ALIAS",
+      "content": {
+        "type": "SYMBOL",
+        "name": "_here_end_strip_text"
+      },
+      "named": true,
+      "value": "here_end_text"
+    },
+    "here_end_text": {
       "type": "SEQ",
       "members": [
         {
@@ -4584,25 +4623,15 @@
           "name": "_here_end_begin"
         },
         {
-          "type": "FIELD",
-          "name": "word",
+          "type": "REPEAT1",
           "content": {
-            "type": "ALIAS",
-            "content": {
-              "type": "SYMBOL",
-              "name": "_here_end_source_word"
-            },
-            "named": true,
-            "value": "word"
+            "type": "SYMBOL",
+            "name": "_here_end_begin_piece"
           }
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_here_end_commit"
         }
       ]
     },
-    "_here_end_strip": {
+    "_here_end_strip_text": {
       "type": "SEQ",
       "members": [
         {
@@ -4610,36 +4639,10 @@
           "name": "_here_end_strip_begin"
         },
         {
-          "type": "FIELD",
-          "name": "word",
-          "content": {
-            "type": "ALIAS",
-            "content": {
-              "type": "SYMBOL",
-              "name": "_here_end_source_word"
-            },
-            "named": true,
-            "value": "word"
-          }
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_here_end_commit"
-        }
-      ]
-    },
-    "_here_end_source_word": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "_word_initial_part"
-        },
-        {
-          "type": "REPEAT",
+          "type": "REPEAT1",
           "content": {
             "type": "SYMBOL",
-            "name": "_word_part"
+            "name": "_here_end_strip_begin_piece"
           }
         }
       ]
@@ -14225,10 +14228,6 @@
     },
     {
       "type": "SYMBOL",
-      "name": "_here_end_commit"
-    },
-    {
-      "type": "SYMBOL",
       "name": "_here_document_line_end_begin"
     },
     {
@@ -14970,6 +14969,14 @@
     {
       "type": "SYMBOL",
       "name": "_pattern_range_end_left_bracket_begin"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_here_end_begin_piece"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_here_end_strip_begin_piece"
     },
     {
       "type": "SYMBOL",
