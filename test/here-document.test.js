@@ -6,6 +6,7 @@ import {
   assertNodeCount,
   assertNotContains,
   assertOccurrenceCount,
+  assertSameLogicalProjection,
   continuationManifest,
   hasRecovery,
   lineContinuationManifest,
@@ -655,6 +656,81 @@ test("changing a file redirect to a here-document updates tilde classification",
   )) {
     assertNodeCount(output, "tilde_expansion", 2);
     assertNodeCount(output, "filename", 1);
+  }
+});
+
+test("sh: pending heredocs preserve hash suffixes across word boundary edits", () => {
+  for (const part of [
+    "a",
+    '"$@"',
+    '""',
+    "'a'",
+    "$'a'",
+    `\${v}`,
+    "$((1))",
+    "$(printf a)",
+    "`printf a`",
+    "\\a",
+    "[a]",
+    "[a",
+    "*",
+  ]) {
+    const prefix = `cat <<EOF; echo ${part}`;
+    const suffix = "# c\nBODY\nEOF\necho after\n";
+    const joined = writeSource("heredoc-word-hash", prefix + suffix);
+    const separated = writeSource(
+      "heredoc-comment-hash",
+      `${prefix} ${suffix}`,
+    );
+    const continued = writeSource(
+      "heredoc-continued-word-hash",
+      `${prefix}\\\n${suffix}`,
+    );
+    for (const output of assertIncrementalEqualsFresh(
+      joined,
+      separated,
+      "separate-heredoc-header-comment",
+      { byte: prefix.length, deleteBytes: 0, insert: " " },
+    )) {
+      assertNodeCount(output, "comment", 1);
+      assertCstRange(output, `0:16-0:${prefix.length}`, "word");
+      assertCstRange(
+        output,
+        `0:${prefix.length + 1}-0:${prefix.length + 4}`,
+        "comment",
+      );
+      assertCstRange(output, "1:0-2:0", "here_document_body");
+      assertCstRange(output, "2:0-3:0", "here_document_end");
+    }
+    for (const output of assertIncrementalEqualsFresh(
+      separated,
+      joined,
+      "join-heredoc-header-word",
+      { byte: prefix.length, deleteBytes: 1, insert: "" },
+    )) {
+      assertNodeCount(output, "comment", 0);
+      assertCstRange(output, `0:16-0:${prefix.length + 1}`, "word");
+      assertCstRange(
+        output,
+        `0:${prefix.length + 2}-0:${prefix.length + 3}`,
+        "word",
+      );
+      assertCstRange(output, "1:0-2:0", "here_document_body");
+      assertCstRange(output, "2:0-3:0", "here_document_end");
+    }
+    const joinedOutput = parseValidCst(joined);
+    for (const output of assertIncrementalEqualsFresh(
+      joined,
+      continued,
+      "continue-heredoc-header-word",
+      { byte: prefix.length, deleteBytes: 0, insert: "\\\n" },
+    )) {
+      assertSameLogicalProjection(part, joinedOutput, output);
+      assertNodeCount(output, "comment", 0);
+      assertCstRange(output, "0:16-1:1", "word");
+      assertCstRange(output, "2:0-3:0", "here_document_body");
+      assertCstRange(output, "3:0-4:0", "here_document_end");
+    }
   }
 });
 

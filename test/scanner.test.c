@@ -2195,20 +2195,25 @@ static void test_here_document_sequence_requires_a_line_boundary(void) {
   const struct {
     const char *source;
     bool enabled;
+    bool word_continues;
     bool accepted;
   } cases[] = {
-    {"", true, false},
-    {" ", true, false},
-    {"\n", true, true},
-    {" \n", true, true},
-    {"\t \n", true, true},
-    {"#comment", true, false},
-    {" #comment\n", true, true},
-    {";", true, false},
-    {" argument\n", true, false},
-    {" >file\n", true, false},
-    {"", false, false},
-    {" \n", false, false},
+    {"", true, false, false},
+    {" ", true, false, false},
+    {"\n", true, false, true},
+    {" \n", true, false, true},
+    {"\t \n", true, false, true},
+    {"#comment", true, false, false},
+    {"#comment\n", true, false, true},
+    {" #comment\n", true, false, true},
+    {"#suffix\n", true, true, false},
+    {" #comment\n", true, true, true},
+    {"\n", true, true, true},
+    {";", true, false, false},
+    {" argument\n", true, false, false},
+    {" >file\n", true, false, false},
+    {"", false, false, false},
+    {" \n", false, false, false},
   };
   for (size_t index = 0; index < ARRAY_LENGTH(cases); index += 1) {
     struct Scanner scanner = {0};
@@ -2223,6 +2228,7 @@ static void test_here_document_sequence_requires_a_line_boundary(void) {
     init_source_fixture(&fixture, cases[index].source, &stage, 1);
     bool valid[TOKEN_COUNT] = {false};
     valid[HERE_DOCUMENT_SEQUENCE_BEGIN] = cases[index].enabled;
+    valid[LITERAL_BEGIN] = cases[index].word_continues;
     assert(
       scan_dispatch(&scanner, &fixture.lookahead.lexer, valid) ==
       cases[index].accepted

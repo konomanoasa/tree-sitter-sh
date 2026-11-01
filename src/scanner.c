@@ -6283,12 +6283,16 @@ void tree_sitter_sh_external_scanner_deserialize(
   restore_scanner_state(scanner, buffer + 1, length - 1);
 }
 
-static bool scan_here_document_sequence_begin(TSLexer *lexer) {
+static bool
+scan_here_document_sequence_begin(TSLexer *lexer, const bool *valid_symbols) {
   struct LookaheadLexer *lookahead = (struct LookaheadLexer *)lexer;
   size_t position = lookahead->position;
   lexer->mark_end(lexer);
-  scan_horizontal_blanks(lexer);
-  if (lexer->lookahead == '#') {
+  bool crossed_layout = scan_horizontal_blanks(lexer);
+  if (
+    lexer->lookahead == '#' &&
+    (crossed_layout || !word_source_can_continue(valid_symbols))
+  ) {
     advance_to_comment_end(lexer, NULL);
   }
   if (lexer->lookahead == '\n') {
@@ -6396,7 +6400,7 @@ scan_dispatch(struct Scanner *scanner, TSLexer *lexer, const bool *valid) {
   if (
     valid[HERE_DOCUMENT_SEQUENCE_BEGIN] &&
     has_startable_pending_document(scanner) &&
-    scan_here_document_sequence_begin(lexer)
+    scan_here_document_sequence_begin(lexer, valid)
   ) {
     return true;
   }
