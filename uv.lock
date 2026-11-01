@@ -442,7 +442,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/f7/03/5600b84aff2e6c4fe
 
 [[package]]
 name = "tree-sitter-sh"
-version = "0.28.1"
+version = "0.28.2"
 source = { editable = "." }
 
 [package.dev-dependencies]
