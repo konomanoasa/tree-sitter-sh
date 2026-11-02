@@ -114,7 +114,6 @@ const keywordRules = () =>
     ]),
   );
 
-// Reduce delimiters to limit recovery stack depth.
 const PHYSICAL_RULES = {
   _punct_left_parenthesis: "(",
   _punct_right_parenthesis: ")",

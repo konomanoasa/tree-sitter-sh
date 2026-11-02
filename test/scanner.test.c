@@ -4,6 +4,55 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../src/tree_sitter/parser.h"
+
+struct SourceNativeMock {
+  TSLexer lexer;
+  const int32_t *input;
+  size_t length;
+  size_t position;
+  size_t advances;
+  size_t marks;
+};
+
+static void source_native_advance(TSLexer *lexer, bool skip) {
+  struct SourceNativeMock *mock = (struct SourceNativeMock *)lexer;
+  assert(!skip);
+  assert(mock->position < mock->length);
+  mock->position += 1;
+  mock->advances += 1;
+  lexer->lookahead =
+    mock->position < mock->length ? mock->input[mock->position] : 0;
+}
+
+static void source_native_mark(TSLexer *lexer) {
+  struct SourceNativeMock *mock = (struct SourceNativeMock *)lexer;
+  mock->marks += 1;
+}
+
+static bool source_native_eof(const TSLexer *lexer) {
+  const struct SourceNativeMock *mock = (const struct SourceNativeMock *)lexer;
+  return mock->position == mock->length;
+}
+
+static void source_native_init(
+  struct SourceNativeMock *mock,
+  const int32_t *input,
+  size_t length
+) {
+  *mock = (struct SourceNativeMock){
+    .lexer =
+      {
+        .lookahead = length > 0 ? input[0] : 0,
+        .advance = source_native_advance,
+        .mark_end = source_native_mark,
+        .eof = source_native_eof,
+      },
+    .input = input,
+    .length = length,
+  };
+}
+
 #include "../src/scanner.c"
 
 #define ARRAY_LENGTH(array) (sizeof(array) / sizeof((array)[0]))
@@ -577,53 +626,6 @@ static void test_source_failures_release_owned_memory(void) {
   }
 }
 #endif
-
-struct SourceNativeMock {
-  TSLexer lexer;
-  const int32_t *input;
-  size_t length;
-  size_t position;
-  size_t advances;
-  size_t marks;
-};
-
-static void source_native_advance(TSLexer *lexer, bool skip) {
-  struct SourceNativeMock *mock = (struct SourceNativeMock *)lexer;
-  assert(!skip);
-  assert(mock->position < mock->length);
-  mock->position += 1;
-  mock->advances += 1;
-  lexer->lookahead =
-    mock->position < mock->length ? mock->input[mock->position] : 0;
-}
-
-static void source_native_mark(TSLexer *lexer) {
-  struct SourceNativeMock *mock = (struct SourceNativeMock *)lexer;
-  mock->marks += 1;
-}
-
-static bool source_native_eof(const TSLexer *lexer) {
-  const struct SourceNativeMock *mock = (const struct SourceNativeMock *)lexer;
-  return mock->position == mock->length;
-}
-
-static void source_native_init(
-  struct SourceNativeMock *mock,
-  const int32_t *input,
-  size_t length
-) {
-  *mock = (struct SourceNativeMock){
-    .lexer =
-      {
-        .lookahead = length > 0 ? input[0] : 0,
-        .advance = source_native_advance,
-        .mark_end = source_native_mark,
-        .eof = source_native_eof,
-      },
-    .input = input,
-    .length = length,
-  };
-}
 
 static void test_logical_context_changes_reclassify_cached_lookahead(void) {
   const int32_t input[] = {'\'', '\\', '\n', 'x', '\'', '\\', '\n', 'y'};

@@ -1222,8 +1222,6 @@ static bool lookahead_local_policy(TSLexer *lexer, bool disabled) {
   return lookahead_set_stages(lexer, local, &stage, 1);
 }
 
-/* Restarts the local continuation stage after a backslash consumed without
-   escaping, so that a backslash following it pairs with a newline again. */
 static bool lookahead_restart_continuations(TSLexer *lexer) {
   struct LogicalLexer *input = lookahead_input(lexer);
   if (input == NULL || input->cursor.stage_count == 0) {
@@ -2472,8 +2470,6 @@ static bool delimiter_open_backquote(struct DelimiterReader *reader) {
   return true;
 }
 
-/* A byte consumed at a prefix position does not escape: after a backslash the
-   continuation stage restarts so the following backslash pairs with a newline. */
 static bool delimiter_consume_prefix(TSLexer *lexer, int32_t character) {
   lexer->advance(lexer, false);
   return character != '\\' || lookahead_restart_continuations(lexer);
@@ -2501,9 +2497,6 @@ static bool delimiter_parameter_operator(
   return append_codepoint(&reader->delimiter, character);
 }
 
-/* In the C locale, dash drops one invalid initial byte. After `${#`, it only
-   drops an invalid byte immediately followed by `}`. Prefix consumption
-   precedes quote and group recognition. */
 static bool delimiter_parameter_prefix(struct DelimiterReader *reader) {
   TSLexer *lexer = reader->lexer;
   struct ByteBuffer *delimiter = &reader->delimiter;
@@ -2573,7 +2566,6 @@ static bool push_dollar_delimiter_group(struct DelimiterReader *reader) {
   return true;
 }
 
-/* The form after a `$` that does not start a dollar-single quote. */
 static bool delimiter_dollar_form(struct DelimiterReader *reader) {
   TSLexer *lexer = reader->lexer;
   if (!append_byte(&reader->delimiter, '$')) return false;
