@@ -1,6 +1,6 @@
 [package]
 name = "tree-sitter-sh"
-version = "0.29.0"
+version = "0.29.1"
 description = "Tree-sitter grammar for POSIX sh."
 readme = "README.md"
 license = "MIT"
